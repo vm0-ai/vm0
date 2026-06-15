@@ -12,10 +12,17 @@ import pytest
 import zstandard
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
+import logging_utils
 import mitm_addon
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 from tests.usage_helpers import set_stream_buffer
 
 
@@ -292,13 +299,13 @@ class TestModelProviderResponseUsage:
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
-        flow.metadata["vm_run_id"] = run_id
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
         if proxy_log_path is not None:
-            flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_billable"] = billable
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+            flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = billable
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
 
     def _set_model_provider_metadata(
         self,
@@ -317,10 +324,10 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
-        flow.metadata["original_url"] = provider_case.original_url
-        flow.metadata["firewall_name"] = provider_case.firewall_name
+        flow.metadata[metadata_keys.ORIGINAL_URL] = provider_case.original_url
+        flow.metadata[metadata_keys.FIREWALL_NAME] = provider_case.firewall_name
         if provider_case.cli_agent_type is not None:
-            flow.metadata["cli_agent_type"] = provider_case.cli_agent_type
+            flow.metadata[metadata_keys.CLI_AGENT_TYPE] = provider_case.cli_agent_type
 
     def _model_provider_flow(
         self,
@@ -360,7 +367,7 @@ class TestModelProviderResponseUsage:
         self._run_response(flow)
 
         # JSON fallback should populate model_provider_usage in metadata
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected = _expected_usage(provider_case)
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
@@ -381,7 +388,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected = _expected_usage(provider_case)
         assert extracted["message_id"] == expected["message_id"]
         assert extracted["model"] == expected["model"]
@@ -411,8 +418,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -445,14 +452,14 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "string limit exceeded"
-        assert oversized_model not in proxy_log_path.read_text()
+        assert oversized_model not in read_jsonl_text_after_flush(proxy_log_path)
 
     def test_openai_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """OpenAI fallback parse failures should use the same proxy warning."""
@@ -473,8 +480,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -523,8 +530,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -570,15 +577,15 @@ class TestModelProviderResponseUsage:
 
         self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected = _expected_usage(provider_case)
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
         assert extracted["tokens.output"] == expected["tokens.output"]
         if provider_case.uses_openai_responses:
             assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
-        if proxy_log_path.exists():
-            entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        if jsonl_exists_after_flush(proxy_log_path):
+            entries = read_jsonl_entries_after_flush(proxy_log_path)
             assert not any(
                 entry.get("message") == "Model provider JSON usage extraction failed"
                 for entry in entries
@@ -625,7 +632,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
@@ -635,8 +642,8 @@ class TestModelProviderResponseUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
-        if proxy_log_path.exists():
-            entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        if jsonl_exists_after_flush(proxy_log_path):
+            entries = read_jsonl_entries_after_flush(proxy_log_path)
             assert not any(
                 entry.get("message") == "Model provider JSON usage extraction failed"
                 for entry in entries
@@ -661,7 +668,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_openai_json_fallback_valid_body_without_usage_stays_quiet(self, tmp_path, real_flow):
@@ -683,7 +691,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize(
@@ -735,7 +744,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_anthropic_json_fallback_metadata_only_usage_stays_quiet(self, tmp_path, real_flow):
@@ -757,10 +767,11 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert flow.metadata["model_provider_usage"] == {
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
             "message_id": "msg_1",
             "model": "claude-sonnet-4-6",
         }
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize(
@@ -799,7 +810,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert flow.metadata["model_provider_usage"] == expected_usage
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == expected_usage
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_codex_oauth_non_streaming_json_fallback(self, tmp_path, real_flow):
@@ -817,7 +829,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected = _expected_usage(provider_case)
         assert extracted["message_id"] == expected["message_id"]
         assert extracted["model"] == expected["model"]
@@ -845,7 +857,7 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Non-billable model-provider fallback must not emit usage warnings."""
@@ -867,7 +879,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(self, tmp_path, real_flow):
@@ -926,7 +939,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
@@ -966,7 +979,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
@@ -1002,7 +1015,7 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        extracted = flow.metadata["model_provider_usage"]
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
@@ -1037,8 +1050,8 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        entries = read_jsonl_entries_after_flush(proxy_log)
         usage_warnings = [
             entry
             for entry in entries
@@ -1075,7 +1088,7 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
         assert "stream_buffer" not in flow.metadata
 
     def test_full_pipeline_model_json_ignores_usage_array_shape(self, tmp_path, real_flow):
@@ -1109,12 +1122,12 @@ class TestModelProviderResponseUsage:
         """Non-model-provider requests should not trigger usage reporting."""
         flow = real_flow(with_response=False, host="api.github.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
-        flow.metadata["firewall_name"] = "github"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
         body = b'{"incomplete":'
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
@@ -1124,15 +1137,16 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_json_fallback_skips_malformed_firewall_name(self, tmp_path, real_flow, firewall_name):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         self._set_common_model_metadata(flow, tmp_path)
-        flow.metadata["original_url"] = ANTHROPIC_JSON_CASE.original_url
-        flow.metadata["firewall_name"] = firewall_name
+        flow.metadata[metadata_keys.ORIGINAL_URL] = ANTHROPIC_JSON_CASE.original_url
+        flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
         body = _standard_success_payload(ANTHROPIC_JSON_CASE)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
@@ -1142,7 +1156,7 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
 
 class TestModelProviderResponseUsageWebhookDelivery:
@@ -1157,14 +1171,14 @@ class TestModelProviderResponseUsageWebhookDelivery:
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-int-001"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-001"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "tokens.input": 100,
             "tokens.output": 500,

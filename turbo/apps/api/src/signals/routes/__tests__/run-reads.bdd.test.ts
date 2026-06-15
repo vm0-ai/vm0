@@ -15,9 +15,9 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -42,7 +42,7 @@ const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
 
@@ -1405,6 +1405,10 @@ describe("RUN-04: agent run telemetry families", () => {
             firewall_params: { owner: "vm0-ai", empty: null },
             firewall_billable: true,
             firewall_error: "none",
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
             auth_resolved_secrets: ["TOKEN"],
             auth_refreshed_connectors: ["github"],
             auth_refreshed_secrets: ["TOKEN"],
@@ -1641,6 +1645,10 @@ describe("RUN-04: agent run telemetry families", () => {
       browser_user_agent: true,
       dns_result: "1.2.3.4",
       firewall_params: { owner: "vm0-ai" },
+      connector_diagnostic_type: "fal",
+      connector_diagnostic_reason: "not_configured_for_run",
+      connector_diagnostic_env_names: ["FAL_TOKEN"],
+      connector_diagnostic_base: "https://fal.run",
       request_headers: { host: "example.com" },
       request_body: "abc",
       response_headers: { server: "test" },
@@ -1745,6 +1753,10 @@ describe("RUN-04: agent run telemetry families", () => {
             request_size: 100,
             response_size: 2048,
             firewall_params: { owner: "vm0-ai", broken: 5 },
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
             request_headers: { accept: "application/json", junk: 9 },
             request_body: "req",
             request_body_encoding: UTF8_ENCODING,
@@ -1880,13 +1892,32 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(contextRead.body.firewalls).toHaveLength(1);
     expect(contextRead.body.volumes).toHaveLength(1);
 
-    // Sparse snapshots drop non-string and null values entirely.
-    dispatchAxiomQueries({ [runId]: { runContext: [{ runId }] } });
-    const sparseContext = await api.requestRunContext(actor, runId, [200]);
-    if (sparseContext.status !== 200) {
-      throw new Error("Expected the sparse run context read to succeed");
+    // Legacy dynamic map fields are ignored now that run context snapshots
+    // are entries-only.
+    dispatchAxiomQueries({
+      [runId]: {
+        runContext: [
+          {
+            runId,
+            environment: { LEGACY_IGNORED: "legacy-map" },
+            networkPolicies: {
+              legacyIgnored: {
+                allow: ["legacy"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow",
+              },
+            },
+            featureFlags: { legacyIgnored: true },
+          },
+        ],
+      },
+    });
+    const legacyOnlyContext = await api.requestRunContext(actor, runId, [200]);
+    if (legacyOnlyContext.status !== 200) {
+      throw new Error("Expected the legacy-only run context read to succeed");
     }
-    expect(sparseContext.body).toMatchObject({
+    expect(legacyOnlyContext.body).toMatchObject({
       runId,
       sessionId: null,
       environment: {},
@@ -1925,6 +1956,10 @@ describe("RUN-04: agent run telemetry families", () => {
             request_size: 100,
             response_size: 2048,
             firewall_params: { owner: "vm0-ai", broken: 5 },
+            connector_diagnostic_type: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
             request_headers: { accept: "application/json", junk: 9 },
             request_body: "req",
             request_body_encoding: UTF8_ENCODING,
@@ -1983,6 +2018,10 @@ describe("RUN-04: agent run telemetry families", () => {
       request_size: 100,
       response_size: 2048,
       firewall_params: { owner: "vm0-ai" },
+      connector_diagnostic_type: "fal",
+      connector_diagnostic_reason: "not_configured_for_run",
+      connector_diagnostic_env_names: ["FAL_TOKEN"],
+      connector_diagnostic_base: "https://fal.run",
       request_headers: { accept: "application/json" },
       request_body: "req",
       request_body_encoding: UTF8_ENCODING,
@@ -2139,24 +2178,6 @@ function captureScheduleRunCallbacks(): void {
   );
 }
 
-async function expectSingleLogSourceMatch(args: {
-  readonly actor: ApiTestUser;
-  readonly triggerSource: "schedule" | "automation";
-  readonly runId: string;
-}): Promise<void> {
-  const response = await reads.requestListLogs(
-    args.actor,
-    { triggerSource: args.triggerSource },
-    [200],
-  );
-  mustOk(response, `${args.triggerSource}-source log list`);
-  expect(
-    response.body.data.map((entry) => {
-      return entry.id;
-    }),
-  ).toStrictEqual([args.runId]);
-}
-
 describe("RUN-04/OPS-01: zero run logs", () => {
   it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
     const actor = await entitledActor();
@@ -2204,8 +2225,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     // A far-future yearly cron keeps the global execute-schedules sweep from
     // ever considering this schedule due; only run-now fires it.
-    const schedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-log-sched"),
+    const schedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-log-sched"),
       agentId: agentOne.agentId,
       cronExpression: "0 0 1 1 *",
       prompt: "scheduled run for logs",
@@ -2213,9 +2234,9 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const scheduleRun = await api.runScheduleNow(
+    const scheduleRun = await api.requestRunAutomation(
       actor,
-      schedule.schedule.id,
+      schedule.automation.id,
       [201],
     );
     if (scheduleRun.status !== 201) {
@@ -2251,7 +2272,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       displayName: "BDD logs agent one",
       framework: "claude-code",
       triggerSource: "web",
-      scheduleId: null,
+      automationId: null,
       status: "cancelled",
       prompt: "web run on agent one",
     });
@@ -2262,14 +2283,14 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       agentId: null,
       displayName: null,
       triggerSource: "cli",
-      scheduleId: null,
+      automationId: null,
     });
     const scheduleEntry = listed.body.data.find((entry) => {
       return entry.id === scheduleRun.body.runId;
     });
     expect(scheduleEntry).toMatchObject({
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      automationId: schedule.automation.id,
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
@@ -2368,16 +2389,17 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
-    await expectSingleLogSourceMatch({
+    const automationSourceList = await reads.requestListLogs(
       actor,
-      triggerSource: "schedule",
-      runId: scheduleRun.body.runId,
-    });
-    await expectSingleLogSourceMatch({
-      actor,
-      triggerSource: "automation",
-      runId: scheduleRun.body.runId,
-    });
+      { triggerSource: "automation" },
+      [200],
+    );
+    mustOk(automationSourceList, "automation-source log list");
+    expect(
+      automationSourceList.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).toStrictEqual([scheduleRun.body.runId]);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,
@@ -2389,18 +2411,18 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     }
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
-    const byScheduleId = await reads.requestListLogs(
+    const byAutomationId = await reads.requestListLogs(
       actor,
-      { scheduleId: schedule.schedule.id, limit: 1 },
+      { automationId: schedule.automation.id, limit: 1 },
       [200],
     );
-    if (byScheduleId.status !== 200) {
-      throw new Error("Expected the schedule-filtered list to succeed");
+    if (byAutomationId.status !== 200) {
+      throw new Error("Expected the automation-filtered list to succeed");
     }
-    expect(byScheduleId.body.data).toStrictEqual([
+    expect(byAutomationId.body.data).toStrictEqual([
       expect.objectContaining({ id: scheduleRun.body.runId }),
     ]);
-    expect(byScheduleId.body.pagination.totalPages).toBe(1);
+    expect(byAutomationId.body.pagination.totalPages).toBe(1);
 
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
@@ -2420,7 +2442,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(scheduleDetail.body).toMatchObject({
       id: scheduleRun.body.runId,
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      automationId: schedule.automation.id,
     });
 
     const pendingRun = await api.createRun(actor, {

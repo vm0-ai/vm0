@@ -1325,6 +1325,46 @@ describe("logs command", () => {
       expect(logCalls).toContain("auth_failed");
     });
 
+    it("should display connector diagnostic fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  action: "ALLOW",
+                  method: "POST",
+                  status: 502,
+                  latency_ms: 8,
+                  request_size: 0,
+                  response_size: 192,
+                  url: "https://fal.run/models/example",
+                  firewall_name: "fal",
+                  firewall_error: "connector_not_configured_for_run",
+                  connector_diagnostic_type: "fal",
+                  connector_diagnostic_reason: "not_configured_for_run",
+                  connector_diagnostic_env_names: ["FAL_TOKEN"],
+                  connector_diagnostic_base: "https://fal.run",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("connector diagnostic");
+      expect(logCalls).toContain("fal");
+      expect(logCalls).toContain("not_configured_for_run");
+      expect(logCalls).toContain("FAL_TOKEN");
+      expect(logCalls).toContain("https://fal.run");
+    });
+
     it("should display TCP connection logs", async () => {
       server.use(
         http.get(

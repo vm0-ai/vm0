@@ -16,6 +16,7 @@
  * - no-non-zero-api: Enforce that platform app only calls /api/zero/ endpoints
  * - command-async-signal: Async commands must accept AbortSignal as last param
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
+ * - no-accessor-escape: ccstate get/set accessors must only be called directly
  * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
  * - no-detach-in-signals: Disallow detach() in signals/ — use await or signal chain
@@ -44,6 +45,7 @@ import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
+import noAccessorEscape from "./rules/no-accessor-escape.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
 import noNewPromise from "./rules/no-new-promise.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
@@ -84,6 +86,7 @@ const plugin = {
     "no-non-zero-api": noNonZeroApi,
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
+    "no-accessor-escape": noAccessorEscape,
     "no-new-abort-controller": noNewAbortController,
     "no-new-promise": noNewPromise,
     "no-direct-local-storage": noDirectLocalStorage,

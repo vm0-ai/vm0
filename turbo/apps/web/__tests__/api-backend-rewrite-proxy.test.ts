@@ -2176,7 +2176,7 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/stt/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts/extra")).toBe(
       false,
     );
@@ -2280,7 +2280,7 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero desktop update release rewrite path exactly", () => {
+  it("matches the zero desktop update release and DMG rewrite paths exactly", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/desktop/updates/stable/darwin/arm64/release",
@@ -2288,7 +2288,17 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
         "/api/zero/desktop/updates/stable/darwin/arm64/release/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg/extra",
       ),
     ).toBe(false);
     expect(
@@ -2346,6 +2356,30 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(matchesApiBackendRewritePath("/api/zero/chat-thread")).toBe(false);
+  });
+
+  it("matches the zero chat thread drafts rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-drafts")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/chat-thread-drafts/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-draft")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero chat thread unreads rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-unreads")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/chat-thread-unreads/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-unread")).toBe(
+      false,
+    );
   });
 
   it("matches the zero chat thread detail rewrite path with one dynamic segment", () => {

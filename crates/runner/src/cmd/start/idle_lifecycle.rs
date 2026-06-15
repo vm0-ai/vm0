@@ -103,14 +103,14 @@ pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: I
     }
 }
 
-pub(super) async fn add_run_with_idle_status_snapshot(
+pub(super) async fn add_running_run_with_idle_status_snapshot(
     status: &StatusTracker,
     run_id: RunId,
     sandbox_id: SandboxId,
     snapshot: IdlePoolSnapshot,
 ) {
     let applied = status
-        .add_run_with_idle_info_at_revision(
+        .add_running_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
             snapshot.revision,
@@ -121,6 +121,28 @@ pub(super) async fn add_run_with_idle_status_snapshot(
         info!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot while adding active run"
+        );
+    }
+}
+
+pub(super) async fn add_preparing_run_with_idle_status_snapshot(
+    status: &StatusTracker,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    snapshot: IdlePoolSnapshot,
+) {
+    let applied = status
+        .add_preparing_run_with_idle_info_at_revision(
+            run_id,
+            sandbox_id,
+            snapshot.revision,
+            snapshot.idle_vms,
+        )
+        .await;
+    if !applied {
+        info!(
+            revision = snapshot.revision,
+            "ignored stale idle pool status snapshot while adding preparing run"
         );
     }
 }

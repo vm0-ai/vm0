@@ -95,9 +95,11 @@ pub(crate) async fn collect_active_run_mappings(
 }
 
 /// Collect active run mappings from the validated live runner registry.
-pub(crate) async fn collect_active_run_mappings_from_home(home: &HomePaths) -> ActiveRunMappings {
-    let runners = crate::live_runner_instances::list(home).await;
-    collect_active_run_mappings(&runners).await
+pub(crate) async fn collect_active_run_mappings_from_home(
+    home: &HomePaths,
+) -> RunnerResult<ActiveRunMappings> {
+    let runners = crate::live_runner_instances::try_list(home).await?;
+    Ok(collect_active_run_mappings(&runners).await)
 }
 
 /// Given a `run_id` prefix, find the unique matching active run from collected
@@ -124,10 +126,18 @@ pub(crate) fn resolve_run_mapping(
     matching.dedup();
 
     match matching.as_slice() {
-        [(run_id, sandbox_id)] => Ok(ResolvedRunMapping {
-            run_id: (*run_id).clone(),
-            sandbox_id: (*sandbox_id).clone(),
-        }),
+        [(run_id, sandbox_id)] => {
+            if mappings.runners_failed > 0 && run_id.as_str() != input {
+                return Err(RunnerError::Config(format!(
+                    "run prefix '{input}' matched run '{run_id}', but {} of {} trusted live runner status file(s) were unreadable; use the full run id or retry after checking warnings above",
+                    mappings.runners_failed, mappings.runners_total,
+                )));
+            }
+            Ok(ResolvedRunMapping {
+                run_id: (*run_id).clone(),
+                sandbox_id: (*sandbox_id).clone(),
+            })
+        }
         [] => {
             let mut msg = format!("no active run matches '{input}'");
             if mappings.runners_failed > 0 {
@@ -211,6 +221,37 @@ mod tests {
         let runs = read_active_runs(dir.path()).await.unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0], ("R1".into(), "S1".into()));
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_ignores_phase_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = r#"{
+            "mode": "running",
+            "active_runs": [
+                {
+                    "run_id": "R1",
+                    "sandbox_id": "S1",
+                    "phase": "preparing",
+                    "phase_started_at": "2026-01-01T00:00:00.000Z"
+                },
+                {
+                    "run_id": "R2",
+                    "sandbox_id": "S2",
+                    "phase": "running",
+                    "phase_started_at": "2026-01-01T00:00:01.000Z"
+                }
+            ],
+            "started_at": "2026-01-01T00:00:00.000Z"
+        }"#;
+        std::fs::write(dir.path().join("status.json"), status).unwrap();
+
+        let runs = read_active_runs(dir.path()).await.unwrap();
+
+        assert_eq!(
+            runs,
+            vec![("R1".into(), "S1".into()), ("R2".into(), "S2".into())]
+        );
     }
 
     #[tokio::test]
@@ -356,7 +397,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mappings = collect_active_run_mappings_from_home(&home).await;
+        let mappings = collect_active_run_mappings_from_home(&home).await.unwrap();
 
         assert_eq!(mappings.runners_total, 1);
         assert_eq!(mappings.runners_failed, 0);
@@ -365,6 +406,24 @@ mod tests {
             vec![("run-live".into(), "sandbox-live".into())]
         );
         assert!(handle.remove_if_current().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_from_home_fails_when_registry_cannot_be_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        std::fs::create_dir_all(dir.path().join("home")).unwrap();
+        std::fs::write(home.live_runner_instances_dir(), b"not a directory").unwrap();
+
+        let error = match collect_active_run_mappings_from_home(&home).await {
+            Ok(_) => panic!("expected unreadable registry to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("validate live runner instances"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -474,6 +533,32 @@ mod tests {
         assert!(msg.contains("2 of 3"), "{msg}");
         assert!(msg.contains("trusted live runner status"), "{msg}");
         assert!(msg.contains("unreadable"), "{msg}");
+    }
+
+    #[test]
+    fn run_prefix_unique_match_fails_when_some_runners_unreadable() {
+        let m = ActiveRunMappings {
+            entries: vec![("run-abcdef".into(), "sandbox-1".into())],
+            runners_total: 2,
+            runners_failed: 1,
+        };
+
+        let err = resolve_run_to_sandbox("run-abc", &m).unwrap_err();
+
+        assert!(err.to_string().contains("use the full run id"), "{err}");
+    }
+
+    #[test]
+    fn run_prefix_exact_match_succeeds_when_some_runners_unreadable() {
+        let m = ActiveRunMappings {
+            entries: vec![("run-abcdef".into(), "sandbox-1".into())],
+            runners_total: 2,
+            runners_failed: 1,
+        };
+
+        let sandbox_id = resolve_run_to_sandbox("run-abcdef", &m).unwrap();
+
+        assert_eq!(sandbox_id, "sandbox-1");
     }
 
     #[test]

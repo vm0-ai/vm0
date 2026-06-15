@@ -4,13 +4,18 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
+import {
+  CHAT_IDB_VERSION,
+  CHAT_MESSAGES_STORE,
+  upgradeChatIdb,
+} from "./chat-idb-schema.ts";
 
 const L = logger("ChatIdbCache");
 
 interface ChatMessageReadStore {
   readLatest(
     threadId: string,
-    limit: number,
+    limit?: number,
     signal?: AbortSignal,
   ): Promise<PagedChatMessage[]>;
   readBefore(
@@ -59,27 +64,21 @@ function validateMessage(raw: unknown): PagedChatMessage {
 
 function createIdbMessageStores(userId: string, orgId: string) {
   const dbName = `vm0-chat-${userId}-${orgId}`;
-  const storeName = "chat_messages";
+  const storeName = CHAT_MESSAGES_STORE;
 
   let dbPromise: Promise<IDBPDatabase> | null = null;
 
   function getDb(): Promise<IDBPDatabase> {
     if (!dbPromise) {
       L.debug("openDB", { dbName, storeName });
-      // Schema is shared with idb-thread-agent-store.ts: both modules open
-      // the same DB at version 2. The upgrade callback creates every store
+      // Schema is shared with idb-thread-meta-store.ts: both modules open
+      // the same DB at the same version. The upgrade callback creates every store
       // the schema currently defines, idempotently, so whichever module
       // triggers the version bump leaves a complete schema for the other.
-      dbPromise = openDB(dbName, 2, {
-        upgrade(db) {
+      dbPromise = openDB(dbName, CHAT_IDB_VERSION, {
+        upgrade(db, oldVersion) {
           L.debug("openDB:upgrade", { dbName, storeName });
-          if (!db.objectStoreNames.contains(storeName)) {
-            const store = db.createObjectStore(storeName, { keyPath: "id" });
-            store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
-          }
-          if (!db.objectStoreNames.contains("chat_thread_agents")) {
-            db.createObjectStore("chat_thread_agents", { keyPath: "threadId" });
-          }
+          upgradeChatIdb(db, oldVersion);
         },
       });
     }
@@ -96,7 +95,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const range = IDBKeyRange.bound([threadId, ""], [threadId, "￿"]);
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
-      while (cursor && messages.length < limit) {
+      while (cursor && (limit === undefined || messages.length < limit)) {
         signal?.throwIfAborted();
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();

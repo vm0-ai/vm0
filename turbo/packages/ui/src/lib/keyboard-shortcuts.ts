@@ -162,6 +162,7 @@ const KEY_DISPLAY_NAMES: Record<string, string> = {
   backspace: "⌫",
   tab: "⇥",
   space: "␣",
+  f2: "F2",
 };
 
 function formatKey(key: string): string {

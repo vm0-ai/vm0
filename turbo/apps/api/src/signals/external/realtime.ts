@@ -37,6 +37,24 @@ export async function createPlatformUserRealtimeToken(
   return tokenRequest;
 }
 
+export async function createChatStreamPublishToken(
+  userId: string,
+): Promise<string> {
+  const channelName = getUserChannelName(userId);
+  const tokenDetails = await ablyClient().auth.requestToken({
+    capability: JSON.stringify({
+      [channelName]: ["publish"],
+    }),
+    ttl: 24 * 60 * 60 * 1000,
+    clientId: undefined,
+  });
+  if (!tokenDetails.token) {
+    throw new Error("Ably did not return a chat stream token");
+  }
+  L.debug(`Generated chat stream publish token for user:${userId}`);
+  return tokenDetails.token;
+}
+
 export async function createBuiltInGenerationRealtimeSubscription(
   userId: string,
   generationId: string,
@@ -111,22 +129,22 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
 }
 
 /**
- * Notify a chat thread's UI that its linked schedule set changed (created,
- * deleted, enabled, or disabled). The chat-thread header schedule menu
+ * Notify a chat thread's UI that its linked automation set changed (created,
+ * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
  *
- * Best-effort: a failed publish must not fail the schedule mutation that
+ * Best-effort: a failed publish must not fail the automation mutation that
  * triggers it. Payload is intentionally empty — the client re-fetches the
  * authoritative list on any delivery.
  */
-export async function publishChatThreadSchedulesChangedSafely(
+export async function publishChatThreadAutomationsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
   await tapError(
-    publishUserSignal([userId], `chatThreadSchedulesChanged:${threadId}`),
+    publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`),
     (error) => {
-      L.warn("Failed to publish chat thread schedules changed signal", {
+      L.warn("Failed to publish chat thread automations changed signal", {
         threadId,
         error,
       });

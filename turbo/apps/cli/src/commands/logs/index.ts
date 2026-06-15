@@ -78,13 +78,34 @@ function formatBrowserUserAgentTag(entry: NetworkLogEntry): string {
   return entry.browser_user_agent ? ` ${chalk.magenta("[browser]")}` : "";
 }
 
+function formatConnectorDiagnosticInfo(entry: NetworkLogEntry): string {
+  const tags: string[] = [];
+  if (entry.connector_diagnostic_type) {
+    tags.push(entry.connector_diagnostic_type);
+  }
+  if (entry.connector_diagnostic_reason) {
+    tags.push(entry.connector_diagnostic_reason);
+  }
+  if (
+    entry.connector_diagnostic_env_names &&
+    entry.connector_diagnostic_env_names.length > 0
+  ) {
+    tags.push(`env: ${entry.connector_diagnostic_env_names.join(", ")}`);
+  }
+  if (entry.connector_diagnostic_base) {
+    tags.push(`base: ${entry.connector_diagnostic_base}`);
+  }
+  if (tags.length === 0) return "";
+  return ` ${chalk.red(`[connector diagnostic: ${tags.join("; ")}]`)}`;
+}
+
 /**
  * Format a denied network request (filtered by permission rule)
  */
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
   const url = entry.url || entry.host || "unknown";
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${formatConnectorDiagnosticInfo(entry)}`;
 }
 
 /**
@@ -145,7 +166,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
 
   line += formatCaptureFields(entry);
 

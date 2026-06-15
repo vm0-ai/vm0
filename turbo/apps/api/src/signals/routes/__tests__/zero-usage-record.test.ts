@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow, nowDate } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -20,7 +21,6 @@ import {
   seedUsageFixture$,
   type UsageFixture,
 } from "./helpers/zero-usage";
-import { writeDb$ } from "../../external/db";
 
 const context = testContext();
 const store = createStore();
@@ -71,24 +71,6 @@ function createdAt(minutesAgo: number): Date {
   return new Date(nowDate().getTime() - minutesAgo * 60 * 1000);
 }
 
-async function enableCreditUsageRecords(fixture: UsageFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.CreditUsageRecords]: true },
-  });
-}
-
-async function disableCreditUsageRecords(fixture: UsageFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.CreditUsageRecords]: false },
-  });
-}
-
 describe("GET /api/zero/usage/record", () => {
   const track = createFixtureTracker<UsageFixture>((fixture) => {
     return store.set(deleteUsageFixture$, fixture, context.signal);
@@ -131,7 +113,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
@@ -150,34 +131,10 @@ describe("GET /api/zero/usage/record", () => {
     });
   });
 
-  it("returns 403 for ranged usage when credit usage records are disabled", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    await disableCreditUsageRecords(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({
-        query: { range: "7d", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Credit usage records are not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("returns rows across sources ordered by recent activity", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const older = await store.set(
       seedChatThreadRun$,
@@ -259,6 +216,8 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(3);
     expect(response.body.pagination.total).toBe(3);
+    // Range-wide credit total across all three rows (250 + 40 + 80).
+    expect(response.body.totalCredits).toBe(370);
     expect(response.body.period).not.toBeNull();
 
     expect(response.body.rows[0]?.source).toBe("chat");
@@ -287,11 +246,151 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.credits).toBe(80);
   });
 
-  it("labels schedule threads and filters by source", async () => {
+  it("aggregates deleted chat threads into a synthetic usage row", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
+
+    const deletedOlder = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Deleted older chat",
+        createdAt: createdAt(50),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedOlder.runId,
+        inputTokens: 10,
+        outputTokens: 5,
+        creditsCharged: 20,
+      },
+      context.signal,
+    );
+
+    const current = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Current chat",
+        createdAt: createdAt(20),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: current.runId,
+        inputTokens: 20,
+        outputTokens: 20,
+        creditsCharged: 40,
+      },
+      context.signal,
+    );
+
+    const deletedNewer = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Deleted newer chat",
+        createdAt: createdAt(10),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedNewer.runId,
+        inputTokens: 100,
+        outputTokens: 50,
+        creditsCharged: 80,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedNewer.runId,
+        kind: "image",
+        provider: "gpt-image-2",
+        category: "tokens.output.image",
+        quantity: 1,
+        creditsCharged: 30,
+      },
+      context.signal,
+    );
+
+    const db = store.set(writeDb$);
+    await db
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, deletedOlder.threadId));
+    await db
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, deletedNewer.threadId));
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(2);
+    expect(response.body.pagination.total).toBe(2);
+    expect(response.body.totalCredits).toBe(170);
+
+    expect(response.body.rows[0]).toMatchObject({
+      source: "chat",
+      threadId: null,
+      runId: null,
+      title: "Deleted chats",
+      credits: 130,
+      tokens: 165,
+    });
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "model",
+        credits: 100,
+        providers: [{ provider: "claude-sonnet-4-6", credits: 100 }],
+      },
+      {
+        kind: "image",
+        credits: 30,
+        providers: [{ provider: "gpt-image-2", credits: 30 }],
+      },
+    ]);
+
+    expect(response.body.rows[1]).toMatchObject({
+      source: "chat",
+      threadId: current.threadId,
+      runId: null,
+      title: "Current chat",
+      credits: 40,
+      tokens: 40,
+    });
+  });
+
+  it("labels automation threads and filters by source", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
 
     const chat = await store.set(
       seedChatThreadRun$,
@@ -322,7 +421,7 @@ describe("GET /api/zero/usage/record", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
         title: "Daily brief",
-        triggerSource: "schedule",
+        triggerSource: "automation",
         createdAt: createdAt(10),
       },
       context.signal,
@@ -344,7 +443,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const response = await accept(
       apiClient().get({
-        query: { source: "schedule" },
+        query: { source: "automation" },
         headers: authHeaders(),
       }),
       [200],
@@ -352,17 +451,16 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(1);
     expect(response.body.pagination.total).toBe(1);
-    expect(response.body.rows[0]?.source).toBe("schedule");
+    expect(response.body.rows[0]?.source).toBe("automation");
     expect(response.body.rows[0]?.threadId).toBe(schedule.threadId);
     expect(response.body.rows[0]?.title).toBe("Daily brief");
     expect(response.body.rows[0]?.credits).toBe(120);
   });
 
-  it("keeps chat and schedule usage separate within the same thread", async () => {
+  it("keeps chat and automation usage separate within the same thread", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const chat = await store.set(
       seedChatThreadRun$,
@@ -420,7 +518,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(allResponse.body.rows).toHaveLength(2);
     expect(allResponse.body.pagination.total).toBe(2);
     expect(allResponse.body.rows[0]).toMatchObject({
-      source: "schedule",
+      source: "automation",
       threadId: chat.threadId,
       runId: null,
       title: "Shared thread",
@@ -452,7 +550,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const legacyRun = await store.set(
       seedRun$,
@@ -504,7 +601,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     for (const minutesAgo of [30, 20, 10]) {
       const chat = await store.set(
@@ -552,7 +648,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const today = await store.set(
       seedChatThreadRun$,
@@ -644,7 +739,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const previousDay = await store.set(
       seedChatThreadRun$,
@@ -719,7 +813,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
     const teammateId = `user_${randomUUID()}`;
     mockClerkUserLookup();
 
@@ -791,7 +884,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
 
     const run = await store.set(
       seedChatThreadRun$,
@@ -878,7 +970,6 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-    await enableCreditUsageRecords(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -892,6 +983,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body).toStrictEqual({
       period: null,
       rows: [],
+      totalCredits: 0,
       pagination: { page: 1, pageSize: 20, total: 0 },
     });
   });

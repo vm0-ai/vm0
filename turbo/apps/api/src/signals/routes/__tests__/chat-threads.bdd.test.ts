@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { command, createStore } from "ccstate";
+import { asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -7,13 +9,19 @@ import {
   zeroSkillsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
+import { maybeEmitRunUsageMessage$ } from "../../services/zero-chat-usage-message.service";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import {
   createBddApi,
@@ -33,9 +41,9 @@ import {
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -46,15 +54,17 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
  * thread artifacts with Google Drive sync status, and the `/api/v1`
  * personal-access-token surface.
  *
- * Every Given is constructed through public APIs (Stripe-webhook entitlement,
- * org model provider routes, runner heartbeat/claim, sandbox report webhooks,
- * connector OAuth flows, feature-switch and skills routes) and every Then is
- * a response body or a follow-up read — no database fixtures or row asserts.
+ * Most Given state is constructed through public APIs (Stripe-webhook
+ * entitlement, org model provider routes, runner heartbeat/claim, sandbox
+ * report webhooks, connector OAuth flows, feature-switch and skills routes).
+ * Targeted database checks are kept for migration and side-effect coverage
+ * where the persisted row shape is the contract under test.
  */
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -65,6 +75,97 @@ const routeMocks = createZeroRouteMocks(context);
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+
+const seedUsagePricing$ = command(
+  async (
+    { set },
+    args: {
+      readonly provider: string;
+      readonly category: string;
+      readonly unitPrice: number;
+      readonly unitSize: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(usagePricing).values({
+      kind: "connector",
+      provider: args.provider,
+      category: args.category,
+      unitPrice: args.unitPrice,
+      unitSize: args.unitSize,
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const insertRunUsageEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly provider: string;
+      readonly status: "pending" | "processed";
+      readonly creditsCharged: number | null;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(usageEvent).values({
+      runId: args.runId,
+      orgId: args.orgId,
+      userId: args.userId,
+      kind: "connector",
+      provider: args.provider,
+      category: "api_request",
+      quantity: 1,
+      status: args.status,
+      creditsCharged: args.creditsCharged,
+      processedAt: args.status === "processed" ? nowDate() : null,
+      idempotencyKey: randomUUID(),
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const usageEventsForRun$ = command(
+  async ({ set }, runId: string, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const rows = await db
+      .select({
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        creditsCharged: usageEvent.creditsCharged,
+        status: usageEvent.status,
+        billingError: usageEvent.billingError,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.runId, runId))
+      .orderBy(asc(usageEvent.provider), asc(usageEvent.category));
+    signal.throwIfAborted();
+    return rows;
+  },
+);
+
+const usageMessagesForRun$ = command(
+  async ({ set }, runId: string, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const rows = await db
+      .select({
+        id: chatMessages.id,
+        usagePayload: chatMessages.usagePayload,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.runId, runId))
+      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
+    signal.throwIfAborted();
+    return rows.filter((row) => {
+      return row.usagePayload !== null;
+    });
+  },
+);
 
 interface EntitledChatActor {
   readonly actor: ApiTestUser;
@@ -316,9 +417,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const unauthenticated = await app.request("/api/zero/chat-threads", {
-      headers: { authorization: "Bearer clerk-session" },
-    });
+    const unauthenticated = await app.request(
+      `/api/zero/chat-threads?agentId=${randomUUID()}`,
+      {
+        headers: { authorization: "Bearer clerk-session" },
+      },
+    );
     expect(unauthenticated.status).toBe(401);
     const unauthenticatedBody = (await unauthenticated.json()) as {
       readonly error: { readonly code: string };
@@ -460,8 +564,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "delete cascade anchor",
     });
     await claimChatRun(runnerGroup, main.runId);
-    const scheduleName = uniqueScheduleName("bdd-thread-linked");
-    await api.deploySchedule(actor, {
+    const scheduleName = uniqueAutomationName("bdd-thread-linked");
+    await api.deployAutomation(actor, {
       name: scheduleName,
       cronExpression: "0 9 * * *",
       timezone: "UTC",
@@ -474,7 +578,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const mainListed = list.threads.find((thread) => {
       return thread.id === main.threadId;
     });
-    expect(mainListed).toMatchObject({ running: true, scheduleCount: 1 });
+    expect(mainListed).toMatchObject({ running: true });
 
     // A sibling thread whose run completes: terminal transition bumps the
     // thread's recency, and the running flag drops.
@@ -492,10 +596,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         return thread.id;
       }),
     ).toStrictEqual([sibling.threadId, main.threadId]);
-    expect(list.threads[0]).toMatchObject({
-      running: false,
-      scheduleCount: 0,
-    });
+    expect(list.threads[0]).toMatchObject({ running: false });
 
     // A third thread with its own pending run must survive the delete.
     const other = await sendChatRun(actor, {
@@ -514,9 +615,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       id: main.threadId,
     });
 
-    const schedulesBefore = await api.listSchedules(actor);
+    const schedulesBefore = await api.listAutomations(actor);
     expect(
-      schedulesBefore.schedules.some((schedule) => {
+      schedulesBefore.automations.some((schedule) => {
         return schedule.name === scheduleName;
       }),
     ).toBeTruthy();
@@ -533,9 +634,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     list = await chat.listThreads(actor, { agentId });
     expect(listedThreadIds(list)).not.toContain(main.threadId);
 
-    const schedulesAfter = await api.listSchedules(actor);
+    const schedulesAfter = await api.listAutomations(actor);
     expect(
-      schedulesAfter.schedules.some((schedule) => {
+      schedulesAfter.automations.some((schedule) => {
         return schedule.name === scheduleName;
       }),
     ).toBeFalsy();
@@ -545,28 +646,33 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread list pagination and read state", () => {
-  it("rejects list requests without an authenticated org and unknown agent scopes", async () => {
-    const unauthenticated = await chat.requestListThreads(null, {}, [401]);
+  it("rejects unauthenticated list requests and yields empty lists for unknown agent scopes", async () => {
+    const unauthenticated = await chat.requestListThreads(
+      null,
+      { agentId: randomUUID() },
+      [401],
+    );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
     const orgless = await chat.requestListThreads(
       bdd.user({ orgId: null }),
-      {},
+      { agentId: randomUUID() },
       [401],
     );
     expectApiError(orgless.body);
     expect(orgless.body.error.code).toBe("UNAUTHORIZED");
 
-    const unknownAgent = await chat.requestListThreads(
-      bdd.user(),
-      { agentId: randomUUID() },
-      [404],
-    );
-    expectApiError(unknownAgent.body);
-    expect(unknownAgent.body.error).toStrictEqual({
-      message: "Agent not found",
-      code: "NOT_FOUND",
+    // An unknown agent scope is not an error: the list query scopes by
+    // org + agent compose id, so it simply yields an empty list.
+    const unknownAgent = await chat.listThreads(bdd.user(), {
+      agentId: randomUUID(),
+    });
+    expect(unknownAgent).toStrictEqual({
+      pinned: [],
+      threads: [],
+      hasMore: false,
+      nextCursor: null,
     });
   });
 
@@ -586,22 +692,19 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
 
-    // Read state: a fresh thread is read, a no-credit message flips it to
-    // unread, and mark-read stores the latest visible message id.
+    // Read state lives in the unreads endpoint: a no-credit message makes
+    // the thread unread, mark-read stores the latest visible message id and
+    // returns the agent's fresh (now empty) unread snapshot.
     const readStateThreadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: "unread until marked",
     });
-    let list = await chat.listThreads(owner, { agentId: agent.agentId });
+    const list = await chat.listThreads(owner, { agentId: agent.agentId });
     expect(list.threads[0]).toMatchObject({
       id: readStateThreadId,
-      isRead: false,
       running: false,
-      hasDraft: false,
-      scheduleCount: 0,
       pinnedAt: null,
       renamedAt: null,
     });
@@ -611,6 +714,11 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     });
     expect(list.threads[0]?.createdAt).toStrictEqual(expect.any(String));
     expect(list.threads[0]?.updatedAt).toStrictEqual(expect.any(String));
+    await expect(
+      chat.listThreadUnreads(owner, agent.agentId),
+    ).resolves.toStrictEqual([
+      { threadId: readStateThreadId, unreadAt: expect.any(String) },
+    ]);
 
     const page = await chat.listThreadMessages(owner, readStateThreadId);
     const latestAssistant = assistantMessages(page.messages).at(-1);
@@ -620,22 +728,25 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     const marked = await chat.markThreadRead(owner, readStateThreadId);
     expect(marked).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
-      changed: true,
+      unreads: [],
     });
     const markedAgain = await chat.markThreadRead(owner, readStateThreadId);
     expect(markedAgain).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
-      changed: false,
+      unreads: [],
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.isRead).toBeTruthy();
+    await expect(
+      chat.listThreadUnreads(owner, agent.agentId),
+    ).resolves.toStrictEqual([]);
 
-    // Draft flags through PATCH: text, attachments-only, empty, cleared.
+    // Draft flags through PATCH surface via the drafts endpoint: text,
+    // attachments-only, empty, cleared. Unknown ids are silently absent.
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "unsent text",
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeTruthy();
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId, randomUUID()]),
+    ).resolves.toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: null,
@@ -649,15 +760,17 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
         },
       ],
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeTruthy();
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).resolves.toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "",
       draftAttachments: null,
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeFalsy();
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).resolves.toStrictEqual([]);
 
     // Patch guards: unknown thread 404 (visible state untouched), peer 404.
     const patchUnknown = await chat.requestPatchThread(
@@ -690,19 +803,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     );
     expectApiError(patchMalformed.body);
 
-    // Schedules linked to a thread surface in scheduleCount.
-    const scheduleName = uniqueScheduleName("bdd-list-count");
-    await api.deploySchedule(owner, {
-      name: scheduleName,
-      cronExpression: "0 9 * * *",
-      timezone: "UTC",
-      prompt: "schedule count prompt",
-      agentId: agent.agentId,
-      chatThreadId: readStateThreadId,
-    });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.scheduleCount).toBe(1);
-
     // Pinned threads form their own segment, scoped by agentId.
     const pinnedThread = await chat.createThread(owner, {
       agentId: otherAgent.agentId,
@@ -713,19 +813,22 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     expect(scoped.pinned).toStrictEqual([]);
     expect(listedThreadIds(scoped)).not.toContain(pinnedThread.id);
 
-    const unified = await chat.listThreads(owner);
+    const otherAgentList = await chat.listThreads(owner, {
+      agentId: otherAgent.agentId,
+    });
     expect(
-      unified.pinned.map((thread) => {
+      otherAgentList.pinned.map((thread) => {
         return thread.id;
       }),
     ).toStrictEqual([pinnedThread.id]);
-    expect(unified.pinned[0]?.pinnedAt).toStrictEqual(expect.any(String));
-    expect(listedThreadIds(unified)).toContain(readStateThreadId);
-    expect(unified.totalCount).toBe(1);
+    expect(otherAgentList.pinned[0]?.pinnedAt).toStrictEqual(
+      expect.any(String),
+    );
+    expect(listedThreadIds(otherAgentList)).not.toContain(readStateThreadId);
 
-    // Cursor walk over three empty threads scoped to the second agent.
+    // Cursor walk over one full default sidebar page plus one additional row.
     const cursorThreadIds = [pinnedThread.id];
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < 25; index += 1) {
       const created = await chat.createThread(owner, {
         agentId: otherAgent.agentId,
         title: `Cursor thread ${index}`,
@@ -736,19 +839,16 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 
     const firstPage = await chat.listThreads(owner, {
       agentId: otherAgent.agentId,
-      limit: 2,
     });
-    expect(firstPage.threads).toHaveLength(2);
+    expect(firstPage.threads).toHaveLength(25);
     expect(firstPage.hasMore).toBeTruthy();
     expect(firstPage.nextCursor).not.toBeNull();
-    expect(firstPage.totalCount).toBe(3);
     if (!firstPage.nextCursor) {
       throw new Error("Expected a next cursor on the first page");
     }
 
     const secondPage = await chat.listThreads(owner, {
       agentId: otherAgent.agentId,
-      limit: 2,
       cursor: firstPage.nextCursor,
     });
     expect(secondPage.threads).toHaveLength(1);
@@ -774,7 +874,7 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     for (const cursor of invalidCursors) {
       const fallback = await chat.requestListThreads(
         owner,
-        { agentId: otherAgent.agentId, limit: 2, cursor },
+        { agentId: otherAgent.agentId, cursor },
         [200],
       );
       if (fallback.status !== 200) {
@@ -793,10 +893,14 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     }
 
     // Peer users and other orgs never see the owner's threads.
-    const peerList = await chat.listThreads(peer);
+    const peerList = await chat.listThreads(peer, {
+      agentId: otherAgent.agentId,
+    });
     expect(listedThreadIds(peerList)).toStrictEqual([]);
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
-    const otherOrgList = await chat.listThreads(sameUserOtherOrg);
+    const otherOrgList = await chat.listThreads(sameUserOtherOrg, {
+      agentId: otherAgent.agentId,
+    });
     expect(listedThreadIds(otherOrgList)).toStrictEqual([]);
   }, 60_000);
 
@@ -881,6 +985,271 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     ).toStrictEqual([firstAssistant, secondUser]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
   }, 30_000);
+});
+
+describe("CHAT-03 run usage messages", () => {
+  it("appends immutable usage messages as settled usage changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Usage message agent",
+    );
+    const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
+    const missingProvider = `${provider}-free`;
+    const category = "api_request";
+    await store.set(
+      seedUsagePricing$,
+      { provider, category, unitPrice: 7, unitSize: 2 },
+      context.signal,
+    );
+
+    const { runId, threadId } = await sendChatRun(actor, {
+      agentId,
+      prompt: "record billable usage",
+    });
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, runId);
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 5,
+          },
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: missingProvider,
+            category,
+            quantity: 1,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await completeChatRunOk(runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const usageRows = await store.set(
+      usageEventsForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageRows).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider,
+          category,
+          creditsCharged: 18,
+          status: "processed",
+          billingError: null,
+        }),
+        expect.objectContaining({
+          provider: missingProvider,
+          category,
+          creditsCharged: 0,
+          status: "processed",
+          billingError: "missing_pricing",
+        }),
+      ]),
+    );
+
+    const page = await chat.listThreadMessages(actor, threadId);
+    const usageMessages = page.messages.filter((message) => {
+      return message.runId === runId && message.usage !== undefined;
+    });
+    expect(usageMessages.length).toBeGreaterThanOrEqual(1);
+    expect(usageMessages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: null,
+      usage: {
+        version: 1,
+        totalCredits: 18,
+        settledAt: expect.any(String),
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 18,
+            providers: expect.arrayContaining([
+              { provider, credits: 18 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
+
+    let usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows.length).toBeGreaterThanOrEqual(1);
+    const initialUsageMessageCount = usageMessageRows.length;
+
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(new Date("2030-01-01T00:00:00.000Z"));
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId,
+        orgId: actor.orgId!,
+        userId: actor.userId,
+        provider: missingProvider,
+        status: "processed",
+        creditsCharged: 0,
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeTruthy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 1);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+      totalCredits: 18,
+      settledAt: "2030-01-01T00:00:00.000Z",
+    });
+
+    mockNow(new Date("2030-01-01T00:00:01.000Z"));
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId,
+        orgId: actor.orgId!,
+        userId: actor.userId,
+        provider,
+        status: "processed",
+        creditsCharged: 11,
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeTruthy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+      totalCredits: 29,
+      settledAt: "2030-01-01T00:00:01.000Z",
+    });
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeFalsy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
+  }, 60_000);
+
+  it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Zero usage message agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected the chat actor to belong to an organization");
+    }
+
+    const zeroRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "record zero-credit usage",
+    });
+    const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      zeroRun.runId,
+    );
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: zeroRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: `missing-${randomUUID().slice(0, 8)}`,
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      zeroSandboxHeaders,
+      [200],
+    );
+    await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const zeroPage = await chat.listThreadMessages(actor, zeroRun.threadId);
+    const zeroUsageMessage = zeroPage.messages.find((message) => {
+      return message.runId === zeroRun.runId && message.usage !== undefined;
+    });
+    expect(zeroUsageMessage?.usage).toMatchObject({
+      version: 1,
+      totalCredits: 0,
+      breakdown: [
+        {
+          kind: "connector",
+          credits: 0,
+          providers: [expect.objectContaining({ credits: 0 })],
+        },
+      ],
+    });
+
+    const pendingRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold usage message while pending",
+    });
+    const { sandboxHeaders: pendingSandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      pendingRun.runId,
+    );
+    await completeChatRunOk(pendingRun.runId, pendingSandboxHeaders);
+    await flushWaitUntilForTest();
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId: pendingRun.runId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        provider: `processed-${randomUUID().slice(0, 8)}`,
+        status: "processed",
+        creditsCharged: 12,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId: pendingRun.runId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        provider: `pending-${randomUUID().slice(0, 8)}`,
+        status: "pending",
+        creditsCharged: null,
+      },
+      context.signal,
+    );
+
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, pendingRun.runId, context.signal),
+    ).resolves.toBeFalsy();
+    await expect(
+      store.set(usageMessagesForRun$, pendingRun.runId, context.signal),
+    ).resolves.toHaveLength(0);
+  }, 60_000);
 });
 
 describe("CHAT-01 chat search", () => {

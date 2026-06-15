@@ -1,9 +1,13 @@
 """Tests for model-provider WebSocket usage metadata."""
 
 import json
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
+from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 from tests.model_provider_websocket_helpers import (
     _capture_deferred_websocket_trims,
     _feed_websocket_server_message,
@@ -21,11 +25,19 @@ def deferred_websocket_trim_scheduler(
     return _capture_deferred_websocket_trims(monkeypatch)
 
 
+def _openai_model_websocket_metadata_flow(
+    tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
+) -> http.HTTPFlow:
+    flow = _openai_model_websocket_flow(tmp_path, real_flow)
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+    return flow
+
+
 class TestModelProviderWebSocketUsageMetadata:
     """Tests for WebSocket usage metadata parsing without webhook reporting."""
 
     def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
 
         _feed_websocket_server_message(
             flow,
@@ -71,7 +83,7 @@ class TestModelProviderWebSocketUsageMetadata:
         }
 
     def test_model_websocket_positive_frame_updates_prior_zero_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
 
         _feed_websocket_server_message(
             flow,
@@ -108,7 +120,7 @@ class TestModelProviderWebSocketUsageMetadata:
         }
 
     def test_model_websocket_partial_frame_preserves_existing_categories(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
 
         _feed_websocket_server_message(
             flow,
@@ -150,7 +162,7 @@ class TestModelProviderWebSocketUsageMetadata:
         }
 
     def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
 
         _feed_websocket_server_text_message(
             flow,
@@ -174,8 +186,8 @@ class TestModelProviderWebSocketUsageMetadata:
         }
 
     def test_model_websocket_malformed_frame_preserves_prior_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        flow.metadata["model_provider_usage"] = {
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
             "tokens.input": 10,
@@ -184,7 +196,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
         _feed_websocket_server_message(flow, b'{"type":"response.completed"')
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
             "tokens.input": 10,
@@ -194,8 +206,8 @@ class TestModelProviderWebSocketUsageMetadata:
     def test_model_websocket_valid_id_usage_replaces_non_dict_usage_sources_metadata(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        flow.metadata["model_provider_usage_sources"] = "invalid"
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
 
         _feed_websocket_server_message(
             flow,
@@ -219,14 +231,14 @@ class TestModelProviderWebSocketUsageMetadata:
                 "tokens.output": 4,
             }
         }
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
 
     def test_model_websocket_ignores_invalid_frames_with_non_dict_usage_metadata(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        flow.metadata["model_provider_usage"] = "invalid"
-        flow.metadata["model_provider_usage_sources"] = "invalid"
+        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = "invalid"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
 
         _feed_websocket_server_message(
             flow,
@@ -237,9 +249,9 @@ class TestModelProviderWebSocketUsageMetadata:
                 }
             ).encode(),
         )
-        assert flow.metadata["model_provider_usage"] == "invalid"
-        assert flow.metadata["model_provider_usage_sources"] == "invalid"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == "invalid"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] == "invalid"
 
         _feed_websocket_server_message(flow, b'{"type":"response.completed"')
-        assert flow.metadata["model_provider_usage"] == "invalid"
-        assert flow.metadata["model_provider_usage_sources"] == "invalid"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == "invalid"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] == "invalid"

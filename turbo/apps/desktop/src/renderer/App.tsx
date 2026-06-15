@@ -33,7 +33,6 @@ import {
   desktopAuthData$,
   hasDesktopAuthBridge,
   hasDesktopComputerUseBridge,
-  maybeAutoStartComputerUse$,
   openAccessibilitySettings$,
   openDesktopOrgSelection$,
   openDesktopSignIn$,
@@ -113,20 +112,6 @@ function BridgeSubscription() {
       controller.abort();
     };
   }, [setupBridge]);
-  return null;
-}
-
-function AutoStartRuntime({
-  authState,
-  state,
-}: {
-  readonly authState: DesktopAuthState | null;
-  readonly state: DesktopComputerUseState;
-}) {
-  const maybeAutoStart = useSet(maybeAutoStartComputerUse$);
-  useEffect(() => {
-    void maybeAutoStart(state, authState);
-  }, [authState, maybeAutoStart, state]);
   return null;
 }
 
@@ -1309,7 +1294,6 @@ function ComputerUseContent({
 
   return (
     <>
-      <AutoStartRuntime authState={authState} state={state} />
       {!state.supported ? (
         <UnsupportedPanel platform={state.platform} />
       ) : (

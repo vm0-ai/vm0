@@ -1,5 +1,228 @@
 # Changelog
 
+## [8.339.0](https://github.com/vm0-ai/vm0/compare/core-v8.338.0...core-v8.339.0) (2026-06-15)
+
+
+### Features
+
+* add automation multi trigger section ([#17720](https://github.com/vm0-ai/vm0/issues/17720)) ([715a9a8](https://github.com/vm0-ai/vm0/commit/715a9a86bc67fc504b91fb07a7e22e30df149ccb))
+* show illustration variations inline in a single template popup ([#17717](https://github.com/vm0-ai/vm0/issues/17717)) ([55f9f07](https://github.com/vm0-ai/vm0/commit/55f9f074f58164c5ec83718a954ccd02889a29d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+
+## [8.338.0](https://github.com/vm0-ai/vm0/compare/core-v8.337.0...core-v8.338.0) (2026-06-15)
+
+
+### Features
+
+* replace YouTube API key auth with OAuth ([#17661](https://github.com/vm0-ai/vm0/issues/17661)) ([c548213](https://github.com/vm0-ai/vm0/commit/c54821371703d3be2c996db429630b36b1404e67))
+
+
+### Performance Improvements
+
+* serve AVIF/WebP for CDN image previews via format=auto ([#17655](https://github.com/vm0-ai/vm0/issues/17655)) ([2b41c78](https://github.com/vm0-ai/vm0/commit/2b41c7836e8b890c001802d02d1f61ceee3c1771))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/connectors bumped to 1.76.0
+
+## [8.337.0](https://github.com/vm0-ai/vm0/compare/core-v8.336.0...core-v8.337.0) (2026-06-14)
+
+
+### Features
+
+* add connector quick commands to chat composer slash menu ([#17588](https://github.com/vm0-ai/vm0/issues/17588)) ([d2a3723](https://github.com/vm0-ai/vm0/commit/d2a372307137de87c491019a2698acaa3eb92f0c))
+
+
+### Refactoring
+
+* remove chat recommended followups switch ([#17608](https://github.com/vm0-ai/vm0/issues/17608)) ([8e03d5a](https://github.com/vm0-ai/vm0/commit/8e03d5a65d4b2a666c56e0cea534402d12a947ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.1
+    * @vm0/connectors bumped to 1.75.0
+
+## [8.336.0](https://github.com/vm0-ai/vm0/compare/core-v8.335.5...core-v8.336.0) (2026-06-13)
+
+
+### Features
+
+* add Kimi K2.7 Code model ([#17568](https://github.com/vm0-ai/vm0/issues/17568)) ([841b0ff](https://github.com/vm0-ai/vm0/commit/841b0ff05bf4f594080bd7fb5b17e2ff0cecf2a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.0
+
+## [8.335.5](https://github.com/vm0-ai/vm0/compare/core-v8.335.4...core-v8.335.5) (2026-06-13)
+
+
+### Performance Improvements
+
+* resize r2 thumbnails in chat and galleries ([#17569](https://github.com/vm0-ai/vm0/issues/17569)) ([a91f0cf](https://github.com/vm0-ai/vm0/commit/a91f0cf4b9108aa36e7961a1da5a8076b02e401e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.2
+
+## [8.335.4](https://github.com/vm0-ai/vm0/compare/core-v8.335.3...core-v8.335.4) (2026-06-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.1
+
+## [8.335.3](https://github.com/vm0-ai/vm0/compare/core-v8.335.2...core-v8.335.3) (2026-06-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.0
+
+## [8.335.2](https://github.com/vm0-ai/vm0/compare/core-v8.335.1...core-v8.335.2) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.90.0
+
+## [8.335.1](https://github.com/vm0-ai/vm0/compare/core-v8.335.0...core-v8.335.1) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.89.1
+    * @vm0/connectors bumped to 1.74.0
+
+## [8.335.0](https://github.com/vm0-ai/vm0/compare/core-v8.334.2...core-v8.335.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.89.0
+    * @vm0/connectors bumped to 1.73.0
+
+## [8.334.2](https://github.com/vm0-ai/vm0/compare/core-v8.334.1...core-v8.334.2) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.2
+
+## [8.334.1](https://github.com/vm0-ai/vm0/compare/core-v8.334.0...core-v8.334.1) (2026-06-12)
+
+
+### Refactoring
+
+* retire obsolete feature switches ([#17496](https://github.com/vm0-ai/vm0/issues/17496)) ([b37964a](https://github.com/vm0-ai/vm0/commit/b37964aa0c45ad3feb291762fdbaaf2fc457cc20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/connectors bumped to 1.72.1
+
+## [8.334.0](https://github.com/vm0-ai/vm0/compare/core-v8.333.3...core-v8.334.0) (2026-06-12)
+
+
+### Features
+
+* add web chat run usage messages ([#17368](https://github.com/vm0-ai/vm0/issues/17368)) ([57abb19](https://github.com/vm0-ai/vm0/commit/57abb19caa4829b682478a94b4781d818d7047ea))
+* **video-preset:** add promptConstraints and negativePrompt to all 33 video style presets ([#17405](https://github.com/vm0-ai/vm0/issues/17405)) ([7045867](https://github.com/vm0-ai/vm0/commit/70458677e2bade872e9e97e467e2731e181e3750))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.0
+    * @vm0/connectors bumped to 1.72.0
+
+## [8.333.3](https://github.com/vm0-ai/vm0/compare/core-v8.333.2...core-v8.333.3) (2026-06-12)
+
+
+### Refactoring
+
+* **platform:** rename the schedule internals to automation ([#17465](https://github.com/vm0-ai/vm0/issues/17465)) ([e27fde6](https://github.com/vm0-ai/vm0/commit/e27fde65b93e6be3bb97fa65c606fa5c69277d41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.2
+
+## [8.333.2](https://github.com/vm0-ai/vm0/compare/core-v8.333.1...core-v8.333.2) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.1
+    * @vm0/connectors bumped to 1.71.1
+
+## [8.333.1](https://github.com/vm0-ai/vm0/compare/core-v8.333.0...core-v8.333.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* filter slash skills by current agent ([#17447](https://github.com/vm0-ai/vm0/issues/17447)) ([683f578](https://github.com/vm0-ai/vm0/commit/683f5788d397f5964399534b64d1015d5d840f4d))
+
+## [8.333.0](https://github.com/vm0-ai/vm0/compare/core-v8.332.0...core-v8.333.0) (2026-06-12)
+
+
+### Features
+
+* add chat slash skill commands ([#17406](https://github.com/vm0-ai/vm0/issues/17406)) ([7a5a85b](https://github.com/vm0-ai/vm0/commit/7a5a85b5fa5a8fc507ff8585cae82de2002f6ba1))
+* retire the schedule trigger source value ([#17401](https://github.com/vm0-ai/vm0/issues/17401)) ([87cd4b5](https://github.com/vm0-ai/vm0/commit/87cd4b50e1ba9c37bd2d59e74e936d3accb8988e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.0
+    * @vm0/connectors bumped to 1.71.0
+
 ## [8.332.0](https://github.com/vm0-ai/vm0/compare/core-v8.331.0...core-v8.332.0) (2026-06-12)
 
 

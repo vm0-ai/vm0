@@ -990,10 +990,7 @@ export {
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
-export {
-  scheduleResponseSchema,
-  type ScheduleResponse,
-} from "./zero-schedules";
+export { automationViewSchema, type AutomationView } from "./automation-view";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1172,7 +1169,7 @@ export {
   type ZeroUsageInsightContract,
   type UsageInsightResponse,
   type UsageInsightBucket,
-  type UsageInsightScheduleRow,
+  type UsageInsightAutomationRow,
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
 export {
@@ -1391,23 +1388,23 @@ export {
   type InternalCallbacksGithubIssuesContract,
 } from "./internal-callbacks-github-issues";
 export {
-  automationsV2MainContract,
-  automationsV2ByRefContract,
-  automationTriggersV2Contract,
+  automationsMainContract,
+  automationsByRefContract,
+  automationTriggersContract,
   automationTriggerResponseSchema,
-  automationResponseSchemaV2,
-  automationListResponseSchemaV2,
-  automationMutationResponseSchemaV2,
+  automationResponseSchema,
+  automationListResponseSchema,
+  automationMutationResponseSchema,
   triggerMutationResponseSchema,
-  automationRunResponseSchemaV2,
+  automationRunResponseSchema,
   createTriggerRequestSchema,
-  type AutomationsV2MainContract,
-  type AutomationsV2ByRefContract,
-  type AutomationTriggersV2Contract,
-  type AutomationResponseV2,
+  type AutomationsMainContract,
+  type AutomationsByRefContract,
+  type AutomationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
-} from "./automations-v2";
+} from "./automations";
 export {
   internalCallbacksTriggerContract,
   triggerCronCallbackPayloadSchema,
@@ -1445,12 +1442,6 @@ export {
   type ZeroVoiceIoSttContract,
   type ZeroVoiceIoSttResponse,
 } from "./zero-voice-io-stt";
-export {
-  zeroVoiceIoTtsContract,
-  zeroVoiceIoTtsRequestSchema,
-  type ZeroVoiceIoTtsContract,
-  type ZeroVoiceIoTtsRequest,
-} from "./zero-voice-io-tts";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,

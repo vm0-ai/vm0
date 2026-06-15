@@ -97,6 +97,8 @@ export interface ChatThread {
   agentId: string;
   title: string | null;
   lastReadMessageId: string | null;
+  lastReadAt: string | null;
+  lastMessageAt: string;
   activeRunIds: string[];
   isLegacySession: boolean;
   draftContent: string | null;

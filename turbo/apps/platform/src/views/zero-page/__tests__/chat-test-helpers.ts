@@ -11,6 +11,7 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
   type GenerationTemplateRequest,
+  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -99,7 +100,6 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
@@ -159,14 +159,11 @@ interface ThreadListItem {
   agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
-  isRead: boolean;
   running: boolean;
-  scheduleCount?: number;
   pinnedAt?: string | null;
 }
 
 type PagedThreadItem = ThreadListItem & {
-  hasDraft?: boolean;
   pinnedAt?: string | null;
   renamedAt?: string | null;
 };
@@ -184,7 +181,6 @@ export function splitChatThreadListResponse(
   threads: PagedThreadItem[];
   hasMore: boolean;
   nextCursor: string | null;
-  totalCount: number;
 } {
   const pinned = threads.filter((t) => {
     return t.pinnedAt !== null && t.pinnedAt !== undefined;
@@ -197,7 +193,6 @@ export function splitChatThreadListResponse(
     threads: nonPinned,
     hasMore: false,
     nextCursor: null,
-    totalCount: nonPinned.length,
   };
 }
 
@@ -322,6 +317,7 @@ export function mockChatLifecycle(
     historyMessages?: MockPagedMessage[];
     chatMessages?: MockPagedMessage[];
     threadTitle?: string | null;
+    selectedModel?: string | null;
     computerUseHostId?: string | null;
     activeRunIds?: string[];
     onQueuedMessageAppend?: (body: {
@@ -352,6 +348,15 @@ export function mockChatLifecycle(
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
+      attachFiles?: {
+        id: string;
+        filename: string;
+        contentType: string;
+        size: number;
+      }[];
+      hasTextContent?: boolean;
+      generationTemplate?: GenerationTemplateRequest;
+      modelSelection?: ModelSelectionRequest | null;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
@@ -492,6 +497,15 @@ export function mockChatLifecycle(
   const startRunFromUserMessage = async (body: {
     prompt?: string;
     clientMessageId?: string;
+    attachFiles?: {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+    }[];
+    hasTextContent?: boolean;
+    generationTemplate?: GenerationTemplateRequest;
+    modelSelection?: ModelSelectionRequest | null;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
   }) => {
@@ -640,10 +654,13 @@ export function mockChatLifecycle(
       title: threadTitle,
       agentId: "c0000000-0000-4000-a000-000000000001",
       activeRunIds,
+      lastReadAt: "2026-03-10T00:00:00Z",
+      lastMessageAt: "2026-03-10T00:00:00Z",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       draftContent: null,
       draftAttachments: null,
+      selectedModel: options?.selectedModel ?? null,
       computerUseHostId: options?.computerUseHostId ?? null,
     });
   });
@@ -685,7 +702,7 @@ export function mockChatLifecycle(
       selectedModel: null,
       triggerSource: "web",
       triggerAgentName: null,
-      scheduleId: null,
+      automationId: null,
       status: runStatus,
       prompt: "Hello",
       appendSystemPrompt: null,

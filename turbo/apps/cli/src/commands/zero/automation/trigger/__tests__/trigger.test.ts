@@ -1,6 +1,6 @@
 /**
  * Tests for `zero automation trigger` commands
- * (add / list / show / rm / enable / disable / rotate-secret).
+ * (add / update / list / show / rm / enable / disable / rotate-secret).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
  * principles:
@@ -238,6 +238,116 @@ describe("zero automation trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Unknown trigger kind: "hourly"'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("update", () => {
+    function captureUpdateTrigger(response: object) {
+      const captured: { id?: string; body?: Record<string, unknown> } = {};
+      server.use(
+        http.patch(
+          "http://localhost:3000/api/automation-triggers/:id",
+          async ({ request, params }) => {
+            captured.id = params.id as string;
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(response);
+          },
+        ),
+      );
+      return captured;
+    }
+
+    it("should switch to a cron schedule with --expr and --timezone", async () => {
+      const captured = captureUpdateTrigger(cronTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--expr",
+        "0 9 * * *",
+        "--timezone",
+        "UTC",
+      ]);
+
+      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.body).toEqual({
+        kind: "cron",
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+      });
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`Trigger ${TRIGGER_ID} updated`);
+      expect(logCalls).toContain("0 9 * * *");
+    });
+
+    it("should switch to a one-time schedule with --at", async () => {
+      const captured = captureUpdateTrigger(onceTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--at",
+        "2026-06-10T09:00",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "once",
+        atTime: "2026-06-10T09:00",
+      });
+    });
+
+    it("should update a loop interval parsing the --every duration", async () => {
+      const captured = captureUpdateTrigger(loopTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--every",
+        "15m",
+      ]);
+
+      expect(captured.body).toEqual({ kind: "loop", intervalSeconds: 900 });
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toMatch(/Every:\s+15m/);
+    });
+
+    it("should reject more than one timing flag", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "update",
+          TRIGGER_ID,
+          "--expr",
+          "0 9 * * *",
+          "--every",
+          "15m",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("exactly one of --expr"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject when no timing flag is given", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync(["node", "cli", "update", TRIGGER_ID]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("exactly one of --expr"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

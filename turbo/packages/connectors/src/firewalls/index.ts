@@ -91,6 +91,7 @@ import {
   cloudflareCategories,
   cloudflareCategoryOrder,
   cloudflareDefaultAllowed,
+  cloudflareDefaultUnknownPolicy,
   cloudflareFirewall,
 } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
@@ -136,7 +137,12 @@ import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
 import { googleAnalyticsFirewall } from "./google-analytics.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
-import { googleCloudFirewall } from "./google-cloud.generated";
+import {
+  googleCloudCategories,
+  googleCloudCategoryOrder,
+  googleCloudDefaultAllowed,
+  googleCloudFirewall,
+} from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
@@ -319,7 +325,13 @@ export interface PermissionGroup<T extends { name: string }> {
   permissions: T[];
 }
 
-const CONNECTOR_FIREWALLS = {
+function defineConnectorFirewalls<
+  const T extends Record<string, FirewallConfig>,
+>(firewalls: T): { readonly [K in keyof T]: FirewallConfig } {
+  return firewalls;
+}
+
+const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   agentmail: agentmailFirewall,
   amplitude: amplitudeFirewall,
   amadeus: amadeusFirewall,
@@ -576,7 +588,7 @@ const CONNECTOR_FIREWALLS = {
   openrouter: openrouterFirewall,
   openweather: openweatherFirewall,
   reducto: reductoFirewall,
-} as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
+} satisfies Partial<Record<ConnectorType, FirewallConfig>>);
 
 /**
  * Expand firewall placeholders to cover all secret names related to the
@@ -682,6 +694,10 @@ const CONNECTOR_CATEGORIES: Partial<
   cloudflare: {
     categories: cloudflareCategories,
     displayOrder: cloudflareCategoryOrder,
+  },
+  "google-cloud": {
+    categories: googleCloudCategories,
+    displayOrder: googleCloudCategoryOrder,
   },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
@@ -806,9 +822,16 @@ const DEFAULT_ALLOWED: Partial<
 > = {
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
+  "google-cloud": googleCloudDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,
+};
+
+const DEFAULT_UNKNOWN_POLICY: Partial<
+  Record<FirewallConnectorType, FirewallPolicyValue>
+> = {
+  cloudflare: cloudflareDefaultUnknownPolicy,
 };
 
 /**
@@ -816,7 +839,7 @@ const DEFAULT_ALLOWED: Partial<
  *
  * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
  * default-allowed list get "allow"/"deny" selectively; others get all-allow.
- * `unknownPolicy` defaults to "allow".
+ * `unknownPolicy` defaults to "allow" unless a connector overrides it.
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
@@ -832,7 +855,7 @@ export function getDefaultFirewallPolicies(
       }
     }
   }
-  return { policies, unknownPolicy: "allow" };
+  return { policies, unknownPolicy: DEFAULT_UNKNOWN_POLICY[type] ?? "allow" };
 }
 
 /**

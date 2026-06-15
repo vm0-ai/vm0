@@ -29,7 +29,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -150,8 +150,8 @@ function mockTeamAPIs(): void {
     createConnector("axiom", "workspace"),
     createConnector("slack", "ops"),
   ]);
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000401",
       agentId: researchAgentId,
       displayName: "Research Agent",
@@ -196,7 +196,6 @@ function mockTeamAPIs(): void {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
   context.mocks.api(zeroComposesMainContract.getByName, ({ respond }) => {
@@ -428,7 +427,7 @@ describe("team page navigation", () => {
     const deleteDialog = await screen.findByRole("dialog");
     expect(
       within(deleteDialog).getByText(
-        /instructions, schedules, and all associated data/u,
+        /instructions, automations, and all associated data/u,
       ),
     ).toBeInTheDocument();
 
@@ -442,7 +441,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("edits and creates schedules from an agent page", async () => {
+  it("edits and creates automations from an agent page", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
 
@@ -451,7 +450,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
     });
-    click(tabByText("Scheduled"));
+    click(tabByText("Automations"));
 
     await waitFor(() => {
       expect(
@@ -481,12 +480,12 @@ describe("team page navigation", () => {
 
     click(buttonByText("Add automation"));
 
-    const createScheduleDialog = await screen.findByRole("dialog");
+    const createAutomationDialog = await screen.findByRole("dialog");
     expect(
-      within(createScheduleDialog).getByText("Add automation"),
+      within(createAutomationDialog).getByText("Add automation"),
     ).toBeInTheDocument();
     await fill(
-      within(createScheduleDialog).getByLabelText("Prompt"),
+      within(createAutomationDialog).getByLabelText("Prompt"),
       "Collect weekly research links",
     );
     click(buttonByText("Create"));
@@ -499,7 +498,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("runs an agent schedule and opens its detail page", async () => {
+  it("runs an agent automation and opens its detail page", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
 
@@ -508,7 +507,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
     });
-    click(tabByText("Scheduled"));
+    click(tabByText("Automations"));
 
     await waitFor(() => {
       expect(
@@ -623,6 +622,54 @@ describe("team page navigation", () => {
     });
   });
 
+  it("uses Cloudflare unknown endpoint deny as the permissions drawer default", async () => {
+    mockTeamAPIs();
+    context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@cf-team")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Cloudflare permissions"));
+
+    const permissionsDialog = await screen.findByRole("dialog");
+    expect(
+      within(permissionsDialog).getByText("Cloudflare permissions"),
+    ).toBeInTheDocument();
+
+    const unknownRow = unknownEndpointsRow(permissionsDialog);
+    expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+
+    click(buttonByText("Allow", unknownRow));
+    await waitFor(() => {
+      expect(buttonByText("Allow", unknownRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(buttonByText("Restore", permissionsDialog)).toBeEnabled();
+    });
+
+    click(buttonByText("Restore", permissionsDialog));
+    await waitFor(() => {
+      expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+    });
+  });
+
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();
@@ -692,19 +739,9 @@ describe("team page navigation", () => {
     click(menuItemByText("Allow always"));
     await waitFor(() => {
       expect(within(createRow).getByText("Always")).toBeInTheDocument();
+      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
     });
 
-    const deleteRow = await permissionRowByName(
-      permissionsDialog,
-      "annotations|delete",
-    );
-    click(screen.getByLabelText("annotations|delete allow options"));
-    click(menuItemByText("Allow for 1h"));
-    await waitFor(() => {
-      expect(within(deleteRow).getByText("1h")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Deny", unknownEndpointsRow(permissionsDialog)));
     click(buttonByText("Apply", permissionsDialog));
 
     await waitFor(() => {
@@ -718,19 +755,6 @@ describe("team page navigation", () => {
           permission: "annotations|create",
           action: "allow",
           expiresIn: "always",
-        },
-        {
-          agentId: researchAgentId,
-          connectorRef: "axiom",
-          permission: "annotations|delete",
-          action: "allow",
-          expiresIn: "1h",
-        },
-        {
-          agentId: researchAgentId,
-          connectorRef: "axiom",
-          permission: "__unknown__",
-          action: "deny",
         },
       ]),
     );

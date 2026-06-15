@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Footer } from "../../components/Footer";
 import {
-  ILLUSTRATION_ASSET_BASE,
+  illustrationAssetUrl,
   ILLUSTRATION_STYLES,
+  r2ImageTransformUrl,
   type IllustrationStyle,
 } from "@vm0/core";
 
@@ -13,6 +14,9 @@ interface LightboxState {
   style: IllustrationStyle;
   activeRef: string;
 }
+
+const ILLUSTRATION_CARD_IMAGE_SIZE = { width: 900 } as const;
+const ILLUSTRATION_REF_THUMB_SIZE = { width: 80, height: 80 } as const;
 
 export function IllustrationGalleryClient() {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
@@ -117,8 +121,8 @@ interface CardProps {
 
 function IllustrationCard({ style, onOpen }: CardProps) {
   const coverSrc = style.cover
-    ? `${ILLUSTRATION_ASSET_BASE}/${style.cover}`
-    : `${ILLUSTRATION_ASSET_BASE}/images/${style.image}`;
+    ? illustrationAssetUrl(style.cover)
+    : illustrationAssetUrl(`images/${style.image}`);
 
   return (
     <article className="illu-tile">
@@ -132,7 +136,7 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={coverSrc}
+          src={r2ImageTransformUrl(coverSrc, ILLUSTRATION_CARD_IMAGE_SIZE)}
           width={style.width}
           height={style.height}
           alt={style.title}
@@ -164,7 +168,10 @@ function IllustrationCard({ style, onOpen }: CardProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={r2ImageTransformUrl(
+                  illustrationAssetUrl(`refs/${style.slug}/${ref}`),
+                  ILLUSTRATION_REF_THUMB_SIZE,
+                )}
                 loading="lazy"
                 alt=""
               />
@@ -190,7 +197,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
 
   const { style, activeRef } = state;
   const refCount = style.refs.length;
-  const activeSrc = `${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${activeRef}`;
+  const activeSrc = illustrationAssetUrl(`refs/${style.slug}/${activeRef}`);
 
   if (!mounted) {
     return null;
@@ -240,7 +247,10 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={r2ImageTransformUrl(
+                  illustrationAssetUrl(`refs/${style.slug}/${ref}`),
+                  ILLUSTRATION_REF_THUMB_SIZE,
+                )}
                 loading="lazy"
                 alt=""
               />

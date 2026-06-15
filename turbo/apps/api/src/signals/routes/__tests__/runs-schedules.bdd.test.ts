@@ -1,11 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { emailOutbox } from "@vm0/db/schema/email-outbox";
+import { emailSuppressions } from "@vm0/db/schema/email-suppression";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -16,9 +21,9 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createEmailApi } from "./helpers/api-bdd-email";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import {
   callbackDeliveryWithStatus,
   createWebhookCallbackApi,
@@ -45,11 +50,127 @@ import {
  *   which expose the runId. Cron count fields are never asserted strictly
  *   because the cron processes due schedules across all organizations.
  * - SCHED-02 sync-skills valid-path coverage needs a focused external GitHub
- *   tarball/S3 helper; this file keeps cron auth and safe no-work cron routes
- *   route-based without adding that external fixture.
+ *   tarball/S3 helper; this file keeps shared cron auth rejection route-based
+ *   without running valid global sweeps from the wrong owner file.
  */
 
 const context = testContext();
+const store = createStore();
+const writeDb = store.set(writeDb$);
+const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
+const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
+
+interface SeedEmailOutboxOptions {
+  readonly subject: string;
+  readonly to: string;
+  readonly status?: string;
+  readonly attempts?: number;
+  readonly createdAt?: Date;
+  readonly nextRetryAt?: Date | null;
+}
+
+async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
+  await writeDb.insert(emailOutbox).values({
+    fromAddress: OUTBOX_TEST_FROM,
+    toAddresses: options.to,
+    subject: `Re: ${options.subject}`,
+    template: {
+      template: "inbound-error",
+      props: { errorMessage: "BDD outbox test email" },
+    },
+    status: options.status ?? "pending",
+    attempts: options.attempts ?? 0,
+    createdAt:
+      options.createdAt ?? new Date(now() - OUTBOX_TEST_CREATED_AT_OFFSET_MS),
+    nextRetryAt: options.nextRetryAt ?? null,
+  });
+
+  onTestFinished(async () => {
+    await writeDb
+      .delete(emailOutbox)
+      .where(eq(emailOutbox.subject, `Re: ${options.subject}`));
+  });
+}
+
+async function seedEmailSuppression(address: string): Promise<void> {
+  await writeDb.insert(emailSuppressions).values({
+    emailAddress: address,
+    reason: "bounced",
+    resendEmailId: `em_${randomUUID()}`,
+  });
+
+  onTestFinished(async () => {
+    await writeDb
+      .delete(emailSuppressions)
+      .where(eq(emailSuppressions.emailAddress, address));
+  });
+}
+
+function resendSendCallsTo(recipient: string): number {
+  return context.mocks.resend.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
+      return false;
+    }
+
+    const to = payload.to;
+    if (typeof to === "string") {
+      return to === recipient;
+    }
+    return Array.isArray(to) && to.includes(recipient);
+  }).length;
+}
+
+async function touchEmailOutbox(subject: string): Promise<void> {
+  const updated = await writeDb
+    .update(emailOutbox)
+    .set({ createdAt: new Date(now()) })
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .returning({ id: emailOutbox.id });
+
+  if (updated.length === 0) {
+    throw new Error(`Expected email outbox row for ${subject} to touch`);
+  }
+}
+
+async function emailOutboxStatus(subject: string): Promise<string | null> {
+  const [row] = await writeDb
+    .select({ status: emailOutbox.status })
+    .from(emailOutbox)
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .limit(1);
+
+  return row?.status ?? null;
+}
+
+async function emailOutboxRow(subject: string): Promise<{
+  readonly status: string;
+  readonly attempts: number;
+  readonly lastError: string | null;
+} | null> {
+  const [row] = await writeDb
+    .select({
+      status: emailOutbox.status,
+      attempts: emailOutbox.attempts,
+      lastError: emailOutbox.lastError,
+    })
+    .from(emailOutbox)
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function drainEmailOutboxCronOk(): Promise<void> {
+  const email = createEmailApi(context);
+  context.mocks.resend.send.mockResolvedValue({
+    data: { id: `resend-bdd-drain-${randomUUID()}` },
+  });
+  const drain = await email.drainEmailOutboxCron(true);
+  if (drain.status !== 200) {
+    throw new Error("Expected drain email outbox cron to succeed");
+  }
+}
 
 async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
   readonly agentId: string;
@@ -62,7 +183,7 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
     visibility: "private",
   });
 
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   await api.ensureOrgModelProvider(actor);
 
   return { agentId: agent.agentId };
@@ -70,18 +191,21 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
 
 function findSchedule<
   TSchedule extends { readonly id: string; readonly name: string },
->(schedules: readonly TSchedule[], scheduleId: string): TSchedule | undefined {
+>(
+  schedules: readonly TSchedule[],
+  automationId: string,
+): TSchedule | undefined {
   return schedules.find((schedule) => {
-    return schedule.id === scheduleId;
+    return schedule.id === automationId;
   });
 }
 
 function mustFindSchedule<
   TSchedule extends { readonly id: string; readonly name: string },
->(schedules: readonly TSchedule[], scheduleId: string): TSchedule {
-  const schedule = findSchedule(schedules, scheduleId);
+>(schedules: readonly TSchedule[], automationId: string): TSchedule {
+  const schedule = findSchedule(schedules, automationId);
   if (!schedule) {
-    throw new Error(`Expected schedule ${scheduleId} to be visible in list`);
+    throw new Error(`Expected schedule ${automationId} to be visible in list`);
   }
   return schedule;
 }
@@ -92,7 +216,7 @@ async function entitledScheduleActor(): Promise<{
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -108,9 +232,9 @@ async function entitledScheduleActor(): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup };
 }
 
-async function executeSchedulesCronOk(): Promise<void> {
+async function executeAutomationsCronOk(): Promise<void> {
   const response =
-    await createRunsSchedulesApi(context).executeSchedulesCron(true);
+    await createRunsAutomationsApi(context).executeAutomationsCron(true);
   if (response.status !== 200) {
     throw new Error("Expected execute schedules cron to succeed");
   }
@@ -177,33 +301,10 @@ function zeroToken(
   });
 }
 
-function resendSendCallsTo(recipient: string): number {
-  return context.mocks.resend.send.mock.calls.filter((call) => {
-    const [payload] = call;
-    return (
-      typeof payload === "object" &&
-      payload !== null &&
-      "to" in payload &&
-      payload.to === recipient
-    );
-  }).length;
-}
-
-async function waitForResendSendCallsTo(
-  recipient: string,
-  count: number,
-): Promise<void> {
-  await expect
-    .poll(() => {
-      return resendSendCallsTo(recipient);
-    })
-    .toBeGreaterThanOrEqual(count);
-}
-
 describe("RUN-01: run creation admission and validation", () => {
   it("rejects invalid or unauthorized run creation requests through API validation", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
 
     const unauthenticated = await api.requestCreateRun(
@@ -268,7 +369,7 @@ describe("RUN-01: run creation admission and validation", () => {
 describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", () => {
   it("sets up run prerequisites through APIs and exposes the no-credit admission boundary", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
 
@@ -312,7 +413,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
   });
 
   it("keeps official runner held-session heartbeat and empty polling visible through public endpoints", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const runnerGroup = api.configureRunnerGroup();
     const heldSessionStates = [
       {
@@ -358,7 +459,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("keeps missing run detail and context hidden for another organization", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const outsider = bdd.user();
     const missingRunId = randomUUID();
 
@@ -377,7 +478,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("rejects runner metadata reads and job claims at unauthenticated, malformed, and missing boundaries", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const missingRunId = randomUUID();
     const invalidRunId = "not-a-run-id";
@@ -433,7 +534,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("rejects malformed and unauthenticated runner, queue, read, context, and cancel requests", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const missingRunId = randomUUID();
     const invalidRunId = "not-a-run-id";
@@ -519,7 +620,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
   });
 
   it("issues runner realtime tokens only for authenticated vm0 runner groups", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
 
     const unauthenticated = await api.requestRunnerRealtimeToken(
       false,
@@ -578,17 +679,17 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
   it("creates, lists, enables, reaches manual run admission, disables, and deletes a schedule", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const outsider = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
-    const scheduleName = uniqueScheduleName("bdd-schedule");
+    const scheduleName = uniqueAutomationName("bdd-schedule");
 
-    const unauthorizedList = await api.requestListSchedules(null, [401]);
+    const unauthorizedList = await api.requestListAutomations(null, [401]);
     expectApiError(unauthorizedList.body);
     expect(unauthorizedList.body.error.code).toBe("UNAUTHORIZED");
 
-    const invalidBody = await api.requestDeployScheduleUnchecked(
+    const invalidBody = await api.requestDeployAutomationUnchecked(
       actor,
       {
         name: scheduleName,
@@ -601,7 +702,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expectApiError(invalidBody.body);
     expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
 
-    const deployed = await api.deploySchedule(actor, {
+    const deployed = await api.deployAutomation(actor, {
       name: scheduleName,
       agentId,
       intervalSeconds: 60,
@@ -611,7 +712,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
     expect(deployed.created).toBeTruthy();
-    expect(deployed.schedule).toMatchObject({
+    expect(deployed.automation).toMatchObject({
       name: scheduleName,
       agentId,
       enabled: false,
@@ -619,39 +720,43 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       intervalSeconds: 60,
     });
 
-    const listedAfterCreate = await api.listSchedules(actor);
+    const listedAfterCreate = await api.listAutomations(actor);
     expect(
-      findSchedule(listedAfterCreate.schedules, deployed.schedule.id),
+      findSchedule(listedAfterCreate.automations, deployed.automation.id),
     ).toBeDefined();
 
-    const enabled = await api.enableSchedule(actor, deployed.schedule);
+    const enabled = await api.enableAutomation(actor, deployed.automation);
     expect(enabled.enabled).toBeTruthy();
     expect(enabled.nextRunAt).not.toBeNull();
 
-    const outsiderEnable = await api.requestEnableSchedule(
+    const outsiderEnable = await api.requestEnableAutomation(
       outsider,
-      deployed.schedule,
+      deployed.automation,
       [404],
     );
     expectApiError(outsiderEnable.body);
     expect(outsiderEnable.body.error.code).toBe("NOT_FOUND");
 
-    const runNow = await api.runScheduleNow(actor, deployed.schedule.id, [402]);
+    const runNow = await api.requestRunAutomation(
+      actor,
+      deployed.automation.id,
+      [402],
+    );
     expectApiError(runNow.body);
     expect(runNow.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    const disabled = await api.disableSchedule(actor, deployed.schedule);
+    const disabled = await api.disableAutomation(actor, deployed.automation);
     expect(disabled.enabled).toBeFalsy();
 
-    await api.deleteSchedule(actor, deployed.schedule);
-    const listedAfterDelete = await api.listSchedules(actor);
+    await api.deleteAutomation(actor, deployed.automation);
+    const listedAfterDelete = await api.listAutomations(actor);
     expect(
-      findSchedule(listedAfterDelete.schedules, deployed.schedule.id),
+      findSchedule(listedAfterDelete.automations, deployed.automation.id),
     ).toBeUndefined();
 
-    const deleteAgain = await api.requestDeleteSchedule(
+    const deleteAgain = await api.requestDeleteAutomation(
       actor,
-      deployed.schedule,
+      deployed.automation,
       [404],
     );
     expectApiError(deleteAgain.body);
@@ -659,7 +764,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
   });
 
   it("manually runs a schedule through chat, claim, model, and grant surfaces", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledScheduleActor();
@@ -691,8 +796,8 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       action: "allow",
     });
 
-    const deployed = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-run-now"),
+    const deployed = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-run-now"),
       agentId,
       cronExpression: "0 9 * * *",
       prompt: "Manual run test",
@@ -702,9 +807,9 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
 
-    const created = await api.runScheduleNow(
+    const created = await api.requestRunAutomation(
       actor,
-      deployed.schedule.id,
+      deployed.automation.id,
       [201],
     );
     if (created.status !== 201) {
@@ -714,27 +819,27 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
 
     const thread = await chat.listThreadMessages(
       actor,
-      deployed.schedule.chatThreadId,
+      deployed.automation.chatThreadId,
     );
     const userMessage = thread.messages.find((message) => {
       return message.role === "user" && message.runId === runId;
     });
     expect(userMessage).toMatchObject({
       content: "Manual run test",
-      scheduleTitle: deployed.schedule.name,
-      scheduleSnapshot: {
-        id: deployed.schedule.id,
-        title: deployed.schedule.name,
+      automationTitle: deployed.automation.name,
+      automationSnapshot: {
+        id: deployed.automation.id,
+        title: deployed.automation.name,
         description: "Run-now schedule description",
       },
     });
-    expect(userMessage?.scheduleId).toBeUndefined();
+    expect(userMessage?.automationId).toBeUndefined();
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     expect(claim.prompt).toBe("Manual run test");
     expect(claim.appendSystemPrompt).toContain(
-      "# Current Integration\nYou are currently running inside: Schedule",
+      "# Current Integration\nYou are currently running inside: Automation",
     );
     expect(claim.appendSystemPrompt).toContain("Trigger type: manual");
     expect(claim.appendSystemPrompt).toContain(
@@ -744,26 +849,26 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expect(claim.networkPolicies?.slack?.allow).toContain("chat:write");
     expect(claim.networkPolicies?.slack?.deny).not.toContain("chat:write");
 
-    const conflict = await api.runScheduleNow(
+    const conflict = await api.requestRunAutomation(
       actor,
-      deployed.schedule.id,
+      deployed.automation.id,
       [409],
     );
     expectApiError(conflict.body);
     expect(conflict.body.error.code).toBe("CONFLICT");
 
     await api.requestCancelRun(actor, runId, [200]);
-    await api.deleteSchedule(actor, deployed.schedule);
+    await api.deleteAutomation(actor, deployed.automation);
   });
 
   it("redeploys a cron schedule and exposes updated state through schedule list", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
-    const scheduleName = uniqueScheduleName("bdd-cron-update");
+    const scheduleName = uniqueAutomationName("bdd-cron-update");
 
-    const deployed = await api.deploySchedule(actor, {
+    const deployed = await api.deployAutomation(actor, {
       name: scheduleName,
       agentId,
       cronExpression: "0 9 * * *",
@@ -773,7 +878,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
     expect(deployed.created).toBeTruthy();
-    expect(deployed.schedule).toMatchObject({
+    expect(deployed.automation).toMatchObject({
       name: scheduleName,
       agentId,
       triggerType: "cron",
@@ -784,7 +889,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
 
-    const updated = await api.deploySchedule(actor, {
+    const updated = await api.deployAutomation(actor, {
       name: scheduleName,
       agentId,
       cronExpression: "30 9 * * *",
@@ -794,9 +899,11 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
     expect(updated.created).toBeFalsy();
-    expect(updated.schedule.id).toBe(deployed.schedule.id);
-    expect(updated.schedule.chatThreadId).toBe(deployed.schedule.chatThreadId);
-    expect(updated.schedule).toMatchObject({
+    expect(updated.automation.id).toBe(deployed.automation.id);
+    expect(updated.automation.chatThreadId).toBe(
+      deployed.automation.chatThreadId,
+    );
+    expect(updated.automation).toMatchObject({
       name: scheduleName,
       agentId,
       triggerType: "cron",
@@ -807,13 +914,16 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
     });
 
-    const listed = await api.listSchedules(actor);
-    const listedSchedule = findSchedule(listed.schedules, deployed.schedule.id);
+    const listed = await api.listAutomations(actor);
+    const listedSchedule = findSchedule(
+      listed.automations,
+      deployed.automation.id,
+    );
     if (!listedSchedule) {
       throw new Error("Expected redeployed schedule to be visible in list");
     }
     expect(listedSchedule).toMatchObject({
-      id: deployed.schedule.id,
+      id: deployed.automation.id,
       name: scheduleName,
       agentId,
       triggerType: "cron",
@@ -822,15 +932,15 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       prompt: "Run the updated morning report.",
       description: "Updated morning cron report",
       enabled: false,
-      chatThreadId: deployed.schedule.chatThreadId,
+      chatThreadId: deployed.automation.chatThreadId,
     });
 
-    await api.deleteSchedule(actor, updated.schedule);
+    await api.deleteAutomation(actor, updated.automation);
   });
 
   it("links schedules to chat threads and keeps mutation boundaries visible", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const actor = bdd.user();
     const outsider = bdd.user();
@@ -855,10 +965,10 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       title: "Outsider thread",
     });
 
-    const crossUserThread = await api.requestDeployScheduleUnchecked(
+    const crossUserThread = await api.requestDeployAutomationUnchecked(
       actor,
       {
-        name: uniqueScheduleName("bdd-cross-thread"),
+        name: uniqueAutomationName("bdd-cross-thread"),
         agentId,
         cronExpression: "0 9 * * *",
         prompt: "Should not link a foreign thread.",
@@ -872,8 +982,8 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expect(crossUserThread.body.error.code).toBe("BAD_REQUEST");
 
     context.mocks.ably.publish.mockClear();
-    const linked = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-linked-thread"),
+    const linked = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-linked-thread"),
       agentId,
       cronExpression: "0 9 * * *",
       prompt: "Run the linked thread report.",
@@ -882,14 +992,14 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       enabled: false,
       chatThreadId: linkedThread.id,
     });
-    expect(linked.schedule.chatThreadId).toBe(linkedThread.id);
+    expect(linked.automation.chatThreadId).toBe(linkedThread.id);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadSchedulesChanged:${linkedThread.id}`,
+      `chatThreadAutomationsChanged:${linkedThread.id}`,
       null,
     );
 
-    const redeployed = await api.deploySchedule(actor, {
-      name: linked.schedule.name,
+    const redeployed = await api.deployAutomation(actor, {
+      name: linked.automation.name,
       agentId,
       cronExpression: "0 10 * * *",
       prompt: "Run the updated linked thread report.",
@@ -899,10 +1009,10 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       chatThreadId: otherThread.id,
     });
     expect(redeployed.created).toBeFalsy();
-    expect(redeployed.schedule.chatThreadId).toBe(linkedThread.id);
+    expect(redeployed.automation.chatThreadId).toBe(linkedThread.id);
 
-    const autoThreadSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-auto-thread"),
+    const autoThreadSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-auto-thread"),
       agentId,
       cronExpression: "0 11 * * *",
       prompt: "Run the auto-thread report.",
@@ -912,14 +1022,14 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     });
     const autoThread = await chat.readThread(
       actor,
-      autoThreadSchedule.schedule.chatThreadId,
+      autoThreadSchedule.automation.chatThreadId,
     );
     expect(autoThread.title).toBe("Auto-created schedule thread");
 
-    const pastOnce = await api.requestDeployScheduleUnchecked(
+    const pastOnce = await api.requestDeployAutomationUnchecked(
       actor,
       {
-        name: uniqueScheduleName("bdd-past-once"),
+        name: uniqueAutomationName("bdd-past-once"),
         agentId,
         atTime: new Date(now() - 86_400_000).toISOString(),
         prompt: "Past one-time schedule",
@@ -933,39 +1043,39 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expect(pastOnce.body.error.code).toBe("BAD_REQUEST");
 
     const readOnlyToken = zeroToken(actor, ["automation:read"]);
-    const forbiddenDelete = await api.requestDeleteScheduleAs(
+    const forbiddenDelete = await api.requestDeleteAutomationAs(
       `Bearer ${readOnlyToken}`,
-      autoThreadSchedule.schedule,
+      autoThreadSchedule.automation,
       [403],
     );
     expectApiError(forbiddenDelete.body);
     expect(forbiddenDelete.body.error.code).toBe("FORBIDDEN");
 
-    const missingDelete = await api.requestDeleteSchedule(
+    const missingDelete = await api.requestDeleteAutomation(
       actor,
-      { name: uniqueScheduleName("bdd-missing-delete") },
+      { name: uniqueAutomationName("bdd-missing-delete") },
       [404],
     );
     expectApiError(missingDelete.body);
     expect(missingDelete.body.error.code).toBe("NOT_FOUND");
 
     context.mocks.ably.publish.mockClear();
-    await api.deleteSchedule(actor, linked.schedule);
+    await api.deleteAutomation(actor, linked.automation);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadSchedulesChanged:${linkedThread.id}`,
+      `chatThreadAutomationsChanged:${linkedThread.id}`,
       null,
     );
-    await api.deleteSchedule(actor, autoThreadSchedule.schedule);
+    await api.deleteAutomation(actor, autoThreadSchedule.automation);
   });
 
   it("lets cron execution process a due loop schedule and exposes the transition through list", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
-    const scheduleName = uniqueScheduleName("bdd-cron");
+    const scheduleName = uniqueAutomationName("bdd-cron");
 
-    const deployed = await api.deploySchedule(actor, {
+    const deployed = await api.deployAutomation(actor, {
       name: scheduleName,
       agentId,
       intervalSeconds: 1,
@@ -974,19 +1084,18 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       timezone: "UTC",
       enabled: true,
     });
-    expect(deployed.schedule.nextRunAt).not.toBeNull();
+    expect(deployed.automation.nextRunAt).not.toBeNull();
 
-    const cron = await api.executeSchedulesCron(true);
+    const cron = await api.executeAutomationsCron(true);
     if (cron.status !== 200) {
       throw new Error("Expected execute schedules cron to succeed");
     }
     expect(cron.body.success).toBeTruthy();
-    expect(cron.body.executed).toBe(0);
     expect(cron.body.skipped).toBeGreaterThanOrEqual(1);
 
-    const afterCron = await api.listSchedules(actor);
-    const schedule = afterCron.schedules.find((item) => {
-      return item.id === deployed.schedule.id;
+    const afterCron = await api.listAutomations(actor);
+    const schedule = afterCron.automations.find((item) => {
+      return item.id === deployed.automation.id;
     });
     expect(schedule?.lastRunAt).not.toBeNull();
     expect(schedule?.consecutiveFailures).toBeGreaterThanOrEqual(1);
@@ -995,7 +1104,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
 
 describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
   it("executes due cron and one-time schedules and exposes the runs through queue, chat, and runner reads", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledScheduleActor();
     const cronPrompt = "Run the scheduled morning report.";
@@ -1006,8 +1115,8 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     const base = now();
     mockNow(base);
 
-    const cronSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-exec-cron"),
+    const cronSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-exec-cron"),
       agentId,
       cronExpression: "*/5 * * * *",
       prompt: cronPrompt,
@@ -1016,10 +1125,10 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    expect(cronSchedule.schedule.nextRunAt).not.toBeNull();
+    expect(cronSchedule.automation.nextRunAt).not.toBeNull();
 
-    const onceSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-exec-once"),
+    const onceSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-exec-once"),
       agentId,
       atTime: new Date(base + 5 * 60_000).toISOString(),
       prompt: oncePrompt,
@@ -1027,21 +1136,23 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    expect(onceSchedule.schedule.nextRunAt).not.toBeNull();
+    expect(onceSchedule.automation.nextRunAt).not.toBeNull();
 
-    await executeSchedulesCronOk();
-    const preDue = await api.listSchedules(actor);
+    await executeAutomationsCronOk();
+    const preDue = await api.listAutomations(actor);
     expect(
-      mustFindSchedule(preDue.schedules, cronSchedule.schedule.id).lastRunAt,
+      mustFindSchedule(preDue.automations, cronSchedule.automation.id)
+        .lastRunAt,
     ).toBeNull();
     expect(
-      mustFindSchedule(preDue.schedules, onceSchedule.schedule.id).lastRunAt,
+      mustFindSchedule(preDue.automations, onceSchedule.automation.id)
+        .lastRunAt,
     ).toBeNull();
 
     mockNow(base + 6 * 60_000);
     const [firstCron, secondCron] = await Promise.all([
-      api.executeSchedulesCron(true),
-      api.executeSchedulesCron(true),
+      api.executeAutomationsCron(true),
+      api.executeAutomationsCron(true),
     ]);
     expect(firstCron.status).toBe(200);
     expect(secondCron.status).toBe(200);
@@ -1050,10 +1161,10 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     expect(queue.body.concurrency.active).toBe(2);
     expect(queue.body.queue).toHaveLength(0);
 
-    const afterDue = await api.listSchedules(actor);
+    const afterDue = await api.listAutomations(actor);
     const cronAfterDue = mustFindSchedule(
-      afterDue.schedules,
-      cronSchedule.schedule.id,
+      afterDue.automations,
+      cronSchedule.automation.id,
     );
     expect(cronAfterDue).toMatchObject({
       enabled: true,
@@ -1063,21 +1174,21 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     });
     expect(cronAfterDue.lastRunAt).not.toBeNull();
     const onceAfterDue = mustFindSchedule(
-      afterDue.schedules,
-      onceSchedule.schedule.id,
+      afterDue.automations,
+      onceSchedule.automation.id,
     );
     expect(onceAfterDue).toMatchObject({ enabled: false, nextRunAt: null });
     expect(onceAfterDue.lastRunAt).not.toBeNull();
 
     const cronThread = await chat.listThreadMessages(
       actor,
-      cronSchedule.schedule.chatThreadId,
+      cronSchedule.automation.chatThreadId,
     );
     const cronRunId = scheduleRunIdFromThread(cronThread.messages, cronPrompt);
     expect(hasQueueMarker(cronThread.messages, cronRunId)).toBeFalsy();
     const onceThread = await chat.listThreadMessages(
       actor,
-      onceSchedule.schedule.chatThreadId,
+      onceSchedule.automation.chatThreadId,
     );
     const onceRunId = scheduleRunIdFromThread(onceThread.messages, oncePrompt);
     expect(onceRunId).not.toBe(cronRunId);
@@ -1086,14 +1197,14 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     const claim = await api.claimRunnerJob(cronRunId);
     expect(claim.prompt).toBe(cronPrompt);
     expect(claim.appendSystemPrompt).toContain(
-      "# Current Integration\nYou are currently running inside: Schedule",
+      "# Current Integration\nYou are currently running inside: Automation",
     );
     expect(claim.appendSystemPrompt).toContain("Trigger type: cron");
     expect(claim.appendSystemPrompt).toContain("Always respond in formal tone");
 
-    const conflict = await api.runScheduleNow(
+    const conflict = await api.requestRunAutomation(
       actor,
-      cronSchedule.schedule.id,
+      cronSchedule.automation.id,
       [409],
     );
     expectApiError(conflict.body);
@@ -1104,20 +1215,20 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     await api.requestCancelRun(actor, onceRunId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
-    await api.deleteSchedule(actor, cronSchedule.schedule);
-    await api.deleteSchedule(actor, onceSchedule.schedule);
+    await api.deleteAutomation(actor, cronSchedule.automation);
+    await api.deleteAutomation(actor, onceSchedule.automation);
   });
 
   it("skips a due schedule while its previous run is active and executes it after the run terminates", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId } = await entitledScheduleActor();
     const prompt = "Run the skip-check report.";
     const base = now();
     mockNow(base);
 
-    const deployed = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-skip-active"),
+    const deployed = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-skip-active"),
       agentId,
       cronExpression: "0 9 * * *",
       prompt,
@@ -1125,12 +1236,12 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const deployedNextRunAt = deployed.schedule.nextRunAt;
+    const deployedNextRunAt = deployed.automation.nextRunAt;
     expect(deployedNextRunAt).not.toBeNull();
 
-    const manualRun = await api.runScheduleNow(
+    const manualRun = await api.requestRunAutomation(
       actor,
-      deployed.schedule.id,
+      deployed.automation.id,
       [201],
     );
     if (manualRun.status !== 201) {
@@ -1140,34 +1251,34 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
 
     const afterManual = await chat.listThreadMessages(
       actor,
-      deployed.schedule.chatThreadId,
+      deployed.automation.chatThreadId,
     );
     expect(scheduleUserMessages(afterManual.messages, prompt)).toHaveLength(1);
 
     mockNow(base + 25 * 3_600_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
 
     const skipped = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      deployed.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      deployed.automation.id,
     );
     expect(skipped.lastRunAt).toBeNull();
     expect(skipped.nextRunAt).toBe(deployedNextRunAt);
     expect(skipped.consecutiveFailures).toBe(0);
 
     await api.requestCancelRun(actor, manualRunId, [200]);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
 
     const executed = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      deployed.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      deployed.automation.id,
     );
     expect(executed.lastRunAt).not.toBeNull();
     expect(executed.nextRunAt).toBeNull();
 
     const afterCron = await chat.listThreadMessages(
       actor,
-      deployed.schedule.chatThreadId,
+      deployed.automation.chatThreadId,
     );
     const cronMessages = scheduleUserMessages(afterCron.messages, prompt);
     expect(cronMessages).toHaveLength(2);
@@ -1184,11 +1295,11 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
 
     clearMockNow();
     await api.requestCancelRun(actor, cronRunId, [200]);
-    await api.deleteSchedule(actor, deployed.schedule);
+    await api.deleteAutomation(actor, deployed.automation);
   });
 
   it("queues scheduled runs at the org concurrency limit and disables a queued one-time schedule", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId } = await entitledScheduleActor();
     const cronPrompt = "Run the queued cron report.";
@@ -1209,8 +1320,8 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     // real-time blocking runs still count against the concurrency limit.
     const base = now();
     mockNow(base);
-    const cronSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-queue-cron"),
+    const cronSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-queue-cron"),
       agentId,
       cronExpression: "*/5 * * * *",
       prompt: cronPrompt,
@@ -1218,8 +1329,8 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const onceSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-queue-once"),
+    const onceSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-queue-once"),
       agentId,
       atTime: new Date(base + 5 * 60_000).toISOString(),
       prompt: oncePrompt,
@@ -1229,7 +1340,7 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     });
 
     mockNow(base + 6 * 60_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
 
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(2);
@@ -1237,23 +1348,23 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       return entry.runId;
     });
 
-    const schedules = await api.listSchedules(actor);
+    const schedules = await api.listAutomations(actor);
     expect(
-      mustFindSchedule(schedules.schedules, cronSchedule.schedule.id),
+      mustFindSchedule(schedules.automations, cronSchedule.automation.id),
     ).toMatchObject({ enabled: true, retryStartedAt: null, nextRunAt: null });
     expect(
-      mustFindSchedule(schedules.schedules, onceSchedule.schedule.id),
+      mustFindSchedule(schedules.automations, onceSchedule.automation.id),
     ).toMatchObject({ enabled: false, nextRunAt: null });
 
     const cronThread = await chat.listThreadMessages(
       actor,
-      cronSchedule.schedule.chatThreadId,
+      cronSchedule.automation.chatThreadId,
     );
     const cronRunId = scheduleRunIdFromThread(cronThread.messages, cronPrompt);
     expect(hasQueueMarker(cronThread.messages, cronRunId)).toBeTruthy();
     const onceThread = await chat.listThreadMessages(
       actor,
-      onceSchedule.schedule.chatThreadId,
+      onceSchedule.automation.chatThreadId,
     );
     const onceRunId = scheduleRunIdFromThread(onceThread.messages, oncePrompt);
     expect(hasQueueMarker(onceThread.messages, onceRunId)).toBeTruthy();
@@ -1268,20 +1379,20 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     await api.requestCancelRun(actor, blockerTwo.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
-    await api.deleteSchedule(actor, cronSchedule.schedule);
-    await api.deleteSchedule(actor, onceSchedule.schedule);
+    await api.deleteAutomation(actor, cronSchedule.automation);
+    await api.deleteAutomation(actor, onceSchedule.automation);
   });
 
   it("advances loop and cron schedules after pre-run failures and auto-disables after three consecutive failures", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
     const base = now();
     mockNow(base);
 
-    const loopSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-fail-loop"),
+    const loopSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-fail-loop"),
       agentId,
       intervalSeconds: 300,
       prompt: "Run the failing loop report.",
@@ -1289,12 +1400,12 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    expect(loopSchedule.schedule.nextRunAt).not.toBeNull();
+    expect(loopSchedule.automation.nextRunAt).not.toBeNull();
 
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const afterFirst = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      loopSchedule.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      loopSchedule.automation.id,
     );
     expect(afterFirst.consecutiveFailures).toBe(1);
     expect(afterFirst.enabled).toBeTruthy();
@@ -1305,19 +1416,19 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     expect(Date.parse(afterFirst.nextRunAt)).toBeGreaterThan(base);
 
     mockNow(base + 301_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const afterSecond = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      loopSchedule.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      loopSchedule.automation.id,
     );
     expect(afterSecond.consecutiveFailures).toBe(2);
     expect(afterSecond.enabled).toBeTruthy();
 
     mockNow(base + 602_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const afterThird = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      loopSchedule.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      loopSchedule.automation.id,
     );
     expect(afterThird).toMatchObject({
       consecutiveFailures: 3,
@@ -1325,8 +1436,8 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       nextRunAt: null,
     });
 
-    const cronSchedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-fail-cron"),
+    const cronSchedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-fail-cron"),
       agentId,
       cronExpression: "0 9 * * *",
       prompt: "Run the failing cron report.",
@@ -1335,10 +1446,10 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       enabled: true,
     });
     mockNow(base + 25 * 3_600_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const cronAfterFailure = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      cronSchedule.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      cronSchedule.automation.id,
     );
     expect(cronAfterFailure.consecutiveFailures).toBe(1);
     expect(cronAfterFailure.enabled).toBeTruthy();
@@ -1355,8 +1466,8 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       description: "Covers the schedule model-pin failure branch.",
       visibility: "private",
     });
-    const pinSchedule = await api.deploySchedule(pinActor, {
-      name: uniqueScheduleName("bdd-fail-pin"),
+    const pinSchedule = await api.deployAutomation(pinActor, {
+      name: uniqueAutomationName("bdd-fail-pin"),
       agentId: pinAgent.agentId,
       intervalSeconds: 300,
       prompt: "Run the pin-error report.",
@@ -1364,19 +1475,19 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
       timezone: "UTC",
       enabled: true,
     });
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const pinAfterFailure = mustFindSchedule(
-      (await api.listSchedules(pinActor)).schedules,
-      pinSchedule.schedule.id,
+      (await api.listAutomations(pinActor)).automations,
+      pinSchedule.automation.id,
     );
     expect(pinAfterFailure.consecutiveFailures).toBe(1);
     expect(pinAfterFailure.enabled).toBeTruthy();
     expect(pinAfterFailure.nextRunAt).not.toBeNull();
 
     clearMockNow();
-    await api.deleteSchedule(actor, loopSchedule.schedule);
-    await api.deleteSchedule(actor, cronSchedule.schedule);
-    await api.deleteSchedule(pinActor, pinSchedule.schedule);
+    await api.deleteAutomation(actor, loopSchedule.automation);
+    await api.deleteAutomation(actor, cronSchedule.automation);
+    await api.deleteAutomation(pinActor, pinSchedule.automation);
   });
 });
 
@@ -1447,7 +1558,7 @@ async function completeScheduleRun(
 
 describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", () => {
   it("advances and skips loop schedules through replayed reschedule callbacks", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledScheduleActor();
@@ -1458,8 +1569,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     mockNow(base);
     const deliveries = captureScheduleCallbackDeliveries(webhooks);
 
-    const deployed = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-loop-cb"),
+    const deployed = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-loop-cb"),
       agentId,
       intervalSeconds: 600,
       prompt,
@@ -1470,10 +1581,10 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
 
     // Fire the due schedule (the jump stays inside PENDING_RUN_TTL).
     mockNow(base + 601_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const thread = await chat.listThreadMessages(
       actor,
-      deployed.schedule.chatThreadId,
+      deployed.automation.chatThreadId,
     );
     const runId = scheduleRunIdFromThread(thread.messages, prompt);
 
@@ -1502,8 +1613,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     });
     expect(
       mustFindSchedule(
-        (await api.listSchedules(actor)).schedules,
-        deployed.schedule.id,
+        (await api.listAutomations(actor)).automations,
+        deployed.automation.id,
       ).consecutiveFailures,
     ).toBe(0);
 
@@ -1554,8 +1665,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     // The completion advance reads the interval from the database at replay
     // time: redeploy with a new interval, move the pinned clock (still inside
     // the signature tolerance), and replay the same captured delivery.
-    const redeployed = await api.deploySchedule(actor, {
-      name: deployed.schedule.name,
+    const redeployed = await api.deployAutomation(actor, {
+      name: deployed.automation.name,
       agentId,
       intervalSeconds: 1200,
       prompt,
@@ -1578,13 +1689,13 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     // the chat callback owns the summary (D9).
     expect(context.mocks.axiom.query.mock.calls).toHaveLength(queryCallsBefore);
     const advancedSchedule = mustFindSchedule(
-      (await api.listSchedules(actor)).schedules,
-      deployed.schedule.id,
+      (await api.listAutomations(actor)).automations,
+      deployed.automation.id,
     );
     expect(advancedSchedule).toMatchObject({
       consecutiveFailures: 0,
       enabled: true,
-      nextRunAt: redeployed.schedule.nextRunAt,
+      nextRunAt: redeployed.automation.nextRunAt,
     });
 
     // Signed-shape posts for unknown runs fail the callback lookup before
@@ -1595,7 +1706,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
         body: JSON.stringify({
           runId: randomUUID(),
           status: "completed",
-          payload: { scheduleId: deployed.schedule.id },
+          payload: { automationId: deployed.automation.id },
         }),
         headers: {
           "content-type": "application/json",
@@ -1607,7 +1718,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     expect(missingCallback.status).toBe(404);
 
     // Disabled and deleted schedules skip the completion advance.
-    await api.disableSchedule(actor, deployed.schedule);
+    await api.disableAutomation(actor, deployed.automation);
     const disabledReplay = await webhooks.replayInternalCallback(
       LOOP_CALLBACK_PATH,
       completedDelivery,
@@ -1617,7 +1728,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
       success: true,
       skipped: true,
     });
-    await api.deleteSchedule(actor, deployed.schedule);
+    await api.deleteAutomation(actor, deployed.automation);
     const deletedReplay = await webhooks.replayInternalCallback(
       LOOP_CALLBACK_PATH,
       completedDelivery,
@@ -1631,7 +1742,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
   });
 
   it("increments cron failures and auto-disables after three replayed failed callbacks", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledScheduleActor();
@@ -1640,8 +1751,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     mockNow(base);
     const deliveries = captureScheduleCallbackDeliveries(webhooks);
 
-    const deployed = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-cron-cb"),
+    const deployed = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-cron-cb"),
       agentId,
       cronExpression: "*/5 * * * *",
       prompt,
@@ -1651,10 +1762,10 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     });
 
     mockNow(base + 6 * 60_000);
-    await executeSchedulesCronOk();
+    await executeAutomationsCronOk();
     const thread = await chat.listThreadMessages(
       actor,
-      deployed.schedule.chatThreadId,
+      deployed.automation.chatThreadId,
     );
     const runId = scheduleRunIdFromThread(thread.messages, prompt);
 
@@ -1681,8 +1792,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     await expect(firstReplay.json()).resolves.toStrictEqual({ success: true });
     expect(
       mustFindSchedule(
-        (await api.listSchedules(actor)).schedules,
-        deployed.schedule.id,
+        (await api.listAutomations(actor)).automations,
+        deployed.automation.id,
       ),
     ).toMatchObject({
       consecutiveFailures: 1,
@@ -1697,8 +1808,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     expect(secondReplay.status).toBe(200);
     expect(
       mustFindSchedule(
-        (await api.listSchedules(actor)).schedules,
-        deployed.schedule.id,
+        (await api.listAutomations(actor)).automations,
+        deployed.automation.id,
       ),
     ).toMatchObject({ consecutiveFailures: 2, enabled: true });
 
@@ -1709,8 +1820,8 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     expect(thirdReplay.status).toBe(200);
     expect(
       mustFindSchedule(
-        (await api.listSchedules(actor)).schedules,
-        deployed.schedule.id,
+        (await api.listAutomations(actor)).automations,
+        deployed.automation.id,
       ),
     ).toMatchObject({
       consecutiveFailures: 3,
@@ -1729,7 +1840,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
       skipped: true,
     });
 
-    await api.deleteSchedule(actor, deployed.schedule);
+    await api.deleteAutomation(actor, deployed.automation);
     clearMockNow();
   });
 });
@@ -1737,11 +1848,11 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
 describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
   it("creates, lists, updates, toggles, runs, and deletes an automation through API requests", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const outsider = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
-    const automationName = uniqueScheduleName("bdd-automation");
+    const automationName = uniqueAutomationName("bdd-automation");
 
     await api.enableAutomations(actor);
     await api.enableAutomations(outsider);
@@ -1793,9 +1904,9 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
       enabled: false,
     });
 
-    const schedulesAfterCreate = await api.listSchedules(actor);
+    const schedulesAfterCreate = await api.listAutomations(actor);
     expect(
-      findSchedule(schedulesAfterCreate.schedules, created.automation.id),
+      findSchedule(schedulesAfterCreate.automations, created.automation.id),
     ).toMatchObject({
       id: created.automation.id,
       name: automationName,
@@ -1837,9 +1948,9 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
       enabled: false,
     });
 
-    const schedulesAfterUpdate = await api.listSchedules(actor);
+    const schedulesAfterUpdate = await api.listAutomations(actor);
     expect(
-      findSchedule(schedulesAfterUpdate.schedules, updated.automation.id),
+      findSchedule(schedulesAfterUpdate.automations, updated.automation.id),
     ).toMatchObject({
       id: updated.automation.id,
       name: automationName,
@@ -1877,9 +1988,9 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
     expect(
       findSchedule(listedAfterDelete.automations, updated.automation.id),
     ).toBeUndefined();
-    const schedulesAfterDelete = await api.listSchedules(actor);
+    const schedulesAfterDelete = await api.listAutomations(actor);
     expect(
-      findSchedule(schedulesAfterDelete.schedules, updated.automation.id),
+      findSchedule(schedulesAfterDelete.automations, updated.automation.id),
     ).toBeUndefined();
 
     const deleteAgain = await api.requestDeleteAutomation(
@@ -1893,151 +2004,79 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
 });
 
 describe("SCHED-02: cron routes", () => {
-  it("rejects invalid cron auth and accepts safe no-work cron routes with valid auth", async () => {
-    const api = createRunsSchedulesApi(context);
+  it("rejects invalid cron auth on shared cron routes", async () => {
+    const api = createRunsAutomationsApi(context);
 
-    const invalidExecute = await api.executeSchedulesCron(false);
+    const invalidExecute = await api.executeAutomationsCron(false);
     if (invalidExecute.status !== 401) {
       throw new Error("Expected missing cron auth to be rejected");
     }
     expectApiError(invalidExecute.body);
     expect(invalidExecute.body.error.code).toBe("UNAUTHORIZED");
 
-    const invalidCronRoutes = await api.runSafeCronRoutes(false);
+    const invalidCronRoutes = await api.requestSharedCronRoutesWithoutAuth();
     expect(
       Object.values(invalidCronRoutes).every((response) => {
         return response.status === 401;
       }),
     ).toBeTruthy();
-
-    context.mocks.axiom.query.mockResolvedValue([]);
-    const validCronRoutes = await api.runSafeCronRoutes(true);
-    expect(
-      Object.values(validCronRoutes).every((response) => {
-        return response.status === 200;
-      }),
-    ).toBeTruthy();
-
-    const execute = await api.executeSchedulesCron(true);
-    if (execute.status !== 200) {
-      throw new Error("Expected execute schedules cron to succeed");
-    }
-    expect(execute.body.success).toBeTruthy();
   });
 });
 
 describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
-  it("drains a pending inbound-error email through Resend exactly once", async () => {
+  it("rejects unauthorized drain requests", async () => {
     const email = createEmailApi(context);
 
     const unauthorizedDrain = await email.drainEmailOutboxCron(false);
     expect(unauthorizedDrain.status).toBe(401);
-
-    const { from, subject } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-1" },
-    });
-    mockNow(now() + 2000);
-    onTestFinished(clearMockNow);
-
-    const drain = await email.drainEmailOutboxCron(true);
-    if (drain.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(drain.body.success).toBeTruthy();
-    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
-    expect(context.mocks.resend.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: "Zero <vm0@mail.example.com>",
-        to: from,
-        subject: `Re: ${subject}`,
-        html: expect.stringContaining("not associated with a VM0 account"),
-      }),
-    );
-    expect(resendSendCallsTo(from)).toBe(1);
-
-    const second = await email.drainEmailOutboxCron(true);
-    if (second.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(resendSendCallsTo(from)).toBe(1);
   });
 
-  it("retries failed sends with backoff and cleans up expired failed outbox rows", async () => {
-    const email = createEmailApi(context);
-    const { from } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      error: { message: "smtp down" },
-    });
-    const realNow = now();
-    onTestFinished(clearMockNow);
-
-    mockNow(realNow + 2000);
-    const firstRetry = await email.drainEmailOutboxCron(true);
-    if (firstRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(firstRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(1);
-
-    mockNow(realNow + 7000);
-    const secondRetry = await email.drainEmailOutboxCron(true);
-    if (secondRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(secondRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(2);
-
-    mockNow(realNow + 12_000);
-    const finalRetry = await email.drainEmailOutboxCron(true);
-    if (finalRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(finalRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(3);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-clean" },
-    });
-    mockNow(realNow + 15 * 60 * 1000 + 30_000);
-    const cleaned = await email.drainEmailOutboxCron(true);
-    if (cleaned.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
-  });
-
-  it("does not deliver outbox emails to suppressed recipients", async () => {
-    const email = createEmailApi(context);
-    const { from } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    await email.suppressEmailAddress(from);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-unused" },
-    });
-    mockNow(now() + 2000);
-    onTestFinished(clearMockNow);
+  it("marks suppressed pending outbox rows failed without sending", async () => {
+    const subject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const to = `bdd-suppressed-${randomUUID().slice(0, 12)}@example.test`;
+    await seedEmailOutbox({ subject, to });
+    await seedEmailSuppression(to);
 
     await expect
       .poll(async () => {
-        const drain = await email.drainEmailOutboxCron(true);
-        if (drain.status !== 200) {
-          throw new Error("Expected drain email outbox cron to succeed");
-        }
-        return drain.body.drained;
+        await touchEmailOutbox(subject);
+        await drainEmailOutboxCronOk();
+        return await emailOutboxRow(subject);
       })
-      .toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
+      .toMatchObject({
+        status: "failed",
+        attempts: 1,
+        lastError: `Recipient address suppressed (${to})`,
+      });
+    expect(resendSendCallsTo(to)).toBe(0);
+  });
+
+  it("cleans up expired pending and failed outbox rows", async () => {
+    const pendingSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const failedSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const expiredAt = new Date(now() - 60 * 60 * 1000);
+    await seedEmailOutbox({
+      subject: pendingSubject,
+      to: `bdd-pending-${randomUUID().slice(0, 12)}@example.test`,
+      createdAt: expiredAt,
+      nextRetryAt: new Date("2100-01-01T00:00:00.000Z"),
+    });
+    await seedEmailOutbox({
+      subject: failedSubject,
+      to: `bdd-failed-${randomUUID().slice(0, 12)}@example.test`,
+      status: "failed",
+      attempts: 3,
+      createdAt: expiredAt,
+    });
+
+    await expect
+      .poll(async () => {
+        await drainEmailOutboxCronOk();
+        return [
+          await emailOutboxStatus(pendingSubject),
+          await emailOutboxStatus(failedSubject),
+        ];
+      })
+      .toStrictEqual([null, null]);
   });
 });

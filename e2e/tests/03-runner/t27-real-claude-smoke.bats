@@ -28,6 +28,8 @@ setup_file() {
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-real-claude-${UNIQUE_ID}"
     export VOLUME_NAME="e2e-real-claude-vol-${UNIQUE_ID}"
+    # Org provider setup supplies the API key; compose env pins the model.
+    export REAL_CLAUDE_MODEL="claude-haiku-4-5"
 
     # Create volume for claude-files (needed by these tests)
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
@@ -48,6 +50,8 @@ agents:
   ${AGENT_NAME}:
     description: "Real Claude smoke test"
     framework: claude-code
+    environment:
+      ANTHROPIC_MODEL: "$REAL_CLAUDE_MODEL"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -62,6 +66,8 @@ agents:
   ${AGENT_NAME}-flags:
     description: "Real Claude flags test"
     framework: claude-code
+    environment:
+      ANTHROPIC_MODEL: "$REAL_CLAUDE_MODEL"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -76,6 +82,8 @@ agents:
   ${AGENT_NAME}-settings:
     description: "Real Claude settings test"
     framework: claude-code
+    environment:
+      ANTHROPIC_MODEL: "$REAL_CLAUDE_MODEL"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -90,6 +98,8 @@ agents:
   ${AGENT_NAME}-slash:
     description: "Real Claude slash-command no-history test"
     framework: claude-code
+    environment:
+      ANTHROPIC_MODEL: "$REAL_CLAUDE_MODEL"
     volumes:
       - claude-files:/home/user/.claude
 volumes:

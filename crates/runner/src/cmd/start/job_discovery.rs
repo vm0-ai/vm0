@@ -15,7 +15,8 @@ use super::active_sessions::ActiveSessionGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::current_held_session_states;
 use super::idle_lifecycle::{
-    SharedIdlePool, add_run_with_idle_status_snapshot, spawn_idle_destroy_job,
+    SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
+    add_running_run_with_idle_status_snapshot, spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
@@ -131,11 +132,14 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         Some(entry) => entry.sandbox_id(),
         None => SandboxId::new_v4(),
     };
-    if let Some(snapshot) = idle_snapshot {
-        add_run_with_idle_status_snapshot(ctx.status, run_id, sandbox_id, snapshot).await;
-    } else {
-        ctx.status.add_run(run_id, sandbox_id).await;
-    }
+    publish_active_run_status(
+        ctx.status,
+        run_id,
+        sandbox_id,
+        reuse_entry.is_some(),
+        idle_snapshot,
+    )
+    .await;
 
     let job_profile = JobProfile {
         profile_name,
@@ -160,6 +164,24 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         ctx.spawn_ctx,
         ctx.jobs,
     );
+}
+
+async fn publish_active_run_status(
+    status: &StatusTracker,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    reused_idle: bool,
+    idle_snapshot: Option<IdlePoolSnapshot>,
+) {
+    if let Some(snapshot) = idle_snapshot {
+        if reused_idle {
+            add_running_run_with_idle_status_snapshot(status, run_id, sandbox_id, snapshot).await;
+        } else {
+            add_preparing_run_with_idle_status_snapshot(status, run_id, sandbox_id, snapshot).await;
+        }
+    } else {
+        status.add_preparing_run(run_id, sandbox_id).await;
+    }
 }
 
 async fn claim_with_local_admission(
@@ -358,5 +380,67 @@ async fn try_reuse_from_pool(
             );
             (None, job_lease, SandboxReuseResult::PoolMiss, None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::status::IdleVm;
+
+    fn read_active_run_phase(path: &std::path::Path) -> String {
+        let raw = std::fs::read_to_string(path).unwrap();
+        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        status["active_runs"][0]["phase"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    fn idle_snapshot() -> IdlePoolSnapshot {
+        IdlePoolSnapshot {
+            revision: 1,
+            idle_vms: vec![IdleVm {
+                session_id: "sess-removed-from-pool".into(),
+                sandbox_id: SandboxId::new_v4(),
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_active_run_status_writes_preparing_after_reuse_miss_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+
+        publish_active_run_status(
+            &status,
+            RunId::new_v4(),
+            SandboxId::new_v4(),
+            false,
+            Some(idle_snapshot()),
+        )
+        .await;
+
+        assert_eq!(read_active_run_phase(&status_path), "preparing");
+    }
+
+    #[tokio::test]
+    async fn publish_active_run_status_writes_running_for_reused_idle_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+
+        publish_active_run_status(
+            &status,
+            RunId::new_v4(),
+            SandboxId::new_v4(),
+            true,
+            Some(idle_snapshot()),
+        )
+        .await;
+
+        assert_eq!(read_active_run_phase(&status_path), "running");
     }
 }

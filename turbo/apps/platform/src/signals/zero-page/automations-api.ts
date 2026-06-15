@@ -1,30 +1,54 @@
 import {
-  automationsV2MainContract,
-  automationsV2ByRefContract,
-  automationTriggersV2Contract,
-  type AutomationResponseV2,
+  automationsMainContract,
+  automationsByRefContract,
+  automationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
-  type CreateTriggerRequest,
-} from "@vm0/api-contracts/contracts/automations-v2";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+  type UpdateTriggerRequest,
+} from "@vm0/api-contracts/contracts/automations";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
-import type { ScheduleBody } from "./cron.ts";
+import type { AutomationFormBody } from "./cron.ts";
 
 // ---------------------------------------------------------------------------
-// The platform's schedule pages over the Automation resource API.
+// The platform's automation pages over the Automation resource API.
 //
 // The pages keep their single-trigger editing model: each automation they
 // manage carries exactly one time trigger (cron / once / loop), and the view
-// model stays `ScheduleResponse` — the flat projection the pages were built
+// model stays `AutomationView` — the flat projection the pages were built
 // on. These helpers translate between that projection and the resource API
-// (automation + triggers[]), replacing the retired schedule surfaces (#17307).
+// (automation + triggers[]), replacing the retired single-trigger surfaces (#17307).
 // ---------------------------------------------------------------------------
 
 type TimeTrigger = Extract<
   AutomationTriggerResponse,
   { kind: "cron" | "once" | "loop" }
 >;
+
+export type AutomationTriggerReadOnlyReason =
+  | "multiple_triggers"
+  | "unsupported_trigger"
+  | "no_trigger";
+
+export type PlatformAutomationView = Omit<
+  AutomationView,
+  "triggerType" | "timezone" | "consecutiveFailures" | "nextRunAt" | "lastRunAt"
+> & {
+  triggerType: TimeTrigger["kind"] | null;
+  cronExpression: string | null;
+  atTime: string | null;
+  intervalSeconds: number | null;
+  timezone: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  consecutiveFailures: number | null;
+  triggers: AutomationTriggerResponse[];
+  triggerCount: number;
+  triggerKinds: AutomationTriggerResponse["kind"][];
+  triggerEditable: boolean;
+  triggerReadOnlyReason: AutomationTriggerReadOnlyReason | null;
+};
 
 function isTimeTrigger(
   trigger: AutomationTriggerResponse,
@@ -36,42 +60,64 @@ function isTimeTrigger(
   );
 }
 
-function timeTriggerOf(automation: AutomationResponseV2): TimeTrigger | null {
+function timeTriggerOf(automation: AutomationResponse): TimeTrigger | null {
   return automation.triggers.find(isTimeTrigger) ?? null;
 }
 
-// The flat single-trigger projection of an automation: the pages' view model.
-// `retryStartedAt` is vestigial in the contract and always null.
-function toSchedule(
-  automation: AutomationResponseV2,
-  trigger: TimeTrigger,
-): ScheduleResponse {
+function triggerReadOnlyReason(
+  automation: AutomationResponse,
+): AutomationTriggerReadOnlyReason | null {
+  if (automation.triggers.length === 0) {
+    return "no_trigger";
+  }
+  if (automation.triggers.length > 1) {
+    return "multiple_triggers";
+  }
+  return timeTriggerOf(automation) ? null : "unsupported_trigger";
+}
+
+// The platform-local projection of an automation. It keeps the legacy flat time
+// fields for existing list/calendar/detail code, while carrying the resource
+// triggers needed by the new Trigger section.
+function toPlatformAutomationView(
+  automation: AutomationResponse,
+): PlatformAutomationView {
+  const trigger = timeTriggerOf(automation);
+  const readOnlyReason = triggerReadOnlyReason(automation);
   return {
     id: automation.id,
     agentId: automation.agentId,
     displayName: automation.displayName,
     userId: automation.userId,
     name: automation.name,
-    triggerType: trigger.kind,
-    cronExpression: trigger.kind === "cron" ? trigger.cronExpression : null,
-    atTime: trigger.kind === "once" ? trigger.atTime : null,
-    intervalSeconds: trigger.kind === "loop" ? trigger.intervalSeconds : null,
-    timezone: trigger.timezone,
+    triggerType: trigger?.kind ?? null,
+    cronExpression: trigger?.kind === "cron" ? trigger.cronExpression : null,
+    atTime: trigger?.kind === "once" ? trigger.atTime : null,
+    intervalSeconds: trigger?.kind === "loop" ? trigger.intervalSeconds : null,
+    timezone: trigger?.timezone ?? null,
     prompt: automation.instruction,
     description: automation.description,
     appendSystemPrompt: automation.appendSystemPrompt,
     enabled: automation.enabled,
-    nextRunAt: trigger.nextRunAt,
-    lastRunAt: trigger.lastRunAt,
+    nextRunAt: trigger?.nextRunAt ?? null,
+    lastRunAt: trigger?.lastRunAt ?? null,
     retryStartedAt: null,
-    consecutiveFailures: trigger.consecutiveFailures,
+    consecutiveFailures: trigger?.consecutiveFailures ?? null,
     chatThreadId: automation.chatThreadId,
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,
+    triggers: automation.triggers,
+    triggerCount: automation.triggers.length,
+    triggerKinds: automation.triggers.map((t) => {
+      return t.kind;
+    }),
+    triggerEditable: readOnlyReason === null,
+    triggerReadOnlyReason: readOnlyReason,
   };
 }
 
-function toTriggerRequest(body: ScheduleBody): CreateTriggerRequest {
+// The narrower update union also satisfies the create-time trigger body.
+function toTriggerRequest(body: AutomationFormBody): UpdateTriggerRequest {
   if ("cronExpression" in body) {
     return {
       kind: "cron",
@@ -87,7 +133,10 @@ function toTriggerRequest(body: ScheduleBody): CreateTriggerRequest {
 
 // Whether the existing trigger already matches the requested config — if so,
 // the update skips the trigger replacement and keeps the run history state.
-function triggerMatches(trigger: TimeTrigger, body: ScheduleBody): boolean {
+function triggerMatches(
+  trigger: TimeTrigger,
+  body: AutomationFormBody,
+): boolean {
   if ("cronExpression" in body) {
     return (
       trigger.kind === "cron" &&
@@ -107,12 +156,12 @@ function triggerMatches(trigger: TimeTrigger, body: ScheduleBody): boolean {
   );
 }
 
-async function listAutomations(
+async function listAutomationResources(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-): Promise<AutomationResponseV2[]> {
+): Promise<AutomationResponse[]> {
   const result = await accept(
-    client(automationsV2MainContract).list({ fetchOptions }),
+    client(automationsMainContract).list({ fetchOptions }),
     [200],
     { toast: false },
   );
@@ -125,39 +174,39 @@ async function findByNameAndAgent(
   client: ZeroClientFactory,
   name: string,
   agentId: string,
-): Promise<AutomationResponseV2> {
-  const automations = await listAutomations(client);
+): Promise<AutomationResponse> {
+  const automations = await listAutomationResources(client);
   const match = automations.find((a) => {
     return a.name === name && a.agentId === agentId;
   });
   if (!match) {
-    throw new Error(`Schedule not found: ${name}`);
+    throw new Error(`Automation not found: ${name}`);
   }
   return match;
 }
 
-/** List the schedule-page automations (those carrying a time trigger). */
-export async function listSchedules(
+/** List the automation-page automations (those carrying a time trigger). */
+export async function listAutomations(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-): Promise<ScheduleResponse[]> {
-  const automations = await listAutomations(client, fetchOptions);
-  const schedules: ScheduleResponse[] = [];
+  options?: { includeUnsupported?: boolean },
+): Promise<PlatformAutomationView[]> {
+  const automations = await listAutomationResources(client, fetchOptions);
+  const views: PlatformAutomationView[] = [];
   for (const automation of automations) {
-    const trigger = timeTriggerOf(automation);
-    if (trigger) {
-      schedules.push(toSchedule(automation, trigger));
+    if (options?.includeUnsupported || timeTriggerOf(automation)) {
+      views.push(toPlatformAutomationView(automation));
     }
   }
-  return schedules;
+  return views;
 }
 
-async function createSchedule(
+async function createAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
 ): Promise<{ id: string; created: boolean }> {
   const result = await accept(
-    client(automationsV2MainContract).create({
+    client(automationsMainContract).create({
       body: {
         name: body.name,
         agentId: body.agentId,
@@ -174,14 +223,23 @@ async function createSchedule(
   return { id: result.body.automation.id, created: true };
 }
 
-async function updateSchedule(
+async function updateAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
+  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findByNameAndAgent(client, body.name, body.agentId);
+  if (
+    options?.requireEditableTrigger &&
+    triggerReadOnlyReason(existing) !== null
+  ) {
+    throw new Error(
+      "This automation has triggers managed outside platform. Edit the trigger from the CLI or API.",
+    );
+  }
 
   await accept(
-    client(automationsV2ByRefContract).update({
+    client(automationsByRefContract).update({
       params: { ref: existing.id },
       body: {
         instruction: body.prompt,
@@ -191,31 +249,31 @@ async function updateSchedule(
     [200],
   );
 
-  // Replace the time trigger when its config changed. The new trigger is
-  // added before the stale one is removed, so a failure in between never
-  // leaves the automation triggerless (a triggerless automation vanishes
-  // from the schedule pages); the sweep then also collects duplicates left
-  // behind by an earlier interrupted replacement.
+  // Replace the time trigger's schedule in place when its config changed:
+  // one atomic PATCH that keeps the trigger's id and run history. A
+  // triggerless automation (not visible on these pages) gets a fresh
+  // trigger instead.
   const timeTriggers = existing.triggers.filter(isTimeTrigger);
   const kept = timeTriggers.find((trigger) => {
     return triggerMatches(trigger, body);
   });
   if (!kept) {
-    await accept(
-      client(automationsV2ByRefContract).addTrigger({
-        params: { ref: existing.id },
-        body: toTriggerRequest(body),
-      }),
-      [201],
-    );
-  }
-  for (const stale of timeTriggers) {
-    if (stale !== kept) {
+    const [current] = timeTriggers;
+    if (current) {
       await accept(
-        client(automationTriggersV2Contract).remove({
-          params: { id: stale.id },
+        client(automationTriggersContract).update({
+          params: { id: current.id },
+          body: toTriggerRequest(body),
         }),
-        [204],
+        [200],
+      );
+    } else {
+      await accept(
+        client(automationsByRefContract).addTrigger({
+          params: { ref: existing.id },
+          body: toTriggerRequest(body),
+        }),
+        [201],
       );
     }
   }
@@ -224,25 +282,50 @@ async function updateSchedule(
 }
 
 /**
- * Upsert a schedule-shaped automation, keyed on (agent, name). Updates patch
+ * Upsert a single-time-trigger automation, keyed on (agent, name). Updates patch
  * the intent fields and replace the time trigger when its config changed.
  */
-export function deploySchedule(
+export function deployAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
   isUpdate: boolean,
+  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
-  return isUpdate ? updateSchedule(client, body) : createSchedule(client, body);
+  return isUpdate
+    ? updateAutomation(client, body, options)
+    : createAutomation(client, body);
+}
+
+export async function updateAutomationIntent(
+  client: ZeroClientFactory,
+  params: {
+    id: string;
+    prompt?: string;
+    description?: string | null;
+  },
+): Promise<void> {
+  await accept(
+    client(automationsByRefContract).update({
+      params: { ref: params.id },
+      body: {
+        ...(params.prompt !== undefined && { instruction: params.prompt }),
+        ...(params.description !== undefined && {
+          description: params.description,
+        }),
+      },
+    }),
+    [200],
+  );
 }
 
 /**
- * Enable or disable a schedule by name, with the legacy surface's enable
+ * Enable or disable an automation by name, with the legacy surface's enable
  * semantics: the time trigger is re-enabled first (reviving an auto-disabled
- * schedule and resetting its failure count; an expired one-time trigger is
+ * automation and resetting its failure count; an expired one-time trigger is
  * rejected before any flag flips), then the automation resumes — which
  * recomputes the trigger's next run.
  */
-export async function setScheduleEnabled(
+export async function setAutomationEnabled(
   client: ZeroClientFactory,
   params: { name: string; agentId: string; enabled: boolean },
 ): Promise<void> {
@@ -255,7 +338,7 @@ export async function setScheduleEnabled(
     const trigger = timeTriggerOf(automation);
     if (trigger) {
       await accept(
-        client(automationTriggersV2Contract).enable({
+        client(automationTriggersContract).enable({
           params: { id: trigger.id },
           body: undefined,
         }),
@@ -265,7 +348,7 @@ export async function setScheduleEnabled(
   }
   const action = params.enabled ? "enable" : "disable";
   await accept(
-    client(automationsV2ByRefContract)[action]({
+    client(automationsByRefContract)[action]({
       params: { ref: automation.id },
       body: undefined,
     }),
@@ -273,8 +356,8 @@ export async function setScheduleEnabled(
   );
 }
 
-/** Delete a schedule by name. */
-export async function deleteSchedule(
+/** Delete an automation by name. */
+export async function deleteAutomation(
   client: ZeroClientFactory,
   params: { name: string; agentId: string },
 ): Promise<void> {
@@ -284,20 +367,20 @@ export async function deleteSchedule(
     params.agentId,
   );
   await accept(
-    client(automationsV2ByRefContract).delete({
+    client(automationsByRefContract).delete({
       params: { ref: automation.id },
     }),
     [204],
   );
 }
 
-/** Execute a schedule immediately; returns the created run id. */
-export async function runScheduleNow(
+/** Execute an automation immediately; returns the created run id. */
+export async function runAutomationNow(
   client: ZeroClientFactory,
   id: string,
 ): Promise<string> {
   const result = await accept(
-    client(automationsV2ByRefContract).run({
+    client(automationsByRefContract).run({
       params: { ref: id },
       body: undefined,
     }),

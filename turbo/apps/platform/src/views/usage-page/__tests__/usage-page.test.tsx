@@ -17,6 +17,10 @@ import {
 
 const context = testContext();
 
+beforeEach(() => {
+  mockNow();
+});
+
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -58,9 +62,9 @@ describe("/usage page", () => {
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
       return respond(200, {
         buckets: [],
-        schedules: [],
-        scheduleOtherCount: 0,
-        scheduleOtherCredits: 0,
+        automations: [],
+        automationOtherCount: 0,
+        automationOtherCredits: 0,
         chats: [],
         chatOtherCount: 0,
         chatOtherCredits: 0,
@@ -77,7 +81,7 @@ describe("/usage page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("No schedules used in this period"),
+        screen.getByText("No automations used in this period"),
       ).toBeInTheDocument();
       expect(screen.getByText("No chats in this period")).toBeInTheDocument();
     });
@@ -118,10 +122,12 @@ describe("/usage page", () => {
     const creditsTotals = () => {
       return screen.getByRole("region", { name: "Credits totals" });
     };
-    expect(within(creditsTotals()).getByText("1.3K")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Today")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Chat")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Slack")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(creditsTotals()).getByText("1.3K")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Today")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Chat")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Slack")).toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();

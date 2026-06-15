@@ -122,6 +122,17 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 
 const server = setupServer();
 
+const YOUTUBE_OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/youtube",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
+  "https://www.googleapis.com/auth/youtubepartner",
+  "https://www.googleapis.com/auth/youtubepartner-channel-audit",
+  "https://www.googleapis.com/auth/userinfo.email",
+] as const;
+
 function connectorSecretTargetName(
   target: ConnectorOutputTarget | undefined,
 ): string | undefined {
@@ -238,6 +249,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   webflow: "https://webflow.com/oauth/authorize",
   x: "https://x.com/i/oauth2/authorize",
   xero: "https://login.xero.com/identity/connect/authorize",
+  youtube: "https://accounts.google.com/o/oauth2/v2/auth",
   zoom: "https://zoom.us/oauth/authorize",
 } as const satisfies Record<AuthCodeGrantConnectorType, string>;
 
@@ -2549,10 +2561,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Cloudflare auth methods by default", () => {
-    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+  it("keeps Cloudflare API-token configured but hidden by default", () => {
+    expect(getConfiguredConnectorAuthMethodIds("cloudflare")).toStrictEqual([
       "oauth",
       "api-token",
+    ]);
+    expect(getConnectorAuthMethod("cloudflare", "api-token")).toMatchObject({
+      visible: false,
+      grant: { kind: "manual" },
+    });
+    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "oauth",
     ]);
   });
 
@@ -2613,6 +2632,18 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes YouTube OAuth only when its switch is enabled", () => {
+    expect(getConfiguredConnectorAuthMethodIds("youtube")).toStrictEqual([
+      "oauth",
+    ]);
+    expect(getAvailableConnectorAuthMethodIds("youtube", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("youtube", {
+        [FeatureSwitchKey.YouTubeConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Doubao API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("doubao", {})).toStrictEqual([
       "api-token",
@@ -2633,6 +2664,9 @@ describe("getConnectorAuthMethodEnvBindings", () => {
     });
     expect(getConnectorAuthMethodEnvBindings("ahrefs", "api-token")).toEqual({
       AHREFS_TOKEN: "$secrets.AHREFS_TOKEN",
+    });
+    expect(getConnectorAuthMethodEnvBindings("youtube", "oauth")).toEqual({
+      YOUTUBE_TOKEN: "$secrets.YOUTUBE_ACCESS_TOKEN",
     });
   });
 
@@ -3111,6 +3145,10 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       "GOOGLE_ADS_ACCESS_TOKEN",
       "GOOGLE_ADS_REFRESH_TOKEN",
     ]);
+    expect(getConnectorOwnedSecretNames("youtube", "oauth")).toStrictEqual([
+      "YOUTUBE_ACCESS_TOKEN",
+      "YOUTUBE_REFRESH_TOKEN",
+    ]);
   });
 
   it("keeps Meta Ads runtime token connector-owned", () => {
@@ -3154,6 +3192,25 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("youtube", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["YOUTUBE_ACCESS_TOKEN", "YOUTUBE_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "YOUTUBE_TOKEN",
+          valueRef: "$secrets.YOUTUBE_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "YOUTUBE_ACCESS_TOKEN",
           },
         },
       ],
@@ -3515,6 +3572,17 @@ describe("getConnectorAuthMethodRevokeMetadata", () => {
         },
       },
     });
+    expect(
+      getConnectorAuthMethodRevokeMetadata("youtube", "oauth"),
+    ).toStrictEqual({
+      kind: "token-revoke",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          secretName: "YOUTUBE_REFRESH_TOKEN",
+        },
+      },
+    });
   });
 });
 
@@ -3644,6 +3712,17 @@ describe("getConnectorEnvBindingEntries", () => {
       "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
     });
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
+  });
+
+  it("declares generated YouTube firewall bearer auth headers", () => {
+    const firewall = getConnectorFirewall("youtube");
+    expect(firewall.apis).toHaveLength(3);
+    for (const api of firewall.apis) {
+      expect(api.auth?.headers).toStrictEqual({
+        Authorization: "Bearer ${{ secrets.YOUTUBE_TOKEN }}",
+      });
+      expect(api.auth?.headers).not.toHaveProperty("X-Goog-Api-Key");
+    }
   });
 
   it("OAuth auth-code auth methods keep the documented secret naming convention", () => {
@@ -4075,6 +4154,16 @@ describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
       "https://www.googleapis.com/auth/sqlservice.login",
       "https://www.googleapis.com/auth/compute",
     ]);
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - youtube scopes", () => {
+  it("uses the official YouTube Data API OAuth scopes", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig("youtube", "oauth");
+    const scopes = getConnectorAuthMethodGrantScopes("youtube", "oauth");
+
+    expect(scopes).toStrictEqual(grant?.scopes);
+    expect(scopes).toStrictEqual([...YOUTUBE_OAUTH_SCOPES]);
   });
 });
 

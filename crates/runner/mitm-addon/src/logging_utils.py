@@ -146,6 +146,22 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
         ("firewall_error", _metadata_optional_str(meta, metadata_keys.FIREWALL_ERROR)),
         (
+            "connector_diagnostic_type",
+            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),
+        ),
+        (
+            "connector_diagnostic_reason",
+            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_REASON),
+        ),
+        (
+            "connector_diagnostic_env_names",
+            _metadata_str_list(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES),
+        ),
+        (
+            "connector_diagnostic_base",
+            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_BASE),
+        ),
+        (
             "auth_resolved_secrets",
             _metadata_str_list(meta, metadata_keys.AUTH_RESOLVED_SECRETS),
         ),

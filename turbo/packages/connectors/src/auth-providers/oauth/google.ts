@@ -6,6 +6,8 @@ import { throwOAuthError } from "./error";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
+const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+
 const GOOGLE_OAUTH_AUTHORIZATION_URL =
   "https://accounts.google.com/o/oauth2/v2/auth";
 
@@ -169,6 +171,25 @@ export async function refreshGoogleToken(
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
   };
+}
+
+export async function revokeGoogleToken(
+  connectorType: GoogleOAuthConnectorType,
+  token: string,
+): Promise<void> {
+  const response = await fetch(GOOGLE_OAUTH_REVOKE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      token,
+    }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError(connectorType, "revoke", response);
+  }
 }
 
 /**

@@ -23,6 +23,7 @@ export {
 } from "./presentation-template-items";
 export {
   ILLUSTRATION_ASSET_BASE,
+  illustrationAssetUrl,
   ILLUSTRATION_STYLES,
   ILLUSTRATION_TEMPLATE_ITEMS,
   type IllustrationStyle,
@@ -37,6 +38,10 @@ export {
   type VideoStyleDimensions,
   type VideoStyleCategory,
 } from "./video-style-preset-items";
+export {
+  r2ImageTransformUrl,
+  type R2ImageTransformOptions,
+} from "./r2-image-transform";
 export {
   initContract,
   apiErrorSchema,
@@ -342,7 +347,7 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  scheduleResponseSchema,
+  automationViewSchema,
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroUserPreferencesContract,
@@ -657,7 +662,7 @@ export {
   type ZeroLogsSearchContract,
   type RunContextResponse,
   type RunRunnerResponse,
-  type ScheduleResponse,
+  type AutomationView,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroUserPreferencesContract,
@@ -712,7 +717,7 @@ export {
   type ZeroUsageInsightContract,
   type UsageInsightResponse,
   type UsageInsightBucket,
-  type UsageInsightScheduleRow,
+  type UsageInsightAutomationRow,
   type UsageInsightChatRow,
   type ZeroTeamContract,
   type TeamComposeItem,

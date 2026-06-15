@@ -27,9 +27,9 @@ Request context
   handling. Read by body capture to mark oversized request bodies truncated.
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
   ``"claude-code"``. Read by model-provider usage protocol selection.
-- ``BROWSER_USER_AGENT``: ``bool`` written by ``request()`` for browser-looking
-  user agents. Read by request dispatch to skip auth mutation for that flow and
-  by network-log entry construction.
+- ``BROWSER_USER_AGENT``: ``bool`` written during request classification for
+  browser-looking user agents. Read by request dispatch to skip firewall
+  matching and credential mutation, and by network-log entry construction.
 
 Timing context
 --------------
@@ -42,8 +42,8 @@ Timing context
 Firewall and auth context
 -------------------------
 - ``FIREWALL_BASE``: ``str`` matched firewall base. Written by firewall match,
-  browser passthrough, matched firewall block, and auth paths. Read by logging,
-  auth cache invalidation, usage dispatch, and local error responses.
+  matched firewall block, and auth paths. Read by logging, auth cache
+  invalidation, usage dispatch, and local error responses.
 - ``FIREWALL_API_ID``: ``str`` API id or base fallback from the matched
   firewall. Read by auth handling and 401 cache invalidation.
 - ``FIREWALL_NAME``: ``str`` firewall connector/model name. Read by logging,
@@ -63,6 +63,16 @@ Firewall and auth context
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
   registry failures. It is orthogonal to ``FIREWALL_ACTION``: an ``ALLOW``
   decision can still have an auth or forwarding error.
+- ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector type for a generic
+  connector availability diagnostic. The request hook records this for an
+  inactive built-in connector candidate; network logs expose it only after the
+  response/error hook turns the candidate into an agent-visible diagnostic.
+- ``CONNECTOR_DIAGNOSTIC_REASON``: optional ``str`` generic diagnostic reason.
+  First-version diagnostics use ``not_configured_for_run``.
+- ``CONNECTOR_DIAGNOSTIC_ENV_NAMES``: optional ``list[str]`` env aliases that
+  would normally expose connector credentials. Names only; never values.
+- ``CONNECTOR_DIAGNOSTIC_BASE``: optional ``str`` matched static built-in base
+  URL that produced the diagnostic.
 - ``AUTH_RESOLVED_SECRETS``: ``list[str]`` from successful auth resolution.
   Read by network-log firewall metadata.
 - ``AUTH_REFRESHED_CONNECTORS``: ``list[str]`` from successful auth resolution.
@@ -96,8 +106,8 @@ Model-provider usage
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
   usage extraction and read by model usage-event and observation reporters.
-  Retained after terminal reporting for diagnostics, like
-  ``MODEL_PROVIDER_USAGE``.
+  Entries may be removed before ``websocket_end()`` once a terminal WebSocket
+  usage frame is accepted into the source-preserving usage buffer.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
   Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
@@ -141,6 +151,10 @@ FIREWALL_PARAMS: Final = "firewall_params"
 FIREWALL_BILLABLE: Final = "firewall_billable"
 FIREWALL_ACTION: Final = "firewall_action"
 FIREWALL_ERROR: Final = "firewall_error"
+CONNECTOR_DIAGNOSTIC_TYPE: Final = "connector_diagnostic_type"
+CONNECTOR_DIAGNOSTIC_REASON: Final = "connector_diagnostic_reason"
+CONNECTOR_DIAGNOSTIC_ENV_NAMES: Final = "connector_diagnostic_env_names"
+CONNECTOR_DIAGNOSTIC_BASE: Final = "connector_diagnostic_base"
 AUTH_RESOLVED_SECRETS: Final = "auth_resolved_secrets"
 AUTH_REFRESHED_CONNECTORS: Final = "auth_refreshed_connectors"
 AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"

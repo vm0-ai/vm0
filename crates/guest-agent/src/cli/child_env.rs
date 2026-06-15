@@ -8,7 +8,7 @@ const RUNNER_VISIBLE_CHILD_ENV_KEYS: &[&str] = &[
     // The sandbox CLI needs the same API origin as the guest-agent in local
     // development. Keep this list intentionally narrow: tokens and other VM0
     // bootstrap controls must stay private to the guest-agent.
-    "VM0_API_URL",
+    guest_contracts::env::API_URL_ENV,
 ];
 const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "USER",
@@ -28,19 +28,6 @@ const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
 ];
 
 pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
-    cmd.env_clear();
-    for (key, value) in base_child_env() {
-        cmd.env(key, value);
-    }
-    for (key, value) in env::user_env() {
-        cmd.env(key, value);
-    }
-    apply_runner_visible_env(|key, value| {
-        cmd.env(key, value);
-    });
-}
-
-pub(super) fn apply_to_std_command(cmd: &mut std::process::Command) {
     cmd.env_clear();
     for (key, value) in base_child_env() {
         cmd.env(key, value);

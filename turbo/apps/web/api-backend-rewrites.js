@@ -21,6 +21,10 @@ const ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE =
   "/api/zero/desktop/updates/:channel/:platform/:arch/release";
 const ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE =
   /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/release$/;
+const ZERO_DESKTOP_UPDATE_DMG_REWRITE_SOURCE =
+  "/api/zero/desktop/updates/:channel/:platform/:arch/dmg";
+const ZERO_DESKTOP_UPDATE_DMG_PATH_RE =
+  /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/dmg$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -370,6 +374,8 @@ const ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/model-selection";
 const ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/model-selection$/;
+const ZERO_CHAT_THREAD_DRAFTS_REWRITE_SOURCE = "/api/zero/chat-thread-drafts";
+const ZERO_CHAT_THREAD_UNREADS_REWRITE_SOURCE = "/api/zero/chat-thread-unreads";
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH_RE = /^\/api\/zero\/chat-threads$/;
 const ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE = "/api/zero/chat-threads/:id";
@@ -453,6 +459,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE,
     "/api/zero/desktop/updates/:channel/:platform/:arch/release",
     ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE,
+  ],
+  [
+    ZERO_DESKTOP_UPDATE_DMG_REWRITE_SOURCE,
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+    ZERO_DESKTOP_UPDATE_DMG_PATH_RE,
   ],
   [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
@@ -1001,6 +1012,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/computer-use/write-commands",
   ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
+  ["/api/zero/chat-thread-drafts", "/api/zero/chat-thread-drafts"],
+  ["/api/zero/chat-thread-unreads", "/api/zero/chat-thread-unreads"],
   [
     ZERO_CHAT_THREADS_REWRITE_SOURCE,
     "/api/zero/chat-threads",
@@ -1031,6 +1044,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/chat-threads/:id/model-selection",
     ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE,
   ],
+  [ZERO_CHAT_THREAD_DRAFTS_REWRITE_SOURCE, "/api/zero/chat-thread-drafts"],
+  [ZERO_CHAT_THREAD_UNREADS_REWRITE_SOURCE, "/api/zero/chat-thread-unreads"],
   [
     ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id",
@@ -1070,7 +1085,6 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/voice-io/quota", "/api/zero/voice-io/quota"],
   ["/api/zero/voice-io/speech", "/api/zero/voice-io/speech"],
   ["/api/zero/voice-io/stt", "/api/zero/voice-io/stt"],
-  ["/api/zero/voice-io/tts", "/api/zero/voice-io/tts"],
   [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",

@@ -803,7 +803,7 @@ mod tests {
         unsafe {
             std::env::set_var("VM0_RUN_ID", "checkpoint-missing-mount");
             std::env::set_var(
-                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 dir.path().join("runtime"),
             );
         }

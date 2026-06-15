@@ -21,95 +21,14 @@
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { createRule } from "../utils.ts";
+import { createRule, findTypeRefPath } from "../utils.ts";
 
 interface Options {
   allowedFunctions?: string[];
 }
 
 type MessageIds = "noStoreInParams" | "noStoreInObjectParams";
-
-// Returns the dot-path where Store was found, or null if not found.
-// path=[] means Store is the direct type; path=["store"] means { store: Store }.
-//
-// Note: checks type annotation text only, not symbol origin. False positives are
-// possible for user-defined types named Store from non-ccstate packages, but are
-// acceptable in this codebase where this name is ccstate-specific by convention.
-// Also note: type aliases (e.g. `type MyStore = Store; fn(s: MyStore)`) are not
-// detected — only explicit Store annotations are matched.
-function findStorePath(
-  typeNode: TSESTree.TypeNode,
-  path: string[] = [],
-  depth = 0,
-): string[] | null {
-  if (depth > 3) {
-    return null;
-  }
-
-  switch (typeNode.type) {
-    case AST_NODE_TYPES.TSTypeReference: {
-      const { typeName } = typeNode;
-      if (
-        typeName.type === AST_NODE_TYPES.Identifier &&
-        typeName.name === "Store"
-      ) {
-        return path;
-      }
-      // Recurse into generic type arguments: e.g. Array<Store>, Map<string, Store>
-      if (typeNode.typeArguments) {
-        for (const arg of typeNode.typeArguments.params) {
-          const found = findStorePath(arg, path, depth + 1);
-          if (found !== null) {
-            return found;
-          }
-        }
-      }
-      return null;
-    }
-
-    case AST_NODE_TYPES.TSUnionType:
-    case AST_NODE_TYPES.TSIntersectionType: {
-      for (const t of typeNode.types) {
-        const found = findStorePath(t, path, depth + 1);
-        if (found !== null) {
-          return found;
-        }
-      }
-      return null;
-    }
-
-    case AST_NODE_TYPES.TSArrayType: {
-      return findStorePath(typeNode.elementType, [...path, "[]"], depth + 1);
-    }
-
-    case AST_NODE_TYPES.TSTypeLiteral: {
-      for (const member of typeNode.members) {
-        if (
-          member.type === AST_NODE_TYPES.TSPropertySignature &&
-          member.typeAnnotation
-        ) {
-          const propName =
-            member.key.type === AST_NODE_TYPES.Identifier
-              ? member.key.name
-              : "?";
-          const found = findStorePath(
-            member.typeAnnotation.typeAnnotation,
-            [...path, propName],
-            depth + 1,
-          );
-          if (found !== null) {
-            return found;
-          }
-        }
-      }
-      return null;
-    }
-
-    default: {
-      return null;
-    }
-  }
-}
+const STORE_TYPES = new Set(["Store"]);
 
 export default createRule<[Options?], MessageIds>({
   name: "no-store-in-params",
@@ -154,12 +73,12 @@ export default createRule<[Options?], MessageIds>({
         return;
       }
 
-      const storePath = findStorePath(ann);
-      if (storePath === null) {
+      const storeRef = findTypeRefPath(ann, STORE_TYPES);
+      if (storeRef === null) {
         return;
       }
 
-      if (storePath.length === 0) {
+      if (storeRef.path.length === 0) {
         context.report({
           node: param,
           messageId: "noStoreInParams",
@@ -169,7 +88,7 @@ export default createRule<[Options?], MessageIds>({
         context.report({
           node: param,
           messageId: "noStoreInObjectParams",
-          data: { param: param.name, property: storePath.join(".") },
+          data: { param: param.name, property: storeRef.path.join(".") },
         });
       }
     }

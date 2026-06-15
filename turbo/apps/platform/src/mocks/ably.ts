@@ -8,7 +8,7 @@
  *
  * Provides a fake Realtime client that immediately "connects" and a fake
  * channel that records subscribe/unsubscribe calls. Test code can call
- * `triggerAblyEvent(topic)` to fire all callbacks registered for a topic,
+ * `triggerAblyEvent(topic, data)` to fire all callbacks registered for a topic,
  * simulating a server-side publish.
  *
  * `triggerAblyReconnect()` fires a second `connected` event on every
@@ -22,7 +22,7 @@
  * cached one.
  */
 
-type Callback = (message: { name: string; data: null }) => void;
+type Callback = (message: { name: string; data: unknown }) => void;
 type ConnectionListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
@@ -50,11 +50,11 @@ let nextSubscribeError: Error | null = null;
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
  * to simulate a server-side Ably publish.
  */
-export function triggerAblyEvent(topic: string): void {
+export function triggerAblyEvent(topic: string, data: unknown = null): void {
   const cbs = subscriptions.get(topic);
   if (cbs) {
     for (const cb of cbs) {
-      cb({ name: topic, data: null });
+      cb({ name: topic, data });
     }
   }
 }

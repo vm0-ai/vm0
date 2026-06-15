@@ -111,11 +111,11 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.4"
-CLAUDE_CODE_VERSION="2.1.174"
+CLAUDE_CODE_VERSION="2.1.177"
 CODEX_CLI_VERSION="0.139.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
-AGENT_BROWSER_VERSION="0.27.2"
+AGENT_BROWSER_VERSION="0.27.3"
 PNPM_VERSION="11.6.0"
 
 # ---------------------------------------------------------------------------
@@ -330,9 +330,15 @@ install_packages() {
   chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list
+
+  # PostgreSQL Global Development Group repository (PostgreSQL 18)
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
+  echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
   '
 
-  # Step 3: Install all Ubuntu packages in single pass.
+  # Step 3: Install all APT packages in single pass.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
@@ -345,7 +351,7 @@ install_packages() {
     php php-cli php-common php-curl php-mbstring php-xml php-zip \
     default-jdk maven gradle \
     gcc g++ clang make cmake \
-    postgresql-16 postgresql-contrib \
+    postgresql-18 postgresql-contrib-18 \
     redis-server \
     gh
 
@@ -354,20 +360,30 @@ install_packages() {
        /etc/apt/preferences.d/nodesource \
        /usr/share/keyrings/nodesource.gpg \
        /etc/apt/sources.list.d/github-cli.list \
-       /usr/share/keyrings/githubcli-archive-keyring.gpg
+       /usr/share/keyrings/githubcli-archive-keyring.gpg \
+       /etc/apt/sources.list.d/pgdg.list \
+       /usr/share/keyrings/postgresql.gpg
   rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 
-  # Chromium from Debian Bookworm (Ubuntu 24.04 snap stub does not work).
+  # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
-    curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
+    {
+      curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
+      curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc
+    } \
       | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
-    echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" \
-      > /etc/apt/sources.list.d/debian-bookworm.list
+    cat > /etc/apt/sources.list.d/debian-bookworm.list <<EOF
+deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main
+deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.org/debian-security bookworm-security main
+EOF
     apt-get update
-    apt-get install -y -t bookworm chromium
+    apt-get install -y -t bookworm \
+      chromium/bookworm-security \
+      chromium-common/bookworm-security \
+      chromium-sandbox/bookworm-security
     rm -f /etc/apt/sources.list.d/debian-bookworm.list \
          /usr/share/keyrings/debian-bookworm.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*

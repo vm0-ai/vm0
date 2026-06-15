@@ -35,11 +35,12 @@ import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
 import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
-import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
-import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
+import { setupAutomationsPage$ } from "./automation-page/automation-page-setup.ts";
+import { setupAutomationDetailPage$ } from "./automation-page/automation-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
+import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
 import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
@@ -127,6 +128,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.chat,
     setup: setupAuthSidebarPageWrapper(setupChatPage$),
+  },
+  {
+    path: ROUTES.prompt,
+    setup: setupAuthPageWrapper(setupPromptPage$),
   },
   {
     path: ROUTES.ideas,
@@ -229,12 +234,12 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
   },
   {
-    path: ROUTES.scheduleDetail,
-    setup: setupAuthSidebarPageWrapper(setupScheduleDetailPage$),
+    path: ROUTES.automationDetail,
+    setup: setupAuthSidebarPageWrapper(setupAutomationDetailPage$),
   },
   {
-    path: ROUTES.schedules,
-    setup: setupAuthSidebarPageWrapper(setupSchedulePage$),
+    path: ROUTES.automations,
+    setup: setupAuthSidebarPageWrapper(setupAutomationsPage$),
   },
   {
     path: ROUTES.lab,
@@ -295,18 +300,6 @@ const ROUTE_CONFIG = [
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
-  { path: "/schedule", setup: redirectTo(ROUTES.schedules) },
-  {
-    path: "/schedule/:id",
-    setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
-  },
-  // The surface moved from /schedules to /automations (#17307); old links
-  // and bookmarks redirect.
-  { path: "/schedules", setup: redirectTo(ROUTES.schedules) },
-  {
-    path: "/schedules/:id",
-    setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
-  },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {

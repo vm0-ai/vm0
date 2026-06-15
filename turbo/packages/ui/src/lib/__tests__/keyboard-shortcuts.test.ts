@@ -195,6 +195,10 @@ describe("getShortcutParts", () => {
     expect(getShortcutParts("space")).toEqual(["␣"]);
   });
 
+  it("renders F2 as an uppercase function key", () => {
+    expect(getShortcutParts("f2")).toEqual(["F2"]);
+  });
+
   it("renders mod as Ctrl in non-Mac environment", () => {
     expect(getShortcutParts("mod+k")).toEqual(["Ctrl", "k"]);
   });

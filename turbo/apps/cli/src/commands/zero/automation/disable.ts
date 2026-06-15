@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { disableAutomationV2 } from "../../../lib/api";
+import { disableAutomation } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const disableCommand = new Command()
@@ -18,7 +18,7 @@ Notes:
   )
   .action(
     withErrorHandler(async (ref: string) => {
-      const automation = await disableAutomationV2(ref);
+      const automation = await disableAutomation(ref);
 
       console.log(chalk.green(`✓ Automation "${automation.name}" disabled`));
     }),

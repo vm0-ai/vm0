@@ -622,6 +622,25 @@ const parentCommand$ = command(async ({ set }, signal: AbortSignal) => {
 });
 ```
 
+### Do not wrap accessors in domain closures
+
+Wrapping `get`/`set` in helper-specific closures is the same contract break as
+passing them directly. Avoid `getFlow`/`setFlow`-style arguments, args-object
+properties such as `{ setFlow: set }`, and shorthand objects such as `{ set }`.
+
+Prefer one of these patterns:
+
+- Pass atoms (`State`, `Computed`, `Command`) into a sub-command and read/write
+  them inside that command.
+- Use a signal factory when two feature variants need isolated state but shared
+  command logic.
+
+The device-auth signals are the worked example: the Codex and Claude Code flows
+instantiate one factory per org/personal variant, while API calls live in
+module-scope sub-commands. `ccstate/no-getter-setter-params` catches explicit
+`Getter`/`Setter` helper parameters, and `ccstate/no-accessor-escape` catches
+call sites that pass, store, alias, return, or object-wrap callback accessors.
+
 ### When to use `signal.throwIfAborted()`
 
 Use it **after any `await` that does NOT accept a signal** — i.e., after operations that will complete even if the caller wants to abort:

@@ -1,0 +1,2 @@
+ALTER TABLE "chat_messages" ADD COLUMN "usage_payload" jsonb;--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_messages_usage_run_id_unique" ON "chat_messages" USING btree ("run_id") WHERE "chat_messages"."usage_payload" IS NOT NULL;

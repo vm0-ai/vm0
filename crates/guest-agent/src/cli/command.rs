@@ -41,59 +41,63 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 }
 
 /// Build the argument list from explicit parameters (testable).
-fn build_claude_args(
-    resume_id: &str,
-    append_system_prompt: &str,
-    disallowed_tools: &str,
-    tools: &str,
-    settings: &str,
-    prompt: &str,
-) -> Vec<String> {
+struct ClaudeArgsConfig<'a> {
+    resume_id: &'a str,
+    append_system_prompt: &'a str,
+    disallowed_tools: &'a str,
+    tools: &'a str,
+    settings: &'a str,
+    include_partial_messages: bool,
+}
+
+fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
     let mut args = vec![
         "--print".to_string(),
         "--verbose".to_string(),
+        "--input-format".to_string(),
+        "stream-json".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
 
-    if !resume_id.is_empty() {
-        log_info!(LOG_TAG, "Resuming session: {resume_id}");
+    if !config.resume_id.is_empty() {
+        log_info!(LOG_TAG, "Resuming session");
         args.push("--resume".to_string());
-        args.push(resume_id.to_string());
+        args.push(config.resume_id.to_string());
     } else {
         log_info!(LOG_TAG, "Starting new session");
     }
 
-    if !append_system_prompt.is_empty() {
+    if !config.append_system_prompt.is_empty() {
         args.push("--append-system-prompt".to_string());
-        args.push(append_system_prompt.to_string());
+        args.push(config.append_system_prompt.to_string());
     }
 
-    push_comma_separated_flag_values(&mut args, "--disallowed-tools", disallowed_tools);
-    push_comma_separated_flag_values(&mut args, "--tools", tools);
+    push_comma_separated_flag_values(&mut args, "--disallowed-tools", config.disallowed_tools);
+    push_comma_separated_flag_values(&mut args, "--tools", config.tools);
 
-    if !settings.is_empty() {
+    if !config.settings.is_empty() {
         args.push("--settings".to_string());
-        args.push(settings.to_string());
+        args.push(config.settings.to_string());
     }
 
-    // "--" terminates option parsing so Commander.js variadic options
-    // (--disallowed-tools, --tools) do not consume the prompt.
-    args.push("--".to_string());
-    args.push(prompt.to_string());
+    if config.include_partial_messages {
+        args.push("--include-partial-messages".to_string());
+    }
+
     args
 }
 
 fn build_claude_command(use_mock: bool) -> Vec<String> {
-    let args = build_claude_args(
-        env::resume_session_id(),
-        env::append_system_prompt(),
-        env::disallowed_tools(),
-        env::tools(),
-        env::settings(),
-        env::prompt(),
-    );
+    let args = build_claude_args(ClaudeArgsConfig {
+        resume_id: env::resume_session_id(),
+        append_system_prompt: env::append_system_prompt(),
+        disallowed_tools: env::disallowed_tools(),
+        tools: env::tools(),
+        settings: env::settings(),
+        include_partial_messages: env::chat_stream_config().is_some(),
+    });
 
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
@@ -191,7 +195,7 @@ fn build_codex_args(
     }
 
     if !resume_id.is_empty() {
-        log_info!(LOG_TAG, "Resuming codex session: {resume_id}");
+        log_info!(LOG_TAG, "Resuming codex session");
         args.push("resume".to_string());
         args.push(resume_id.to_string());
         args.push("--".to_string());
@@ -226,6 +230,9 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static SYSTEM_LOG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
@@ -237,69 +244,126 @@ mod tests {
         disallowed_tools: &str,
         tools: &str,
         settings: &str,
-        prompt: &str,
     ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_claude_args(
+        build_claude_args(ClaudeArgsConfig {
             resume_id,
             append_system_prompt,
             disallowed_tools,
             tools,
             settings,
-            prompt,
-        )
+            include_partial_messages: false,
+        })
+    }
+
+    fn build_claude_args_with_partial_messages_for_test(
+        include_partial_messages: bool,
+    ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        disable_system_log();
+        build_claude_args(ClaudeArgsConfig {
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages,
+        })
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_command(use_mock)
     }
 
-    /// Assert prompt is last and preceded by "--" separator.
-    fn assert_prompt_with_separator(args: &[String], expected_prompt: &str) {
-        let len = args.len();
-        assert!(len >= 2, "args too short: {args:?}");
-        assert_eq!(
-            args[len - 2],
-            "--",
-            "second-to-last arg must be '--': {args:?}"
+    fn assert_claude_prompt_is_not_positional(args: &[String], prompt: &str) {
+        assert!(!args.contains(&"--".to_string()), "unexpected --: {args:?}");
+        assert!(
+            !args.iter().any(|arg| arg == prompt),
+            "prompt must be written to stdin, not argv: {args:?}"
         );
-        assert_eq!(args[len - 1], expected_prompt);
     }
 
     #[test]
     fn build_claude_args_basic() {
-        let args = build_claude_args_for_test("", "", "", "", "", "hello world");
+        let args = build_claude_args_for_test("", "", "", "", "");
         assert!(args.contains(&"--print".to_string()));
+        let input_idx = args
+            .iter()
+            .position(|arg| arg == "--input-format")
+            .expect("input format flag should be present");
+        assert_eq!(args[input_idx + 1], "stream-json");
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
-        assert_prompt_with_separator(&args, "hello world");
+        assert_claude_prompt_is_not_positional(&args, "hello world");
+        assert!(!args.contains(&"--replay-user-messages".to_string()));
         assert!(!args.contains(&"--append-system-prompt".to_string()));
         assert!(!args.contains(&"--resume".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_append_system_prompt() {
-        let args = build_claude_args_for_test("", "Your name is Aria.", "", "", "", "analyze this");
+        let args = build_claude_args_for_test("", "Your name is Aria.", "", "", "");
         let asp_idx = args
             .iter()
             .position(|a| a == "--append-system-prompt")
             .unwrap();
         assert_eq!(args[asp_idx + 1], "Your name is Aria.");
-        assert_prompt_with_separator(&args, "analyze this");
+        assert_claude_prompt_is_not_positional(&args, "analyze this");
     }
 
     #[test]
     fn build_claude_args_empty_append_system_prompt_omitted() {
-        let args = build_claude_args_for_test("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
     }
 
     #[test]
+    fn build_claude_args_includes_partial_messages_when_enabled() {
+        let args = build_claude_args_with_partial_messages_for_test(true);
+        assert!(args.contains(&"--include-partial-messages".to_string()));
+        assert_claude_prompt_is_not_positional(&args, "test");
+    }
+
+    #[test]
+    fn build_claude_args_omits_partial_messages_when_disabled() {
+        let args = build_claude_args_with_partial_messages_for_test(false);
+
+        assert!(!args.contains(&"--include-partial-messages".to_string()));
+        assert_claude_prompt_is_not_positional(&args, "test");
+    }
+
+    #[test]
+    fn build_claude_args_resume_log_omits_resume_id() {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
+
+        let args = build_claude_args(ClaudeArgsConfig {
+            resume_id: "sess-secret-123",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages: false,
+        });
+        guest_common::log::clear_system_log_file();
+        let system_log = std::fs::read_to_string(system_log_path).unwrap();
+
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"sess-secret-123".to_string()));
+        assert!(system_log.contains("Resuming session"));
+        assert!(!system_log.contains("sess-secret-123"));
+    }
+
+    #[test]
     fn build_claude_args_with_resume_and_append() {
-        let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "", "prompt");
+        let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "");
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"--append-system-prompt".to_string()));
-        assert_prompt_with_separator(&args, "prompt");
+        assert_claude_prompt_is_not_positional(&args, "prompt");
     }
 
     #[test]
@@ -321,6 +385,7 @@ mod tests {
     }
 
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_args(model, resume_id, "", prompt)
     }
@@ -331,6 +396,7 @@ mod tests {
         append_system_prompt: &str,
         prompt: &str,
     ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_args(model, resume_id, append_system_prompt, prompt)
     }
@@ -341,8 +407,26 @@ mod tests {
     }
 
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_command(use_mock)
+    }
+
+    #[test]
+    fn build_codex_args_resume_log_omits_resume_id() {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
+
+        let args = build_codex_args("", "thread-secret-123", "", "prompt");
+        guest_common::log::clear_system_log_file();
+        let system_log = std::fs::read_to_string(system_log_path).unwrap();
+
+        assert!(args.contains(&"resume".to_string()));
+        assert!(args.contains(&"thread-secret-123".to_string()));
+        assert!(system_log.contains("Resuming codex session"));
+        assert!(!system_log.contains("thread-secret-123"));
     }
 
     #[test]
@@ -525,51 +609,57 @@ mod tests {
 
     #[test]
     fn build_claude_args_with_disallowed_tools() {
-        let args =
-            build_claude_args_for_test("", "", "CronCreate,CronDelete,CronList", "", "", "hello");
+        let args = build_claude_args_for_test("", "", "CronCreate,CronDelete,CronList", "", "");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
         assert_eq!(args[dt_idx + 3], "CronList");
-        // "--" must separate variadic tools from the prompt
-        assert_prompt_with_separator(&args, "hello");
+        assert_claude_prompt_is_not_positional(&args, "hello");
     }
 
     #[test]
     fn build_claude_args_empty_disallowed_tools_omitted() {
-        let args = build_claude_args_for_test("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "");
         assert!(!args.contains(&"--disallowed-tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_tools() {
-        let args = build_claude_args_for_test("", "", "", "Bash,Edit,Read", "", "hello");
+        let args = build_claude_args_for_test("", "", "", "Bash,Edit,Read", "");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Edit");
         assert_eq!(args[t_idx + 3], "Read");
-        // "--" must separate variadic tools from the prompt
-        assert_prompt_with_separator(&args, "hello");
+        assert_claude_prompt_is_not_positional(&args, "hello");
     }
 
     #[test]
     fn build_claude_args_empty_tools_omitted() {
-        let args = build_claude_args_for_test("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "");
         assert!(!args.contains(&"--tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_settings() {
-        let args = build_claude_args_for_test("", "", "", "", r#"{"hooks":{}}"#, "hello");
+        let args = build_claude_args_for_test("", "", "", "", r#"{"hooks":{}}"#);
         let s_idx = args.iter().position(|a| a == "--settings").unwrap();
         assert_eq!(args[s_idx + 1], r#"{"hooks":{}}"#);
-        assert_prompt_with_separator(&args, "hello");
+        assert_claude_prompt_is_not_positional(&args, "hello");
     }
 
     #[test]
     fn build_claude_args_empty_settings_omitted() {
-        let args = build_claude_args_for_test("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "");
         assert!(!args.contains(&"--settings".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_omits_effort() {
+        let args = build_claude_args_for_test("", "", "", "", "");
+        assert!(
+            !args.iter().any(|arg| arg == "--effort"),
+            "unexpected effort default: {args:?}"
+        );
     }
 
     #[test]
@@ -580,7 +670,6 @@ mod tests {
             "CronCreate,CronDelete",
             "Bash,Read",
             r#"{"hooks":{}}"#,
-            "do something",
         );
         for expected in [
             "--resume",
@@ -598,12 +687,12 @@ mod tests {
         ] {
             assert!(args.iter().any(|a| a == expected), "missing: {expected}");
         }
-        assert_prompt_with_separator(&args, "do something");
+        assert_claude_prompt_is_not_positional(&args, "do something");
     }
 
     #[test]
     fn build_claude_args_disallowed_tools_whitespace_trimmed() {
-        let args = build_claude_args_for_test("", "", " CronCreate , CronDelete ", "", "", "test");
+        let args = build_claude_args_for_test("", "", " CronCreate , CronDelete ", "", "");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
@@ -611,7 +700,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_tools_whitespace_trimmed() {
-        let args = build_claude_args_for_test("", "", "", " Bash , Read ", "", "test");
+        let args = build_claude_args_for_test("", "", "", " Bash , Read ", "");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Read");
@@ -620,7 +709,7 @@ mod tests {
     #[test]
     fn build_claude_args_disallowed_tools_empty_items_skipped() {
         // Trailing comma produces an empty token that should be skipped
-        let args = build_claude_args_for_test("", "", "CronCreate,,CronDelete,", "", "", "test");
+        let args = build_claude_args_for_test("", "", "CronCreate,,CronDelete,", "", "");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         // Only non-empty tools should be present
         let tool_args: Vec<&str> = args[dt_idx + 1..]
@@ -633,7 +722,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_tools_empty_items_skipped() {
-        let args = build_claude_args_for_test("", "", "", "Bash,,Read,", "", "test");
+        let args = build_claude_args_for_test("", "", "", "Bash,,Read,", "");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         let tool_args: Vec<&str> = args[t_idx + 1..]
             .iter()
@@ -645,15 +734,15 @@ mod tests {
 
     #[test]
     fn build_claude_args_comma_only_tool_values_omitted() {
-        let args = build_claude_args_for_test("", "", " , ,, ", ",,,", "", "test");
+        let args = build_claude_args_for_test("", "", " , ,, ", ",,,", "");
         assert!(!args.contains(&"--disallowed-tools".to_string()));
         assert!(!args.contains(&"--tools".to_string()));
-        assert_prompt_with_separator(&args, "test");
+        assert_claude_prompt_is_not_positional(&args, "test");
     }
 
     #[test]
-    fn build_claude_args_prompt_always_last() {
-        let args = build_claude_args_for_test("", "", "", "", "", "my prompt");
-        assert_eq!(args.last().unwrap(), "my prompt");
+    fn build_claude_args_prompt_never_appears_in_argv() {
+        let args = build_claude_args_for_test("", "", "", "", "");
+        assert_claude_prompt_is_not_positional(&args, "my prompt");
     }
 }

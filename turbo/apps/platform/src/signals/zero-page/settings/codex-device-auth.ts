@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command, type State } from "ccstate";
 import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -8,7 +8,7 @@ import {
 
 import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
-import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
+import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { onRef, resetSignal, settle, setLoop } from "../../utils.ts";
@@ -41,9 +41,6 @@ type CodexDeviceAuthFlowState =
   | { readonly status: "expired"; readonly message: string }
   | { readonly status: "error"; readonly message: string };
 
-type FlowSetter = (next: CodexDeviceAuthFlowState) => void;
-type FlowGetter = () => CodexDeviceAuthFlowState;
-
 const CODEX_DEVICE_AUTH_MIN_POLL_MS = 1000;
 
 function createInitialDialogState(): CodexDeviceAuthDialogState {
@@ -56,55 +53,6 @@ function createInitialDialogState(): CodexDeviceAuthDialogState {
 function createIdleFlowState(): CodexDeviceAuthFlowState {
   return { status: "idle" };
 }
-
-const internalCodexDeviceAuthDialogState$ = state<CodexDeviceAuthDialogState>(
-  createInitialDialogState(),
-);
-const internalCodexDeviceAuthFlowState$ = state<CodexDeviceAuthFlowState>(
-  createIdleFlowState(),
-);
-const internalCodexDeviceAuthDialogStatePersonal$ =
-  state<CodexDeviceAuthDialogState>(createInitialDialogState());
-const internalCodexDeviceAuthFlowStatePersonal$ =
-  state<CodexDeviceAuthFlowState>(createIdleFlowState());
-const resetCodexDeviceAuthFlowSignal$ = resetSignal();
-const resetCodexDeviceAuthFlowSignalPersonal$ = resetSignal();
-
-export const codexDeviceAuthDialogState$ = computed((get) => {
-  return get(internalCodexDeviceAuthDialogState$);
-});
-
-export const codexDeviceAuthFlowState$ = computed((get) => {
-  return get(internalCodexDeviceAuthFlowState$);
-});
-
-export const codexDeviceAuthDialogStatePersonal$ = computed((get) => {
-  return get(internalCodexDeviceAuthDialogStatePersonal$);
-});
-
-export const codexDeviceAuthFlowStatePersonal$ = computed((get) => {
-  return get(internalCodexDeviceAuthFlowStatePersonal$);
-});
-
-export const setCodexDeviceAuthDialogState$ = command(
-  ({ set }, next: CodexDeviceAuthDialogState) => {
-    set(internalCodexDeviceAuthDialogState$, next);
-    if (!next.open) {
-      set(resetCodexDeviceAuthFlowSignal$);
-      set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
-    }
-  },
-);
-
-export const setCodexDeviceAuthDialogStatePersonal$ = command(
-  ({ set }, next: CodexDeviceAuthDialogState) => {
-    set(internalCodexDeviceAuthDialogStatePersonal$, next);
-    if (!next.open) {
-      set(resetCodexDeviceAuthFlowSignalPersonal$);
-      set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
-    }
-  },
-);
 
 function createRequestId(scope: CodexDeviceAuthScope): string {
   return `${scope}-codex-device-auth-${now()}-${Math.random().toString(36).slice(2)}`;
@@ -184,152 +132,6 @@ function isActive(
   return stateValue.status === "pending" || stateValue.status === "polling";
 }
 
-async function startCodexDeviceAuth(args: {
-  readonly createClient: ZeroClientFactory;
-  readonly scope: CodexDeviceAuthScope;
-  readonly signal: AbortSignal;
-}) {
-  const client = args.createClient(zeroCodexDeviceAuthContract, {
-    apiBase: "www",
-  });
-  const result = await accept(
-    client.start({
-      body: { scope: args.scope },
-      fetchOptions: { signal: args.signal },
-    }),
-    [200],
-    { toast: false },
-  );
-  return result.body;
-}
-
-async function completeCodexDeviceAuth(args: {
-  readonly createClient: ZeroClientFactory;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}) {
-  const client = args.createClient(zeroCodexDeviceAuthContract, {
-    apiBase: "www",
-  });
-  const result = await accept(
-    client.complete({
-      body: { sessionToken: args.sessionToken },
-      fetchOptions: { signal: args.signal },
-    }),
-    [200],
-    { toast: false },
-  );
-  return result.body;
-}
-
-async function cancelCodexDeviceAuth(args: {
-  readonly createClient: ZeroClientFactory;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}) {
-  const client = args.createClient(zeroCodexDeviceAuthContract, {
-    apiBase: "www",
-  });
-  const result = await accept(
-    client.cancel({
-      body: { sessionToken: args.sessionToken },
-      fetchOptions: { signal: args.signal },
-    }),
-    [200],
-    { toast: false },
-  );
-  return result.body;
-}
-
-async function pollCodexDeviceAuth(args: {
-  readonly requestId: string;
-  readonly createClient: ZeroClientFactory;
-  readonly getFlow: FlowGetter;
-  readonly setFlow: FlowSetter;
-  readonly reloadProviders: () => void;
-  readonly closeDialog: () => void;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  let completed = false;
-  let expired = false;
-
-  await setLoop(
-    async (signal) => {
-      const remainingMs =
-        activeFlowOrExpired(args.getFlow(), args.requestId) - now();
-      if (remainingMs <= 0) {
-        expired = true;
-        return true;
-      }
-
-      const current = args.getFlow();
-      if (!isCurrentActive(current, args.requestId)) {
-        return true;
-      }
-
-      args.setFlow({ ...current, status: "polling" });
-      const completion = await settle(
-        completeCodexDeviceAuth({
-          createClient: args.createClient,
-          sessionToken: current.sessionToken,
-          signal,
-        }),
-        signal,
-      );
-      signal.throwIfAborted();
-
-      const latest = args.getFlow();
-      if (!isCurrentActive(latest, args.requestId)) {
-        return true;
-      }
-
-      if (!completion.ok) {
-        args.setFlow({
-          status: "error",
-          message: codexDeviceAuthErrorMessage(completion.error),
-        });
-        return true;
-      }
-
-      if (completion.value.status === "complete") {
-        args.reloadProviders();
-        toast.success("ChatGPT connected");
-        args.closeDialog();
-        completed = true;
-        return true;
-      }
-
-      args.setFlow({
-        ...latest,
-        status: "pending",
-        errorMessage: completion.value.errorMessage,
-      });
-
-      const nextRemainingMs = latest.expiresAtMs - now();
-      if (nextRemainingMs <= 0) {
-        expired = true;
-        return true;
-      }
-      await delay(Math.min(latest.pollIntervalMs, nextRemainingMs), {
-        signal,
-      });
-      signal.throwIfAborted();
-      return false;
-    },
-    0,
-    args.signal,
-  );
-
-  const latest = args.getFlow();
-  if (expired && isCurrentActive(latest, args.requestId)) {
-    args.setFlow({
-      status: "expired",
-      message: "Codex connection session expired. Start again to retry.",
-    });
-  }
-  return completed;
-}
-
 function activeFlowOrExpired(
   flow: CodexDeviceAuthFlowState,
   requestId: string,
@@ -337,327 +139,334 @@ function activeFlowOrExpired(
   return isCurrentActive(flow, requestId) ? flow.expiresAtMs : 0;
 }
 
-async function runCodexDeviceAuthFlow(args: {
-  readonly scope: CodexDeviceAuthScope;
-  readonly createClient: ZeroClientFactory;
-  readonly getFlow: FlowGetter;
-  readonly setFlow: FlowSetter;
-  readonly reloadProviders: () => void;
-  readonly closeDialog: () => void;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const requestId = createRequestId(args.scope);
-  args.setFlow({ status: "starting", requestId });
-
-  const started = await settle(
-    startCodexDeviceAuth({
-      createClient: args.createClient,
-      scope: args.scope,
-      signal: args.signal,
-    }),
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-
-  if (!isCurrentStarting(args.getFlow(), requestId)) {
-    return false;
-  }
-  if (!started.ok) {
-    args.setFlow({
-      status: "error",
-      message: codexDeviceAuthErrorMessage(started.error),
+const startCodexDeviceAuth$ = command(
+  async ({ get }, scope: CodexDeviceAuthScope, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+      apiBase: "www",
     });
-    return false;
-  }
+    const result = await accept(
+      client.start({
+        body: { scope },
+        fetchOptions: { signal },
+      }),
+      [200],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
 
-  const expiresAtMs = now() + secondsToMilliseconds(started.value.expiresIn);
-  const pollIntervalMs = Math.max(
-    secondsToMilliseconds(started.value.interval),
-    CODEX_DEVICE_AUTH_MIN_POLL_MS,
-  );
+const completeCodexDeviceAuth$ = command(
+  async ({ get }, sessionToken: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+      apiBase: "www",
+    });
+    const result = await accept(
+      client.complete({
+        body: { sessionToken },
+        fetchOptions: { signal },
+      }),
+      [200],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
 
-  args.setFlow({
-    status: "pending",
-    requestId,
-    sessionToken: started.value.sessionToken,
-    browserUrl: started.value.browserUrl,
-    verificationCode: started.value.verificationCode,
-    expiresAtMs,
-    pollIntervalMs,
-    approvalOpened: false,
-    codeCopied: false,
-    errorMessage: null,
-  });
+const cancelCodexDeviceAuth$ = command(
+  async ({ get }, sessionToken: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+      apiBase: "www",
+    });
+    const result = await accept(
+      client.cancel({
+        body: { sessionToken },
+        fetchOptions: { signal },
+      }),
+      [200],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
 
-  return await pollCodexDeviceAuth({
-    requestId,
-    createClient: args.createClient,
-    getFlow: args.getFlow,
-    setFlow: args.setFlow,
-    reloadProviders: args.reloadProviders,
-    closeDialog: args.closeDialog,
-    signal: args.signal,
+interface CodexDeviceAuthSignalContext {
+  scope: CodexDeviceAuthScope;
+  reloadProviders$: Command<void, []>;
+  internalDialogState$: State<CodexDeviceAuthDialogState>;
+  internalFlowState$: State<CodexDeviceAuthFlowState>;
+  resetFlowSignal$: ReturnType<typeof resetSignal>;
+}
+
+function createCodexSetDialogState$(ctx: CodexDeviceAuthSignalContext) {
+  return command(({ set }, next: CodexDeviceAuthDialogState) => {
+    set(ctx.internalDialogState$, next);
+    if (!next.open) {
+      set(ctx.resetFlowSignal$);
+      set(ctx.internalFlowState$, createIdleFlowState());
+    }
   });
 }
 
-async function openCodexDeviceAuthApprovalPage(args: {
-  readonly getFlow: FlowGetter;
-  readonly setFlow: FlowSetter;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const current = args.getFlow();
-  if (!isActive(current)) {
-    return false;
-  }
-  const result = await copyCodeAndOpenApprovalPage(current);
-  args.signal.throwIfAborted();
-  const latest = args.getFlow();
-  if (!isCurrentActive(latest, current.requestId)) {
-    return result.opened;
-  }
-  args.setFlow({
-    ...latest,
-    approvalOpened: result.opened || latest.approvalOpened,
-    codeCopied: result.copied || latest.codeCopied,
-    errorMessage: approvalAttemptErrorMessage(result),
-  });
-  return result.opened;
-}
+function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
+  return command(
+    async ({ get, set }, requestId: string, signal: AbortSignal) => {
+      let completed = false;
+      let expired = false;
 
-async function closeCodexDeviceAuthDialog(args: {
-  readonly createClient: ZeroClientFactory;
-  readonly getFlow: FlowGetter;
-  readonly setFlow: FlowSetter;
-  readonly closeDialog: () => void;
-  readonly resetFlow: () => void;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const current = args.getFlow();
-  const sessionToken = isActive(current) ? current.sessionToken : null;
-  args.resetFlow();
-  args.closeDialog();
-  args.setFlow(createIdleFlowState());
+      await setLoop(
+        async (loopSignal) => {
+          const remainingMs =
+            activeFlowOrExpired(get(ctx.internalFlowState$), requestId) - now();
+          if (remainingMs <= 0) {
+            expired = true;
+            return true;
+          }
 
-  if (!sessionToken) {
-    return;
-  }
+          const current = get(ctx.internalFlowState$);
+          if (!isCurrentActive(current, requestId)) {
+            return true;
+          }
 
-  await settle(
-    cancelCodexDeviceAuth({
-      createClient: args.createClient,
-      sessionToken,
-      signal: args.signal,
-    }),
-    args.signal,
+          set(ctx.internalFlowState$, { ...current, status: "polling" });
+          const completion = await settle(
+            set(completeCodexDeviceAuth$, current.sessionToken, loopSignal),
+            loopSignal,
+          );
+          loopSignal.throwIfAborted();
+
+          const latest = get(ctx.internalFlowState$);
+          if (!isCurrentActive(latest, requestId)) {
+            return true;
+          }
+
+          if (!completion.ok) {
+            set(ctx.internalFlowState$, {
+              status: "error",
+              message: codexDeviceAuthErrorMessage(completion.error),
+            });
+            return true;
+          }
+
+          if (completion.value.status === "complete") {
+            set(ctx.reloadProviders$);
+            toast.success("ChatGPT connected");
+            set(ctx.internalDialogState$, createInitialDialogState());
+            set(ctx.internalFlowState$, createIdleFlowState());
+            completed = true;
+            return true;
+          }
+
+          set(ctx.internalFlowState$, {
+            ...latest,
+            status: "pending",
+            errorMessage: completion.value.errorMessage,
+          });
+
+          const nextRemainingMs = latest.expiresAtMs - now();
+          if (nextRemainingMs <= 0) {
+            expired = true;
+            return true;
+          }
+          await delay(Math.min(latest.pollIntervalMs, nextRemainingMs), {
+            signal: loopSignal,
+          });
+          loopSignal.throwIfAborted();
+          return false;
+        },
+        0,
+        signal,
+      );
+
+      const latest = get(ctx.internalFlowState$);
+      if (expired && isCurrentActive(latest, requestId)) {
+        set(ctx.internalFlowState$, {
+          status: "expired",
+          message: "Codex connection session expired. Start again to retry.",
+        });
+      }
+      return completed;
+    },
   );
-  args.signal.throwIfAborted();
 }
 
-export const openCodexDeviceAuthApprovalPage$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    return await openCodexDeviceAuthApprovalPage({
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowState$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowState$, next);
-      },
-      signal,
-    });
-  },
-);
+function createCodexRunFlow$(
+  ctx: CodexDeviceAuthSignalContext,
+  pollFlow$: ReturnType<typeof createCodexPollFlow$>,
+) {
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      const requestId = createRequestId(ctx.scope);
+      set(ctx.internalFlowState$, { status: "starting", requestId });
 
-export const openCodexDeviceAuthApprovalPagePersonal$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    return await openCodexDeviceAuthApprovalPage({
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowStatePersonal$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowStatePersonal$, next);
-      },
-      signal,
-    });
-  },
-);
+      const started = await settle(
+        set(startCodexDeviceAuth$, ctx.scope, signal),
+        signal,
+      );
+      signal.throwIfAborted();
 
-export const closeCodexDeviceAuthDialog$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    await closeCodexDeviceAuthDialog({
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowState$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowState$, next);
-      },
-      closeDialog: () => {
-        set(internalCodexDeviceAuthDialogState$, createInitialDialogState());
-      },
-      resetFlow: () => {
-        set(resetCodexDeviceAuthFlowSignal$);
-      },
-      signal,
-    });
-  },
-);
+      if (!isCurrentStarting(get(ctx.internalFlowState$), requestId)) {
+        return false;
+      }
+      if (!started.ok) {
+        set(ctx.internalFlowState$, {
+          status: "error",
+          message: codexDeviceAuthErrorMessage(started.error),
+        });
+        return false;
+      }
 
-export const closeCodexDeviceAuthDialogPersonal$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    await closeCodexDeviceAuthDialog({
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowStatePersonal$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowStatePersonal$, next);
-      },
-      closeDialog: () => {
-        set(
-          internalCodexDeviceAuthDialogStatePersonal$,
-          createInitialDialogState(),
-        );
-      },
-      resetFlow: () => {
-        set(resetCodexDeviceAuthFlowSignalPersonal$);
-      },
-      signal,
-    });
-  },
-);
+      const expiresAtMs =
+        now() + secondsToMilliseconds(started.value.expiresIn);
+      const pollIntervalMs = Math.max(
+        secondsToMilliseconds(started.value.interval),
+        CODEX_DEVICE_AUTH_MIN_POLL_MS,
+      );
 
-export const runCodexDeviceAuth$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    const flowSignal = set(resetCodexDeviceAuthFlowSignal$, signal);
-    return await runCodexDeviceAuthFlow({
-      scope: "org",
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowState$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowState$, next);
-      },
-      reloadProviders: () => {
-        set(reloadOrgModelProviders$);
-      },
-      closeDialog: () => {
-        set(internalCodexDeviceAuthDialogState$, createInitialDialogState());
-        set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
-      },
-      signal: flowSignal,
-    });
-  },
-);
+      set(ctx.internalFlowState$, {
+        status: "pending",
+        requestId,
+        sessionToken: started.value.sessionToken,
+        browserUrl: started.value.browserUrl,
+        verificationCode: started.value.verificationCode,
+        expiresAtMs,
+        pollIntervalMs,
+        approvalOpened: false,
+        codeCopied: false,
+        errorMessage: null,
+      });
 
-export const runCodexDeviceAuthPersonal$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    const flowSignal = set(resetCodexDeviceAuthFlowSignalPersonal$, signal);
-    return await runCodexDeviceAuthFlow({
-      scope: "personal",
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowStatePersonal$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowStatePersonal$, next);
-      },
-      reloadProviders: () => {
-        set(reloadPersonalModelProviders$);
-      },
-      closeDialog: () => {
-        set(
-          internalCodexDeviceAuthDialogStatePersonal$,
-          createInitialDialogState(),
-        );
-        set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
-      },
-      signal: flowSignal,
-    });
-  },
-);
+      return await set(pollFlow$, requestId, signal);
+    },
+  );
+}
 
-const startCodexDeviceAuthOnRef$ = command(
-  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-    if (get(internalCodexDeviceAuthFlowState$).status !== "idle") {
+function createCodexRun$(
+  ctx: CodexDeviceAuthSignalContext,
+  runFlow$: ReturnType<typeof createCodexRunFlow$>,
+) {
+  return command(async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    const flowSignal = set(ctx.resetFlowSignal$, signal);
+    return await set(runFlow$, flowSignal);
+  });
+}
+
+function createCodexOpenApprovalPage$(ctx: CodexDeviceAuthSignalContext) {
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      const current = get(ctx.internalFlowState$);
+      if (!isActive(current)) {
+        return false;
+      }
+      const result = await copyCodeAndOpenApprovalPage(current);
+      signal.throwIfAborted();
+      const latest = get(ctx.internalFlowState$);
+      if (!isCurrentActive(latest, current.requestId)) {
+        return result.opened;
+      }
+      set(ctx.internalFlowState$, {
+        ...latest,
+        approvalOpened: result.opened || latest.approvalOpened,
+        codeCopied: result.copied || latest.codeCopied,
+        errorMessage: approvalAttemptErrorMessage(result),
+      });
+      return result.opened;
+    },
+  );
+}
+
+function createCodexClose$(ctx: CodexDeviceAuthSignalContext) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const current = get(ctx.internalFlowState$);
+    const sessionToken = isActive(current) ? current.sessionToken : null;
+    set(ctx.resetFlowSignal$);
+    set(ctx.internalDialogState$, createInitialDialogState());
+    set(ctx.internalFlowState$, createIdleFlowState());
+
+    if (!sessionToken) {
       return;
     }
-    const flowSignal = set(resetCodexDeviceAuthFlowSignal$, signal);
-    signal.addEventListener(
-      "abort",
-      () => {
-        if (get(internalCodexDeviceAuthFlowState$).status === "starting") {
-          set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
-        }
-      },
-      { once: true },
-    );
-    await runCodexDeviceAuthFlow({
-      scope: "org",
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowState$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowState$, next);
-      },
-      reloadProviders: () => {
-        set(reloadOrgModelProviders$);
-      },
-      closeDialog: () => {
-        set(internalCodexDeviceAuthDialogState$, createInitialDialogState());
-        set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
-      },
-      signal: flowSignal,
-    });
-  },
-);
 
-const startCodexDeviceAuthPersonalOnRef$ = command(
-  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-    if (get(internalCodexDeviceAuthFlowStatePersonal$).status !== "idle") {
-      return;
-    }
-    const flowSignal = set(resetCodexDeviceAuthFlowSignalPersonal$, signal);
-    signal.addEventListener(
-      "abort",
-      () => {
-        if (
-          get(internalCodexDeviceAuthFlowStatePersonal$).status === "starting"
-        ) {
-          set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
-        }
-      },
-      { once: true },
-    );
-    await runCodexDeviceAuthFlow({
-      scope: "personal",
-      createClient: get(zeroClient$),
-      getFlow: () => {
-        return get(internalCodexDeviceAuthFlowStatePersonal$);
-      },
-      setFlow: (next) => {
-        set(internalCodexDeviceAuthFlowStatePersonal$, next);
-      },
-      reloadProviders: () => {
-        set(reloadPersonalModelProviders$);
-      },
-      closeDialog: () => {
-        set(
-          internalCodexDeviceAuthDialogStatePersonal$,
-          createInitialDialogState(),
-        );
-        set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
-      },
-      signal: flowSignal,
-    });
-  },
-);
+    await settle(set(cancelCodexDeviceAuth$, sessionToken, signal), signal);
+    signal.throwIfAborted();
+  });
+}
 
-export const codexDeviceAuthAutoStartRef$ = onRef(startCodexDeviceAuthOnRef$);
+function createCodexAutoStartRef(
+  ctx: CodexDeviceAuthSignalContext,
+  runFlow$: ReturnType<typeof createCodexRunFlow$>,
+) {
+  const autoStart$ = command(
+    async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+      if (get(ctx.internalFlowState$).status !== "idle") {
+        return;
+      }
+      const flowSignal = set(ctx.resetFlowSignal$, signal);
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (get(ctx.internalFlowState$).status === "starting") {
+            set(ctx.internalFlowState$, createIdleFlowState());
+          }
+        },
+        { once: true },
+      );
+      await set(runFlow$, flowSignal);
+    },
+  );
+  return onRef(autoStart$);
+}
 
-export const codexDeviceAuthAutoStartRefPersonal$ = onRef(
-  startCodexDeviceAuthPersonalOnRef$,
-);
+function createCodexDeviceAuthSignals(
+  scope: CodexDeviceAuthScope,
+  reloadProviders$: Command<void, []>,
+) {
+  const ctx: CodexDeviceAuthSignalContext = {
+    scope,
+    reloadProviders$,
+    internalDialogState$: state(createInitialDialogState()),
+    internalFlowState$: state<CodexDeviceAuthFlowState>(createIdleFlowState()),
+    resetFlowSignal$: resetSignal(),
+  };
+  const pollFlow$ = createCodexPollFlow$(ctx);
+  const runFlow$ = createCodexRunFlow$(ctx, pollFlow$);
+
+  return {
+    dialogState$: computed((get) => {
+      return get(ctx.internalDialogState$);
+    }),
+    flowState$: computed((get) => {
+      return get(ctx.internalFlowState$);
+    }),
+    setDialogState$: createCodexSetDialogState$(ctx),
+    openApprovalPage$: createCodexOpenApprovalPage$(ctx),
+    close$: createCodexClose$(ctx),
+    run$: createCodexRun$(ctx, runFlow$),
+    autoStartRef$: createCodexAutoStartRef(ctx, runFlow$),
+  };
+}
+
+export const {
+  dialogState$: codexDeviceAuthDialogState$,
+  flowState$: codexDeviceAuthFlowState$,
+  setDialogState$: setCodexDeviceAuthDialogState$,
+  openApprovalPage$: openCodexDeviceAuthApprovalPage$,
+  close$: closeCodexDeviceAuthDialog$,
+  run$: runCodexDeviceAuth$,
+  autoStartRef$: codexDeviceAuthAutoStartRef$,
+} = createCodexDeviceAuthSignals("org", reloadOrgModelProviders$);
+
+export const {
+  dialogState$: codexDeviceAuthDialogStatePersonal$,
+  flowState$: codexDeviceAuthFlowStatePersonal$,
+  setDialogState$: setCodexDeviceAuthDialogStatePersonal$,
+  openApprovalPage$: openCodexDeviceAuthApprovalPagePersonal$,
+  close$: closeCodexDeviceAuthDialogPersonal$,
+  run$: runCodexDeviceAuthPersonal$,
+  autoStartRef$: codexDeviceAuthAutoStartRefPersonal$,
+} = createCodexDeviceAuthSignals("personal", reloadPersonalModelProviders$);
 
 export type { CodexDeviceAuthFlowState };

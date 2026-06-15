@@ -20,6 +20,7 @@ use agent_diagnostics::{
 };
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use serde_json::Value;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Arc;
@@ -29,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
 const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
+const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[tokio::main]
 async fn main() {
@@ -161,7 +163,7 @@ async fn execute(
     // Codex setup: best-effort `codex login`. Failure is non-fatal —
     // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
     if matches!(env::Framework::from_env(), env::Framework::Codex)
-        && let Err(e) = cli::setup_codex()
+        && let Err(e) = cli::setup_codex(masker).await
     {
         log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
     }
@@ -340,8 +342,13 @@ fn classify_cli_failure_reason(
     failure_message: &str,
 ) -> Option<FailureReason> {
     let normalized = failure_message.to_ascii_lowercase();
-    if normalized.contains("402 insufficient credits") {
+    if is_insufficient_credits_error(&normalized) {
         return Some(FailureReason::InsufficientCredits);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_invalid_credentials_error(&normalized)
+    {
+        return Some(FailureReason::InvalidCredentials);
     }
     if matches!(framework, AgentFramework::Codex)
         && (normalized.contains("invalid_api_key")
@@ -349,17 +356,112 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidApiKey);
     }
+    if matches!(framework, AgentFramework::Codex)
+        && is_codex_oauth_reconnect_required_run_error(failure_message)
+    {
+        return Some(FailureReason::ReconnectRequired);
+    }
     // Subscription/usage limits are an expected quota state for both Codex
     // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
-    // "weekly limit"), so classify them regardless of framework. This lets the
-    // runner log these expected outcomes at info instead of error.
+    // "weekly limit" / org monthly spend limit), so classify them regardless of
+    // framework where the wording is shared. This lets the runner log these
+    // expected outcomes at info instead of error.
     if normalized.contains("usage limit")
         || normalized.contains("session limit")
         || normalized.contains("weekly limit")
+        || (matches!(framework, AgentFramework::ClaudeCode)
+            && (is_claude_subscription_access_disabled_error(&normalized)
+                || is_claude_monthly_spend_limit_error(&normalized)))
     {
         return Some(FailureReason::UsageLimit);
     }
     None
+}
+
+fn is_insufficient_credits_error(normalized: &str) -> bool {
+    normalized.contains("402 insufficient credits")
+        || (normalized.contains("api error: 402")
+            && normalized.contains("requires more credits")
+            && normalized.contains("can only afford"))
+}
+
+fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
+    normalized.contains("failed to authenticate")
+        && normalized.contains("api error: 401 invalid authentication credentials")
+}
+
+fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
+    normalized.contains("disabled claude subscription access") && normalized.contains("claude code")
+}
+
+fn is_claude_monthly_spend_limit_error(normalized: &str) -> bool {
+    normalized.contains("org's monthly spend limit")
+        && normalized.contains("claude.ai/settings/usage")
+}
+
+fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
+    if !error_message.contains("TOKEN_REFRESH_FAILED")
+        || !error_message.contains(CODEX_OAUTH_TOKEN_CONNECTOR)
+        || !error_message.contains("reconnect_required")
+    {
+        return false;
+    }
+
+    let mut search_start = 0;
+    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+        if value
+            .as_ref()
+            .is_some_and(is_codex_oauth_reconnect_required_value)
+        {
+            return true;
+        }
+        search_start = end_index;
+    }
+    false
+}
+
+fn parse_next_json_object(message: &str, search_start: usize) -> Option<(Option<Value>, usize)> {
+    let body_start = message[search_start.min(message.len())..]
+        .find('{')
+        .map(|offset| search_start + offset)?;
+    let mut stream = serde_json::Deserializer::from_str(&message[body_start..]).into_iter();
+
+    match stream.next() {
+        Some(Ok(value)) => Some((Some(value), body_start + stream.byte_offset())),
+        Some(Err(_)) | None => Some((None, body_start + 1)),
+    }
+}
+
+fn is_codex_oauth_reconnect_required_value(value: &Value) -> bool {
+    is_codex_oauth_reconnect_required_body(value)
+        || value
+            .get("error")
+            .is_some_and(is_codex_oauth_reconnect_required_envelope)
+}
+
+fn is_codex_oauth_reconnect_required_body(value: &Value) -> bool {
+    value.get("error").and_then(Value::as_str) == Some("TOKEN_REFRESH_FAILED")
+        && has_reconnect_required_payload(value)
+}
+
+fn is_codex_oauth_reconnect_required_envelope(value: &Value) -> bool {
+    value.get("code").and_then(Value::as_str) == Some("TOKEN_REFRESH_FAILED")
+        && has_reconnect_required_payload(value)
+}
+
+fn has_reconnect_required_payload(value: &Value) -> bool {
+    value.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
+        && has_exact_codex_oauth_connector(value)
+}
+
+fn has_exact_codex_oauth_connector(value: &Value) -> bool {
+    value
+        .get("connectors")
+        .and_then(Value::as_array)
+        .is_some_and(|connectors| {
+            connectors.len() == 1
+                && connectors.first().and_then(Value::as_str) == Some(CODEX_OAUTH_TOKEN_CONNECTOR)
+        })
 }
 
 fn diagnostic_session_history_status() -> SessionHistoryStatus {
@@ -731,7 +833,7 @@ mod tests {
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
             std::env::set_var(
-                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
             if let Some(prompt) = prompt {
@@ -1030,6 +1132,72 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_provider_credit_affordability_error() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InsufficientCredits));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_credit_affordability_diagnostic() {
+        let message = "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::InsufficientCredits)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_402_error() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 Payment Required",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_invalid_credentials() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InvalidCredentials));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_claude_401() {
+        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, "401 unauthorized");
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
     fn cli_failure_reason_classifies_codex_usage_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
@@ -1083,6 +1251,96 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token. The connector may need to be reconnected.","permission":"model-provider:codex-oauth-token","base":"https://chatgpt.com/backend-api/codex","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_envelope() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":{"message":"Access token expired and refresh failed for: codex-oauth-token.","code":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_metadata() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"request metadata {"traceId":"abc","status":502}: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_template_brace() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"request template {response_id: {"error":"TOKEN_REFRESH_FAILED","message":"Refresh failed for {codex} token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_oauth_upstream_provider() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token after reconnect_required state.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"upstream_provider"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_oauth_refresh_without_failure_reason() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"]}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_oauth_reconnect_required() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: zendesk.","permission":"connector:zendesk","connectors":["zendesk"],"failureReason":"reconnect_required"}, url: https://example.zendesk.com/api/v2/tickets"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_oauth_multi_connector_reconnect_required() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: notion, codex-oauth-token.","connectors":["notion","codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_nested_codex_oauth_reconnect_required_payload() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"debug":{"error":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
     fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -1120,6 +1378,16 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_claude_subscription_access_disabled_as_usage_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead, or ask your admin to enable access",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
     fn cli_failure_reason_classifies_claude_session_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
@@ -1137,6 +1405,26 @@ mod tests {
         );
 
         assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_monthly_spend_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_monthly_spend_limit_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
+        );
+
+        assert_eq!(reason, None);
     }
 
     #[test]

@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import usage
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
+from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
 class TestUsagePendingCounter:
@@ -155,7 +157,7 @@ class TestUsagePendingCounter:
         finally:
             usage.counters.decrement_pending_reports()
 
-        entry = json.loads(proxy_log.read_text())
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         assert entry["type"] == "usage_event"
         assert entry["payload_run_id"] == "run-1"
@@ -185,6 +187,57 @@ class TestUsagePendingCounter:
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+
+    def test_sync_fallback_log_failure_rolls_back_pending_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            patch.object(
+                usage.webhook.usage_executor, "submit", side_effect=RuntimeError("shutdown")
+            ),
+            patch.object(
+                usage.webhook, "log_proxy_entry", side_effect=[None, OSError("disk full")]
+            ),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+                str(tmp_path / "proxy.jsonl"),
+                "usage_event",
+            )
+
+        assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+
+    def test_saturated_usage_flush_keeps_buffered_pending_snapshot(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        enqueue = RecordingEnqueue(return_value=False)
+        usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        assert usage.flush_usage_events(trigger="runner") == 0
+
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
+
+        enqueue.return_value = True
+        enqueue.clear()
+        assert usage.flush_usage_events(trigger="runner") == 1
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -309,7 +362,7 @@ class TestUsagePendingCounter:
     def test_report_decrements_after_completion(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
-        """Retry exhaustion still runs the decrement finally-block."""
+        """Retry exhaustion decrements reports but keeps the usage flush buffered."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
 
@@ -333,7 +386,7 @@ class TestUsagePendingCounter:
         assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
 
     def test_enqueue_increments_and_drains_reports(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api

@@ -25,10 +25,10 @@ const MODEL_TOKEN_CATEGORIES = [
   "tokens.cache_read",
   "tokens.cache_creation",
 ] as const;
-const THREADED_SOURCES = ["chat", "schedule"] as const;
+const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
-  "schedule",
+  "automation",
   "slack",
   "telegram",
   "email",
@@ -87,7 +87,6 @@ function sourceExpr(triggerSource: string): string {
   return `
     CASE
       WHEN ${triggerSource} = 'web' THEN 'chat'
-      WHEN ${triggerSource} = 'automation' THEN 'schedule'
       WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
       ELSE 'other'
     END`;
@@ -104,7 +103,9 @@ function usageKindExpr(kind: string): string {
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
 // row query and the count query stay in sync. Threaded sources collapse to one
-// row per source/thread; everything else is one row per run.
+// row per source/thread. Deleted threaded rows, whose thread FK has been set to
+// NULL, collapse to one synthetic row per source/user. Everything else is one
+// row per run.
 function recordWith(
   userIdLit: string,
   orgIdLit: string,
@@ -162,6 +163,22 @@ function recordWith(
         AND r.source IN (${threadedSourceList})
       GROUP BY r.source, r.user_id, r.chat_thread_id, ct.title
     ),
+    deleted_threaded AS (
+      SELECT
+        CONCAT(r.source, ':deleted-thread:user:', r.user_id) AS row_key,
+        r.source,
+        r.user_id,
+        NULL::text AS thread_id,
+        NULL::text AS run_id,
+        'Deleted chats'::text AS title,
+        COALESCE(SUM(r.credits), 0)::bigint AS credits,
+        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
+        MAX(r.created_at) AS last_activity
+      FROM runs r
+      WHERE r.chat_thread_id IS NULL
+        AND r.source IN (${threadedSourceList})
+      GROUP BY r.source, r.user_id
+    ),
     unthreaded AS (
       SELECT
         CONCAT(r.source, ':run:', r.run_id::text, ':user:', r.user_id) AS row_key,
@@ -174,12 +191,13 @@ function recordWith(
         COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
         MAX(r.created_at) AS last_activity
       FROM runs r
-      WHERE r.chat_thread_id IS NULL
-        OR r.source NOT IN (${threadedSourceList})
+      WHERE r.source NOT IN (${threadedSourceList})
       GROUP BY r.run_id, r.source, r.user_id
     ),
     record AS (
       SELECT * FROM threaded
+      UNION ALL
+      SELECT * FROM deleted_threaded
       UNION ALL
       SELECT * FROM unthreaded
     )`;
@@ -224,19 +242,23 @@ async function queryUsageRecordRows(
   });
 }
 
-async function queryUsageRecordTotal(
+async function queryUsageRecordTotals(
   db: Db,
   recordCte: string,
   sourceFilterLit: string | null,
-): Promise<number> {
+): Promise<{ total: number; totalCredits: number }> {
   const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
-  const result = await db.execute<{ total: string }>(
+  const result = await db.execute<{ total: string; total_credits: string }>(
     sql.raw(`
       ${recordCte}
-      SELECT COUNT(*)::bigint AS total FROM record ${where}
+      SELECT COUNT(*)::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
+      FROM record ${where}
     `),
   );
-  return Number(result.rows[0]?.total ?? 0);
+  return {
+    total: Number(result.rows[0]?.total ?? 0),
+    totalCredits: Number(result.rows[0]?.total_credits ?? 0),
+  };
 }
 
 function rowKeyExpr(
@@ -250,6 +272,8 @@ function rowKeyExpr(
     CASE
       WHEN ${chatThreadId} IS NOT NULL AND ${source} IN (${threadedSourceList})
         THEN CONCAT(${source}, ':thread:', ${chatThreadId}::text, ':user:', ${userId})
+      WHEN ${chatThreadId} IS NULL AND ${source} IN (${threadedSourceList})
+        THEN CONCAT(${source}, ':deleted-thread:user:', ${userId})
       ELSE CONCAT(${source}, ':run:', ${runId}::text, ':user:', ${userId})
     END`;
 }
@@ -373,6 +397,7 @@ export const zeroUsageRecord$ = command(
       return {
         period: null,
         rows: [],
+        totalCredits: 0,
         pagination: {
           page: args.page,
           pageSize: args.pageSize,
@@ -417,7 +442,11 @@ export const zeroUsageRecord$ = command(
       }),
     );
     signal.throwIfAborted();
-    const total = await queryUsageRecordTotal(db, recordCte, sourceFilterLit);
+    const { total, totalCredits } = await queryUsageRecordTotals(
+      db,
+      recordCte,
+      sourceFilterLit,
+    );
     signal.throwIfAborted();
 
     const emailMap =
@@ -463,6 +492,7 @@ export const zeroUsageRecord$ = command(
           lastActivityAt: row.lastActivityAt,
         };
       }),
+      totalCredits,
       pagination: {
         page: args.page,
         pageSize: args.pageSize,

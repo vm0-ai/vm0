@@ -75,7 +75,7 @@ describe("DesktopAuthCallbackClient", () => {
 
     render(<DesktopAuthCallbackClient />);
 
-    expect(screen.getByText("Signing in...")).toBeTruthy();
+    expect(screen.getByText("Signing in to Zero")).toBeTruthy();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/desktop-auth/handoff", {
         method: "POST",

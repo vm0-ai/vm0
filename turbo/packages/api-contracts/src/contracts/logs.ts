@@ -40,10 +40,7 @@ const logStatusSchema = z.enum([
  * Trigger source enum — how the run was initiated
  */
 export const triggerSourceSchema = z.enum([
-  // "automation" supersedes "schedule" (#17307); both appear on historical
-  // rows until the backfill migration lands.
   "automation",
-  "schedule",
   "web",
   "slack",
   "email",
@@ -68,7 +65,7 @@ const logEntrySchema = z.object({
   framework: z.string().nullable(),
   triggerSource: triggerSourceSchema.nullable(),
   triggerAgentName: z.string().nullable(),
-  scheduleId: z.string().nullable(),
+  automationId: z.string().nullable(),
   status: logStatusSchema,
   /** Prompt text the run was launched with. Used as a row description. */
   prompt: z.string(),
@@ -119,7 +116,7 @@ const logDetailSchema = z.object({
   selectedModel: z.string().nullable(),
   triggerSource: triggerSourceSchema.nullable(),
   triggerAgentName: z.string().nullable(),
-  scheduleId: z.string().nullable(),
+  automationId: z.string().nullable(),
   status: logStatusSchema,
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
@@ -147,7 +144,7 @@ export const logsListContract = c.router({
 
       status: logStatusSchema.optional(),
       triggerSource: triggerSourceSchema.optional(),
-      scheduleId: z.string().uuid().optional(),
+      automationId: z.string().uuid().optional(),
     }),
     responses: {
       200: logsListResponseSchema,

@@ -18,6 +18,7 @@ use std::path::{Component, Path};
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
 const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
+const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -42,7 +43,7 @@ pub async fn send_event(
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
-    capture_session_metadata(&event);
+    capture_session_metadata(&event, masker);
 
     if !http.has_api() {
         return Ok(());
@@ -197,11 +198,34 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     if error.get("code").and_then(Value::as_str) == Some("invalid_api_key") {
         return Some(FailureReason::InvalidApiKey);
     }
+    if codex_refresh_error_code(error) == Some("TOKEN_REFRESH_FAILED")
+        && error.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
+        && has_exact_codex_oauth_connector(error)
+    {
+        return Some(FailureReason::ReconnectRequired);
+    }
     None
 }
 
 fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
     codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
+}
+
+fn codex_refresh_error_code(value: &Value) -> Option<&str> {
+    value
+        .get("code")
+        .or_else(|| value.get("error"))
+        .and_then(Value::as_str)
+}
+
+fn has_exact_codex_oauth_connector(value: &Value) -> bool {
+    value
+        .get("connectors")
+        .and_then(Value::as_array)
+        .is_some_and(|connectors| {
+            connectors.len() == 1
+                && connectors.first().and_then(Value::as_str) == Some(CODEX_OAUTH_TOKEN_CONNECTOR)
+        })
 }
 
 fn raw_message_from_field(value: Option<&Value>) -> Option<String> {
@@ -325,22 +349,29 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
-pub(crate) fn capture_session_metadata(event: &Value) {
+pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
+    register_event_session_identifier(event, masker);
+
     let parsed = match Framework::from_env() {
         Framework::ClaudeCode => extract_claude_session_id(event),
         Framework::Codex => extract_codex_thread_id(event),
     };
     let Some((session_id, history_path_payload)) = parsed else {
-        repair_missing_session_history_marker_from_existing_session();
+        repair_missing_session_history_marker_from_existing_session(masker);
         return;
     };
+    masker.add_sensitive_value(&session_id);
 
     // Idempotency: only the first id-bearing event of the run wins, but allow
     // a retry of the same session to repair a missing history marker after a
     // partial metadata write.
     match std::fs::read_to_string(paths::session_id_file()) {
         Ok(existing_session_id) => {
-            if existing_session_id.trim() == session_id {
+            let existing_session_id = existing_session_id.trim();
+            if !existing_session_id.is_empty() {
+                masker.add_sensitive_value(existing_session_id);
+            }
+            if existing_session_id == session_id {
                 ensure_session_history_marker(&history_path_payload);
             }
             return;
@@ -356,7 +387,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
         }
     }
 
-    log_info!(LOG_TAG, "Captured session ID: {session_id}");
+    log_info!(LOG_TAG, "Captured session ID");
     match paths::write_private(paths::session_id_file(), &session_id) {
         Ok(()) => log_info!(
             LOG_TAG,
@@ -372,7 +403,24 @@ pub(crate) fn capture_session_metadata(event: &Value) {
     write_session_history_marker(&history_path_payload);
 }
 
-fn repair_missing_session_history_marker_from_existing_session() {
+pub(crate) fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
+    let id = match Framework::from_env() {
+        Framework::ClaudeCode => string_field(event, "session_id"),
+        Framework::Codex => string_field(event, "thread_id"),
+    };
+    if let Some(id) = id {
+        masker.add_sensitive_value(id);
+    }
+}
+
+fn string_field<'a>(event: &'a Value, field: &str) -> Option<&'a str> {
+    event
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
+fn repair_missing_session_history_marker_from_existing_session(masker: &SecretMasker) {
     if !should_write_session_history_marker() {
         return;
     }
@@ -391,6 +439,7 @@ fn repair_missing_session_history_marker_from_existing_session() {
     if session_id.is_empty() {
         return;
     }
+    masker.add_sensitive_value(&session_id);
     if let Some(history_path_payload) = history_path_payload_for_session_id(&session_id) {
         write_session_history_marker(&history_path_payload);
     }
@@ -421,14 +470,23 @@ fn write_session_history_marker(history_path_payload: &str) {
     match paths::write_private(paths::session_history_path_file(), history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
-            "Session history marker written to {}: {history_path_payload}",
-            paths::session_history_path_file()
+            "Session history marker written to {} ({})",
+            paths::session_history_path_file(),
+            session_history_marker_kind(history_path_payload)
         ),
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to write session history marker to {}: {e}",
             paths::session_history_path_file()
         ),
+    }
+}
+
+fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
+    if history_path_payload.starts_with("CODEX_SEARCH:") {
+        "codex"
+    } else {
+        "claude"
     }
 }
 
@@ -445,18 +503,19 @@ fn history_path_payload_for_session_id(session_id: &str) -> Option<String> {
 /// Claude variant — matches `system/init` and computes the project-scoped
 /// jsonl path under `$HOME/.claude/projects/-{cwd}/`.
 fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
+    let session_id = raw_claude_session_id(event)?;
+    let history_path_payload = claude_history_path_payload(session_id)?;
+
+    Some((session_id.to_string(), history_path_payload))
+}
+
+fn raw_claude_session_id(event: &Value) -> Option<&str> {
     let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let subtype = event.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
     if event_type != "system" || subtype != "init" {
         return None;
     }
-    let session_id = event.get("session_id").and_then(|v| v.as_str())?;
-    if session_id.is_empty() {
-        return None;
-    }
-    let history_path_payload = claude_history_path_payload(session_id)?;
-
-    Some((session_id.to_string(), history_path_payload))
+    string_field(event, "session_id")
 }
 
 fn claude_history_path_payload(session_id: &str) -> Option<String> {
@@ -492,15 +551,19 @@ fn is_valid_session_history_id(session_id: &str) -> bool {
 /// Codex variant — matches `thread.started` and emits a `CODEX_SEARCH:`
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
-    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    if event_type != "thread.started" {
-        return None;
-    }
-    let thread_id = event.get("thread_id").and_then(|v| v.as_str())?;
+    let thread_id = raw_codex_thread_id(event)?;
     let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
     let marker = codex_history_marker_payload(&thread_id);
 
     Some((thread_id, marker))
+}
+
+fn raw_codex_thread_id(event: &Value) -> Option<&str> {
+    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if event_type != "thread.started" {
+        return None;
+    }
+    string_field(event, "thread_id")
 }
 
 fn codex_history_marker_payload(thread_id: &str) -> String {
@@ -717,6 +780,107 @@ mod tests {
     }
 
     #[test]
+    fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "invalid_api_key",
+            "message": "Provider reported invalid_api_key in an error field"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Provider reported invalid_api_key in an error field".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_error_string_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_upstream_provider_refresh_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "upstream_provider"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token refresh failed for: codex-oauth-token.".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_multi_connector_reconnect_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: notion, codex-oauth-token.",
+            "connectors": ["notion", "codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: notion, codex-oauth-token."
+                    .to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_event_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -729,6 +893,29 @@ mod tests {
                 event_type: "turn.failed",
                 message: "turn failed from server".to_string(),
                 failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "code": "TOKEN_REFRESH_FAILED",
+                "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                "connectors": ["codex-oauth-token"],
+                "failureReason": "reconnect_required"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
             })
         );
     }

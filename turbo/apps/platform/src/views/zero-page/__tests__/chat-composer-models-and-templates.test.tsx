@@ -10,6 +10,7 @@ import {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
@@ -84,6 +85,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -144,9 +155,9 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
   context.mocks.data.orgModelPolicies([
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000201",
-      model: "kimi-k2.5",
-      modelLabel: "Kimi K2.5",
-      isDefault: defaultSelectedModel === "kimi-k2.5",
+      model: "kimi-k2.7-code",
+      modelLabel: "Kimi K2.7 Code",
+      isDefault: defaultSelectedModel === "kimi-k2.7-code",
       defaultProviderType: "moonshot-api-key",
       credentialScope: "org",
       modelProviderId: MOONSHOT_PROVIDER_ID,
@@ -463,6 +474,20 @@ function composerElementFrom(textarea: HTMLElement): HTMLElement {
   return composer;
 }
 
+// The slash-skill composer renders a TipTap contenteditable instead of a
+// textarea, so locate it directly rather than by placeholder.
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -470,7 +495,7 @@ beforeEach(() => {
 describe("chat composer models", () => {
   it("suggests current agent skills from slash input and highlights inserted skill tokens", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: ["sales-research", "support-escalation"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -498,37 +523,44 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).not.toHaveClass("text-transparent");
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
 
-    await expect(
-      screen.findByText("/sales-research"),
-    ).resolves.toBeInTheDocument();
+    const salesSuggestion = await screen.findByText("/sales-research");
+    expect(salesSuggestion).toBeInTheDocument();
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
-    expect(screen.getByText("/deep-dive")).toBeInTheDocument();
+    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    // The menu renders in a Radix Popover portal (Floating UI handles
+    // cross-browser placement), so it lives outside the composer element.
+    const slashSkillMenu = screen.getByTestId("slash-skill-menu");
+    expect(slashSkillMenu).toBeInTheDocument();
 
     await user.keyboard("sales");
 
+    await waitFor(() => {
+      expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
+    });
     expect(screen.getByText("/sales-research")).toBeInTheDocument();
-    expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
 
     await user.keyboard("{Enter}");
 
-    expect(textarea).toHaveValue("/sales-research ");
+    await waitFor(() => {
+      expect(editor.textContent).toContain("/sales-research");
+    });
+    // The colored token is a real inline decoration in the same layer as the
+    // text (no overlay), so it stays aligned when the composer scrolls.
     const highlightedSkill = screen
       .getAllByText("/sales-research")
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedSkill).toHaveClass("text-primary");
-    expect(highlightedSkill).not.toHaveClass("font-medium");
   });
 
-  it("suggests org skills when the agent has no custom skills", async () => {
+  it("does not suggest org skills that are not enabled on the current agent", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -546,16 +578,55 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
 
-    await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    });
+    expect(editor.textContent).toContain("/");
+  });
+
+  it("links to the skills page from the slash skill menu footer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org skill",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.SkillsViewer]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    await expect(
+      screen.findByText("No matching skills"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    const link = linkByText("View all skills");
+    expect(link).toHaveAttribute("href", "/skills");
+    expect(link.parentElement).toHaveClass("shrink-0", "border-t");
   });
 
   it("hides slash skill suggestions when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: ["sales-research"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -588,7 +659,7 @@ describe("chat composer models", () => {
       configurable: true,
       value: scrollIntoView,
     });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     const customSkills = Array.from({ length: 12 }, (_, index) => {
       return `custom-skill-${index + 1}`;
     });
@@ -612,8 +683,8 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
     await expect(
       screen.findByText("/custom-skill-1"),
@@ -627,7 +698,7 @@ describe("chat composer models", () => {
   });
 
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -635,11 +706,11 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Kimi K2.5");
+    await expectComposerModel("Kimi K2.7 Code");
   });
 
   it("shows user preference over workspace default", async () => {
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -656,7 +727,7 @@ describe("chat composer models", () => {
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -698,8 +769,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000302",
-        model: "kimi-k2.6",
-        modelLabel: "Kimi K2.6",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
         defaultProviderType: "moonshot-api-key",
         credentialScope: "org",
         modelProviderId: MOONSHOT_PROVIDER_ID,
@@ -716,7 +787,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: /Kimi K2\.6 BYOK/ }),
+        screen.getByRole("option", { name: /Kimi K2\.7 Code BYOK/ }),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
@@ -1305,38 +1376,36 @@ describe("chat composer templates", () => {
     });
     click(tabByText("Illustration"));
 
+    const heroAlt = `${illustrationTemplate.title} illustration preview`;
+    const heroSrc = (index: number) => {
+      return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
+        width: 768,
+        height: 768,
+        quality: 72,
+      });
+    };
+
     await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
-      ).toHaveAttribute("src", illustrationTemplate.previewImage);
-      expect(screen.getAllByTitle(/ illustration preview$/u)).toHaveLength(
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+      expect(screen.getAllByAltText(/ illustration preview$/u)).toHaveLength(
         ILLUSTRATION_TEMPLATE_ITEMS.length,
       );
     });
 
-    click(screen.getByLabelText(`View template ${illustrationTemplate.title}`));
+    // Variant thumbnails switch the hero inline within the card; there is no
+    // longer a second preview dialog.
+    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    if (!card) {
+      throw new Error("Illustration card not found");
+    }
+    click(within(card).getByLabelText("Show variant 2"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    click(screen.getByLabelText("Show variant 2"));
+    click(within(card).getByLabelText("Show variant 1"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 2`),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Show variant 1"));
-    await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText("Templates"));
-    await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");
@@ -1434,11 +1503,10 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(tabByText("Video")).toBeInTheDocument();
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
       expect(
         screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
       ).toBeInTheDocument();
-      expect(screen.queryByText("PPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
       expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
     });
   });
@@ -1553,7 +1621,7 @@ describe("chat composer templates", () => {
     click(tabByText("Video"));
 
     await waitFor(() => {
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
+      expect(buttonByText("Brand & Commercial")).toBeInTheDocument();
     });
 
     click(buttonByText("Brand & Commercial"));
@@ -1594,5 +1662,127 @@ describe("chat composer templates", () => {
         screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("reopens the picker on the presentation tab from the selected chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    await selectTemplate(user, template);
+
+    click(
+      await screen.findByLabelText(
+        `Preview template ${templateLabel(template)}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    // Select an illustration style, which leaves the picker on the
+    // Illustration tab.
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+    click(
+      await screen.findByLabelText(
+        `Select template ${illustrationTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    // Move the last-used tab back to Presentation, then close without changing
+    // the selection so the persisted tab no longer matches the selection.
+    click(screen.getByLabelText("Template"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(tabByText("Presentation"));
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Clicking the chip reopens on the tab matching the selection's type.
+    click(
+      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("removes the selected template from the chip without opening the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await selectTemplate(user, template);
+
+    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+    ).not.toBeInTheDocument();
   });
 });

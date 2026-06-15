@@ -46,6 +46,16 @@ export const setRenameDialogInput$ = command(({ set }, input: string) => {
   set(internalRenameDialogInput$, input);
 });
 
+export const openRenameChatThreadDialog$ = command(
+  (
+    { set },
+    { threadId, title }: { threadId: string; title: string | null | undefined },
+  ) => {
+    set(internalRenameDialogInput$, title?.trim() ?? "");
+    set(internalRenameDialogThreadId$, threadId);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection) — persisted in localStorage
 // ---------------------------------------------------------------------------

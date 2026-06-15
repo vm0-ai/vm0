@@ -76,7 +76,7 @@ export class TimeTrigger {
   /**
    * Next run after a completion callback (the run finished, success or failure).
    * Cron advances from the cron expression captured at dispatch (null when the
-   * one-time callback carried no expression); a loop advances by the schedule's
+   * one-time callback carried no expression); a loop advances by the trigger's
    * interval and requires one to be present. Disabling collapses the next run to
    * null.
    */
@@ -97,7 +97,7 @@ export class TimeTrigger {
         : null;
     }
     if (args.intervalSeconds === null) {
-      throw new Error("Loop schedule is missing intervalSeconds");
+      throw new Error("Loop trigger is missing intervalSeconds");
     }
     return new Date(args.completedAt.getTime() + args.intervalSeconds * 1000);
   }
@@ -105,7 +105,7 @@ export class TimeTrigger {
   /**
    * Next recurrence for an `automation_triggers` time row, computed from its kind:
    * cron advances to the next occurrence; loop advances by its interval; once does
-   * not recur. The same math the schedule path uses, applied to a trigger row.
+   * not recur, applied to a trigger row.
    * `null` is returned when the kind cannot recur (once, or a malformed time row).
    */
   private static nextTriggerRun(
@@ -127,13 +127,11 @@ export class TimeTrigger {
 
   /**
    * Claim a due `automation_triggers` time row via an optimistic lock on
-   * `nextRunAt` — the trigger-table counterpart of `evaluate`, mirroring the
-   * live schedule claim 1:1: clear the next run, stamp `lastRunAt`, and disable
-   * one-time triggers. The recurrence advance happens
-   * in the trigger completion callback (or `advanceTriggerAfterPreRunFailure`
-   * when the run was never created), exactly like the schedule path. Returns
-   * the claimed row, or null when another invocation won the race (the row's
-   * `nextRunAt` already moved).
+   * `nextRunAt`: clear the next run, stamp `lastRunAt`, and disable one-time
+   * triggers. The recurrence advance happens in the trigger completion
+   * callback (or `advanceTriggerAfterPreRunFailure` when the run was never
+   * created). Returns the claimed row, or null when another invocation won
+   * the race (the row's `nextRunAt` already moved).
    */
   async evaluateTrigger(args: {
     readonly db: Db;
@@ -159,11 +157,10 @@ export class TimeTrigger {
   }
 
   /**
-   * Next run for an `automation_triggers` time row after a pre-run failure in the
-   * poller (the run was never created) — the trigger-table counterpart of
-   * `advanceAfterPreRunFailure`. Cron advances to the next occurrence; a loop
-   * advances by its interval; once and interval-less loops do not reschedule.
-   * Disabling collapses the next run to null.
+   * Next run for an `automation_triggers` time row after a pre-run failure in
+   * the poller (the run was never created). Cron advances to the next
+   * occurrence; a loop advances by its interval; once and interval-less loops
+   * do not reschedule. Disabling collapses the next run to null.
    */
   advanceTriggerAfterPreRunFailure(args: {
     readonly trigger: TriggerRow;

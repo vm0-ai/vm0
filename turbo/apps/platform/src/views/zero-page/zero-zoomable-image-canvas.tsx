@@ -218,6 +218,7 @@ export function ZoomableArtifactImageCanvas({
                 data-testid={imageTestId}
                 onLoad={onLoad}
                 onError={onError}
+                style={{ pointerEvents: "auto" }}
                 className={cn(
                   "block max-h-full max-w-full select-none object-contain",
                   imageClassName,

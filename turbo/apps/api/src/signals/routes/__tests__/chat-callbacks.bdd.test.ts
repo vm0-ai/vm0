@@ -21,7 +21,7 @@ import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-sel
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /**
@@ -36,7 +36,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -363,7 +363,6 @@ describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
-    await chatCallbacks.enableChatRecommendedFollowups(actor);
 
     const titlePrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
@@ -504,7 +503,7 @@ describe("CHAT-02: completed chat callback", () => {
       "Most recent assistant reply:\nfinal answer",
     );
 
-    const threads = await chat.listThreads(actor);
+    const threads = await chat.listThreads(actor, { agentId });
     const orderedIds = [...threads.pinned, ...threads.threads].map((thread) => {
       return thread.id;
     });
@@ -563,6 +562,22 @@ describe("CHAT-02: completed chat callback", () => {
         })
         .sort(),
     ).toStrictEqual([queued.id, claimed.id].sort());
+    // The auto-send publishes happen in background callback processing, so
+    // poll until each expected channel has been published before asserting.
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
       null,
@@ -609,6 +624,26 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       prompt: "progress probe",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadMessageCreated:${first.threadId}` &&
+            call[1] === null
+          );
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadRunCreated:${first.threadId}` &&
+            call[1] === null
+          );
+        });
+      })
+      .toBe(true);
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await webhooks.requestAgentHeartbeat(
@@ -864,7 +899,7 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
       `chatThreadMessageCreated:${first.threadId}`,
       null,
     );
-    const ordered = await chat.listThreads(actor);
+    const ordered = await chat.listThreads(actor, { agentId });
     const orderedIds = [...ordered.pinned, ...ordered.threads].map((thread) => {
       return thread.id;
     });
@@ -977,6 +1012,16 @@ describe("CHAT-02: failed chat callbacks", () => {
       threadId = run.threadId;
       runIds.push(run.runId);
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      await expect
+        .poll(() => {
+          return context.mocks.ably.publish.mock.calls.some((call) => {
+            return (
+              call[0] === `chatThreadRunCreated:${run.threadId}` &&
+              call[1] === null
+            );
+          });
+        })
+        .toBe(true);
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
       expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
@@ -1399,6 +1444,20 @@ describe("CHAT-02: thread deletion while a run is active", () => {
       prompt: "delete this thread",
     });
     await claimChatRun(runnerGroup, run.runId);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadMessageCreated:${run.threadId}`;
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${run.threadId}`;
+        });
+      })
+      .toBe(true);
 
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();

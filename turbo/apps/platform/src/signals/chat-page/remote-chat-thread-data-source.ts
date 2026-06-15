@@ -9,8 +9,13 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { setAblyLoop$, setAblyMessageHandler$ } from "../realtime.ts";
 import { logger } from "../log.ts";
+import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
+import {
+  applyUnreadSnapshot$,
+  recordOptimisticReadMark$,
+} from "./sidebar-unread-threads.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
@@ -30,7 +35,7 @@ const L = logger("ChatThread");
 
 const patchDraft$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, content, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
@@ -43,6 +48,8 @@ const patchDraft$ = command(
       }),
       [204],
     );
+    signal.throwIfAborted();
+    set(reloadSidebarDraftThreads$);
   },
 );
 
@@ -237,10 +244,14 @@ const cancelRuns$ = command(
 
 const markRead$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, latestMessageId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
+    // Optimistic: suppress this thread's sidebar unread dot immediately.
+    // The response's unread snapshot kicks the mark if a newer message
+    // already landed. Mark-read is not broadcast by the server.
+    set(recordOptimisticReadMark$, threadId);
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     const result = await accept(
       client.markRead({
@@ -250,6 +261,7 @@ const markRead$ = command(
       [200],
     );
     signal.throwIfAborted();
+    set(applyUnreadSnapshot$, result.body.unreads);
     return result.body.lastReadMessageId ?? latestMessageId;
   },
 );
@@ -268,6 +280,12 @@ const subscribeRealtime$ = command(
         signal,
       ),
       set(
+        setAblyMessageHandler$,
+        `chatThreadMessageDelta:${threadId}`,
+        handlers.onMessageDelta$,
+        signal,
+      ),
+      set(
         setAblyLoop$,
         `chatThreadRunCreated:${threadId}`,
         handlers.onRunChanged$,
@@ -281,8 +299,8 @@ const subscribeRealtime$ = command(
       ),
       set(
         setAblyLoop$,
-        `chatThreadSchedulesChanged:${threadId}`,
-        handlers.onSchedulesChanged$,
+        `chatThreadAutomationsChanged:${threadId}`,
+        handlers.onAutomationsChanged$,
         signal,
       ),
     ]);
@@ -312,6 +330,8 @@ export function createRemoteChatThreadDataSource(
       title: body.title ?? null,
       agentId: body.agentId,
       lastReadMessageId: body.lastReadMessageId ?? null,
+      lastReadAt: body.lastReadAt ?? null,
+      lastMessageAt: body.lastMessageAt ?? body.updatedAt,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,

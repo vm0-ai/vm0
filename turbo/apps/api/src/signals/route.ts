@@ -3,7 +3,7 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsV2Routes } from "./routes/automations-v2";
+import { automationsRoutes } from "./routes/automations";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
@@ -164,7 +164,6 @@ import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preferen
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
-import { zeroVoiceIoTtsRoutes } from "./routes/zero-voice-io-tts";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { storagesCommitRoutes } from "./routes/storages-commit";
@@ -201,7 +200,7 @@ export const ROUTES: readonly RouteEntry[] = [
   // wins over the `/api/automations/:ref/...` params for that path shape.
   ...webhooksAutomationRoutes,
   // The unified Automation resource: one automation, N triggers of any kind.
-  ...automationsV2Routes,
+  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -306,7 +305,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
   ...zeroVoiceIoSttRoutes,
-  ...zeroVoiceIoTtsRoutes,
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,

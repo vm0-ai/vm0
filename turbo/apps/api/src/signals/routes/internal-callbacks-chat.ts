@@ -13,8 +13,6 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -64,9 +62,8 @@ import {
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle, tapError } from "../utils";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -505,7 +502,21 @@ async function insertRunLifecycleMarker(args: {
     if (marker.length === 0) {
       return false;
     }
-    await touchChatThreadLastMessageAt(tx, args.threadId);
+    const [assistantText] = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.runId, args.runId),
+          eq(chatMessages.role, "assistant"),
+          isNotNull(chatMessages.content),
+          sql`${chatMessages.content} <> ''`,
+        ),
+      )
+      .limit(1);
+    if (assistantText) {
+      await touchChatThreadLastMessageAt(tx, args.threadId);
+    }
     return true;
   });
   if (!inserted) {
@@ -522,25 +533,9 @@ async function insertRunLifecycleMarker(args: {
 async function generateRecommendedFollowupsForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
   readonly signal: AbortSignal;
 }): Promise<ChatMessageRecommendedFollowups | undefined> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    args.db,
-    args.orgId,
-    args.userId,
-  );
   args.signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.ChatRecommendedFollowups,
-      featureSwitchContext,
-    )
-  ) {
-    return undefined;
-  }
-
   const suggestions = await generateChatThreadRecommendedFollowups({
     db: args.db,
     threadId: args.threadId,
@@ -622,8 +617,6 @@ async function handleCompletedChatCallback(args: {
       await generateRecommendedFollowupsForCompletedRun({
         db: args.db,
         threadId: args.chatThread.chatThreadId,
-        orgId: args.chatThread.orgId,
-        userId: args.chatThread.userId,
         signal: args.signal,
       });
     await insertRunLifecycleMarker({
@@ -1174,7 +1167,7 @@ async function latestSessionForThreadFromDb(
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     // D7 session-continuity exclusion (see latestSessionForThread in
     // zero-chat-messages.ts): only web-source runs join the chain, so an
-    // autoSend follow-up resumes the latest web session, not a scheduled one.
+    // autoSend follow-up resumes the latest web session, not an automation one.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
@@ -1326,9 +1319,11 @@ async function buildCreateQueuedChatRunInput(args: {
     startNewSession,
     incompleteContext,
   });
-  const generationTemplatePrompt = buildGenerationTemplatePrompt(
-    resolvedQueuedMessage.generationTemplate,
-  );
+  const generationTemplatePrompt = await resolveThreadGenerationTemplatePrompt({
+    db: args.db,
+    threadId: args.threadId,
+    explicit: resolvedQueuedMessage.generationTemplate,
+  });
 
   return {
     orgId: args.agent.orgId,
@@ -1343,9 +1338,7 @@ async function buildCreateQueuedChatRunInput(args: {
     appendSystemPrompt: buildAppendSystemPrompt(
       incompleteContext,
       priorContext,
-      generationTemplatePrompt.status === "resolved"
-        ? generationTemplatePrompt.prompt
-        : "",
+      generationTemplatePrompt,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,

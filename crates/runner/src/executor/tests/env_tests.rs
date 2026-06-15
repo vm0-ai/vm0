@@ -7,7 +7,7 @@ use api_contracts::generated::types::runners::storage::{
 use sandbox::SandboxId;
 
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_user_env_json,
+    HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
     validate_model_provider_env_placeholders,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
@@ -177,7 +177,8 @@ fn build_env_json_required_keys() {
     assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
-        env.get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV).unwrap(),
+        env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
     assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
@@ -191,6 +192,38 @@ fn build_env_json_required_keys() {
             .is_ok()
     );
     assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
+}
+
+#[test]
+fn build_env_json_injects_complete_chat_stream_env() {
+    let mut ctx = minimal_context();
+    ctx.chat_stream_channel = Some("user:user_123".into());
+    ctx.chat_stream_topic =
+        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
+    ctx.chat_stream_token = Some("stream-token".into());
+
+    let env = build_env_for_test(&ctx, "https://api.example.com");
+
+    assert_eq!(env.get("VM0_CHAT_STREAM_CHANNEL").unwrap(), "user:user_123");
+    assert_eq!(
+        env.get("VM0_CHAT_STREAM_TOPIC").unwrap(),
+        "chatThreadMessageDelta:22222222-2222-4222-8222-222222222222"
+    );
+    assert_eq!(env.get("VM0_CHAT_STREAM_TOKEN").unwrap(), "stream-token");
+}
+
+#[test]
+fn build_env_json_omits_partial_chat_stream_env() {
+    let mut ctx = minimal_context();
+    ctx.chat_stream_channel = Some("user:user_123".into());
+    ctx.chat_stream_topic =
+        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
+
+    let env = build_env_for_test(&ctx, "https://api.example.com");
+
+    assert!(!env.contains_key("VM0_CHAT_STREAM_CHANNEL"));
+    assert!(!env.contains_key("VM0_CHAT_STREAM_TOPIC"));
+    assert!(!env.contains_key("VM0_CHAT_STREAM_TOKEN"));
 }
 
 #[test]
@@ -320,29 +353,71 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     ctx.cli_agent_type = "codex".into();
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_ENV".into(), "kept".into()),
-        ("VM0_PROMPT".into(), "user prompt".into()),
-        ("VM0_API_TOKEN".into(), "stolen".into()),
-        ("VM0_WORKING_DIR".into(), "/legacy".into()),
         (
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+            guest_contracts::env::PROMPT_ENV.into(),
+            "user prompt".into(),
+        ),
+        (guest_contracts::env::API_TOKEN_ENV.into(), "stolen".into()),
+        (
+            guest_contracts::env::CHAT_STREAM_CHANNEL_ENV.into(),
+            "user:attacker".into(),
+        ),
+        (
+            guest_contracts::env::CHAT_STREAM_TOPIC_ENV.into(),
+            "chatThreadMessageDelta:attacker".into(),
+        ),
+        (
+            guest_contracts::env::CHAT_STREAM_TOKEN_ENV.into(),
+            "attacker-token".into(),
+        ),
+        (
+            guest_contracts::env::WORKING_DIR_ENV.into(),
+            "/legacy".into(),
+        ),
+        (
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
             "/user/controlled/runtime".into(),
         ),
-        ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
+        (
+            guest_contracts::env::FEATURE_FLAGS_ENV.into(),
+            r#"{"bad":true}"#.into(),
+        ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
         (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
         (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
         (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
         (RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
         (RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
-        ("CLI_AGENT_TYPE".into(), "claude-code".into()),
-        ("USE_MOCK_CLAUDE".into(), "true".into()),
-        ("USE_MOCK_CODEX".into(), "1".into()),
-        ("VERCEL_PROTECTION_BYPASS".into(), "user-bypass".into()),
-        ("VM0_DISALLOWED_TOOLS".into(), "CronCreate".into()),
-        ("VM0_TOOLS".into(), "Bash".into()),
-        ("VM0_SETTINGS".into(), r#"{"hooks":{}}"#.into()),
-        ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
-        ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
+        (
+            guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
+            "claude-code".into(),
+        ),
+        (
+            guest_contracts::env::USE_MOCK_CLAUDE_ENV.into(),
+            "true".into(),
+        ),
+        (guest_contracts::env::USE_MOCK_CODEX_ENV.into(), "1".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "user-bypass".into(),
+        ),
+        (
+            guest_contracts::env::DISALLOWED_TOOLS_ENV.into(),
+            "CronCreate".into(),
+        ),
+        (guest_contracts::env::TOOLS_ENV.into(), "Bash".into()),
+        (
+            guest_contracts::env::SETTINGS_ENV.into(),
+            r#"{"hooks":{}}"#.into(),
+        ),
+        (
+            guest_contracts::env::MOCK_CLAUDE_PATH_ENV.into(),
+            "/tmp/mock-claude".into(),
+        ),
+        (
+            guest_contracts::env::MOCK_CODEX_PATH_ENV.into(),
+            "/tmp/mock-codex".into(),
+        ),
         (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
     ]));
 
@@ -354,36 +429,109 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
         bootstrap_env
-            .get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     for key in [
-        "VM0_PROMPT",
-        "VM0_API_TOKEN",
-        "VM0_WORKING_DIR",
-        guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
-        "VM0_FEATURE_FLAGS",
+        guest_contracts::env::PROMPT_ENV,
+        guest_contracts::env::API_TOKEN_ENV,
+        guest_contracts::env::CHAT_STREAM_CHANNEL_ENV,
+        guest_contracts::env::CHAT_STREAM_TOPIC_ENV,
+        guest_contracts::env::CHAT_STREAM_TOKEN_ENV,
+        guest_contracts::env::WORKING_DIR_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
         RUNNER_CONCURRENCY_FACTOR_ENV,
         RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
         RUNNER_DISK_IOPS_ENV,
         RUNNER_NET_RX_MIB_PER_SEC_ENV,
         RUNNER_NET_TX_MIB_PER_SEC_ENV,
-        "CLI_AGENT_TYPE",
-        "USE_MOCK_CLAUDE",
-        "USE_MOCK_CODEX",
-        "VERCEL_PROTECTION_BYPASS",
-        "VM0_DISALLOWED_TOOLS",
-        "VM0_TOOLS",
-        "VM0_SETTINGS",
-        "VM0_MOCK_CLAUDE_PATH",
-        "VM0_MOCK_CODEX_PATH",
+        guest_contracts::env::CLI_AGENT_TYPE_ENV,
+        guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+        guest_contracts::env::USE_MOCK_CODEX_ENV,
+        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+        guest_contracts::env::DISALLOWED_TOOLS_ENV,
+        guest_contracts::env::TOOLS_ENV,
+        guest_contracts::env::SETTINGS_ENV,
+        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::MOCK_CODEX_PATH_ENV,
         USER_ENV_FILE_ENV_KEY,
     ] {
         assert!(!user_env.contains_key(key), "{key} should be scrubbed");
+    }
+}
+
+#[test]
+fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        (
+            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
+            "3".into(),
+        ),
+        (
+            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
+            "1".into(),
+        ),
+        (
+            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
+            "2".into(),
+        ),
+    ]));
+    ctx.chat_stream_channel = Some("user:user_123".into());
+    ctx.chat_stream_topic =
+        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
+    ctx.chat_stream_token = Some("stream-token".into());
+    ctx.append_system_prompt = Some("Use terse answers.".into());
+    ctx.resume_session = Some(ResumeSession {
+        session_id: "sess-123".into(),
+        session_history: "{}".into(),
+    });
+    ctx.disallowed_tools = Some(vec!["CronCreate".into()]);
+    ctx.tools = Some(vec!["Bash".into()]);
+    ctx.settings = Some(r#"{"hooks":{}}"#.into());
+    ctx.feature_flags = Some(HashMap::from([("runnerEnvKeyTest".into(), true)]));
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![],
+        artifacts: vec![api_artifact(
+            "artifact",
+            "/workspace",
+            "storage-id",
+            "version-id",
+            "https://example.com/artifact.tar.gz",
+        )],
+    });
+
+    let env = build_env_for_test_with_host_env(
+        &ctx,
+        "http://localhost",
+        &HostEnv {
+            vercel_automation_bypass_secret: Some("bypass".into()),
+            use_mock_claude: Some("true".into()),
+            ..HostEnv::default()
+        },
+    );
+
+    for key in env.keys() {
+        assert!(
+            is_runner_owned_env_key(key),
+            "emitted bootstrap key {key} should be runner-owned"
+        );
+    }
+    for key in [
+        guest_contracts::env::CLI_AGENT_TYPE_ENV,
+        guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+        guest_contracts::env::USE_MOCK_CODEX_ENV,
+        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+    ] {
+        assert!(
+            is_runner_owned_env_key(key),
+            "non-VM0 runner key {key} should be runner-owned"
+        );
     }
 }
 

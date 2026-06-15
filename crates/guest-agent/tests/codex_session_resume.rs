@@ -26,6 +26,9 @@
 //! - Negative path: a codex marker pointing at an empty sessions dir
 //!   surfaces the "file not found" error rather than a silent fallback.
 
+mod common;
+
+use common::SystemLogOverrideGuard;
 use serde_json::json;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex, Once};
@@ -114,11 +117,15 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "thread.started",
-        "thread_id": "0193abcd-ef01-7234-89ab-cdef01234567"
+        "thread_id": thread_id
     });
 
     // No API token → send_event skips the HTTP POST but still captures
@@ -131,7 +138,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
 
     let stored_id =
         std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
-    assert_eq!(stored_id, "0193abcd-ef01-7234-89ab-cdef01234567");
+    assert_eq!(stored_id, thread_id);
 
     let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
         .expect("history-path file written");
@@ -144,8 +151,27 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "marker should embed the codex sessions dir, got: {marker}"
     );
     assert!(
-        marker.ends_with(":0193abcd-ef01-7234-89ab-cdef01234567"),
+        marker.ends_with(&format!(":{thread_id}")),
         "marker should end with the thread id, got: {marker}"
+    );
+    assert_eq!(masker.mask_string(thread_id), "***");
+
+    let system_log = std::fs::read_to_string(&system_log_path).expect("system log written");
+    assert!(
+        system_log.contains("Session history marker written to"),
+        "system log should confirm marker creation, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(thread_id),
+        "system log must not contain the raw thread id, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains("CODEX_SEARCH:"),
+        "system log must not contain the codex marker payload, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(&marker),
+        "system log must not contain the full marker payload, got: {system_log}"
     );
 }
 
@@ -269,6 +295,11 @@ fn send_event_codex_ignores_malformed_thread_id() {
             !Path::new(guest_agent::paths::session_id_file()).exists(),
             "malformed thread_id must not be persisted: {thread_id}"
         );
+        if thread_id.len() >= 5 {
+            assert_eq!(masker.mask_string(thread_id), "***");
+        } else {
+            assert_eq!(masker.mask_string(thread_id), thread_id);
+        }
     }
 }
 
@@ -375,6 +406,10 @@ fn read_session_history_rejects_duplicate_codex_matches() {
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
     );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -416,6 +451,10 @@ fn read_session_history_rejects_duplicate_jsonl_and_zstd_matches() {
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
     );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -455,6 +494,47 @@ fn read_session_history_rejects_duplicate_before_reading_corrupt_zstd() {
     assert!(
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_corrupt_zstd_error_omits_thread_id() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl.zst"),
+        b"not zstd",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("corrupt zstd codex session must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to decompress zstd session history"),
+        "expected zstd decode error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(thread_id),
+        "zstd decode error must not expose thread id, got: {msg}"
     );
 }
 
@@ -528,6 +608,10 @@ fn read_session_history_codex_marker_with_no_match_fails_fast() {
         msg.contains("Codex session file not found"),
         "expected fail-fast error, got: {msg}"
     );
+    assert!(
+        !msg.contains(unknown_id),
+        "missing-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -585,6 +669,31 @@ fn read_session_history_codex_marker_rejects_short_thread_id() {
     assert!(
         msg.contains("Codex session file not found"),
         "expected malformed thread id to fail fast, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_read_error_omits_literal_session_path() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let session_id = "sess-secret-123";
+    let history = tmp.path().join(format!("{session_id}.jsonl"));
+    let path_file = tmp.path().join("path.txt");
+    std::fs::write(&path_file, history.to_string_lossy().as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("missing literal session history path must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to read session history"),
+        "expected read error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(session_id),
+        "history read error must not expose session id, got: {msg}"
     );
 }
 

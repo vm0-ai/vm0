@@ -1,5 +1,90 @@
 # Changelog
 
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.6...guest-agent-v0.36.0) (2026-06-15)
+
+
+### Features
+
+* send Claude prompt over stream-json stdin ([#17710](https://github.com/vm0-ai/vm0/issues/17710)) ([857762b](https://github.com/vm0-ai/vm0/commit/857762b76ed511314e37b145fa879309fe955fee))
+
+## [0.35.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.5...guest-agent-v0.35.6) (2026-06-15)
+
+
+### Bug Fixes
+
+* classify provider credit limit failures ([#17688](https://github.com/vm0-ai/vm0/issues/17688)) ([b967f1b](https://github.com/vm0-ai/vm0/commit/b967f1b2d3cf17ba15501022f2249423feaeb9ed))
+
+
+### Refactoring
+
+* centralize guest env key names ([#17626](https://github.com/vm0-ai/vm0/issues/17626)) ([476546d](https://github.com/vm0-ai/vm0/commit/476546de9d385733c481558b422511b30b1cc45a))
+* share archive manifest verification ([#17705](https://github.com/vm0-ai/vm0/issues/17705)) ([a4e5ea1](https://github.com/vm0-ai/vm0/commit/a4e5ea1c2cfbaef7ff48b8ef59278cb5150d1ab2))
+
+## [0.35.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.4...guest-agent-v0.35.5) (2026-06-14)
+
+
+### Bug Fixes
+
+* classify claude monthly spend limits ([#17627](https://github.com/vm0-ai/vm0/issues/17627)) ([1d33872](https://github.com/vm0-ai/vm0/commit/1d338727d1886ff129603bc3c808e83ed97c1bc5))
+
+## [0.35.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.3...guest-agent-v0.35.4) (2026-06-14)
+
+
+### Refactoring
+
+* **guest-agent:** share system log test guard ([#17582](https://github.com/vm0-ai/vm0/issues/17582)) ([edcd791](https://github.com/vm0-ai/vm0/commit/edcd79197e44c4f16a4f8ab06f01d3523b181f77))
+
+## [0.35.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.2...guest-agent-v0.35.3) (2026-06-13)
+
+## [0.35.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.1...guest-agent-v0.35.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* remove claude fable 5 model support ([#17567](https://github.com/vm0-ai/vm0/issues/17567)) ([63733bf](https://github.com/vm0-ai/vm0/commit/63733bf637ce02afe00d0f97a2439f988c59078d))
+
+
+### Documentation
+
+* document cli failure diagnostic fields ([#17571](https://github.com/vm0-ai/vm0/issues/17571)) ([d5f6bd8](https://github.com/vm0-ai/vm0/commit/d5f6bd8fac011d570520b50dac839cf9f453a2af))
+
+## [0.35.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.0...guest-agent-v0.35.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* mask runtime guest-agent session ids ([#17491](https://github.com/vm0-ai/vm0/issues/17491)) ([4f6308d](https://github.com/vm0-ai/vm0/commit/4f6308dc3fb70f5115cdfb0dd1318447250dc121))
+
+## [0.35.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.34...guest-agent-v0.35.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
+## [0.34.34](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.33...guest-agent-v0.34.34) (2026-06-12)
+
+
+### Bug Fixes
+
+* set fable effort to low ([#17486](https://github.com/vm0-ai/vm0/issues/17486)) ([5a190d6](https://github.com/vm0-ai/vm0/commit/5a190d6b1c9c06f11f00437ef5110f51741b0f9a))
+
+## [0.34.33](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.32...guest-agent-v0.34.33) (2026-06-12)
+
+## [0.34.32](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.31...guest-agent-v0.34.32) (2026-06-12)
+
+
+### Bug Fixes
+
+* mask codex setup login diagnostics ([#17458](https://github.com/vm0-ai/vm0/issues/17458)) ([ed43b5a](https://github.com/vm0-ai/vm0/commit/ed43b5ab028c02472083c544495d563918352ca1))
+
+## [0.34.31](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.30...guest-agent-v0.34.31) (2026-06-12)
+
+
+### Bug Fixes
+
+* classify non-code runner job failures ([#17438](https://github.com/vm0-ai/vm0/issues/17438)) ([dcae0a6](https://github.com/vm0-ai/vm0/commit/dcae0a69924bbf34c4a31cea9fee74cbca9aa16d))
+
 ## [0.34.30](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.29...guest-agent-v0.34.30) (2026-06-11)
 
 ## [0.34.29](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.28...guest-agent-v0.34.29) (2026-06-11)

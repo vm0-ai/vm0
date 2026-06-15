@@ -137,12 +137,11 @@ function createQueuePosition(runId: string) {
  * timestamp cursor would truncate sub-millisecond digits and cause the server
  * to return the boundary event again on the next page.
  */
-async function findLastEventSequence(
-  pages: readonly Computed<Promise<PagedRunEvents>>[],
-  get: (c: Computed<Promise<PagedRunEvents>>) => Promise<PagedRunEvents>,
-): Promise<number | undefined> {
+function findLastEventSequence(
+  pages: readonly PagedRunEvents[],
+): number | undefined {
   for (let i = pages.length - 1; i >= 0; i--) {
-    const page = await get(pages[i]);
+    const page = pages[i];
     const lastEvent = page.events[page.events.length - 1];
     if (lastEvent) {
       return lastEvent.sequenceNumber;
@@ -163,7 +162,12 @@ function createRunPagedEvents(runId: string) {
         return pages;
       }
 
-      const since = await findLastEventSequence(pages, get);
+      const resolvedPages = await Promise.all(
+        pages.map((page$) => {
+          return get(page$);
+        }),
+      );
+      const since = findLastEventSequence(resolvedPages);
       pages.push(
         createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT, since),
       );
@@ -217,8 +221,13 @@ export function createRunLoop(runId: string) {
     // Walk back across both lists (looped first, then initial) so an empty
     // tail page doesn't reset `since` to undefined and refetch from the top.
     const allPages = [...initialPagedEvents, ...loopedPagedEvents];
-    const since = await findLastEventSequence(allPages, get);
+    const resolvedPages = await Promise.all(
+      allPages.map((page$) => {
+        return get(page$);
+      }),
+    );
     signal.throwIfAborted();
+    const since = findLastEventSequence(resolvedPages);
 
     const nextPage$ = createEventPageComputed(
       runId,

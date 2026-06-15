@@ -6,10 +6,13 @@ from pathlib import Path
 
 import pytest
 from mitmproxy import http, websocket
-from mitmproxy.test import tutils
 from wsproto.frame_protocol import Opcode
 
 import mitm_addon
+from tests.model_provider_flow_helpers import (
+    make_openai_responses_websocket_flow,
+    model_provider_usage_sources,
+)
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
 _ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
@@ -18,23 +21,7 @@ _ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
 def _openai_model_websocket_flow(
     tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
 ) -> http.HTTPFlow:
-    flow = real_flow(with_response=False, host="api.openai.com")
-    flow.metadata["vm_run_id"] = "run-abc-123"
-    flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-    flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-    flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-    flow.metadata["cli_agent_type"] = "codex"
-    flow.metadata["firewall_billable"] = True
-    flow.metadata["vm_sandbox_token"] = "tok-xyz"
-    flow.response = tutils.tresp(
-        status_code=101,
-        headers=http.Headers(upgrade="websocket"),
-    )
-
-    mitm_addon.responseheaders(flow)
-    return flow
+    return make_openai_responses_websocket_flow(real_flow, tmp_path)
 
 
 def _capture_deferred_websocket_trims(
@@ -125,6 +112,4 @@ def _feed_websocket_server_text_message(flow: http.HTTPFlow, content: str) -> No
 
 
 def _model_websocket_usage_sources(flow: http.HTTPFlow) -> dict:
-    sources = flow.metadata["model_provider_usage_sources"]
-    assert isinstance(sources, dict)
-    return sources
+    return model_provider_usage_sources(flow)

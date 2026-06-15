@@ -9,9 +9,10 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VM0_API_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
+PAID_ONBOARDING_URL=https://so.vm7.ai:8441
 
 # Optional: Atom redeem service for onboarding codes
-ATOM_URL=https://tunnel-yuma-atom-api.vm7.ai
+ATOM_URL=https://atom.vm7.ai:8442/
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/VM0_MACHINE_SECRET_KEY
 
 # Required: API deploy stage tag
@@ -247,6 +248,7 @@ DEV_MODEL_OPENAI_KEY=op://Development/openai/OPENAI_API_KEY
 DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
 DEV_MODEL_ZAI_KEY=op://Development/z.ai/DEV_MODEL_ZAI_KEY
 DEV_MODEL_MINIMAX_KEY=op://Development/minimax/DEV_MODEL_MINIMAX_KEY
+DEV_MODEL_DEEPSEEK_KEY=op://Development/deepseek/DEEPSEEK_LOCAL_DEV_KEY
 
 # Optional: Gemini Developer API key (for /api/generate-image in local dev).
 # Production uses Vertex AI via OIDC federation; see GCP_* vars injected by CI.

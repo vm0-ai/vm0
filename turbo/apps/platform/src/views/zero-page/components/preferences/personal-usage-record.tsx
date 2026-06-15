@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
   IconBrandGithub,
@@ -12,6 +12,7 @@ import {
   IconRobot,
   IconTerminal2,
 } from "@tabler/icons-react";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
@@ -52,7 +53,7 @@ const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
 const SOURCE_META = {
   chat: { label: "Chat", Icon: IconMessageCircle },
-  schedule: { label: "Schedule", Icon: IconClock },
+  automation: { label: "Automation", Icon: IconClock },
   slack: { label: "Slack", Icon: IconBrandSlack },
   telegram: { label: "Telegram", Icon: IconBrandTelegram },
   email: { label: "Email", Icon: IconMail },
@@ -69,25 +70,33 @@ const SOURCE_META = {
 const KIND_META = {
   model: {
     label: "LLM models",
+    tooltipLabel: "LLM",
     color: "bg-usage-kind-model",
   },
   image: {
     label: "Image models",
+    tooltipLabel: "Image",
     color: "bg-usage-kind-image",
   },
   video: {
     label: "Video models",
+    tooltipLabel: "Video",
     color: "bg-usage-kind-video",
   },
   connector: {
     label: "Connectors",
+    tooltipLabel: "Connectors",
     color: "bg-usage-kind-connector",
   },
   other: {
     label: "Other",
+    tooltipLabel: "Other",
     color: "bg-usage-kind-other",
   },
-} as const satisfies Record<UsageRecordKind, { label: string; color: string }>;
+} as const satisfies Record<
+  UsageRecordKind,
+  { label: string; tooltipLabel: string; color: string }
+>;
 
 const RANGE_OPTIONS = [
   { value: "today", label: "Today" },
@@ -100,8 +109,10 @@ const RANGE_OPTIONS = [
   label: string;
 }[];
 
+// Row divider is an inset hairline (pseudo-element with horizontal margin) so
+// it doesn't run edge-to-edge into the card border.
 const ROW_CLASS =
-  "block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50";
+  "relative block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -121,6 +132,108 @@ function formatCredits(n: number): string {
     return `${(n / 1000).toFixed(1)}K`;
   }
   return n.toLocaleString();
+}
+
+const USAGE_PROVIDER_LABEL_OVERRIDES: Readonly<Record<string, string>> = {
+  "gpt-image-1": "GPT Image 1",
+  "gpt-image-1-mini": "GPT Image 1 Mini",
+  "gpt-image-1.5": "GPT Image 1.5",
+  "gpt-image-2": "GPT Image 2",
+  "flux-pro/v1.1": "FLUX Pro 1.1",
+  "flux-pro/v1.1-ultra": "FLUX Pro 1.1 Ultra",
+  "qwen-image": "Qwen Image",
+  "bytedance/seedream/v4/text-to-image": "Seedream 4",
+  "nano-banana-2": "Nano Banana 2",
+  "nanobanana-2": "Nano Banana 2",
+  "veo3.1/fast": "Veo 3.1 Fast",
+  "kling-video/v3/4k/text-to-video": "Kling Video v3 4K",
+  "dreamina-seedance-2-0-260128": "Seedance 2.0",
+  "dreamina-seedance-2-0-fast-260128": "Seedance 2.0 Fast",
+  "seedance-1-5-pro-251215": "Seedance 1.5 Pro",
+};
+
+const KNOWN_VENDOR_PREFIXES = [
+  "fal-ai/",
+  "fal/",
+  "openai/",
+  "anthropic/",
+  "google/",
+  "deepseek/",
+  "moonshotai/",
+  "minimax/",
+  "zai/",
+  "z-ai/",
+] as const;
+
+const UPPERCASE_USAGE_TOKENS = [
+  "ai",
+  "api",
+  "cli",
+  "glm",
+  "gpt",
+  "id",
+  "llm",
+  "sql",
+  "tts",
+  "url",
+  "vm0",
+] as const;
+
+function stripUsageProviderVendor(value: string): string {
+  const lower = value.toLowerCase();
+  const prefix = KNOWN_VENDOR_PREFIXES.find((knownPrefix) => {
+    return lower.startsWith(knownPrefix);
+  });
+  return prefix ? value.slice(prefix.length) : value;
+}
+
+function titleCaseUsageToken(token: string): string {
+  const lower = token.toLowerCase();
+  if (
+    UPPERCASE_USAGE_TOKENS.some((uppercaseToken) => {
+      return uppercaseToken === lower;
+    })
+  ) {
+    return lower.toUpperCase();
+  }
+  if (/^v\d+(?:\.\d+)*$/u.test(lower)) {
+    return lower.toUpperCase();
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function formatUsageIdentifier(value: string): string {
+  return value
+    .split(/[/._-]+/u)
+    .filter((token) => {
+      return token.length > 0;
+    })
+    .map(titleCaseUsageToken)
+    .join(" ");
+}
+
+function formatUsageProviderLabel(
+  kind: UsageRecordKind,
+  provider: string,
+): string {
+  if (provider.trim().length === 0) {
+    return "Unknown";
+  }
+  if (kind !== "model" && kind !== "image" && kind !== "video") {
+    return provider;
+  }
+
+  const normalized = provider.trim();
+  const knownDisplayName = getModelDisplayName(normalized);
+  if (knownDisplayName !== normalized) {
+    return knownDisplayName;
+  }
+
+  const withoutVendor = stripUsageProviderVendor(normalized);
+  const override =
+    USAGE_PROVIDER_LABEL_OVERRIDES[normalized] ??
+    USAGE_PROVIDER_LABEL_OVERRIDES[withoutVendor];
+  return override ?? formatUsageIdentifier(withoutVendor);
 }
 
 function formatDate(iso: string): string {
@@ -186,7 +299,13 @@ export function UsageRangeSelect({
   );
 }
 
-function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
+function stopUsageTooltipPropagation(
+  event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>,
+): void {
+  event.stopPropagation();
+}
+
+function UsageBreakdownLegend({ row }: { row: UsageRecordRow }) {
   const segments = row.breakdown.filter((segment) => {
     return segment.credits > 0;
   });
@@ -195,18 +314,23 @@ function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
   }
 
   return (
-    <div className="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-muted/40">
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
       {segments.map((segment) => {
         const meta = KIND_META[segment.kind];
-        const width = `${(segment.credits / row.credits) * 100}%`;
         return (
           <Tooltip key={segment.kind}>
             <TooltipTrigger asChild>
-              <div
-                className={`${meta.color} h-2 cursor-default first:rounded-l-full last:rounded-r-full transition-shadow hover:z-10 hover:ring-2 hover:ring-foreground/30`}
-                style={{ width }}
-                data-testid={`usage-kind-segment-${segment.kind}`}
-              />
+              <span
+                className="inline-flex min-h-6 cursor-default items-center gap-1.5 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+                data-testid={`usage-kind-legend-${segment.kind}`}
+              >
+                <span
+                  className={`${meta.color} h-2 w-2 shrink-0 rounded-full`}
+                />
+                <span className="tabular-nums">
+                  {segment.credits.toLocaleString()}
+                </span>
+              </span>
             </TooltipTrigger>
             <TooltipContent
               side="top"
@@ -215,10 +339,15 @@ function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
                 backgroundColor: "hsl(var(--popover))",
                 color: "hsl(var(--popover-foreground))",
               }}
-              className="max-w-64 border shadow-md"
+              className="pointer-events-auto max-w-64 select-text border shadow-md"
+              onClick={stopUsageTooltipPropagation}
+              onMouseDown={stopUsageTooltipPropagation}
+              onMouseUp={stopUsageTooltipPropagation}
+              onPointerDown={stopUsageTooltipPropagation}
+              onPointerUp={stopUsageTooltipPropagation}
             >
               <div className="font-medium text-foreground">
-                {meta.label} - {segment.credits.toLocaleString()}
+                {meta.tooltipLabel} {segment.credits.toLocaleString()}
               </div>
               <div className="mt-1 flex flex-col gap-0.5">
                 {segment.providers.map((provider) => {
@@ -227,7 +356,12 @@ function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
                       key={provider.provider}
                       className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
                     >
-                      <span className="truncate">{provider.provider}</span>
+                      <span className="truncate">
+                        {formatUsageProviderLabel(
+                          segment.kind,
+                          provider.provider,
+                        )}
+                      </span>
                       <span className="shrink-0 tabular-nums">
                         {provider.credits.toLocaleString()}
                       </span>
@@ -255,7 +389,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
     }
     detach(closeSettings(false, pageSignal), Reason.DomCallback);
   };
-  const credits = `${formatCredits(row.credits)} credits`;
+  const credits = formatCredits(row.credits);
   const inner = (
     <div className="flex min-w-0 items-start gap-3">
       <span
@@ -282,7 +416,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
             {row.member.email}
           </span>
         ) : null}
-        <UsageBreakdownBar row={row} />
+        <UsageBreakdownLegend row={row} />
       </span>
     </div>
   );
@@ -346,6 +480,87 @@ function emptyMessage(range: UsageRecordRange): string {
   return "No usage for this range yet.";
 }
 
+// Summary + type legend above the list. The credit total is range-wide (from
+// the server), so it stays correct as more pages load in.
+function UsageRecordSummary({
+  count,
+  totalCredits,
+}: {
+  count: number;
+  totalCredits: number;
+}) {
+  const kinds = Object.keys(KIND_META) as UsageRecordKind[];
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3.5">
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">
+          {count} {count === 1 ? "chat" : "chats"}
+        </span>{" "}
+        · {formatCredits(totalCredits)} credits
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
+        {kinds.map((kind) => {
+          return (
+            <span
+              key={kind}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <span
+                className={`${KIND_META[kind].color} h-2 w-2 shrink-0 rounded-full`}
+              />
+              {KIND_META[kind].label}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UsageRecordList({
+  data,
+  scope,
+}: {
+  data: UsageRecordResponse;
+  scope: UsageRecordScope;
+}) {
+  const loadMore = useSet(loadMoreUsageRecord$);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <TooltipProvider delayDuration={100}>
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: CARD_BORDER }}
+        >
+          <UsageRecordSummary
+            count={data.pagination.total}
+            totalCredits={data.totalCredits}
+          />
+          {data.rows.map((row) => {
+            return <UsageRow key={usageRowKey(row)} row={row} />;
+          })}
+        </div>
+      </TooltipProvider>
+      {data.rows.length < data.pagination.total && (
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+            onClick={() => {
+              loadMore(scope);
+            }}
+          >
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UsageRecordContent({
   loadable,
   range,
@@ -355,8 +570,6 @@ function UsageRecordContent({
   range: UsageRecordRange;
   scope: UsageRecordScope;
 }) {
-  const loadMore = useSet(loadMoreUsageRecord$);
-
   return (
     <section className="flex flex-col gap-4">
       {loadable.state === "loading" && <UsageRecordSkeleton />}
@@ -369,33 +582,7 @@ function UsageRecordContent({
         (loadable.data.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            <TooltipProvider delayDuration={100}>
-              <div
-                className="overflow-hidden rounded-xl bg-card"
-                style={{ border: CARD_BORDER }}
-              >
-                {loadable.data.rows.map((row) => {
-                  return <UsageRow key={usageRowKey(row)} row={row} />;
-                })}
-              </div>
-            </TooltipProvider>
-            {loadable.data.rows.length < loadable.data.pagination.total && (
-              <div className="flex justify-center">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                  onClick={() => {
-                    loadMore(scope);
-                  }}
-                >
-                  Load more
-                </Button>
-              </div>
-            )}
-          </div>
+          <UsageRecordList data={loadable.data} scope={scope} />
         ))}
     </section>
   );

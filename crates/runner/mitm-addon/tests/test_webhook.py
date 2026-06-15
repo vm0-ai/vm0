@@ -11,6 +11,11 @@ import pytest
 
 import auth
 import usage
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 
 
 class _QueuedUsageExecutor:
@@ -117,10 +122,7 @@ class TestUsageWebhookDelivery:
         ]
         uuid.UUID(body["events"][0]["idempotencyKey"])
         payload_bytes = len(json.dumps(body).encode())
-        log_entries = [
-            json.loads(line)
-            for line in Path(flow.metadata["vm_proxy_log_path"]).read_text().splitlines()
-        ]
+        log_entries = read_jsonl_entries_after_flush(Path(flow.metadata["vm_proxy_log_path"]))
         webhook_entries = [entry for entry in log_entries if entry["type"] == "usage_event"]
         assert len(webhook_entries) == 2
         assert {entry["level"] for entry in webhook_entries} == {"info"}
@@ -202,8 +204,8 @@ class TestUsageWebhookDelivery:
 
         assert usage_webhook_server.request_count == 2
         mock_sleep.assert_called_once_with(0.5)
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        assert [entry["level"] for entry in entries] == ["warn", "info"]
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        assert [entry["level"] for entry in entries] == ["info", "info"]
         assert [entry["attempt"] for entry in entries] == [1, 2]
         assert all(entry["url"] == usage_webhook_server.url("/x") for entry in entries)
         assert all(entry["type"] == "usage" for entry in entries)
@@ -233,8 +235,10 @@ class TestUsageWebhookDelivery:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 2
-        assert proxy_log.exists()
-        assert "2 attempts" in proxy_log.read_text()
+        assert jsonl_exists_after_flush(proxy_log)
+        assert "2 attempts" in read_jsonl_text_after_flush(proxy_log)
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        assert all(entry["level"] != "error" for entry in entries)
 
     def test_give_up_with_payload_collision_logs_body_free_summary(
         self, tmp_path, usage_webhook_server
@@ -244,7 +248,7 @@ class TestUsageWebhookDelivery:
         payload = {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
 
-        usage.webhook._do_post_webhook_attempts(
+        outcome = usage.webhook._do_post_webhook_attempts(
             usage_webhook_server.url("/x"),
             "tok",
             payload,
@@ -253,8 +257,10 @@ class TestUsageWebhookDelivery:
             max_retries=0,
         )
 
-        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        assert entry["level"] == "error"
+        assert outcome == "retryable_failure"
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["level"] == "info"
+        assert entry["delivery_outcome"] == "retryable_failure"
         assert entry["attempt"] == 1
         assert "HTTP Error 500" in entry["error"]
         _assert_body_free_webhook_entry(
@@ -263,6 +269,48 @@ class TestUsageWebhookDelivery:
             event_count=0,
             payload_bytes=payload_bytes,
         )
+
+    def test_http_429_is_retryable(self, tmp_path, usage_webhook_server):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(429)
+        usage_webhook_server.queue_response(429)
+
+        with patch.object(usage.webhook.time, "sleep") as mock_sleep:
+            outcome = usage.webhook._do_post_webhook_attempts(
+                usage_webhook_server.url("/x"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
+
+        assert outcome == "retryable_failure"
+        assert usage_webhook_server.request_count == 2
+        mock_sleep.assert_called_once_with(0.5)
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        assert [entry["level"] for entry in entries] == ["info", "info"]
+        assert entries[-1]["delivery_outcome"] == "retryable_failure"
+
+    def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(400)
+
+        outcome = usage.webhook._do_post_webhook_attempts(
+            usage_webhook_server.url("/x"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage",
+            max_retries=1,
+        )
+
+        assert outcome == "permanent_failure"
+        assert usage_webhook_server.request_count == 1
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["level"] == "error"
+        assert entry["attempt"] == 1
+        assert "permanent HTTP error" in entry["message"]
 
     def test_sync_executor_worker_error_preserves_other_pending_reports(
         self, tmp_path, sync_usage_executor
@@ -282,7 +330,7 @@ class TestUsageWebhookDelivery:
 
         assert usage.counters._pending_reports == 1
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert "non-retryable" in proxy_log.read_text()
+        assert "non-retryable" in read_jsonl_text_after_flush(proxy_log)
         with pytest.raises(ValueError, match="absolute http"):
             sync_usage_executor.shutdown(wait=True)
 
@@ -316,7 +364,7 @@ class TestUsageWebhookDelivery:
                 max_retries=1,
             )
 
-        log_text = proxy_log.read_text()
+        log_text = read_jsonl_text_after_flush(proxy_log)
         assert "giving up" not in log_text
         assert "non-retryable" in log_text
 
@@ -334,7 +382,7 @@ class TestUsageWebhookDelivery:
                 max_retries=1,
             )
 
-        entry = json.loads(proxy_log.read_text())
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["url"] == "not-a-url"
         _assert_body_free_webhook_entry(
             entry,
@@ -357,7 +405,7 @@ class TestUsageWebhookDelivery:
                 max_retries=1,
             )
 
-        entry = json.loads(proxy_log.read_text())
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["level"] == "error"
         assert entry["attempt"] == 1
         assert "non-retryable" in entry["message"]
@@ -386,7 +434,7 @@ class TestUsageWebhookDelivery:
         assert body["events"][0]["quantity"] == 42
         assert body["events"][0]["category"] == "tokens.input"
 
-    def test_drops_when_delivery_capacity_is_saturated(self, tmp_path):
+    def test_does_not_admit_when_delivery_capacity_is_saturated(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
         executor = _QueuedUsageExecutor()
 
@@ -400,7 +448,7 @@ class TestUsageWebhookDelivery:
                     "usage_event",
                 )
 
-            dropped = usage.webhook._enqueue_webhook(
+            admitted = usage.webhook._enqueue_webhook(
                 "https://api.vm0.ai/api/webhooks/agent/usage-event",
                 "tok",
                 {
@@ -412,23 +460,26 @@ class TestUsageWebhookDelivery:
                 "usage_event",
             )
 
-        assert dropped is False
+        assert admitted is False
         assert len(executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         assert usage.counters._pending_reports == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
 
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        dropped_entry = entries[-1]
-        assert dropped_entry["level"] == "warn"
-        assert "saturated" in dropped_entry["message"]
-        assert dropped_entry["webhook_delivery_capacity"] == (
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        saturated_entry = entries[-1]
+        assert saturated_entry["level"] == "info"
+        assert saturated_entry["reason"] == "delivery_saturated"
+        assert "not admitted" in saturated_entry["message"]
+        assert "saturated" in saturated_entry["message"]
+        assert "dropped" not in saturated_entry["message"]
+        assert saturated_entry["webhook_delivery_capacity"] == (
             usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         )
-        assert dropped_entry["webhook_delivery_pending"] == (
+        assert saturated_entry["webhook_delivery_pending"] == (
             usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         )
-        _assert_body_free_webhook_entry(dropped_entry, run_id="run-drop", event_count=1)
-        assert "payload_bytes" not in dropped_entry
-        assert "secret-payload" not in json.dumps(dropped_entry)
+        _assert_body_free_webhook_entry(saturated_entry, run_id="run-drop", event_count=1)
+        assert "payload_bytes" not in saturated_entry
+        assert "secret-payload" not in json.dumps(saturated_entry)
 
     def test_delivery_capacity_released_after_success(
         self, tmp_path, sync_usage_executor, usage_webhook_server

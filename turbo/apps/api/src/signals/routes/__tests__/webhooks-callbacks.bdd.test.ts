@@ -1,6 +1,9 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +11,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -18,14 +23,15 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const store = createStore();
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -42,7 +48,9 @@ function isoOf(epoch: number): string {
   return new Date(epoch * 1000).toISOString();
 }
 
-async function waitForExpectation(assertion: () => void): Promise<void> {
+async function waitForExpectation(
+  assertion: () => void | Promise<void>,
+): Promise<void> {
   await expect
     .poll(async () => {
       const result = await settle(Promise.resolve().then(assertion));
@@ -416,6 +424,73 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     });
     const membershipDeleted = await api.requestClerkWebhook("{}", {}, [200]);
     expect(membershipDeleted.body).toBe("OK");
+  });
+
+  it("suspends org-member automations after a verified organizationMembership.deleted event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const member = bdd.user();
+    await runs.grantProEntitlement(member);
+    await runs.ensureOrgModelProvider(member);
+    await runs.enableAutomations(member);
+    const agent = await bdd.createAgent(member, {
+      displayName: "BDD Membership Deleted Agent",
+      visibility: "private",
+    });
+    const created = await runs.createAutomation(member, {
+      name: uniqueAutomationName("bdd-membership-deleted"),
+      agentId: agent.agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "membership deleted scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    const db = store.set(writeDb$);
+    const [initialTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(initialTrigger?.enabled).toBeTruthy();
+    expect(initialTrigger?.nextRunAt).not.toBeNull();
+
+    api.verifyNextClerkWebhook({
+      type: "organizationMembership.deleted",
+      data: {
+        id: "mem_bdd_deleted",
+        organization: { id: orgOf(member) },
+        publicUserData: { userId: member.userId },
+      },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, created.automation.id));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(storedTrigger).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+    });
   });
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
@@ -1377,7 +1452,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in the run organization", () => {
   it("prepares, commits, dedups, and bounds sandbox storage writes for the run org", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const storages = createStoragesBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -1568,7 +1643,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("replays, expires, and auto-recharges subscription invoice credits", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -1858,7 +1933,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("upgrades to team, drains the queue, and cancels the replaced pro subscription", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2401,6 +2476,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     });
     expect(campaignGrant?.amount).toBe(100_000);
 
+    const checkoutCreditExpiresAt = new Date(
+      Math.floor((now() + 45 * 86_400_000) / 1000) * 1000,
+    ).toISOString();
+    const invoiceCreditExpiresAt = Math.floor((now() + 90 * 86_400_000) / 1000);
+
     // Legacy custom credit checkouts without an invoice grant immediately.
     await api.postStripeEvent(
       stripeEvent({
@@ -2416,13 +2496,22 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "credit_purchase",
             orgId,
             creditsAmountMode: "amount_total",
+            creditsExpiresAt: checkoutCreditExpiresAt,
           },
         },
       }),
       [200],
     );
-    expect((await billing.readBillingStatus(actor)).credits).toBe(
-      baselineCredits + 200_000,
+    const afterLegacyCredit = await billing.readBillingStatus(actor);
+    expect(afterLegacyCredit.credits).toBe(baselineCredits + 200_000);
+    expect(afterLegacyCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "credit_purchase",
+          amount: 100_000,
+          expiresAt: checkoutCreditExpiresAt,
+        }),
+      ]),
     );
 
     // Invoice-backed custom credit checkouts defer to invoice.paid, which
@@ -2463,20 +2552,29 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "credit_purchase",
             orgId,
             creditsAmountMode: "amount_subtotal",
+            creditsExpiresAt: String(invoiceCreditExpiresAt),
           },
           parent: null,
         },
       }),
       [200],
     );
-    expect((await billing.readBillingStatus(actor)).credits).toBe(
-      baselineCredits + 300_000,
+    const afterInvoiceCredit = await billing.readBillingStatus(actor);
+    expect(afterInvoiceCredit.credits).toBe(baselineCredits + 300_000);
+    expect(afterInvoiceCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "credit_purchase",
+          amount: 100_000,
+          expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
+        }),
+      ]),
     );
   });
 
   it("restores and schedules cancellations through setup checkouts and schedule webhooks", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2802,7 +2900,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("processes preview Stripe events only for the matching job ref", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
@@ -2887,7 +2985,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up organization state after a verified organization.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -2916,15 +3014,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         githubUserId: newGithubUserId(),
       },
     });
-    const schedule = await runs.deploySchedule(actor, {
-      name: uniqueScheduleName("teardown"),
+    const schedule = await runs.deployAutomation(actor, {
+      name: uniqueAutomationName("teardown"),
       agentId: agent.agentId,
       intervalSeconds: 3600,
       prompt: "scheduled teardown probe",
       timezone: "UTC",
       enabled: false,
     });
-    expect(schedule.schedule.name).toContain("teardown");
+    expect(schedule.automation.name).toContain("teardown");
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.upsertUserPermissionGrant(actor, {
       agentId: agent.agentId,
@@ -2935,7 +3033,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await expect(
       runs.listUserPermissionGrants(actor, agent.agentId),
     ).resolves.toHaveLength(1);
-    expect((await runs.listSchedules(actor)).schedules).toHaveLength(1);
+    expect((await runs.listAutomations(actor)).automations).toHaveLength(1);
 
     // The first delivery hits a failing Stripe cancellation (a per-step
     // failure the cleanup continues over) and then a failing org S3 listing,
@@ -2951,6 +3049,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const firstDelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(firstDelivery.body).toBe("OK");
+    await flushWaitUntilForTest();
     await waitForExpectation(() => {
       expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
         granted.subscriptionId,
@@ -2996,15 +3095,25 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(redelivery.body).toBe("OK");
+    await flushWaitUntilForTest();
 
     await expect
       .poll(() => {
         return deletedS3Keys.length;
       })
       .toBeGreaterThan(0);
-    await runs.requestReadRun(actor, run.runId, [404]);
-    await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
-    expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
+    // The redelivered webhook responds OK before the teardown finishes, so
+    // the resource deletions land asynchronously — poll instead of asserting
+    // a single snapshot.
+    await waitForExpectation(async () => {
+      await runs.requestReadRun(actor, run.runId, [404]);
+    });
+    await waitForExpectation(async () => {
+      await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      expect((await runs.listAutomations(actor)).automations).toStrictEqual([]);
+    });
 
     // An org without a live subscription skips the Stripe cancellation.
     const cancelCalls =
@@ -3031,7 +3140,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -3141,5 +3250,79 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+  });
+
+  it("suspends user-owned runs and automations after a verified user.banned event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+
+    const banned = bdd.user();
+    const granted = await runs.grantProEntitlement(banned);
+    await runs.ensureOrgModelProvider(banned);
+    await runs.enableAutomations(banned);
+    const agent = await bdd.createAgent(banned, {
+      displayName: "BDD Banned User Agent",
+      visibility: "private",
+    });
+
+    const run = await runs.createRun(banned, {
+      agentId: agent.agentId,
+      prompt: "banned user cleanup run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const created = await runs.createAutomation(banned, {
+      name: uniqueAutomationName("bdd-banned-user"),
+      agentId: agent.agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "banned user scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+    const db = store.set(writeDb$);
+    const [initialTrigger] = await db
+      .select({ nextRunAt: automationTriggers.nextRunAt })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(initialTrigger?.nextRunAt).not.toBeNull();
+
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+      id: granted.subscriptionId,
+    });
+    api.verifyNextClerkWebhook({
+      type: "user.banned",
+      data: { id: banned.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const bannedRun = await runs.readRun(banned, run.runId);
+    expect(bannedRun.status).toBe("cancelled");
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+    );
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, created.automation.id));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({ nextRunAt: automationTriggers.nextRunAt })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(storedTrigger?.nextRunAt).toBeNull();
+
+    const queue = await runs.readRunQueue(banned);
+    expect(queue.body.concurrency.active).toBe(0);
+    expect(queue.body.queue).toStrictEqual([]);
   });
 });

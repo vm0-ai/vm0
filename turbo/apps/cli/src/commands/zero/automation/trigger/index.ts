@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  disableAutomationTriggerV2,
-  enableAutomationTriggerV2,
-  listAutomationTriggersV2,
-  removeAutomationTriggerV2,
-  rotateAutomationTriggerSecretV2,
-  showAutomationTriggerV2,
+  disableAutomationTrigger,
+  enableAutomationTrigger,
+  listAutomationTriggers,
+  removeAutomationTrigger,
+  rotateAutomationTriggerSecret,
+  showAutomationTrigger,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 import {
@@ -15,6 +15,7 @@ import {
   printWebhookSecret,
 } from "../trigger-display";
 import { addCommand } from "./add";
+import { updateCommand } from "./update";
 
 /**
  * `zero automation trigger` — manage the triggers of a unified automation.
@@ -35,7 +36,7 @@ Examples:
   )
   .action(
     withErrorHandler(async (ref: string) => {
-      const { triggers } = await listAutomationTriggersV2(ref);
+      const { triggers } = await listAutomationTriggers(ref);
 
       if (triggers.length === 0) {
         console.log(chalk.dim("No triggers"));
@@ -63,7 +64,7 @@ Examples:
   )
   .action(
     withErrorHandler(async (id: string) => {
-      const trigger = await showAutomationTriggerV2(id);
+      const trigger = await showAutomationTrigger(id);
 
       printTriggerDetails(trigger);
     }),
@@ -82,7 +83,7 @@ Examples:
   )
   .action(
     withErrorHandler(async (id: string) => {
-      await removeAutomationTriggerV2(id);
+      await removeAutomationTrigger(id);
 
       console.log(chalk.green(`✓ Trigger ${id} removed`));
     }),
@@ -100,7 +101,7 @@ Examples:
   )
   .action(
     withErrorHandler(async (id: string) => {
-      const trigger = await enableAutomationTriggerV2(id);
+      const trigger = await enableAutomationTrigger(id);
 
       console.log(chalk.green(`✓ Trigger ${trigger.id} enabled`));
     }),
@@ -118,7 +119,7 @@ Examples:
   )
   .action(
     withErrorHandler(async (id: string) => {
-      const trigger = await disableAutomationTriggerV2(id);
+      const trigger = await disableAutomationTrigger(id);
 
       console.log(chalk.green(`✓ Trigger ${trigger.id} disabled`));
     }),
@@ -140,7 +141,7 @@ Notes:
   .action(
     withErrorHandler(async (id: string) => {
       const { trigger, webhookSecret } =
-        await rotateAutomationTriggerSecretV2(id);
+        await rotateAutomationTriggerSecret(id);
 
       console.log(chalk.green(`✓ Trigger ${trigger.id} secret rotated`));
 
@@ -154,6 +155,7 @@ export const triggerCommand = new Command()
   .name("trigger")
   .description("Manage an automation's triggers")
   .addCommand(addCommand)
+  .addCommand(updateCommand)
   .addCommand(listCommand)
   .addCommand(showCommand)
   .addCommand(rmCommand)
@@ -165,6 +167,7 @@ export const triggerCommand = new Command()
     `
 Examples:
   Add a trigger:      zero automation trigger add <automation> cron --expr "0 9 * * *"
+  Update a schedule:  zero automation trigger update <trigger-id> --every 10m  (kind switches to match the flag)
   List triggers:      zero automation trigger list <automation>
   Inspect a trigger:  zero automation trigger show <trigger-id>
   Pause one trigger:  zero automation trigger disable <trigger-id>

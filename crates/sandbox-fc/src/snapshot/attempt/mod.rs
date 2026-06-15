@@ -256,6 +256,7 @@ impl SnapshotAttempt {
                 size_mb: config.workspace_disk_mb,
                 seed_image: None,
             },
+            None,
         )
         .await
         {

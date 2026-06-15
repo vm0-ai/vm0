@@ -121,11 +121,10 @@ function buildVideoGenerationTemplatePrompt(
     status: "resolved",
     prompt: [
       "# Video Template Preset",
-      `- The selected stylePresetId resolves to the seven video template dimensions below.`,
       `- Preset ID: ${preset.id}`,
       `- Preset name: ${preset.nameEn}`,
       "",
-      "- Apply all seven preset dimensions below as hard generation constraints.",
+      "- Apply all dimensions and constraints below as hard generation constraints.",
       "- Keep the user's prompt as the source of the requested content.",
       `- Visual Tone: ${describeSlug(preset.dimensions.visualTone)}`,
       `- Camera Style: ${describeSlug(preset.dimensions.cameraStyle)}`,
@@ -135,7 +134,9 @@ function buildVideoGenerationTemplatePrompt(
       `- Emotional Tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
       `- Style Reference: ${describeSlug(preset.dimensions.styleReference)}`,
       "",
-      `- In the final video prompt, reflect every dimension listed above and the style ${preset.nameEn}.`,
+      `- Style constraints (inject into the video prompt): ${preset.promptConstraints}`,
+      "",
+      `- In the final video prompt, reflect every dimension and constraint above for the style ${preset.nameEn}.`,
       "- End the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content",
     ].join("\n"),
   };
@@ -151,20 +152,18 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
 
+  // Context, not control: state the facts (which style is attached, that it
+  // persists, how it reaches image generation) and let the agent act on them.
+  // Replaces the earlier "Resolve the image style from the resource registry"
+  // instruction, which named a step without the facts to do it, so when unsure
+  // the agent re-asked for an already-selected style (vm0-ai/vm0#17525).
   return {
     status: "resolved",
     prompt: [
-      "# Generation Template",
-      "Use the following registered resources for this run.",
-      `Type: ${generationTemplate.type}`,
-      "Tag: illustration",
-      `Image style ID: ${imageStyle.id}`,
-      `Image style name: ${imageStyle.name}`,
+      "# Attached illustration style",
       "",
-      "Instructions:",
-      "- Resolve the image style from the resource registry.",
-      "- Apply it as a generation constraint for the artifact.",
-      "- Keep the user's prompt as the source of the requested content.",
+      `"${imageStyle.name}" (${imageStyle.id}), attached to this chat and persisting across follow-up messages.`,
+      `Apply it with \`zero generate image --style ${imageStyle.id}\`.`,
     ].join("\n"),
   };
 }

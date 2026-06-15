@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.38](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.37...nbd-cow-v0.4.38) (2026-06-15)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid zero-filling full-block writes ([#17700](https://github.com/vm0-ai/vm0/issues/17700)) ([f15d99c](https://github.com/vm0-ai/vm0/commit/f15d99cfd6cf76591aaae175a773186b66e02ae7))
+
+## [0.4.37](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.36...nbd-cow-v0.4.37) (2026-06-12)
+
+
+### Refactoring
+
+* **nbd-cow:** split device pool actor and state ([#17446](https://github.com/vm0-ai/vm0/issues/17446)) ([789fc5d](https://github.com/vm0-ai/vm0/commit/789fc5d4c10cd1ef366bd859cc858dbffd080010))
+
 ## [0.4.36](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.35...nbd-cow-v0.4.36) (2026-06-11)
 
 

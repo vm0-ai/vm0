@@ -3,9 +3,18 @@
 //! Event schema transformation and HTTP posting stay in `events`; this module
 //! only owns execution-delivery state consumed by `execute_cli`.
 
-pub(super) struct PreparedEvent {
-    pub(super) sequence: u32,
-    pub(super) payload: serde_json::Value,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ChatStreamDelta {
+    pub(super) message_id: String,
+    pub(super) text: String,
+}
+
+pub(super) enum PreparedEvent {
+    Webhook {
+        sequence: u32,
+        payload: serde_json::Value,
+    },
+    ChatStream(ChatStreamDelta),
 }
 
 #[derive(Default)]

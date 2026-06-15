@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations-v2";
-import { createAutomationV2, resolveCompose } from "../../../lib/api";
+import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
+import { createAutomation, resolveCompose } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { parseDurationSeconds } from "./duration";
 import { formatTriggerConfig, printWebhookSecret } from "./trigger-display";
@@ -105,7 +105,7 @@ Notes:
         throw new Error(`Agent not found: ${options.agent}`);
       }
 
-      const { automation, webhookSecret } = await createAutomationV2({
+      const { automation, webhookSecret } = await createAutomation({
         name: options.name,
         agentId: compose.id,
         instruction: options.prompt,

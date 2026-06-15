@@ -18,8 +18,8 @@ import {
   seedChatThread$,
   seedCompose$,
   seedRun$,
-  seedSchedule$,
-  seedScheduleBatch$,
+  seedAutomation$,
+  seedAutomationBatch$,
   seedUsageInsightFixture$,
   setUsageEventCreatedAt$,
   type UsageInsightFixture,
@@ -190,7 +190,7 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     expect(Array.isArray(response.body.buckets)).toBeTruthy();
-    expect(Array.isArray(response.body.schedules)).toBeTruthy();
+    expect(Array.isArray(response.body.automations)).toBeTruthy();
     expect(Array.isArray(response.body.chats)).toBeTruthy();
     expect(typeof response.body.grandTotalCredits).toBe("number");
     expect(typeof response.body.grandTotalTokens).toBe("number");
@@ -259,7 +259,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["chat"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["slack"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
-    expect(totalByBucket["schedule"]).toBeGreaterThanOrEqual(50);
+    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
@@ -777,7 +777,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(expectedUtcDate).not.toBe(expectedLaDate);
   });
 
-  it("top-100 truncation — 105 schedules → schedules.length === 100, otherCount === 5", async () => {
+  it("top-100 truncation — 105 automations → automations.length === 100, otherCount === 5", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -787,8 +787,8 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    const { scheduleIds } = await store.set(
-      seedScheduleBatch$,
+    const { automationIds } = await store.set(
+      seedAutomationBatch$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -813,8 +813,8 @@ describe("GET /api/zero/usage/insight", () => {
       },
       context.signal,
     );
-    const eventBoostedScheduleId = scheduleIds[0];
-    expect(eventBoostedScheduleId).toBeDefined();
+    const eventBoostedAutomationId = automationIds[0];
+    expect(eventBoostedAutomationId).toBeDefined();
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const response = await accept(
@@ -825,15 +825,15 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.schedules).toHaveLength(100);
-    expect(response.body.scheduleOtherCount).toBe(5);
-    expect(response.body.schedules[0]).toMatchObject({
-      scheduleId: eventBoostedScheduleId,
+    expect(response.body.automations).toHaveLength(100);
+    expect(response.body.automationOtherCount).toBe(5);
+    expect(response.body.automations[0]).toMatchObject({
+      automationId: eventBoostedAutomationId,
       credits: 10_001,
     });
   });
 
-  it("returns scheduleDescription alongside scheduleName for scheduled runs", async () => {
+  it("returns automationDescription alongside automationName for automation runs", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -856,8 +856,8 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    const describedScheduleId = await store.set(
-      seedSchedule$,
+    const describedAutomationId = await store.set(
+      seedAutomation$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -867,8 +867,8 @@ describe("GET /api/zero/usage/insight", () => {
       },
       context.signal,
     );
-    const undescribedScheduleId = await store.set(
-      seedSchedule$,
+    const undescribedAutomationId = await store.set(
+      seedAutomation$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -878,9 +878,9 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    for (const [agentId, scheduleId] of [
-      [agentA, describedScheduleId],
-      [agentB, undescribedScheduleId],
+    for (const [agentId, automationId] of [
+      [agentA, describedAutomationId],
+      [agentB, undescribedAutomationId],
     ] as const) {
       const { runId } = await store.set(
         seedRun$,
@@ -888,8 +888,8 @@ describe("GET /api/zero/usage/insight", () => {
           orgId: fixture.orgId,
           userId: fixture.userId,
           composeId: agentId,
-          triggerSource: "schedule",
-          scheduleId,
+          triggerSource: "automation",
+          automationId,
           status: "completed",
         },
         context.signal,
@@ -916,14 +916,14 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    const described = response.body.schedules.find((s) => {
-      return s.scheduleId === describedScheduleId;
+    const described = response.body.automations.find((s) => {
+      return s.automationId === describedAutomationId;
     });
-    const undescribed = response.body.schedules.find((s) => {
-      return s.scheduleId === undescribedScheduleId;
+    const undescribed = response.body.automations.find((s) => {
+      return s.automationId === undescribedAutomationId;
     });
-    expect(described?.scheduleDescription).toBe("Daily morning brief");
-    expect(undescribed?.scheduleDescription).toBeNull();
+    expect(described?.automationDescription).toBe("Daily morning brief");
+    expect(undescribed?.automationDescription).toBeNull();
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
@@ -1398,7 +1398,7 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     await store.set(
-      seedScheduleBatch$,
+      seedAutomationBatch$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -1420,7 +1420,7 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.schedules).toHaveLength(100);
-    expect(response.body.scheduleOtherCount).toBe(5);
+    expect(response.body.automations).toHaveLength(100);
+    expect(response.body.automationOtherCount).toBe(5);
   });
 });

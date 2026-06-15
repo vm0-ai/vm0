@@ -16,17 +16,17 @@ export const usageInsightTodayFixture: Readonly<UsageInsightResponse> = {
       tokens: { chat: 1000, slack: 400 },
     },
   ],
-  schedules: [
+  automations: [
     {
-      scheduleId: "s1",
-      scheduleName: "My Schedule",
-      scheduleDescription: null,
+      automationId: "s1",
+      automationName: "My Schedule",
+      automationDescription: null,
       credits: 300,
       tokens: 600,
     },
   ],
-  scheduleOtherCount: 0,
-  scheduleOtherCredits: 0,
+  automationOtherCount: 0,
+  automationOtherCredits: 0,
   chats: [
     {
       threadId: "t1",
@@ -64,24 +64,24 @@ export const usageInsightLast7DaysSourceFixture: Readonly<UsageInsightResponse> 
         tokens: { chat: 1400, slack: 600, email: 300 },
       },
     ],
-    schedules: [
+    automations: [
       {
-        scheduleId: "s1",
-        scheduleName: "Daily Digest",
-        scheduleDescription: null,
+        automationId: "s1",
+        automationName: "Daily Digest",
+        automationDescription: null,
         credits: 800,
         tokens: 1600,
       },
       {
-        scheduleId: "s2",
-        scheduleName: "Incident Sweep",
-        scheduleDescription: "Ops incident sweep",
+        automationId: "s2",
+        automationName: "Incident Sweep",
+        automationDescription: "Ops incident sweep",
         credits: 400,
         tokens: 800,
       },
     ],
-    scheduleOtherCount: 1,
-    scheduleOtherCredits: 200,
+    automationOtherCount: 1,
+    automationOtherCredits: 200,
     chats: [
       {
         threadId: "t1",

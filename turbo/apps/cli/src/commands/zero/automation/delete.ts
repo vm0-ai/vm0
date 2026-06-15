@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { deleteAutomationV2 } from "../../../lib/api";
+import { deleteAutomation } from "../../../lib/api";
 import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
 import { withErrorHandler } from "../../../lib/command";
 
@@ -36,7 +36,7 @@ Notes:
         }
       }
 
-      await deleteAutomationV2(ref);
+      await deleteAutomation(ref);
 
       console.log(chalk.green(`✓ Automation "${ref}" deleted`));
     }),

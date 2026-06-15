@@ -200,6 +200,18 @@ function networkLogFromAxiom(event: AxiomNetworkEvent) {
     firewall_params: optionalAxiomStringRecord(event.firewall_params),
     firewall_billable: optionalAxiomField(event.firewall_billable),
     firewall_error: optionalAxiomField(event.firewall_error),
+    connector_diagnostic_type: optionalAxiomField(
+      event.connector_diagnostic_type,
+    ),
+    connector_diagnostic_reason: optionalAxiomField(
+      event.connector_diagnostic_reason,
+    ),
+    connector_diagnostic_env_names: optionalAxiomField(
+      event.connector_diagnostic_env_names,
+    ),
+    connector_diagnostic_base: optionalAxiomField(
+      event.connector_diagnostic_base,
+    ),
     auth_resolved_secrets: optionalAxiomField(event.auth_resolved_secrets),
     auth_refreshed_connectors: optionalAxiomField(
       event.auth_refreshed_connectors,

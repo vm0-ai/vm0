@@ -12,7 +12,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
-  type ChatMessageScheduleSnapshot,
+  type ChatMessageAutomationSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -78,6 +78,7 @@ import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-mark
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -715,7 +716,7 @@ async function latestSessionForThread(
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     // D7: only web-source runs join the thread's session-continuity chain, so a
     // chat-mode automation run (triggerSource "automation") never resumes a web
-    // session and a later web turn never resumes a scheduled one. The 'web'
+    // session and a later web turn never resumes an automation one. The 'web'
     // filter (before .limit) is mirrored in latestSessionForThreadFromDb
     // (internal-callbacks-chat.ts) and latestSessionIdForThread
     // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
@@ -1096,13 +1097,13 @@ async function resolveStoredModelFirstPin(params: {
 }
 
 /**
- * Resolve the model pin for a chat-mode scheduled run from its linked thread:
+ * Resolve the model pin for a chat-mode automation run from its linked thread:
  * the thread's stored pin, else its first-run pin, else the org default. This
- * is deliberately decoupled from session state (a scheduled run is always
- * fresh) — do NOT route schedules through `resolveRunModelPin`, which falls
+ * is deliberately decoupled from session state (an automation run is always
+ * fresh) — do NOT route automation runs through `resolveRunModelPin`, which falls
  * back to the org default whenever the session is fresh.
  */
-export async function resolveScheduleChatThreadModelPin(params: {
+export async function resolveAutomationChatThreadModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -1666,16 +1667,16 @@ async function appendAssociatedUserMessage(params: {
   readonly revokesMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
-  // When false, the thread's in-progress draft is preserved. Scheduled posts
+  // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
-  // Set when this message is posted by a firing schedule. `scheduleSnapshot`
-  // snapshots the schedule's basic display details at send time so the bubble
-  // keeps its label even after an edit/delete. `scheduleTitle` is retained for
+  // Set when this message is posted by a firing automation. `automationSnapshot`
+  // snapshots the automation's basic display details at send time so the bubble
+  // keeps its label even after an edit/delete. `automationTitle` is retained for
   // legacy fallback display.
-  readonly scheduleId?: string;
-  readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
+  readonly automationId?: string;
+  readonly automationTitle?: string;
+  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1696,9 +1697,11 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
-        scheduleId: params.scheduleId,
-        scheduleTitle: params.scheduleTitle,
-        scheduleSnapshot: params.scheduleSnapshot,
+        // #17307 D3: only the automation_* columns receive writes; the legacy
+        // schedule_* columns are frozen and drop in the next phase.
+        automationId: params.automationId,
+        automationTitle: params.automationTitle,
+        automationSnapshot: params.automationSnapshot,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1933,8 +1936,10 @@ async function publishChatMessageCreated(
   userId: string,
   threadId: string,
 ): Promise<void> {
+  // No threadListChanged: every caller is a user-initiated post into the
+  // user's own open thread, so the acting client already reloads locally
+  // and sidebar ordering only moves on run-terminal events.
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
-  await publishThreadListChanged(userId);
 }
 
 async function assertOwnedThread(
@@ -2085,11 +2090,13 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
-    const generationTemplatePrompt = buildGenerationTemplatePrompt(
-      args.body.generationTemplate,
-    );
-    if (generationTemplatePrompt.status === "invalid") {
-      return badRequestMessage(generationTemplatePrompt.message);
+    if (args.body.generationTemplate) {
+      const validation = buildGenerationTemplatePrompt(
+        args.body.generationTemplate,
+      );
+      if (validation.status === "invalid") {
+        return badRequestMessage(validation.message);
+      }
     }
 
     const thread = await resolveThread({
@@ -2113,6 +2120,13 @@ const prepareNormalSend$ = command(
       thread.isNewThread,
       thread.incompleteContext,
     );
+    signal.throwIfAborted();
+    const generationTemplatePrompt =
+      await resolveThreadGenerationTemplatePrompt({
+        db,
+        threadId: thread.threadId,
+        explicit: args.body.generationTemplate,
+      });
     signal.throwIfAborted();
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({
@@ -2139,7 +2153,7 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       priorContext,
-      generationTemplatePrompt: generationTemplatePrompt.prompt,
+      generationTemplatePrompt,
       computerUseHostId,
       persistedExplicitSelection,
     };
@@ -2234,7 +2248,9 @@ function scheduleAssociatedUserMessage(params: {
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
       );
-      await publishThreadListChanged(params.userId);
+      // No threadListChanged here: the sending client reloads its own
+      // sidebar after the POST, sorting only moves on run-terminal events,
+      // and the terminal callback broadcasts to other clients.
     })(),
   );
 }
@@ -2242,12 +2258,12 @@ function scheduleAssociatedUserMessage(params: {
 /**
  * Post an automation run's prompt as a user chat message into its linked
  * thread and publish the realtime signals so the client surfaces the run.
- * Generalizes `postScheduleUserMessage` for the events-first automation path:
- * the prompt is the automation `instruction`. A time-automation fire passes the
- * schedule-chip fields (`scheduleId` links a mirrored automation's source
- * schedule for navigation; `scheduleSnapshot` keeps the label rendering after
- * edits/deletes) so the chat bubble matches the live schedule path; a webhook
- * fire omits them. Like the schedule path it preserves the thread draft (the
+ * Posts the chat bubble for an automation-fired run: the prompt is the
+ * automation `instruction`. A time-automation fire passes the chip fields
+ * (`automationId` links the source automation for navigation;
+ * `automationSnapshot` keeps the label rendering after edits/deletes); a
+ * webhook fire omits them.
+ * Like a time fire it preserves the thread draft (the
  * post is not user-initiated typing) and is awaited so the caller sees it
  * persisted.
  */
@@ -2258,8 +2274,8 @@ export async function postAutomationUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
-  readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
+  readonly automationTitle?: string;
+  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
@@ -2273,8 +2289,8 @@ export async function postAutomationUserMessage(params: {
     generationTemplate: undefined,
     appendQueueMarker: params.appendQueueMarker,
     clearDraft: false,
-    scheduleTitle: params.scheduleTitle,
-    scheduleSnapshot: params.scheduleSnapshot,
+    automationTitle: params.automationTitle,
+    automationSnapshot: params.automationSnapshot,
   });
   await publishUserSignal(
     [params.userId],

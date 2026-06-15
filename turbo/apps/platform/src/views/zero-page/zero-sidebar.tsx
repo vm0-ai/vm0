@@ -4,7 +4,6 @@ import {
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
-  IconFileText,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -73,14 +72,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconUsers as NavIcon,
   },
   {
-    id: "skills",
-    activeKeys: ["skills"],
-    pathname: "/skills",
-    label: "Skills",
-    icon: IconFileText as NavIcon,
-    featureGate: FeatureSwitchKey.SkillsViewer,
-  },
-  {
     id: "connectors",
     activeKeys: ["connectors"],
     pathname: "/connectors",
@@ -88,8 +79,8 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconPlug as NavIcon,
   },
   {
-    id: "schedules",
-    activeKeys: ["schedules", "scheduleDetail"],
+    id: "automations",
+    activeKeys: ["automations", "automationDetail"],
     pathname: "/automations",
     label: "Automations",
     icon: IconCalendar as NavIcon,
@@ -342,7 +333,7 @@ function ExpandedSidebar() {
     <aside
       data-sidebar-off={off || undefined}
       data-sidebar-expanded={expanded || undefined}
-      className="zero-nav hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"
+      className="zero-nav zero-pwa-fixed-cover hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl"
     >
       <ExpandedHeader />
       <ExpandedMainNav />
@@ -491,7 +482,10 @@ function ExpandedFooter() {
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
   const { footerNav } = useResolvedNavItems();
   return (
-    <div className="p-2">
+    <div
+      className="px-2 pt-2"
+      style={{ paddingBottom: "calc(0.5rem + var(--sab))" }}
+    >
       <div className="flex flex-col gap-1">
         {footerNav.map(
           ({

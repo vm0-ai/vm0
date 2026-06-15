@@ -15,6 +15,7 @@
 //! child reaping. Branch ordering and deadline reset timing in that control
 //! flow are part of the runtime contract.
 
+mod chat_stream;
 mod child_env;
 mod codex_setup;
 mod command;
@@ -36,7 +37,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use agent_diagnostics::{FailureDetailSource, FailureReason};
-use event_delivery::{AckedEventPrefix, PreparedEvent};
+use event_delivery::{AckedEventPrefix, ChatStreamDelta, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -46,8 +47,56 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptFrame<'a> {
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    uuid: String,
+    parent_tool_use_id: Option<&'static str>,
+    message: ClaudeInitialPromptMessage<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptMessage<'a> {
+    role: &'static str,
+    content: &'a str,
+}
+
+fn claude_initial_prompt_uuid(run_id: &str) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
+    )
+    .to_string()
+}
+
+fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeInitialPromptFrame<'a> {
+    ClaudeInitialPromptFrame {
+        event_type: "user",
+        uuid: claude_initial_prompt_uuid(run_id),
+        parent_tool_use_id: None,
+        message: ClaudeInitialPromptMessage {
+            role: "user",
+            content: prompt,
+        },
+    }
+}
+
+async fn write_claude_initial_prompt_to_stdin(
+    mut stdin: tokio::process::ChildStdin,
+    run_id: &str,
+    prompt: &str,
+) -> Result<(), AgentError> {
+    let mut line = serde_json::to_vec(&claude_initial_prompt_frame(run_id, prompt))?;
+    line.push(b'\n');
+    stdin.write_all(&line).await?;
+    stdin.flush().await?;
+    Ok(())
+}
 
 async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     match interval {
@@ -58,11 +107,65 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     }
 }
 
+fn enqueue_chat_stream_delta(
+    event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    chat_stream_configured: bool,
+    delta: Option<ChatStreamDelta>,
+) {
+    if !chat_stream_configured {
+        return;
+    }
+    let Some(delta) = delta else {
+        return;
+    };
+    if event_tx.send(PreparedEvent::ChatStream(delta)).is_err() {
+        log_warn!(LOG_TAG, "Event channel closed, dropping chat stream delta");
+    }
+}
+
+fn chat_stream_delta_from_event(
+    event: &serde_json::Value,
+    message_id: &str,
+    masker: &SecretMasker,
+) -> Option<ChatStreamDelta> {
+    let text = event
+        .get("delta")
+        .and_then(|delta| delta.get("text"))
+        .and_then(serde_json::Value::as_str)?;
+    let text = masker.mask_string(text);
+    if text.is_empty() {
+        None
+    } else {
+        Some(ChatStreamDelta {
+            message_id: message_id.to_string(),
+            text,
+        })
+    }
+}
+
 /// Bounded terminal failure detail extracted from CLI stdout JSONL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
+    /// Terminal failure message selected from CLI stdout JSONL.
+    ///
+    /// When produced by [`execute_cli`], this message has already been
+    /// secret-masked, line-break escaped, and bounded before exposure.
     pub message: String,
+
+    /// High-level source of the stdout-derived failure detail.
+    ///
+    /// Values produced by [`execute_cli`] use `ClaudeResult` for Claude Code
+    /// terminal result events and `CodexJsonl` for Codex JSONL failure events.
+    /// The final run diagnostic may still prefer stderr when this stdout
+    /// message is generic.
     pub source: FailureDetailSource,
+
+    /// Optional structured failure reason parsed from supported CLI payloads.
+    ///
+    /// `None` means no supported structured reason was observed. A reason may
+    /// be carried independently from the selected display message, including
+    /// when a generic stdout message is replaced by a more specific message or
+    /// stderr fallback.
     pub failure_reason: Option<FailureReason>,
 }
 
@@ -119,6 +222,7 @@ pub async fn execute_cli(
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
     let behavior = CliFrameworkBehavior::new(framework);
+    masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
     let cmd = command::build_cli_command_for_framework(framework)?;
@@ -128,7 +232,11 @@ pub async fn execute_cli(
 
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args)
-        .stdin(Stdio::null())
+        .stdin(if behavior.uses_stream_json_stdin() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -179,10 +287,21 @@ pub async fn execute_cli(
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
-    let log_file = guest_runtime_paths::create_private(paths::agent_log_file())?;
+    let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
 
     let mut child = cmd.spawn()?;
+
+    let initial_prompt_stdin = if behavior.uses_stream_json_stdin() {
+        let Some(stdin) = child.stdin.take() else {
+            let _ = child.start_kill();
+            heartbeat_handle.abort();
+            return Err(AgentError::Execution("no stdin".into()));
+        };
+        Some(stdin)
+    } else {
+        None
+    };
 
     let stdout = child
         .stdout
@@ -196,6 +315,14 @@ pub async fn execute_cli(
     // Stderr collector
     let mut stderr_handle =
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
+
+    let mut initial_prompt_write_handle = initial_prompt_stdin.map(|stdin| {
+        let run_id = env::run_id();
+        let prompt = env::prompt();
+        tokio::spawn(
+            async move { write_claude_initial_prompt_to_stdin(stdin, run_id, prompt).await },
+        )
+    });
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
@@ -252,22 +379,44 @@ pub async fn execute_cli(
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
+    let chat_stream_config = env::chat_stream_config();
+    let chat_stream_configured = chat_stream_config.is_some();
+    let mut chat_stream_message_id: Option<String> = None;
+
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
     let event_http = http.clone();
+    let event_chat_stream_config = chat_stream_config.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
+        let chat_stream_publisher = chat_stream::ChatStreamPublisher::new();
+        let mut chat_stream_error_logged = false;
         while let Some(event) = event_rx.recv().await {
-            match events::post_event(&event_http, &event.payload).await {
-                Ok(()) => {
-                    acked_prefix.record_success(event.sequence);
+            match event {
+                PreparedEvent::Webhook { sequence, payload } => {
+                    match events::post_event(&event_http, &payload).await {
+                        Ok(()) => {
+                            acked_prefix.record_success(sequence);
+                        }
+                        Err(e) => {
+                            acked_prefix.record_failure(sequence);
+                            log_warn!(LOG_TAG, "Event send failed: {e}");
+                        }
+                    }
                 }
-                Err(e) => {
-                    acked_prefix.record_failure(event.sequence);
-                    log_warn!(LOG_TAG, "Event send failed: {e}");
+                PreparedEvent::ChatStream(delta) => {
+                    let Some(config) = event_chat_stream_config.as_ref() else {
+                        continue;
+                    };
+                    if let Err(error) = chat_stream_publisher.publish(config, &delta).await
+                        && !chat_stream_error_logged
+                    {
+                        chat_stream_error_logged = true;
+                        log_warn!(LOG_TAG, "Chat stream publish failed: {error}");
+                    }
                 }
             }
         }
@@ -281,6 +430,56 @@ pub async fn execute_cli(
     let mut failure_diagnostic = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
+            prompt_write_result = async {
+                match initial_prompt_write_handle.as_mut() {
+                    Some(handle) => Some(handle.await),
+                    None => std::future::pending().await,
+                }
+            }, if initial_prompt_write_handle.is_some() => {
+                initial_prompt_write_handle = None;
+                let can_terminate_for_stdin_error =
+                    matches!(termination_state, TerminationState::Idle) && cli_status.is_none();
+                match prompt_write_result {
+                    Some(Ok(Ok(()))) => {}
+                    Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Failed to write initial prompt to Claude stdin, SIGTERM pgid={}: {error}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Ok(Err(_))) => {}
+                    Some(Err(error)) if can_terminate_for_stdin_error => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Initial prompt stdin task failed, SIGTERM pgid={}: {error}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Err(_)) => {}
+                    None => {}
+                }
+            }
             line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
@@ -294,11 +493,69 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            if event.get("type").and_then(serde_json::Value::as_str)
+                                == Some("stream_event")
+                            {
+                                events::register_event_session_identifier(&event, masker);
+                                if event
+                                    .get("parent_tool_use_id")
+                                    .is_some_and(|value| !value.is_null())
+                                {
+                                    continue;
+                                }
+
+                                let Some(stream_event) = event.get("event") else {
+                                    continue;
+                                };
+                                match stream_event
+                                    .get("type")
+                                    .and_then(serde_json::Value::as_str)
+                                {
+                                    Some("message_start") => {
+                                        chat_stream_message_id = stream_event
+                                            .get("message")
+                                            .and_then(|message| message.get("id"))
+                                            .and_then(serde_json::Value::as_str)
+                                            .map(ToOwned::to_owned);
+                                    }
+                                    Some("content_block_delta")
+                                        if stream_event
+                                            .get("delta")
+                                            .and_then(|delta| delta.get("type"))
+                                            .and_then(serde_json::Value::as_str)
+                                            == Some("text_delta") =>
+                                    {
+                                        let delta = chat_stream_message_id.as_deref().and_then(
+                                            |message_id| {
+                                                chat_stream_delta_from_event(
+                                                    stream_event,
+                                                    message_id,
+                                                    masker,
+                                                )
+                                            },
+                                        );
+                                        enqueue_chat_stream_delta(
+                                            &event_tx,
+                                            chat_stream_configured,
+                                            delta,
+                                        );
+                                    }
+                                    Some("message_stop") => {
+                                        chat_stream_message_id = None;
+                                    }
+                                    _ => {}
+                                }
+                                continue;
+                            }
                             last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
                                 timing::record_e2e_from_api("api_to_cli_init");
                             }
+                            // Capture checkpoint metadata and register any
+                            // event-local session identifier before logging
+                            // terminal diagnostics from the same event.
+                            events::capture_session_metadata(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 claude_result = Some(ClaudeResultSummary::from_event(&event));
@@ -320,7 +577,10 @@ pub async fn execute_cli(
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
-                                    println!("{result}");
+                                    // Guest-agent stdout is captured as
+                                    // system-stream logs, so mask before
+                                    // printing Claude's final result.
+                                    println!("{}", masker.mask_string(result));
                                 }
                                 // Arm the post-result reap deadline once per
                                 // run — see `TerminationState::should_arm_post_result`.
@@ -360,16 +620,12 @@ pub async fn execute_cli(
                                     failure_diagnostic = Some(selected);
                                 }
                             }
-                            // Capture checkpoint metadata before event payload preparation
-                            // consumes and masks the event.
-                            events::capture_session_metadata(&event);
-
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             if should_send_events {
                                 let payload = events::prepare_event_payload(event, seq, masker);
                                 if event_tx
-                                    .send(PreparedEvent {
+                                    .send(PreparedEvent::Webhook {
                                         sequence: seq,
                                         payload,
                                     })
@@ -571,6 +827,30 @@ pub async fn execute_cli(
         }
     };
 
+    if let Some(handle) = initial_prompt_write_handle.take() {
+        if handle.is_finished() {
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin write finished after CLI loop with error: {error}"
+                    );
+                }
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin task failed after CLI loop: {error}"
+                    );
+                }
+            }
+        } else {
+            handle.abort();
+            let _ = handle.await;
+            log_warn!(LOG_TAG, "Aborted unfinished initial prompt stdin task");
+        }
+    }
+
     let event_result = match termination_error {
         Some(err) => Err(err),
         None => event_result,
@@ -736,10 +1016,46 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason,
+        CliFailureDiagnostic, chat_stream_delta_from_event, claude_initial_prompt_frame,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
+    use crate::events;
+    use crate::masker::SecretMasker;
     use agent_diagnostics::{FailureDetailSource, FailureReason};
+    use serde_json::json;
+
+    #[test]
+    fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
+        let frame = serde_json::to_value(claude_initial_prompt_frame("run_123", "hello stdin"))
+            .expect("serialize prompt frame");
+
+        assert_eq!(
+            frame.get("type").and_then(serde_json::Value::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            frame
+                .pointer("/message/role")
+                .and_then(serde_json::Value::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            frame
+                .pointer("/message/content")
+                .and_then(serde_json::Value::as_str),
+            Some("hello stdin")
+        );
+        assert!(
+            frame
+                .get("parent_tool_use_id")
+                .is_some_and(serde_json::Value::is_null)
+        );
+        let uuid = frame
+            .get("uuid")
+            .and_then(serde_json::Value::as_str)
+            .expect("uuid");
+        uuid::Uuid::parse_str(uuid).expect("valid uuid");
+    }
 
     #[tokio::test]
     async fn cli_current_dir_helper_sets_child_working_directory() {
@@ -784,6 +1100,33 @@ mod tests {
             .expect_err("non-directory cwd should fail");
 
         assert!(err.to_string().contains("is not a directory"));
+    }
+
+    #[test]
+    fn stream_event_chat_delta_masks_top_level_session_id_from_same_event() {
+        let session_id = "stream-session-secret-123";
+        let masker = SecretMasker::from_raw("");
+        let event = json!({
+            "type": "stream_event",
+            "session_id": session_id,
+            "event": {
+                "type": "content_block_delta",
+                "delta": {
+                    "type": "text_delta",
+                    "text": format!("delta for {session_id}")
+                }
+            }
+        });
+
+        events::register_event_session_identifier(&event, &masker);
+        let delta = chat_stream_delta_from_event(
+            event.get("event").expect("stream event payload"),
+            "msg_01",
+            &masker,
+        )
+        .expect("chat delta");
+
+        assert_eq!(delta.text, "delta for ***");
     }
 
     #[test]

@@ -85,10 +85,10 @@ import {
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
 import {
-  apiAutomationsV2Handlers,
+  apiAutomationsHandlers,
   resetMockAutomationTriggers,
-} from "./api-automations-v2.ts";
-import { resetMockSchedules } from "./schedules-store.ts";
+} from "./api-automations.ts";
+import { resetMockAutomations } from "./automations-store.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -133,7 +133,7 @@ export const handlers = [
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
   ...apiUserPermissionGrantsHandlers,
-  ...apiAutomationsV2Handlers,
+  ...apiAutomationsHandlers,
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,
@@ -163,7 +163,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageInsight();
   resetMockUsageRecord();
-  resetMockSchedules();
+  resetMockAutomations();
   resetMockAutomationTriggers();
   resetMockTeam();
   resetMockSkills();

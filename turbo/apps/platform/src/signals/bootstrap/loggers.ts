@@ -3,7 +3,13 @@ import { localStorageSignals } from "../external/local-storage";
 import { Level, logger } from "../log";
 import { jsonParseOr } from "../utils";
 
-const { get$, set$ } = localStorageSignals("debugLogger");
+const DEBUG_LOGGER_STORAGE_KEY = "debugLogger";
+
+const {
+  get$,
+  set$,
+  updateRaw: updateDebugLoggerRaw,
+} = localStorageSignals(DEBUG_LOGGER_STORAGE_KEY);
 
 const L = logger("Logger");
 
@@ -24,15 +30,15 @@ export const setupLoggers$ = command(({ get }) => {
 });
 
 export const setDebugLoggerLocalStorage$ = set$;
-export const extendDebugLoggerLocalStorage$ = command(
-  ({ get, set }, loggerName: string) => {
-    const debugLoggers = get(get$);
+
+export function extendDebugLoggerLocalStorage(loggerName: string): void {
+  updateDebugLoggerRaw((debugLoggers) => {
     const loggerNames = debugLoggers
       ? jsonParseOr<string[]>(debugLoggers, [])
       : [];
-    if (!loggerNames.includes(loggerName)) {
-      loggerNames.push(loggerName);
-      set(set$, JSON.stringify(loggerNames));
+    if (loggerNames.includes(loggerName)) {
+      return debugLoggers;
     }
-  },
-);
+    return JSON.stringify([...loggerNames, loggerName]);
+  });
+}

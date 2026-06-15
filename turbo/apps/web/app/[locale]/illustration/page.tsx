@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces } from "next/font/google";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
-import { ILLUSTRATION_ASSET_BASE, ILLUSTRATION_STYLES } from "@vm0/core";
+import { illustrationAssetUrl, ILLUSTRATION_STYLES } from "@vm0/core";
 import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
 
 const BASE_URL = "https://www.vm0.ai";
@@ -72,7 +72,7 @@ export default async function IllustrationPage({ params }: PageProps) {
         "@type": "ListItem",
         position: i + 1,
         name: style.title,
-        image: `${ILLUSTRATION_ASSET_BASE}/images/${style.image}`,
+        image: illustrationAssetUrl(`images/${style.image}`),
       };
     }),
   };

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.18.33](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.32...vsock-guest-v0.18.33) (2026-06-15)
+
+## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.31...vsock-guest-v0.18.32) (2026-06-13)
+
+
+### Bug Fixes
+
+* **vsock-guest:** bound short-lived reconnect attempts ([#17575](https://github.com/vm0-ai/vm0/issues/17575)) ([af3c00a](https://github.com/vm0-ai/vm0/commit/af3c00aac6a020ad18c96f326e15d42fcb522340))
+
+## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.30...vsock-guest-v0.18.31) (2026-06-12)
+
+
+### Documentation
+
+* document shell command env script invariants ([#17439](https://github.com/vm0-ai/vm0/issues/17439)) ([943b09d](https://github.com/vm0-ai/vm0/commit/943b09d75bc456a7f5bc91fa47b46220d648f609))
+
 ## [0.18.30](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.29...vsock-guest-v0.18.30) (2026-06-11)
 
 

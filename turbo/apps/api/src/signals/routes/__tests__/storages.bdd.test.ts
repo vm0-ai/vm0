@@ -7,7 +7,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-chat-files";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
 /*
@@ -386,7 +386,7 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
   });
 
   it("scopes sandbox-token storage reads through the run organization", async () => {
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();

@@ -228,7 +228,7 @@ describe("cloudflare firewall", () => {
     expect(cloudflareCategoryOrder).toContain("Cloudflare One / Zero Trust");
   });
 
-  it("defaults Cloudflare readonly permissions to allow", () => {
+  it("defaults Cloudflare readonly permissions to allow and unknown endpoints to deny", () => {
     const policy = getDefaultFirewallPolicies("cloudflare");
 
     expect(policy.policies["dns-firewall.read"]).toBe("allow");
@@ -241,7 +241,7 @@ describe("cloudflare firewall", () => {
     expect(policy.policies["account-waf.write"]).toBe("deny");
     expect(policy.policies["zone-waf.write"]).toBe("deny");
     expect(policy.policies["d1.write"]).toBe("deny");
-    expect(policy.unknownPolicy).toBe("allow");
+    expect(policy.unknownPolicy).toBe("deny");
   });
 
   it("generates Cloudflare default-allowed permissions from read permission groups", () => {

@@ -171,6 +171,12 @@ function sanitizeNetworkEvent(event: AxiomNetworkEvent): NetworkLogEntry {
     firewall_params: stringRecordValue(event.firewall_params),
     firewall_billable: booleanValue(event.firewall_billable),
     firewall_error: stringValue(event.firewall_error),
+    connector_diagnostic_type: stringValue(event.connector_diagnostic_type),
+    connector_diagnostic_reason: stringValue(event.connector_diagnostic_reason),
+    connector_diagnostic_env_names: stringArrayValue(
+      event.connector_diagnostic_env_names,
+    ),
+    connector_diagnostic_base: stringValue(event.connector_diagnostic_base),
     auth_resolved_secrets: stringArrayValue(event.auth_resolved_secrets),
     auth_refreshed_connectors: stringArrayValue(
       event.auth_refreshed_connectors,

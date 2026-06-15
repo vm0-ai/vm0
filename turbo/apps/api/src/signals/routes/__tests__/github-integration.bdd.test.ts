@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   GITHUB_APP_CLIENT_ID,
@@ -822,7 +823,7 @@ describe("INT-03 G4: installation management", () => {
 describe("INT-03 G5: label listeners and capability tokens", () => {
   it("manages label listeners across roles and zero capability tokens", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
 
     const actor = bdd.user();
@@ -1059,7 +1060,7 @@ describe("INT-03 G5: label listeners and capability tokens", () => {
 
 interface GithubRunHarness {
   readonly bdd: ReturnType<typeof createBddApi>;
-  readonly api: ReturnType<typeof createRunsSchedulesApi>;
+  readonly api: ReturnType<typeof createRunsAutomationsApi>;
   readonly webhooks: ReturnType<typeof createWebhookCallbackApi>;
   readonly gh: ReturnType<typeof createGithubBddApi>;
   readonly actor: ApiTestUser;
@@ -1074,7 +1075,7 @@ async function githubRunActor(
   senderGithubUserId: string,
 ): Promise<GithubRunHarness> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const gh = createGithubBddApi(context);
 
@@ -1286,7 +1287,7 @@ async function waitForArrayLength<T>(
 }
 
 async function waitForRunnerJob(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
 ) {
   await api.heartbeatRunner(runnerGroup);
@@ -1307,7 +1308,7 @@ async function waitForRunnerJob(
 }
 
 async function waitForRunStatus(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   actor: ApiTestUser,
   runId: string,
   status: "cancelled" | "completed" | "failed" | "pending" | "running",
@@ -1370,6 +1371,8 @@ async function postGithubWebhook(
     [200],
   );
   // Webhook handling is detached and run dispatch nests more detached work.
+  // Drain it before claiming the queued job or reading session state.
+  await flushWaitUntilForTest();
 }
 
 function runIdFromAuditComment(body: string): string {
@@ -1381,7 +1384,7 @@ function runIdFromAuditComment(body: string): string {
 }
 
 async function claimNextGithubRun(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
 ): Promise<{
   readonly runId: string;
@@ -1419,7 +1422,7 @@ async function checkpointGithubRun(args: {
 }
 
 async function completeGithubRun(args: {
-  readonly api: ReturnType<typeof createRunsSchedulesApi>;
+  readonly api: ReturnType<typeof createRunsAutomationsApi>;
   readonly webhooks: ReturnType<typeof createWebhookCallbackApi>;
   readonly actor: ApiTestUser;
   readonly issueApi: CapturedIssueApi;
@@ -1443,6 +1446,7 @@ async function completeGithubRun(args: {
     { authorization: `Bearer ${args.sandboxToken}` },
     [200],
   );
+  await flushWaitUntilForTest();
   const completed = await args.api.readRun(args.actor, args.runId);
   expect(completed.status).toBe("completed");
   await waitForCommentCount(args.issueApi, args.expectedCommentCount);
@@ -1830,7 +1834,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       webhooks,
       actor,
       issueApi,
-      expectedCommentCount: 4,
+      expectedCommentCount: 5,
       runId: labelRun.runId,
       sandboxToken: labelRun.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-label",
@@ -1931,6 +1935,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(firstRunId);
     await api.requestCancelRun(actor, firstRunId, [200]);
     await waitForRunStatus(api, actor, firstRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // A null issue body falls back to the placeholder paragraph.
     const beforeSecondDispatch = issueApi.comments.length;
@@ -1962,6 +1967,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(secondRunId);
     await api.requestCancelRun(actor, secondRunId, [200]);
     await waitForRunStatus(api, actor, secondRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Non-matching labels and ignored actions never dispatch.
     let commentCount = issueApi.comments.length;
@@ -2025,6 +2031,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(prRunId);
     await api.requestCancelRun(actor, prRunId, [200]);
     await waitForRunStatus(api, actor, prRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Creator-scoped listeners only fire for issues authored by the linked
     // creator account.
@@ -2085,11 +2092,12 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(creatorRunId);
     await api.requestCancelRun(actor, creatorRunId, [200]);
     await waitForRunStatus(api, actor, creatorRunId, "cancelled");
+    await flushWaitUntilForTest();
   });
 
   it("reports rejected and failed label dispatches through comments and callbacks", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const gh = createGithubBddApi(context);
 

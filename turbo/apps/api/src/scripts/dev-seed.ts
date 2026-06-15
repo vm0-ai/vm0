@@ -1,17 +1,26 @@
 #!/usr/bin/env tsx
 
-import { eq, sql } from "drizzle-orm";
+import { pathToFileURL } from "node:url";
+
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
+import {
+  getSkillStorageName,
+  SYSTEM_ORG_ID,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { getSeedSkillNames } from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
 import { nowDate } from "../lib/time";
 import { settle } from "../signals/utils";
+import rawDevSeedSkillVolumes from "./dev-seed-skill-volumes.json";
 
 function writeLine(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -27,6 +36,7 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * OpenAI also falls back to OPENAI_API_KEY because local dev already uses it
  * for platform OpenAI features.
+ * DeepSeek also falls back to DEEPSEEK_API_KEY to match the provider secret name.
  */
 
 /** 1 USD = 1000 credits */
@@ -37,6 +47,29 @@ function usd(amount: number): number {
 }
 
 type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];
+
+interface DevSeedSkillVolume {
+  readonly url: string;
+  readonly name: string;
+  readonly s3Key: string;
+  readonly message: string;
+  readonly fullPath: string;
+  readonly s3Prefix: string;
+  readonly commitSha: string;
+  readonly skillSize: number;
+  readonly storageId: string;
+  readonly frontmatter: Record<string, unknown>;
+  readonly storageName: string;
+  readonly storageSize: number;
+  readonly versionHash: string;
+  readonly versionSize: number;
+  readonly skillFileCount: number;
+  readonly storageFileCount: number;
+  readonly versionFileCount: number;
+}
+
+const DEV_SEED_SKILL_VOLUMES: readonly DevSeedSkillVolume[] =
+  rawDevSeedSkillVolumes;
 
 function usageGroup(
   kind: string,
@@ -67,6 +100,115 @@ function buildSeedSkillValues(
   });
 }
 
+async function seedOfficialSkillVolumes(
+  database: ReturnType<typeof db>,
+): Promise<number> {
+  const timestamp = nowDate();
+
+  await database.transaction(async (tx) => {
+    for (const volume of DEV_SEED_SKILL_VOLUMES) {
+      const [storage] = await tx
+        .insert(storages)
+        .values({
+          id: volume.storageId,
+          orgId: SYSTEM_ORG_ID,
+          userId: VOLUME_ORG_USER_ID,
+          name: volume.storageName,
+          type: "volume",
+          s3Prefix: volume.s3Prefix,
+          size: volume.storageSize,
+          fileCount: volume.storageFileCount,
+        })
+        .onConflictDoUpdate({
+          target: [
+            storages.orgId,
+            storages.userId,
+            storages.name,
+            storages.type,
+          ],
+          set: {
+            s3Prefix: volume.s3Prefix,
+            size: volume.storageSize,
+            fileCount: volume.storageFileCount,
+            updatedAt: timestamp,
+          },
+        })
+        .returning({ id: storages.id });
+      if (!storage) {
+        throw new Error(`Failed to seed skill storage for ${volume.name}`);
+      }
+
+      await tx
+        .insert(storageVersions)
+        .values({
+          id: volume.versionHash,
+          storageId: storage.id,
+          s3Key: volume.s3Key,
+          size: volume.versionSize,
+          fileCount: volume.versionFileCount,
+          message: volume.message,
+          createdBy: "system",
+        })
+        .onConflictDoUpdate({
+          target: storageVersions.id,
+          set: {
+            storageId: storage.id,
+            s3Key: volume.s3Key,
+            size: volume.versionSize,
+            fileCount: volume.versionFileCount,
+            message: volume.message,
+            createdBy: "system",
+          },
+        });
+
+      await tx
+        .update(storages)
+        .set({
+          headVersionId: volume.versionHash,
+          s3Prefix: volume.s3Prefix,
+          size: volume.storageSize,
+          fileCount: volume.storageFileCount,
+          updatedAt: timestamp,
+        })
+        .where(eq(storages.id, storage.id));
+
+      await tx
+        .insert(skills)
+        .values({
+          url: volume.url,
+          name: volume.name,
+          fullPath: volume.fullPath,
+          storageId: storage.id,
+          versionHash: volume.versionHash,
+          commitSha: volume.commitSha,
+          frontmatter: volume.frontmatter,
+          s3Key: volume.s3Key,
+          size: volume.skillSize,
+          fileCount: volume.skillFileCount,
+          syncedAt: timestamp,
+        })
+        .onConflictDoUpdate({
+          target: skills.url,
+          set: {
+            name: volume.name,
+            fullPath: volume.fullPath,
+            storageId: storage.id,
+            versionHash: volume.versionHash,
+            commitSha: volume.commitSha,
+            frontmatter: volume.frontmatter,
+            s3Key: volume.s3Key,
+            size: volume.skillSize,
+            fileCount: volume.skillFileCount,
+            syncedAt: timestamp,
+            updatedAt: timestamp,
+          },
+        });
+    }
+  });
+
+  return DEV_SEED_SKILL_VOLUMES.length;
+}
+
 const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Model usage in the unified usage_event ledger.
   ...usageGroup("model", "claude-sonnet-4-6", [
@@ -92,12 +234,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output", usd(25), 1_000_000],
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
-  ]),
-  ...usageGroup("model", "claude-fable-5", [
-    ["tokens.input", usd(10), 1_000_000],
-    ["tokens.output", usd(50), 1_000_000],
-    ["tokens.cache_read", usd(1), 1_000_000],
-    ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
   ...usageGroup("model", "kimi-k2.6", [
     ["tokens.input", usd(0.6), 1_000_000],
@@ -266,12 +402,29 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 ];
 
+function getVendorApiKeyEnvVars(vendor: string): string[] {
+  const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
+  if (vendor === "openai") {
+    return [envVar, "OPENAI_API_KEY"];
+  }
+  if (vendor === "deepseek") {
+    return [envVar, "DEEPSEEK_API_KEY"];
+  }
+  return [envVar];
+}
+
+type OptionalEnvReader = (name: string) => string | undefined;
+type LineWriter = (message: string) => void;
+
 /**
  * Build vm0_api_keys entries from environment variables.
  * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
  * so new models are automatically picked up.
  */
-function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
+export function buildVm0ApiKeys(
+  readEnv: OptionalEnvReader = optionalEnv,
+  logLine: LineWriter = writeLine,
+): (typeof vm0ApiKeys.$inferInsert)[] {
   // Group models by vendor from the canonical mapping
   const vendorModels = new Map<string, string[]>();
   for (const [model, { vendor }] of Object.entries(VM0_MODEL_TO_PROVIDER)) {
@@ -282,19 +435,16 @@ function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
 
   const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
   for (const [vendor, models] of vendorModels) {
-    const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
-    const envVars = vendor === "openai" ? [envVar, "OPENAI_API_KEY"] : [envVar];
+    const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
-        return optionalEnv(name);
+        return readEnv(name);
       })
       .find((value): value is string => {
         return typeof value === "string" && value.length > 0;
       });
     if (!apiKey) {
-      writeLine(
-        `Skipping ${vendor}: ${envVars.join(" or ")} is not configured`,
-      );
+      logLine(`Skipping ${vendor}: ${envVars.join(" or ")} is not configured`);
       continue;
     }
     for (const model of models) {
@@ -339,7 +489,7 @@ async function devSeed() {
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, "dev-seed"));
+    await tx.delete(vm0ApiKeys);
     if (apiKeys.length > 0) {
       await tx.insert(vm0ApiKeys).values(apiKeys);
     }
@@ -349,24 +499,88 @@ async function devSeed() {
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 
-  // --- skills (seed skills + common connectors, batch insert) ---
-  writeLine("Seeding skills");
-  const skillValues = buildSeedSkillValues(getSeedSkillNames());
-  const inserted = await database
-    .insert(skills)
-    .values(skillValues)
-    .onConflictDoNothing()
-    .returning({ id: skills.id });
-  const seededCount = inserted.length;
-  writeLine(
-    `Seeded ${seededCount} new skills and kept ${
-      skillValues.length - seededCount
-    } existing skills`,
+  // --- skills (seed skills + common connectors, including system volumes) ---
+  writeLine("Seeding official skill volumes");
+  const seededVolumeCount = await seedOfficialSkillVolumes(database);
+  writeLine(`Seeded ${seededVolumeCount} official skill volume entries`);
+
+  const seededVolumeStorageNames = new Set(
+    DEV_SEED_SKILL_VOLUMES.map((volume) => {
+      return volume.storageName;
+    }),
+  );
+  const fallbackSkillValues = buildSeedSkillValues(
+    getSeedSkillNames().filter((name) => {
+      const fullPath = resolveSkillRef(name).replace("https://github.com/", "");
+      return !seededVolumeStorageNames.has(getSkillStorageName(fullPath));
+    }),
+  );
+  if (fallbackSkillValues.length > 0) {
+    const timestamp = nowDate();
+    const fallbackStorageNames = fallbackSkillValues.map((skill) => {
+      return getSkillStorageName(skill.fullPath);
+    });
+    let insertedCount = 0;
+    await database.transaction(async (tx) => {
+      for (const skill of fallbackSkillValues) {
+        const [inserted] = await tx
+          .insert(skills)
+          .values(skill)
+          .onConflictDoUpdate({
+            target: skills.url,
+            set: {
+              name: skill.name,
+              fullPath: skill.fullPath,
+              storageId: null,
+              versionHash: null,
+              commitSha: null,
+              frontmatter: skill.frontmatter,
+              s3Key: null,
+              size: 0,
+              fileCount: 0,
+              syncedAt: null,
+              updatedAt: timestamp,
+            },
+          })
+          .returning({ id: skills.id });
+        if (inserted) {
+          insertedCount++;
+        }
+      }
+
+      await tx
+        .delete(storages)
+        .where(
+          and(
+            eq(storages.orgId, SYSTEM_ORG_ID),
+            eq(storages.userId, VOLUME_ORG_USER_ID),
+            eq(storages.type, "volume"),
+            inArray(storages.name, fallbackStorageNames),
+          ),
+        );
+    });
+    writeLine(
+      `Seeded ${insertedCount} metadata-only skills and cleared stale volumes`,
+    );
+  }
+}
+
+function isMainModule(): boolean {
+  const entrypoint = process.argv[1];
+  return (
+    entrypoint !== undefined &&
+    import.meta.url === pathToFileURL(entrypoint).href
   );
 }
 
-const result = await settle(devSeed());
-await closeDbPool();
-if (!result.ok) {
-  throw result.error;
+async function runDevSeed(): Promise<void> {
+  const result = await settle(devSeed());
+  await closeDbPool();
+  if (!result.ok) {
+    throw result.error;
+  }
+}
+
+if (isMainModule()) {
+  await runDevSeed();
 }

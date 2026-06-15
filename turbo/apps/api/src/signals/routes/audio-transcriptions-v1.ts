@@ -3,7 +3,6 @@ import { audioTranscriptionsV1Contract } from "@vm0/api-contracts/contracts/audi
 import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
@@ -27,7 +26,6 @@ const OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const MAX_REQUEST_DURATION_SECONDS = 5 * 60;
 const AUDIO_INPUT_FREE_QUOTA = 10;
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
-const AUDIO_INPUT_FEATURE_KEY = "audioInput";
 const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
 const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
@@ -208,20 +206,6 @@ const voiceInputPolicy$ = command(
     pcmBytes: number,
   ): Promise<VoiceInputPolicy | ErrorResponse> => {
     const db = get(db$);
-
-    const [featureRow] = await db
-      .select({ switches: userFeatureSwitches.switches })
-      .from(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, orgId),
-          eq(userFeatureSwitches.userId, userId),
-        ),
-      )
-      .limit(1);
-    if (featureRow?.switches[AUDIO_INPUT_FEATURE_KEY] === false) {
-      return forbidden("Audio input is not enabled");
-    }
 
     const currentDate = nowDate();
     const rateKey = dailyRateKey(currentDate);

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.3...sandbox-v0.19.4) (2026-06-15)
+
+
+### Performance Improvements
+
+* **runner:** move workspace cache hits into sandboxes ([#17629](https://github.com/vm0-ai/vm0/issues/17629)) ([3ec0448](https://github.com/vm0-ai/vm0/commit/3ec04481481f46589b219dfbf08d80555e86ed95))
+
 ## [0.19.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.2...sandbox-v0.19.3) (2026-06-09)
 
 

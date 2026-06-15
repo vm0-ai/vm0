@@ -2,6 +2,8 @@
 //!
 //! Shared by runner commands that need live host process facts, including
 //! `doctor`, `kill`, `gc`, and orphan reaping.
+//! Live runner identity is not inferred here; runner processes publish
+//! registry entries through `live_runner_instances`.
 
 mod ancestry;
 mod discovery;
@@ -13,8 +15,6 @@ pub use self::discovery::{discover_all, firecracker_process_exists_for_sandbox_i
 pub(crate) use self::discovery::{is_firecracker_cmdline, parse_workspace_cwd};
 pub use self::procfs::read_service_unit;
 pub(crate) use self::procfs::{read_cmdline, read_cwd, read_process_stat};
-#[cfg(test)]
-pub(crate) use self::types::RunnerProcessInfo;
 pub(crate) use self::types::process_stat_is_live;
 pub use self::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,

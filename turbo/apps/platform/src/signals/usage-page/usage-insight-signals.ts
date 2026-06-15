@@ -72,15 +72,15 @@ export const setGroupBy$ = command(({ set }, groupBy: InsightGroupBy) => {
 // --- Hover state (shared dim-on-hover behavior across breakdown lists) ---
 
 const internalHoveredCategory$ = state<string | null>(null);
-const internalHoveredScheduleId$ = state<string | null>(null);
+const internalHoveredAutomationId$ = state<string | null>(null);
 const internalHoveredChatId$ = state<string | null>(null);
 
 export const hoveredCategory$ = computed((get) => {
   return get(internalHoveredCategory$);
 });
 
-export const hoveredScheduleId$ = computed((get) => {
-  return get(internalHoveredScheduleId$);
+export const hoveredAutomationId$ = computed((get) => {
+  return get(internalHoveredAutomationId$);
 });
 
 export const hoveredChatId$ = computed((get) => {
@@ -91,8 +91,8 @@ export const setHoveredCategory$ = command(({ set }, key: string | null) => {
   set(internalHoveredCategory$, key);
 });
 
-export const setHoveredScheduleId$ = command(({ set }, id: string | null) => {
-  set(internalHoveredScheduleId$, id);
+export const setHoveredAutomationId$ = command(({ set }, id: string | null) => {
+  set(internalHoveredAutomationId$, id);
 });
 
 export const setHoveredChatId$ = command(({ set }, id: string | null) => {

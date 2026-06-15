@@ -1,5 +1,208 @@
 # Changelog
 
+## [9.193.0](https://github.com/vm0-ai/vm0/compare/cli-v9.192.5...cli-v9.193.0) (2026-06-15)
+
+
+### Features
+
+* configure connector unknown endpoint defaults ([#17699](https://github.com/vm0-ai/vm0/issues/17699)) ([d9f193e](https://github.com/vm0-ai/vm0/commit/d9f193efdd6c2209b2de7aa96b6a3f8fddd023d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+    * @vm0/core bumped to 8.339.0
+
+## [9.192.5](https://github.com/vm0-ai/vm0/compare/cli-v9.192.4...cli-v9.192.5) (2026-06-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/connectors bumped to 1.76.0
+    * @vm0/core bumped to 8.338.0
+
+## [9.192.4](https://github.com/vm0-ai/vm0/compare/cli-v9.192.3...cli-v9.192.4) (2026-06-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.92.1
+    * @vm0/connectors bumped to 1.75.0
+    * @vm0/core bumped to 8.337.0
+
+## [9.192.3](https://github.com/vm0-ai/vm0/compare/cli-v9.192.2...cli-v9.192.3) (2026-06-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.92.0
+    * @vm0/core bumped to 8.336.0
+
+## [9.192.2](https://github.com/vm0-ai/vm0/compare/cli-v9.192.1...cli-v9.192.2) (2026-06-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.91.2
+    * @vm0/core bumped to 8.335.5
+
+## [9.192.1](https://github.com/vm0-ai/vm0/compare/cli-v9.192.0...cli-v9.192.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* surface connector diagnostics for failed requests ([#17457](https://github.com/vm0-ai/vm0/issues/17457)) ([52a3083](https://github.com/vm0-ai/vm0/commit/52a308358d08bb30dd1e87e11747cfe13743a444))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.91.1
+    * @vm0/core bumped to 8.335.4
+
+## [9.192.0](https://github.com/vm0-ai/vm0/compare/cli-v9.191.0...cli-v9.192.0) (2026-06-13)
+
+
+### Features
+
+* update a time trigger's schedule in place ([#17543](https://github.com/vm0-ai/vm0/issues/17543)) ([1c4cdb1](https://github.com/vm0-ai/vm0/commit/1c4cdb18b84b8924684b33545781112275437c97))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.91.0
+    * @vm0/core bumped to 8.335.3
+
+## [9.191.0](https://github.com/vm0-ai/vm0/compare/cli-v9.190.10...cli-v9.191.0) (2026-06-12)
+
+
+### Features
+
+* stop touching the schedule columns and rename the wire fields ([#17535](https://github.com/vm0-ai/vm0/issues/17535)) ([7ffec48](https://github.com/vm0-ai/vm0/commit/7ffec48d24efa30899a74026d2593ec52e4cc9a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.90.0
+    * @vm0/core bumped to 8.335.2
+
+## [9.190.10](https://github.com/vm0-ai/vm0/compare/cli-v9.190.9...cli-v9.190.10) (2026-06-12)
+
+
+### Refactoring
+
+* retire the remaining schedule residue ([#17529](https://github.com/vm0-ai/vm0/issues/17529)) ([bf2b208](https://github.com/vm0-ai/vm0/commit/bf2b2082775c38dcf3d5938bc6ed4fb3df76c306))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.89.1
+    * @vm0/connectors bumped to 1.74.0
+    * @vm0/core bumped to 8.335.1
+
+## [9.190.9](https://github.com/vm0-ai/vm0/compare/cli-v9.190.8...cli-v9.190.9) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.89.0
+    * @vm0/connectors bumped to 1.73.0
+    * @vm0/core bumped to 8.335.0
+
+## [9.190.8](https://github.com/vm0-ai/vm0/compare/cli-v9.190.7...cli-v9.190.8) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.88.2
+    * @vm0/core bumped to 8.334.2
+
+## [9.190.7](https://github.com/vm0-ai/vm0/compare/cli-v9.190.6...cli-v9.190.7) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/connectors bumped to 1.72.1
+    * @vm0/core bumped to 8.334.1
+
+## [9.190.6](https://github.com/vm0-ai/vm0/compare/cli-v9.190.5...cli-v9.190.6) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.88.0
+    * @vm0/connectors bumped to 1.72.0
+    * @vm0/core bumped to 8.334.0
+
+## [9.190.5](https://github.com/vm0-ai/vm0/compare/cli-v9.190.4...cli-v9.190.5) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.87.2
+    * @vm0/core bumped to 8.333.3
+
+## [9.190.4](https://github.com/vm0-ai/vm0/compare/cli-v9.190.3...cli-v9.190.4) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.87.1
+    * @vm0/connectors bumped to 1.71.1
+    * @vm0/core bumped to 8.333.2
+
+## [9.190.3](https://github.com/vm0-ai/vm0/compare/cli-v9.190.2...cli-v9.190.3) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.333.1
+
+## [9.190.2](https://github.com/vm0-ai/vm0/compare/cli-v9.190.1...cli-v9.190.2) (2026-06-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.87.0
+    * @vm0/connectors bumped to 1.71.0
+    * @vm0/core bumped to 8.333.0
+
 ## [9.190.1](https://github.com/vm0-ai/vm0/compare/cli-v9.190.0...cli-v9.190.1) (2026-06-12)
 
 

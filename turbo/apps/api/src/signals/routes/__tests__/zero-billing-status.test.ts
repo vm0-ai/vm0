@@ -413,7 +413,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.credits).toBe(100_000);
   });
 
-  it("maps auto_recharge expires records to Pay as you go segment", async () => {
+  it("maps pay-as-you-go expires records to Pay as you go segment", async () => {
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
@@ -433,7 +433,7 @@ describe("GET /api/zero/billing/status", () => {
               expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
             {
-              source: "auto_recharge",
+              source: "credit_purchase",
               amount: 10_000,
               expiresAt: new Date("2999-12-31T00:00:00Z"),
             },
@@ -466,7 +466,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     expect(
       response.body.creditGrants.filter((grant) => {
-        return grant.source === "auto_recharge";
+        return (
+          grant.source === "auto_recharge" || grant.source === "credit_purchase"
+        );
       }),
     ).toHaveLength(2);
   });

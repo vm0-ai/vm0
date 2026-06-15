@@ -28,7 +28,7 @@ function mockActivityAPIs(): void {
     selectedModel: null,
     triggerSource: "web",
     triggerAgentName: null,
-    scheduleId: null,
+    automationId: null,
     status: "completed",
     prompt: "Summarize today",
     appendSystemPrompt: null,
@@ -78,7 +78,7 @@ function mockActivityAPIs(): void {
           status: "completed",
           triggerSource: "web",
           triggerAgentName: null,
-          scheduleId: null,
+          automationId: null,
           prompt: "Test prompt",
           createdAt: "2026-03-10T14:56:00Z",
           startedAt: "2026-03-10T14:56:01Z",
@@ -119,7 +119,7 @@ function makeActivityRow(
     status: "completed",
     triggerSource: "web",
     triggerAgentName: null,
-    scheduleId: null,
+    automationId: null,
     prompt: "Review activity",
     createdAt: "2026-03-10T15:00:00Z",
     startedAt: "2026-03-10T15:00:01Z",
@@ -176,7 +176,7 @@ describe("activity page routing", () => {
             status: "completed",
             triggerSource: "agent",
             triggerAgentName: "Parent Bot",
-            scheduleId: null,
+            automationId: null,
             prompt: "Test prompt",
             createdAt: "2026-03-10T15:00:00Z",
             startedAt: "2026-03-10T15:00:01Z",
@@ -197,6 +197,7 @@ describe("activity page routing", () => {
 
   it("filters and paginates activity runs from the list controls", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000101";
+    const listQueries: Record<string, string | number | undefined>[] = [];
     context.mocks.data.composesList([
       {
         id: agentId,
@@ -209,6 +210,7 @@ describe("activity page routing", () => {
       },
     ]);
     context.mocks.api(logsListContract.list, ({ query, respond }) => {
+      listQueries.push({ ...query });
       const filters: {
         statuses: LogEntry["status"][];
         sources: NonNullable<LogEntry["triggerSource"]>[];
@@ -302,6 +304,34 @@ describe("activity page routing", () => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
       expect(screen.getByText("20")).toBeInTheDocument();
     });
+
+    click(screen.getByLabelText("Status filter"));
+    click(screen.getByRole("option", { name: "Completed" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    });
+
+    listQueries.length = 0;
+    click(screen.getByLabelText("Forward 2 pages"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Archive Agent")).toBeInTheDocument();
+      expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+    });
+    expect(listQueries).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          cursor: "page-2",
+          status: "completed",
+        }),
+        expect.objectContaining({
+          cursor: "page-3",
+          status: "completed",
+        }),
+      ]),
+    );
 
     click(screen.getByLabelText("Status filter"));
     click(screen.getByRole("option", { name: "Failed" }));

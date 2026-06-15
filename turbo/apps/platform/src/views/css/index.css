@@ -34,12 +34,15 @@
   --color-credit-plan-pro: #edc43e;
   --color-credit-plan-team: #6b8de3;
 
-  /* Usage record kind breakdown segment colors */
-  --color-usage-kind-model: #6b8de3;
-  --color-usage-kind-image: #e88033;
-  --color-usage-kind-video: #3eb7b8;
-  --color-usage-kind-connector: #97918a;
-  --color-usage-kind-other: #edc43e;
+  /* Usage record kind breakdown segment colors — drawn from the Insights
+     card-palette hues so usage and insights read as one system. Model uses a
+     cool indigo so the dominant LLM segment separates cleanly from the pink
+     image hue; image and video also sit far apart (pink vs teal). */
+  --color-usage-kind-model: #5e6ad2;
+  --color-usage-kind-image: #ec70a5;
+  --color-usage-kind-video: #358a8e;
+  --color-usage-kind-connector: #98928b;
+  --color-usage-kind-other: #e1c43c;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
@@ -47,8 +50,78 @@
    Use var(--sat) / var(--sab) in components instead of env() directly. */
 :root {
   --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
+  --sab-raw: env(safe-area-inset-bottom, 0px);
+  --sab: var(--sab-raw);
+  --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
+}
+
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    :root {
+      --zero-viewport-height: 100lvh;
+    }
+  }
+}
+
+:root:has(
+  :is(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"])
+  ):focus-visible
+) {
+  --sab: 0px;
+}
+
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    :root:has(
+      :is(
+        input,
+        textarea,
+        select,
+        [contenteditable]:not([contenteditable="false"])
+      ):focus-visible
+    ) {
+      --zero-viewport-height: 100dvh;
+    }
+  }
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: var(--zero-viewport-height);
+  min-height: var(--zero-viewport-height);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.zero-viewport-shell {
+  height: var(--zero-viewport-height);
+  min-height: var(--zero-viewport-height);
+  max-height: var(--zero-viewport-height);
+  overflow: hidden;
+}
+
+@media (display-mode: standalone) {
+  .zero-pwa-fixed-cover {
+    bottom: calc(-1 * var(--sab));
+  }
 }
 
 .zero-sidebar-header {
@@ -560,6 +633,14 @@
 /* Global selection color */
 ::selection {
   background-color: hsl(var(--primary-200));
+  color: hsl(var(--foreground));
+}
+
+/* Inline feedback: keep the commented passage highlighted while its draft is
+   open, so the comment stays anchored to the text it is about. A lighter tint
+   than the live selection above. */
+::highlight(zero-feedback) {
+  background-color: hsl(var(--primary-100));
   color: hsl(var(--foreground));
 }
 

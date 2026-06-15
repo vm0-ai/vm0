@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "12.424.0",
+  "version": "12.427.1",
   "type": "module",
   "private": true,
   "scripts": {
@@ -40,8 +40,8 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@typescript-eslint/rule-tester": "^8.60.1",
-    "@typescript-eslint/utils": "^8.60.1",
+    "@typescript-eslint/rule-tester": "^8.61.0",
+    "@typescript-eslint/utils": "^8.61.0",
     "@vm0/connectors": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",

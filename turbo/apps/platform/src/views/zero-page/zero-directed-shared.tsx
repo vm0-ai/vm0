@@ -20,7 +20,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const pageSignal = useGet(pageSignal$);
 
   return (
-    <div className="zero-app flex h-dvh w-full bg-background">
+    <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <OrgManageDialog
         open={dialogOpen}
         onOpenChange={(open) => {

@@ -38,6 +38,7 @@ import {
 import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
@@ -50,6 +51,7 @@ import {
   type ExpandedFirewallConfig,
   type Firewall,
   type FirewallPolicies,
+  type FirewallPolicy,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -64,8 +66,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -114,6 +118,7 @@ import { writeDb$, type Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
+  createChatStreamPublishToken,
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
@@ -223,7 +228,6 @@ interface AdditionalVolume {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  readonly scheduleId?: string;
   // Run provenance: the automation + the trigger that fired this run (set by the
   // webhook inbound path). Persisted as first-class zero_runs columns.
   readonly automationId?: string;
@@ -317,6 +321,12 @@ interface BuiltStoredExecutionContext {
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
+}
+
+interface ChatStreamExecutionContext {
+  readonly chatStreamChannel: string;
+  readonly chatStreamTopic: string;
+  readonly chatStreamToken: string;
 }
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
@@ -1041,6 +1051,10 @@ function modelProviderEnvironmentSecretValue(
     : secretValue;
 }
 
+function hasUsableModelProviderSecretValue(value: string): boolean {
+  return value.trim().length > 0;
+}
+
 function modelProviderEnvironment(
   id: string | null,
   type: ModelProviderType,
@@ -1049,6 +1063,7 @@ function modelProviderEnvironment(
   selectedModel: string | null,
 ): ResolvedModelProviderEnvironment {
   const model = selectedModel ?? config.defaultModel ?? "";
+  const runtimeModel = model ? getProviderRuntimeModel(type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
     type,
     config.secretName,
@@ -1058,7 +1073,7 @@ function modelProviderEnvironment(
   for (const [key, value] of Object.entries(config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
-      .replaceAll("$model", model);
+      .replaceAll("$model", runtimeModel);
   }
 
   return {
@@ -1420,14 +1435,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
+  const secretValue = await decryptStoredSecretValue(
+    row.encryptedValue,
+    args.featureSwitchContext,
+  );
+  if (!hasUsableModelProviderSecretValue(secretValue)) {
+    return null;
+  }
   return modelProviderEnvironment(
     row.id,
     row.type,
     config,
-    await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    ),
+    secretValue,
     args.selectedModelOverride ?? row.selectedModel,
   );
 }
@@ -2090,6 +2109,55 @@ function collectPermissionNames(
   return [...names];
 }
 
+function allAllowPolicyForPermissions(
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  return {
+    policies: Object.fromEntries(
+      permissionNames.map((name) => {
+        return [name, "allow" as const];
+      }),
+    ),
+    unknownPolicy: "allow",
+  };
+}
+
+function defaultBuiltinConnectorPolicyForFirewall(
+  firewall: ExpandedFirewallConfig,
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  if (isFirewallConnectorType(firewall.name)) {
+    return getDefaultFirewallPolicies(firewall.name);
+  }
+  return allAllowPolicyForPermissions(permissionNames);
+}
+
+function networkPolicyForFirewallPolicy(
+  permissionNames: readonly string[],
+  policy: FirewallPolicy,
+): NetworkPolicies[string] {
+  const allow: string[] = [];
+  const deny: string[] = [];
+  const ask: string[] = [];
+  for (const name of permissionNames) {
+    const value = policy.policies[name];
+    if (value === "allow") {
+      allow.push(name);
+    } else if (value === "deny") {
+      deny.push(name);
+    } else if (value === "ask") {
+      ask.push(name);
+    }
+  }
+
+  return {
+    allow,
+    deny,
+    ask,
+    unknownPolicy: policy.unknownPolicy ?? "allow",
+  };
+}
+
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
@@ -2145,6 +2213,10 @@ function applyConnectorPolicies(
   entryForFirewall: (
     firewall: ExpandedFirewallConfig,
   ) => ExecutionFirewallEntry,
+  defaultPolicyForFirewall: (
+    firewall: ExpandedFirewallConfig,
+    permissionNames: readonly string[],
+  ) => FirewallPolicy,
 ): Omit<PermissionManifest, "environmentFirewalls"> {
   const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
@@ -2152,37 +2224,24 @@ function applyConnectorPolicies(
   for (const firewall of connectorFirewalls) {
     const policy = policies?.[firewall.name];
     const permissionNames = collectPermissionNames(firewall.apis);
+    const defaultPolicy = defaultPolicyForFirewall(firewall, permissionNames);
     firewalls.push(entryForFirewall(firewall));
 
     if (!policy) {
-      networkPolicies[firewall.name] = {
-        allow: [...permissionNames],
-        deny: [],
-        ask: [],
-        unknownPolicy: "allow",
-      };
+      networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+        permissionNames,
+        defaultPolicy,
+      );
       continue;
     }
 
-    const allow: string[] = [];
-    const deny: string[] = [];
-    const ask: string[] = [];
-    for (const name of permissionNames) {
-      const value = policy.policies[name];
-      if (value === "allow") {
-        allow.push(name);
-      } else if (value === "deny") {
-        deny.push(name);
-      } else if (value === "ask") {
-        ask.push(name);
-      }
-    }
-    networkPolicies[firewall.name] = {
-      allow,
-      deny,
-      ask,
-      unknownPolicy: policy.unknownPolicy ?? "allow",
-    };
+    networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+      permissionNames,
+      {
+        ...policy,
+        unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+      },
+    );
   }
 
   return { firewalls, networkPolicies };
@@ -2245,6 +2304,7 @@ function buildPermissionManifest(args: {
     (firewall) => {
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
+    defaultBuiltinConnectorPolicyForFirewall,
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2254,6 +2314,9 @@ function buildPermissionManifest(args: {
     resolvedCustomConnectorFirewalls,
     args.permissionPolicies,
     inlineFirewallEntry,
+    (_firewall, permissionNames) => {
+      return allAllowPolicyForPermissions(permissionNames);
+    },
   );
   const providerManifest = modelProviderPermissionManifest(
     args.modelProvider,
@@ -2819,7 +2882,6 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    scheduleId: args.zeroRunMetadata?.scheduleId ?? null,
     automationId: args.zeroRunMetadata?.automationId ?? null,
     triggerId: args.zeroRunMetadata?.triggerId ?? null,
     triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
@@ -3018,6 +3080,7 @@ async function buildStoredExecutionContext(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly chatThreadId: string | undefined;
   readonly resolved: ResolvedCompose;
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
@@ -3051,6 +3114,12 @@ async function buildStoredExecutionContext(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
+  const chatStreamContext = await buildChatStreamExecutionContext({
+    userId: args.userId,
+    chatThreadId: args.chatThreadId,
+    triggerSource: args.body.triggerSource ?? "cli",
+    featureSwitchContext: args.featureSwitchContext,
+  });
 
   return {
     context: {
@@ -3092,9 +3161,34 @@ async function buildStoredExecutionContext(args: {
         permissions,
       }),
       modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
+      ...chatStreamContext,
     },
     secretNames,
     secretValues,
+  };
+}
+
+async function buildChatStreamExecutionContext(args: {
+  readonly userId: string;
+  readonly chatThreadId: string | undefined;
+  readonly triggerSource: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<ChatStreamExecutionContext | undefined> {
+  if (
+    args.triggerSource !== "web" ||
+    !args.chatThreadId ||
+    !isFeatureEnabled(
+      FeatureSwitchKey.AssistantTextStreaming,
+      args.featureSwitchContext,
+    )
+  ) {
+    return undefined;
+  }
+
+  return {
+    chatStreamChannel: `user:${args.userId}`,
+    chatStreamTopic: `chatThreadMessageDelta:${args.chatThreadId}`,
+    chatStreamToken: await createChatStreamPublishToken(args.userId),
   };
 }
 
@@ -3332,6 +3426,7 @@ function buildRunnerJobPayload(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3385,6 +3480,7 @@ function buildRunnerJobPayload(
         ...args,
         body,
         runId: args.run.id,
+        chatThreadId: args.chatThreadId,
         storageManifest,
         userTimezone: args.userTimezone,
         featureSwitchContext: args.featureSwitchContext,
@@ -3444,6 +3540,7 @@ function dispatchRun(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3517,6 +3614,7 @@ function enqueueRunForConcurrency(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -4019,6 +4117,7 @@ function completeQueuedRun(input: {
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
+            chatThreadId: input.args.chatThreadId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
@@ -4065,6 +4164,7 @@ function completePendingRun(input: {
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
+            chatThreadId: input.args.chatThreadId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,

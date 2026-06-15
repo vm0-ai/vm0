@@ -8,12 +8,12 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import {
-  publishThreadListChanged,
-  publishUserSignal,
-} from "../external/realtime";
+import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import {
+  visibleChatMessageCondition,
+  zeroChatThreadUnreads,
+} from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -24,7 +24,10 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const writeDb = set(writeDb$);
 
   const [thread] = await writeDb
-    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
+    .select({
+      lastReadMessageId: chatThreads.lastReadMessageId,
+      agentComposeId: chatThreads.agentComposeId,
+    })
     .from(chatThreads)
     .where(
       and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
@@ -35,6 +38,16 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!thread) {
     return notFound("Chat thread not found");
   }
+
+  const agentUnreads = async () => {
+    const unreads = await get(
+      zeroChatThreadUnreads({
+        userId: auth.userId,
+        agentComposeId: thread.agentComposeId,
+      }),
+    );
+    return [...unreads];
+  };
 
   const [latest] = await writeDb
     .select({ id: chatMessages.id })
@@ -53,7 +66,10 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (thread.lastReadMessageId === latestMessageId) {
     return {
       status: 200 as const,
-      body: { lastReadMessageId: latestMessageId, changed: false },
+      body: {
+        lastReadMessageId: latestMessageId,
+        unreads: await agentUnreads(),
+      },
     };
   }
 
@@ -65,18 +81,19 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   signal.throwIfAborted();
 
+  // Per-thread read-cursor signal only. No threadListChanged broadcast: the
+  // caller syncs from the unread snapshot in this response, and other
+  // clients converge on their next unreads fetch.
   await publishUserSignal(
     [auth.userId],
     `chatThreadReadCursorUpdated:${params.id}`,
     { lastReadMessageId: latestMessageId },
   );
   signal.throwIfAborted();
-  await publishThreadListChanged(auth.userId);
-  signal.throwIfAborted();
 
   return {
     status: 200 as const,
-    body: { lastReadMessageId: latestMessageId, changed: true },
+    body: { lastReadMessageId: latestMessageId, unreads: await agentUnreads() },
   };
 });
 

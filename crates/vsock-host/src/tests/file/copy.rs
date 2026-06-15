@@ -1,8 +1,10 @@
 use std::io;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tokio::net::UnixStream;
+use tokio::task::JoinHandle;
 use vsock_proto::{
     ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START,
 };
@@ -12,14 +14,73 @@ use super::super::support::{
     read_guest_message, send_exec_output, send_stream_exec_result, setup_host_and_guest,
 };
 use super::support::{
-    HostTempDir, HostTempPath, copy_options, default_copy_options, expect_exec_start,
-    send_guest_error, spawn_copy_file,
+    ExecStartFrame, HostTempDir, HostTempPath, copy_options, default_copy_options,
+    expect_exec_start, send_guest_error, spawn_copy_file,
 };
 use crate::file as file_impl;
 use crate::operation_tracker::NormalOperationReadiness;
+use crate::{CopyFileOptions, CopyFileResult, VsockHost};
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+struct CopyFileFixture {
+    host: Arc<VsockHost>,
+    guest: UnixStream,
+    temp_dir: HostTempDir,
+    host_path: PathBuf,
+}
+
+impl CopyFileFixture {
+    async fn new(prefix: &str, file_name: &str) -> Self {
+        let (host, guest) = setup_host_and_guest().await;
+        let temp_dir = HostTempDir::new(prefix);
+        let host_path = temp_dir.join(file_name);
+        Self {
+            host: Arc::new(host),
+            guest,
+            temp_dir,
+            host_path,
+        }
+    }
+
+    fn spawn_copy(
+        &self,
+        guest_path: &'static str,
+        options: CopyFileOptions,
+    ) -> JoinHandle<io::Result<CopyFileResult>> {
+        spawn_copy_file(
+            Arc::clone(&self.host),
+            guest_path,
+            self.host_path.clone(),
+            options,
+        )
+    }
+
+    async fn expect_start(&mut self) -> ExecStartFrame {
+        expect_exec_start(&mut self.guest).await
+    }
+
+    fn write_host_bytes(&self, bytes: &[u8]) {
+        std::fs::write(&self.host_path, bytes).unwrap();
+    }
+
+    fn assert_readiness(&self, expected: NormalOperationReadiness) {
+        assert_eq!(normal_operation_readiness(&self.host), expected);
+    }
+
+    fn assert_host_bytes(&self, expected: &[u8]) {
+        assert_eq!(std::fs::read(&self.host_path).unwrap(), expected);
+    }
+
+    fn assert_host_missing(&self) {
+        assert!(!self.host_path.exists());
+    }
+
+    fn assert_no_temp_files(&self) {
+        self.temp_dir.assert_no_vm0tmp_files();
+    }
 }
 
 #[tokio::test]
@@ -44,24 +105,11 @@ async fn copy_file_rejects_max_bytes_above_stream_budget() {
 
 #[tokio::test]
 async fn copy_file_streams_to_temp_then_renames() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy");
-    let host_path = temp_dir.join("system.log");
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy", "system.log").await;
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/vm0-system-run.log",
-        copy_path,
-        default_copy_options(),
-    );
-
-    let start = expect_exec_start(&mut guest).await;
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    let start = fixture.expect_start().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
     assert_eq!(start.label, "copy-file");
     assert_eq!(
         start.command,
@@ -75,7 +123,7 @@ async fn copy_file_streams_to_temp_then_renames() {
         }
     );
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         0,
         ExecOutputStream::Stdout,
@@ -84,7 +132,7 @@ async fn copy_file_streams_to_temp_then_renames() {
     )
     .await;
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         1,
         ExecOutputStream::Stdout,
@@ -93,7 +141,7 @@ async fn copy_file_streams_to_temp_then_renames() {
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         ExecTermination::Exited { exit_code: 0 },
         b"",
@@ -102,33 +150,20 @@ async fn copy_file_streams_to_temp_then_renames() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 14);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"line 1\nline 2\n");
-    assert_eq!(mode(&host_path), 0o600);
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"line 1\nline 2\n");
+    assert_eq!(mode(&fixture.host_path), 0o600);
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_empty_guest_file_publishes_empty_host_file() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-empty");
-    let host_path = temp_dir.join("empty.log");
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-empty", "empty.log").await;
+    let copy_task = fixture.spawn_copy("/tmp/empty.log", default_copy_options());
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/empty.log",
-        copy_path,
-        default_copy_options(),
-    );
-
-    let start = expect_exec_start(&mut guest).await;
+    let start = fixture.expect_start().await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         ExecTermination::Exited { exit_code: 0 },
         b"",
@@ -137,27 +172,17 @@ async fn copy_file_empty_guest_file_publishes_empty_host_file() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 0);
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"");
-    assert_eq!(mode(&host_path), 0o600);
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_host_bytes(b"");
+    assert_eq!(mode(&fixture.host_path), 0o600);
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_allows_exact_max_bytes() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-exact-max");
-    let host_path = temp_dir.join("exact.log");
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-exact-max", "exact.log").await;
+    let copy_task = fixture.spawn_copy("/tmp/exact.log", copy_options(4, 5000, false));
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/exact.log",
-        copy_path,
-        copy_options(4, 5000, false),
-    );
-
-    let start = expect_exec_start(&mut guest).await;
+    let start = fixture.expect_start().await;
     assert_eq!(
         start.stdout,
         ExecOutputPolicy::Stream {
@@ -166,7 +191,7 @@ async fn copy_file_allows_exact_max_bytes() {
         }
     );
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         0,
         ExecOutputStream::Stdout,
@@ -175,7 +200,7 @@ async fn copy_file_allows_exact_max_bytes() {
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         start.seq(),
         ExecTermination::Exited { exit_code: 0 },
         b"",
@@ -184,8 +209,8 @@ async fn copy_file_allows_exact_max_bytes() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 4);
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"1234");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_host_bytes(b"1234");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
@@ -540,24 +565,13 @@ async fn copy_file_rename_failure_removes_temp_and_releases_tracker() {
 
 #[tokio::test]
 async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let temp_dir = HostTempDir::new("vsock-host-copy-nonzero");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-nonzero", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
-    let copy_task = tokio::spawn(async move {
-        host.copy_file(
-            "/tmp/vm0-system-run.log",
-            &copy_path,
-            default_copy_options(),
-        )
-        .await
-    });
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         0,
         ExecOutputStream::Stdout,
@@ -566,7 +580,7 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 1 },
         b"read error",
@@ -575,29 +589,19 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
 
     let err = copy_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("read error"));
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_rejects_success_result_with_stderr() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-success-stderr");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-success-stderr", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/vm0-system-run.log",
-        copy_path,
-        default_copy_options(),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         0,
         ExecOutputStream::Stdout,
@@ -606,7 +610,7 @@ async fn copy_file_rejects_success_result_with_stderr() {
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 0 },
         b"unexpected stderr",
@@ -616,39 +620,23 @@ async fn copy_file_rejects_success_result_with_stderr() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("included stderr"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing");
-    let host_path = temp_dir.join("system.log");
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing", "system.log").await;
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        copy_options(1024, 5000, true),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"",
@@ -657,33 +645,20 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 0);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert!(!host_path.exists());
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_missing();
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_missing_ok_preserves_existing_host_file() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-existing");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-existing", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        copy_options(1024, 5000, true),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"",
@@ -692,29 +667,19 @@ async fn copy_file_missing_ok_preserves_existing_host_file() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 0);
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-output");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-output", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        copy_options(1024, 5000, true),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         0,
         ExecOutputStream::Stdout,
@@ -723,7 +688,7 @@ async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"",
@@ -733,33 +698,20 @@ async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("missing result"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_rejects_missing_ok_result_with_stderr() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-stderr");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-stderr", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        copy_options(1024, 5000, true),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"unexpected stderr",
@@ -769,33 +721,23 @@ async fn copy_file_rejects_missing_ok_result_with_stderr() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("included stderr"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_removes_temp() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-error");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-error", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
-    let copy_task = tokio::spawn(async move {
-        host.copy_file("/tmp/missing.log", &copy_path, default_copy_options())
-            .await
-    });
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert!(decoded.expected_exit_codes.is_empty());
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"",
@@ -804,29 +746,20 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
 
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::NotFound);
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_rejects_missing_without_missing_ok_after_streamed_output() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-error-output");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture =
+        CopyFileFixture::new("vsock-host-copy-missing-error-output", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        default_copy_options(),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_exec_output(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         0,
         ExecOutputStream::Stdout,
@@ -835,7 +768,7 @@ async fn copy_file_rejects_missing_without_missing_ok_after_streamed_output() {
     )
     .await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"",
@@ -845,33 +778,21 @@ async fn copy_file_rejects_missing_without_missing_ok_after_streamed_output() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("missing result"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]
 async fn copy_file_rejects_missing_without_missing_ok_with_stderr() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-missing-error-stderr");
-    let host_path = temp_dir.join("system.log");
-    std::fs::write(&host_path, b"old host log").unwrap();
-    let copy_path = host_path.clone();
+    let mut fixture =
+        CopyFileFixture::new("vsock-host-copy-missing-error-stderr", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
-    let copy_task = spawn_copy_file(
-        Arc::clone(&host),
-        "/tmp/missing.log",
-        copy_path,
-        default_copy_options(),
-    );
-
-    let msg = read_guest_message(&mut guest).await;
+    let msg = read_guest_message(&mut fixture.guest).await;
     send_stream_exec_result(
-        &mut guest,
+        &mut fixture.guest,
         msg.seq,
         ExecTermination::Exited { exit_code: 66 },
         b"unexpected stderr",
@@ -881,12 +802,9 @@ async fn copy_file_rejects_missing_without_missing_ok_with_stderr() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("included stderr"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
-    temp_dir.assert_no_vm0tmp_files();
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
 }
 
 #[tokio::test]

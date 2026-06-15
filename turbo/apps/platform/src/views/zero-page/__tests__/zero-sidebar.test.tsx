@@ -8,7 +8,6 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
@@ -18,8 +17,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
@@ -30,7 +28,7 @@ const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 const SUPPORT_AGENT_ID = "c0000000-0000-4000-a000-000000000003";
 const EXISTING_THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
-const SCHEDULED_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
+const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 
 type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
@@ -123,7 +121,6 @@ function createThread(
     agent: { id: AGENT_ID, avatarUrl: null },
     createdAt: "2026-03-10T00:00:00Z",
     updatedAt: "2026-03-10T00:00:00Z",
-    isRead: true,
     running: false,
     pinnedAt: null,
     ...overrides,
@@ -177,60 +174,6 @@ function openThreadMenu(title: string): void {
   );
 }
 
-async function openAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Alex Rivera");
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
-  click(accountButton);
-  return screen.findByRole("menu");
-}
-
-function mockAdminAccountSidebar(): void {
-  prepareDefaultAgent();
-  context.mocks.data.org({
-    id: "org_1",
-    slug: "test-org",
-    name: "Test Org",
-    role: "admin",
-  });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse([]));
-  });
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, {
-      tier: "pro",
-      credits: 12_500,
-      onboardingPaymentPending: false,
-      subscriptionStatus: "active",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      cancelAtPeriodEnd: false,
-      scheduledChange: null,
-      hasSubscription: true,
-      autoRecharge: { enabled: false, threshold: null, amount: null },
-      creditExpiry: {
-        expiringNextCycle: 0,
-        nextExpiryDate: null,
-      },
-      creditBreakdown: [
-        {
-          category: "plan",
-          tier: "pro",
-          label: "Pro credits",
-          credits: 10_000,
-        },
-        {
-          category: "promotional",
-          label: "Launch bonus",
-          credits: 2500,
-        },
-      ],
-      creditGrants: [],
-    });
-  });
-}
-
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
@@ -246,14 +189,12 @@ function mockSidebarThreadStory(
         threads: extraThreads,
         hasMore: false,
         nextCursor: null,
-        totalCount: threads.length + extraThreads.length,
       });
     }
     return respond(200, {
       ...splitChatThreadListResponse(threads),
       hasMore: extraThreads.length > 0,
       nextCursor: extraThreads.length > 0 ? "next-page" : null,
-      totalCount: threads.length + extraThreads.length,
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -325,7 +266,6 @@ describe("zero sidebar", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
             running: false,
           },
         ]),
@@ -380,10 +320,20 @@ describe("zero sidebar", () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes", { isRead: false }),
-      createThread(SCHEDULED_THREAD_ID, "Running analysis", { running: true }),
-      createThread(ARCHIVED_THREAD_ID, "Draft brief", { hasDraft: true }),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(AUTOMATION_THREAD_ID, "Running analysis", { running: true }),
+      createThread(ARCHIVED_THREAD_ID, "Draft brief"),
     ]);
+    context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
+      return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+        ],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -420,7 +370,11 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
 
-    openThreadMenu("Release plan");
+    click(
+      within(threadRowByTitle("Release plan")).getByTestId(
+        "chat-thread-pinned-indicator",
+      ),
+    );
     click(menuItemByText("Unpin chat"));
 
     await waitFor(() => {
@@ -453,10 +407,10 @@ describe("zero sidebar", () => {
     click(menuItemByText("Rename chat"));
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    await fill(
-      within(dialog).getByPlaceholderText("Chat title"),
-      "Launch plan",
-    );
+    const titleInput = within(dialog).getByPlaceholderText("Chat title");
+    expect(titleInput).toHaveValue("Release plan");
+
+    await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
 
     await waitFor(() => {
@@ -467,29 +421,27 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and confirms deleting a scheduled chat", async () => {
+  it("loads more sidebar chats and confirms deleting a chat with automations", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory(
       [
         createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(SCHEDULED_THREAD_ID, "Scheduled launch", {
-          scheduleCount: 2,
-        }),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
       ],
       [createThread(ARCHIVED_THREAD_ID, "Archived context")],
     );
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
+    context.mocks.data.automations([
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000401",
         name: "launch-cadence",
-        chatThreadId: SCHEDULED_THREAD_ID,
+        chatThreadId: AUTOMATION_THREAD_ID,
         description: "Launch cadence",
         prompt: "Post the launch cadence",
       }),
-      createMockScheduleResponse({
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000402",
         name: "release-risk-review",
-        chatThreadId: SCHEDULED_THREAD_ID,
+        chatThreadId: AUTOMATION_THREAD_ID,
         description: "Release risk review",
         prompt: "Review release risks",
       }),
@@ -805,176 +757,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("opens credit balance and export data from the account menu", async () => {
-    mockAdminAccountSidebar();
-    const openMock = context.mocks.browser.open(null);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.DataExport]: true },
-    });
-
-    let menu = await openAccountMenu();
-
-    await waitFor(() => {
-      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
-      expect(within(menu).getByText("Export data")).toBeInTheDocument();
-    });
-
-    click(within(menu).getByText("Export data"));
-
-    await waitFor(() => {
-      expect(
-        openMock.calls.some((call) => {
-          return call.url?.endsWith("/export") ?? false;
-        }),
-      ).toBeTruthy();
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("12,500 credits"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Pro credits")).toBeInTheDocument();
-      expect(screen.getByText("Launch bonus")).toBeInTheDocument();
-    });
-  });
-
-  it("opens memory from the account menu", async () => {
-    mockAdminAccountSidebar();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
-    });
-
-    const menu = await openAccountMenu();
-    click(within(menu).getByText("Memory"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Memory" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("No updates yet")).toBeInTheDocument();
-    });
-  });
-
-  it("opens settings from the account menu and changes debug capture", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userPreferences({
-      captureNetworkBodiesRemaining: 0,
-    });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("New chat with Zero")).toBeInTheDocument();
-    });
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
-
-    click(accountButton);
-
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
-    expect(
-      within(menu).getByText("alex.rivera@example.test"),
-    ).toBeInTheDocument();
-
-    click(within(menu).getByText("Settings"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Preference" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Account & Security")).toBeInTheDocument();
-      expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
-      expect(screen.getByText("alex.rivera@example.test")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Manage"));
-
-    await waitFor(() => {
-      expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
-        apiKeysProps: { hide: true },
-      });
-    });
-
-    const clerkProfileModal = document.createElement("div");
-    clerkProfileModal.dataset.clerkUserProfile = "";
-    document.body.append(clerkProfileModal);
-    await waitFor(() => {
-      expect(clerkProfileModal).toBeInTheDocument();
-    });
-    clerkProfileModal.remove();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Debug"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Debug" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
-      expect(screen.getByText("Disabled")).toBeInTheDocument();
-    });
-
-    click(screen.getByRole("switch"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Enabled for the next 3 runs"),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByRole("switch"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Disabled")).toBeInTheDocument();
-    });
-  });
-
-  it("shows account switching, add-account, and sign-out actions", async () => {
+  it("does not show skills in the sidebar manage navigation", async () => {
     prepareDefaultAgent();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse([]));
@@ -983,72 +766,14 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-        imageUrl: "https://cdn.vm0.test/users/alex.png",
-        clientSessions: [
-          {
-            id: "test-session-id",
-            status: "active",
-            user: {
-              fullName: "Alex Rivera",
-              imageUrl: "https://cdn.vm0.test/users/alex.png",
-              primaryEmailAddress: {
-                emailAddress: "alex.rivera@example.test",
-              },
-            },
-          },
-          {
-            id: "session-jamie",
-            status: "active",
-            user: {
-              fullName: "Jamie Chen",
-              imageUrl: "https://cdn.vm0.test/users/jamie.png",
-              primaryEmailAddress: {
-                emailAddress: "jamie.chen@example.test",
-              },
-            },
-          },
-        ],
-      },
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
     });
 
-    let menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
-      expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
-      expect(screen.getByText("Add account")).toBeInTheDocument();
+    const nav = await waitFor(() => {
+      return sidebar();
     });
 
-    click(screen.getByText("Add account"));
-    await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith();
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
-    click(await screen.findByText("Jamie Chen"));
-
-    await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledWith(
-        expect.objectContaining({ session: "session-jamie" }),
-      );
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("Sign out"));
-
-    await waitFor(() => {
-      expect(mockedClerk.signOut).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: "test-session-id",
-          redirectUrl: expect.stringContaining("/sign-in?redirect_url="),
-        }),
-      );
-    });
+    expect(within(nav).getByText("Agents")).toBeInTheDocument();
+    expect(within(nav).queryByText("Skills")).not.toBeInTheDocument();
   });
 });

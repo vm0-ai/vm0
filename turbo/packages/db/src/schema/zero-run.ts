@@ -14,7 +14,7 @@ import { automations, automationTriggers } from "./automation";
 
 /**
  * Zero Runs table
- * Stores Zero-specific run metadata (trigger source, schedule) as first-class columns.
+ * Stores Zero-specific run metadata (trigger source, automation provenance) as first-class columns.
  * PK is the agent_runs.id — extends agent_runs with Zero-layer context.
  */
 export const zeroRuns = pgTable(
@@ -29,10 +29,6 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
-    // Historical column: pre-cutover schedule fires recorded the (now dropped)
-    // zero_agent_schedules id here. New runs carry automation provenance below;
-    // the drop migration backfilled automation_id for these legacy rows.
-    scheduleId: uuid("schedule_id"),
     // Run provenance: the automation and the trigger that fired this run.
     automationId: uuid("automation_id").references(
       (): AnyPgColumn => {
@@ -60,7 +56,7 @@ export const zeroRuns = pgTable(
       length: 20,
     }),
     selectedModel: varchar("selected_model", { length: 255 }),
-    // Chat thread this run belongs to (null for non-chat triggers like schedule/telegram)
+    // Chat thread this run belongs to (null for non-chat triggers like telegram)
     chatThreadId: uuid("chat_thread_id").references(
       () => {
         return chatThreads.id;
@@ -72,9 +68,6 @@ export const zeroRuns = pgTable(
   },
   (table) => {
     return [
-      index("idx_zero_runs_schedule")
-        .on(table.scheduleId)
-        .where(sql`schedule_id IS NOT NULL`),
       index("idx_zero_runs_chat_thread_id")
         .on(table.chatThreadId)
         .where(sql`chat_thread_id IS NOT NULL`),

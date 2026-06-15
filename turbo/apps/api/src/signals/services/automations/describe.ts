@@ -122,11 +122,11 @@ export async function generateAutomationDescription(
         {
           role: "system",
           content:
-            "Write a one-sentence summary (max 120 chars) for a scheduled task as plain text -- no markdown, no quotes, no special formatting. Return only the summary.",
+            "Write a one-sentence summary (max 120 chars) for an automated task as plain text -- no markdown, no quotes, no special formatting. Return only the summary.",
         },
         {
           role: "user",
-          content: `Agent: ${agentName}\nSchedule: ${input.name}\nTrigger: ${triggerSummary(input)}\nPrompt: ${input.instruction.slice(0, 200)}`,
+          content: `Agent: ${agentName}\nAutomation: ${input.name}\nTrigger: ${triggerSummary(input)}\nPrompt: ${input.instruction.slice(0, 200)}`,
         },
       ],
       30,

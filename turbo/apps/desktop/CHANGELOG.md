@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.12.0...desktop-v0.13.0) (2026-06-15)
+
+
+### Features
+
+* **desktop:** add styled macos dmg installer ([#17670](https://github.com/vm0-ai/vm0/issues/17670)) ([738a001](https://github.com/vm0-ai/vm0/commit/738a0015e8a4e18f5b729ac1ce650351b8971c89))
+
+
+### Bug Fixes
+
+* remove api web fallback ([#17509](https://github.com/vm0-ai/vm0/issues/17509)) ([dab9e38](https://github.com/vm0-ai/vm0/commit/dab9e3819b42fbd6aaacb6f1d0ef39a4928c8c54))
+
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.2...desktop-v0.12.0) (2026-06-12)
+
+
+### Features
+
+* add desktop dmg release artifact ([#17497](https://github.com/vm0-ai/vm0/issues/17497)) ([8463eae](https://github.com/vm0-ai/vm0/commit/8463eae9b2831267bf9ed94517f3665e0c1e69dd))
+
+## [0.11.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.1...desktop-v0.11.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **desktop:** auto-start computer use from menu bar launch ([#17412](https://github.com/vm0-ai/vm0/issues/17412)) ([1464898](https://github.com/vm0-ai/vm0/commit/1464898645fc5d6b356f1989e625609865999605))
+* **desktop:** supervise computer use autostart in main ([#17431](https://github.com/vm0-ai/vm0/issues/17431)) ([3f6faa4](https://github.com/vm0-ai/vm0/commit/3f6faa4d6792fa0c57b074981da903f2487ec8ec))
+
 ## [0.11.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.0...desktop-v0.11.1) (2026-06-11)
 
 

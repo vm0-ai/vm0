@@ -1081,6 +1081,44 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("starts, reports, and stops the vm0-computer daemon through CLI commands", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+
+    try {
+      const startResult = await execFileAsync(
+        process.execPath,
+        [cliPath, "daemon", "start", "--helper-path", helper.helperPath],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      expect(startResult.stdout).toContain("vm0-computer daemon started");
+
+      const statusResult = await execFileAsync(
+        process.execPath,
+        [cliPath, "daemon", "status"],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      const status = JSON.parse(statusResult.stdout) as Record<string, unknown>;
+      expect(status).toMatchObject({
+        running: true,
+        helperPath: helper.helperPath,
+        socketPath: path.join(daemonDir, "daemon.sock"),
+      });
+      expect(typeof status.pid).toBe("number");
+
+      const stopResult = await execFileAsync(
+        process.execPath,
+        [cliPath, "daemon", "stop"],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      expect(stopResult.stdout).toContain("vm0-computer daemon stopped");
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("requires a manually started vm0-computer daemon", async () => {
     const daemonDir = await createDaemonDir();
 

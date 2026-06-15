@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use super::{INTERNAL_TARGET, init_from_env_values, init_with_base_url, with_ingest_filter};
 use httpmock::Method::POST;
 use httpmock::MockServer;
+use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
+use serde_json::{Value, json};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
@@ -74,43 +76,99 @@ where
     }
 }
 
+#[derive(Clone, Default)]
+struct CapturedAxiomIngest {
+    bodies: Arc<Mutex<Vec<Vec<u8>>>>,
+}
+
+impl CapturedAxiomIngest {
+    fn push_body(&self, body: &[u8]) {
+        self.bodies
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(body.to_vec());
+    }
+
+    fn events(&self) -> Vec<Value> {
+        let bodies = self
+            .bodies
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+
+        bodies
+            .into_iter()
+            .flat_map(|body| {
+                let value: Value = serde_json::from_slice(&body).unwrap_or_else(|err| {
+                    panic!(
+                        "captured Axiom ingest body should be valid JSON: {err}; body: {}",
+                        String::from_utf8_lossy(&body),
+                    );
+                });
+                let Value::Array(events) = value else {
+                    panic!("captured Axiom ingest body should be a JSON array, got: {value}");
+                };
+                events
+            })
+            .collect()
+    }
+}
+
+async fn capture_axiom_ingest<'a>(server: &'a MockServer) -> (Mock<'a>, CapturedAxiomIngest) {
+    let captured = CapturedAxiomIngest::default();
+    let responder_capture = captured.clone();
+    let mock = server
+        .mock_async(move |when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest");
+            then.respond_with(move |request: &HttpMockRequest| {
+                responder_capture.push_body(request.body_ref());
+                HttpMockResponse::builder().status(200).body("{}").build()
+            });
+        })
+        .await;
+
+    (mock, captured)
+}
+
+fn event_with_message<'a>(events: &'a [Value], message: &str) -> &'a Value {
+    events
+        .iter()
+        .find(|event| event.get("message").and_then(Value::as_str) == Some(message))
+        .unwrap_or_else(|| panic!("expected event with message {message:?}, got: {events:#?}"))
+}
+
+fn has_event_with_message(events: &[Value], message: &str) -> bool {
+    events
+        .iter()
+        .any(|event| event.get("message").and_then(Value::as_str) == Some(message))
+}
+
+fn string_field<'a>(event: &'a Value, field: &str) -> &'a str {
+    event
+        .get(field)
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("expected string field {field:?} in event: {event:#?}"))
+}
+
+fn json_contains_string(value: &Value, needle: &str) -> bool {
+    match value {
+        Value::String(value) => value.contains(needle),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| json_contains_string(value, needle)),
+        Value::Object(values) => values
+            .iter()
+            .any(|(key, value)| key.contains(needle) || json_contains_string(value, needle)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
 #[tokio::test]
 async fn warn_and_error_events_are_ingested_with_ts_shape() {
     let server = MockServer::start_async().await;
 
-    // `body_includes` checks substrings in the batched JSON array. If any
-    // substring is missing, the mock doesn't match and `assert_calls_async(1)`
-    // below will name the expected-but-not-hit mock in the failure message.
-    let content_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                // Rust-only discriminator.
-                .body_includes(r#""service":"runner""#)
-                // Lowercase levels (matches TS @axiomhq/logging).
-                .body_includes(r#""level":"warn""#)
-                .body_includes(r#""level":"error""#)
-                // `message` flattened to top level.
-                .body_includes(r#""message":"a warning""#)
-                .body_includes(r#""message":"a failure""#)
-                // User fields flattened.
-                .body_includes(r#""foo":"bar""#)
-                .body_includes(r#""code":42"#)
-                // `context` present (value is the tracing target — the test
-                // module path, whatever it turns out to be).
-                .body_includes(r#""context":"#);
-            then.status(200).body("{}");
-        })
-        .await;
-
-    // Negative: INFO is below the layer's WARN threshold, so no payload
-    // should contain `"level":"info"`.
-    let info_mock = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes(r#""level":"info""#);
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     // Use the internal `init_with_base_url` to redirect at the mock server.
     // `init()` always targets api.axiom.co and can't be pointed elsewhere.
@@ -127,50 +185,32 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
 
     guard.shutdown().await;
 
-    content_mock.assert_calls_async(1).await;
-    info_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let warning = event_with_message(&events, "a warning");
+    assert_eq!(warning["service"], json!("runner"));
+    assert_eq!(warning["level"], json!("warn"));
+    assert_eq!(warning["foo"], json!("bar"));
+    assert!(
+        !string_field(warning, "context").is_empty(),
+        "warning event should include context: {warning:#?}",
+    );
+
+    let failure = event_with_message(&events, "a failure");
+    assert_eq!(failure["service"], json!("runner"));
+    assert_eq!(failure["level"], json!("error"));
+    assert_eq!(failure["code"], json!(42));
+    assert!(
+        !events.iter().any(|event| event["level"] == json!("info")),
+        "INFO event should not be ingested: {events:#?}",
+    );
 }
 
 #[tokio::test]
 async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     let server = MockServer::start_async().await;
 
-    let warn_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""level":"warn""#)
-                .body_includes(r#""message":"local warn""#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let info_mock = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes(r#""message":"local info""#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let debug_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .body_includes(r#""message":"local debug""#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let trace_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .body_includes(r#""message":"local trace""#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let internal_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .body_includes(r#""message":"local internal""#);
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -218,11 +258,16 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
         "sibling local layer did not record internal-target event: {events:?}",
     );
 
-    warn_mock.assert_calls_async(1).await;
-    info_mock.assert_calls_async(0).await;
-    debug_mock.assert_calls_async(0).await;
-    trace_mock.assert_calls_async(0).await;
-    internal_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let warning = event_with_message(&events, "local warn");
+    assert_eq!(warning["level"], json!("warn"));
+    for message in ["local info", "local debug", "local trace", "local internal"] {
+        assert!(
+            !has_event_with_message(&events, message),
+            "filtered event {message:?} should not be ingested: {events:#?}",
+        );
+    }
 }
 
 #[test]
@@ -265,18 +310,7 @@ impl std::error::Error for ChainErr {
 async fn error_field_serializes_with_message_and_source_chain() {
     let server = MockServer::start_async().await;
 
-    // Match on the exact nested shape the `record_error` visitor emits.
-    // `serde_json::Map` preserves insertion order, and we insert `message`
-    // before `chain` — so the substring literal is stable.
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""error":{"message":"top","chain":["middle","root"]}"#)
-                .body_includes(r#""message":"explosion""#);
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -300,32 +334,18 @@ async fn error_field_serializes_with_message_and_source_chain() {
     }
     guard.shutdown().await;
 
-    mock.assert_calls_async(1).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "explosion");
+    assert_eq!(event["error"]["message"], json!("top"));
+    assert_eq!(event["error"]["chain"], json!(["middle", "root"]));
 }
 
 #[tokio::test]
 async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
     let server = MockServer::start_async().await;
 
-    let numeric_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"timeout fields""#)
-                .body_includes(r#""timeout_ms":7200000"#)
-                .body_includes(r#""elapsed_ms":7200100"#)
-                .body_includes(r#""guest_duration_ms":7200084"#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let string_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""timeout_ms":"7200000""#);
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -341,37 +361,19 @@ async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
     }
     guard.shutdown().await;
 
-    numeric_mock.assert_calls_async(1).await;
-    string_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "timeout fields");
+    assert_eq!(event["timeout_ms"].as_u64(), Some(7_200_000));
+    assert_eq!(event["elapsed_ms"].as_u64(), Some(7_200_100));
+    assert_eq!(event["guest_duration_ms"].as_u64(), Some(7_200_084));
 }
 
 #[tokio::test]
 async fn none_option_fields_are_omitted_from_axiom_payload() {
     let server = MockServer::start_async().await;
 
-    let event_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"timeout without guest duration""#)
-                .body_includes(r#""timeout_ms":7200000"#);
-            then.status(200).body("{}");
-        })
-        .await;
-    let guest_duration_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes("guest_duration_ms");
-            then.status(200).body("{}");
-        })
-        .await;
-    let none_mock = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes("None");
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -386,9 +388,20 @@ async fn none_option_fields_are_omitted_from_axiom_payload() {
     }
     guard.shutdown().await;
 
-    event_mock.assert_calls_async(1).await;
-    guest_duration_mock.assert_calls_async(0).await;
-    none_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "timeout without guest duration");
+    assert_eq!(event["timeout_ms"].as_u64(), Some(7_200_000));
+    assert!(
+        event.get("guest_duration_ms").is_none(),
+        "None option field should be omitted: {event:#?}",
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| json_contains_string(event, "None")),
+        "None debug text should not be serialized into ingest payloads: {events:#?}",
+    );
 }
 
 #[tokio::test]
@@ -513,25 +526,7 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
 #[tokio::test]
 async fn debug_field_over_limit_is_truncated_with_marker() {
     let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"truncate-me""#)
-                .body_includes("…[truncated]");
-            then.status(200).body("{}");
-        })
-        .await;
-    // Negative: content past the 4 KiB cap MUST be dropped. If the
-    // `s.truncate(cut)` line is ever removed while the marker append stays,
-    // the marker assertion alone still passes — this mock catches that
-    // mutation by asserting the far-past-cap sentinel never reaches ingest.
-    let sentinel_mock = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes("SENTINEL_PAST_CAP");
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -549,22 +544,27 @@ async fn debug_field_over_limit_is_truncated_with_marker() {
     }
     guard.shutdown().await;
 
-    mock.assert_calls_async(1).await;
-    sentinel_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "truncate-me");
+    let big = string_field(event, "big");
+    assert!(
+        big.contains("…[truncated]"),
+        "oversized debug field should include truncation marker: {big:?}",
+    );
+    // Negative: content past the 4 KiB cap MUST be dropped. If the
+    // `s.truncate(cut)` line is ever removed while the marker append stays,
+    // the marker assertion alone still passes — this assertion catches that.
+    assert!(
+        !big.contains("SENTINEL_PAST_CAP"),
+        "far-past-cap sentinel should not reach ingest: {big:?}",
+    );
 }
 
 #[tokio::test]
 async fn debug_field_truncation_walks_to_utf8_char_boundary() {
     let server = MockServer::start_async().await;
-    let mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"utf8-boundary""#)
-                .body_includes("…[truncated]");
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -580,34 +580,20 @@ async fn debug_field_truncation_walks_to_utf8_char_boundary() {
     }
     guard.shutdown().await;
 
-    mock.assert_calls_async(1).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "utf8-boundary");
+    assert!(
+        string_field(event, "big").contains("…[truncated]"),
+        "oversized UTF-8 debug field should include truncation marker: {event:#?}",
+    );
 }
 
 #[tokio::test]
 async fn debug_field_at_exact_limit_passes_through_unmodified() {
     let server = MockServer::start_async().await;
 
-    // Positive: event arrives with its message AND the full payload —
-    // `SENTINEL_AT_END` is the last 15 bytes of the 4094-byte payload, so
-    // it survives only if the value is passed through untouched. This
-    // catches mutations that erroneously empty the value at exact-limit
-    // without appending the marker.
-    let clean_mock = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"at-limit""#)
-                .body_includes("SENTINEL_AT_END");
-            then.status(200).body("{}");
-        })
-        .await;
-    // Negative: no truncation marker should appear in any ingested body.
-    let truncation_mock = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes("…[truncated]");
-            then.status(200).body("{}");
-        })
-        .await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
 
     let (layer, guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
@@ -626,6 +612,16 @@ async fn debug_field_at_exact_limit_passes_through_unmodified() {
     }
     guard.shutdown().await;
 
-    clean_mock.assert_calls_async(1).await;
-    truncation_mock.assert_calls_async(0).await;
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "at-limit");
+    let val = string_field(event, "val");
+    assert!(
+        val.contains("SENTINEL_AT_END"),
+        "exact-limit debug field should pass through unmodified: {val:?}",
+    );
+    assert!(
+        !val.contains("…[truncated]"),
+        "exact-limit debug field should not include truncation marker: {val:?}",
+    );
 }

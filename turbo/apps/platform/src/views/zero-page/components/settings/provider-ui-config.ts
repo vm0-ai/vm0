@@ -46,14 +46,12 @@ export function getUILabel(type: ModelProviderType): string {
 
 const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
   Object.freeze({
-    "claude-fable-5": "anthropic-api-key",
     "claude-opus-4-8": "anthropic-api-key",
     "claude-opus-4-7": "anthropic-api-key",
     "claude-opus-4-6": "anthropic-api-key",
     "claude-sonnet-4-6": "anthropic-api-key",
     "deepseek-v4-pro": "deepseek-api-key",
-    "kimi-k2.6": "moonshot-api-key",
-    "kimi-k2.5": "moonshot-api-key",
+    "kimi-k2.7-code": "moonshot-api-key",
     "MiniMax-M3": "minimax-api-key",
     "glm-5.1": "zai-api-key",
     "gpt-5.5": "openai-api-key",

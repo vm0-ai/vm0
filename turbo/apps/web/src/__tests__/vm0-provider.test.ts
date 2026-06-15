@@ -8,14 +8,6 @@ import {
 
 describe("VM0 managed model provider", () => {
   describe("model-to-provider mapping", () => {
-    it("should resolve Fable to anthropic-api-key", () => {
-      expect(getVm0ConcreteProviderType("claude-fable-5")).toBe(
-        "anthropic-api-key",
-      );
-      expect(getVm0Vendor("claude-fable-5")).toBe("anthropic");
-      expect(getVm0ApiModel("claude-fable-5")).toBe("claude-fable-5");
-    });
-
     it("should resolve sonnet to anthropic-api-key", () => {
       expect(getVm0ConcreteProviderType("claude-sonnet-4-6")).toBe(
         "anthropic-api-key",
@@ -36,10 +28,12 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("glm-5.1")).toBe("z-ai/glm-5.1");
     });
 
-    it("should resolve kimi-k2.6 to moonshot-api-key", () => {
-      expect(getVm0ConcreteProviderType("kimi-k2.6")).toBe("moonshot-api-key");
-      expect(getVm0Vendor("kimi-k2.6")).toBe("moonshot");
-      expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
+    it("should resolve kimi-k2.7-code to moonshot-api-key", () => {
+      expect(getVm0ConcreteProviderType("kimi-k2.7-code")).toBe(
+        "moonshot-api-key",
+      );
+      expect(getVm0Vendor("kimi-k2.7-code")).toBe("moonshot");
+      expect(getVm0ApiModel("kimi-k2.7-code")).toBe("kimi-k2.7-code");
     });
 
     it("should resolve MiniMax M3 to minimax-api-key", () => {
@@ -74,14 +68,12 @@ describe("VM0 managed model provider", () => {
 
     it("should have all VM0 provider models mapped", () => {
       expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toStrictEqual([
-        "claude-fable-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
         "glm-5.1",
-        "kimi-k2.6",
-        "kimi-k2.5",
+        "kimi-k2.7-code",
         "MiniMax-M3",
         "deepseek-v4-pro",
         "gpt-5.5",

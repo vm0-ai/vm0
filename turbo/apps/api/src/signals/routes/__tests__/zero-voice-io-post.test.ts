@@ -3,14 +3,12 @@ import { randomUUID } from "node:crypto";
 
 import { createApp } from "../../../app-factory";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -26,8 +24,6 @@ import {
   SPEECH_CONTENT_TYPE,
   sttDailyDurationKey,
   sttDailyRateKey,
-  TTS_CONTENT_TYPE,
-  TTS_MAX_TEXT_LENGTH,
   VOICE_IO_STT_VERBOSE_MODEL,
   VOICE_IO_TTS_MODEL,
   type SpeechPricing,
@@ -251,7 +247,6 @@ async function deleteSpeechPricing(): Promise<void> {
 }
 
 async function seedVoiceFixture(options: {
-  readonly audioOutputEnabled?: boolean;
   readonly credits?: number;
   readonly tier?: OrgTier;
   readonly withPricing?: boolean;
@@ -275,18 +270,6 @@ async function seedVoiceFixture(options: {
     userId,
   });
 
-  const switches: Record<string, boolean> = {};
-  if (options.audioOutputEnabled) {
-    switches[FeatureSwitchKey.AudioOutput] = true;
-  }
-  if (Object.keys(switches).length > 0) {
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches,
-    });
-  }
-
   const pricingResult = options.withPricing
     ? await ensureSpeechPricing()
     : { pricing: null, inserted: false };
@@ -303,14 +286,6 @@ async function deleteVoiceFixture(fixture: VoiceFixture): Promise<void> {
       and(
         eq(runUploadedFiles.orgId, fixture.orgId),
         eq(runUploadedFiles.userId, fixture.userId),
-      ),
-    );
-  await writeDb
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
       ),
     );
   await writeDb
@@ -411,171 +386,6 @@ describe("POST /api/zero/voice-io/*", () => {
     });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
-  });
-
-  it("returns 401 from /tts when unauthenticated", async () => {
-    let calledOpenAi = false;
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      body: JSON.stringify({ text: "Read this aloud" }),
-    });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-    expect(calledOpenAi).toBeFalsy();
-  });
-
-  it("proxies /tts to OpenAI when audio output is enabled", async () => {
-    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const pcm = Uint8Array.from([1, 2, 3, 4]);
-    let observedAuthorization: string | null = null;
-    let observedBody: unknown = null;
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, async ({ request }) => {
-        observedAuthorization = request.headers.get("authorization");
-        observedBody = await request.json();
-        return new HttpResponse(pcm, {
-          status: 200,
-          headers: { "content-type": TTS_CONTENT_TYPE },
-        });
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ text: "Read this aloud" }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe(TTS_CONTENT_TYPE);
-    expect(new Uint8Array(await response.arrayBuffer())).toStrictEqual(pcm);
-    expect(observedAuthorization).toBe("Bearer test-openai-key");
-    expect(observedBody).toMatchObject({
-      model: VOICE_IO_TTS_MODEL,
-      voice: "ash",
-      input: "Read this aloud",
-      response_format: "pcm",
-    });
-  });
-
-  it("blocks /tts before OpenAI when audio output is disabled", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ text: "Read this aloud" }),
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Audio output is not enabled", code: "FORBIDDEN" },
-    });
-    expect(calledOpenAi).toBeFalsy();
-  });
-
-  it("rejects empty /tts text before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ text: "   " }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "text is required", code: "BAD_REQUEST" },
-    });
-    expect(calledOpenAi).toBeFalsy();
-  });
-
-  it("rejects oversized /tts text before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ text: "x".repeat(TTS_MAX_TEXT_LENGTH + 1) }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: `text must be at most ${TTS_MAX_TEXT_LENGTH} characters`,
-        code: "BAD_REQUEST",
-      },
-    });
-    expect(calledOpenAi).toBeFalsy();
-  });
-
-  it("returns /tts OpenAI failures as internal errors", async () => {
-    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    server.use(
-      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
-        return HttpResponse.json(
-          { error: "rate_limit_exceeded" },
-          { status: 429 },
-        );
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/tts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ text: "Read this aloud" }),
-    });
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "TTS generation failed",
-        code: "INTERNAL_SERVER_ERROR",
-      },
-    });
   });
 
   it("returns 401 from /stt when unauthenticated", async () => {

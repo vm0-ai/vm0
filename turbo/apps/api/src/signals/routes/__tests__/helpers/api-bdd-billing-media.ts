@@ -51,7 +51,6 @@ import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-v
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voice-io-speech";
 import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
-import { zeroVoiceIoTtsContract } from "@vm0/api-contracts/contracts/zero-voice-io-tts";
 
 import { mockEnv } from "../../../../lib/env";
 import {
@@ -591,18 +590,6 @@ export function createBillingMediaApi(context: TestContext) {
     async readVoiceQuota(actor: ApiTestUser) {
       const client = setupApp({ context })(zeroVoiceIoQuotaContract);
       return await accept(client.get({ headers: authenticate(actor) }), [200]);
-    },
-
-    async requestVoiceTts(
-      actor: ApiTestUser | null,
-      body: { readonly text?: string },
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
-    ) {
-      const client = setupApp({ context })(zeroVoiceIoTtsContract);
-      return await accept(
-        client.post({ headers: authenticate(actor), body }),
-        statuses,
-      );
     },
 
     async requestVoiceStt(

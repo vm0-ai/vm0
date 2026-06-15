@@ -535,7 +535,7 @@ const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
     id: "workflow",
     label: "Workflow",
     title: "Workflows that run themselves",
-    subtitle: "Daily briefs, scheduled alerts, weekly digests",
+    subtitle: "Daily briefs, recurring alerts, weekly digests",
   },
   {
     id: "website",
@@ -1162,7 +1162,7 @@ function OnboardingOrgSwitcher() {
 
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="zero-app flex h-dvh bg-muted/30 relative">
+    <div className="zero-app zero-viewport-shell flex bg-muted/30 relative">
       {/* Left panel — brand / illustration */}
       <OnboardingIllustrationPanel />
 

@@ -430,16 +430,14 @@ export function createChatFilesBddApi(context: TestContext) {
     async listThreads(
       actor: ApiTestUser,
       query: {
-        readonly agentId?: string;
-        readonly limit?: number;
+        readonly agentId: string;
         readonly cursor?: string;
-      } = {},
+      },
     ): Promise<{
       readonly pinned: readonly ChatThreadListItem[];
       readonly threads: readonly ChatThreadListItem[];
       readonly hasMore: boolean;
       readonly nextCursor: string | null;
-      readonly totalCount: number;
     }> {
       const response = await accept(
         threadsClient().list({
@@ -454,8 +452,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async requestListThreads(
       actor: ApiTestUser | null,
       query: {
-        readonly agentId?: string;
-        readonly limit?: number;
+        readonly agentId: string;
         readonly cursor?: string;
       },
       statuses: readonly (200 | 401 | 404)[],
@@ -467,6 +464,34 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listThreadDrafts(
+      actor: ApiTestUser,
+      threadIds: readonly string[],
+    ): Promise<readonly string[]> {
+      const response = await accept(
+        threadsClient().drafts({
+          headers: authenticate(context, actor),
+          query: { threadIds: threadIds.join(",") },
+        }),
+        [200],
+      );
+      return response.body.draftThreadIds;
+    },
+
+    async listThreadUnreads(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly { threadId: string; unreadAt: string }[]> {
+      const response = await accept(
+        threadsClient().unreads({
+          headers: authenticate(context, actor),
+          query: { agentId },
+        }),
+        [200],
+      );
+      return response.body.unreads;
     },
 
     async readThread(
@@ -642,7 +667,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
     ): Promise<{
       readonly lastReadMessageId: string | null;
-      readonly changed: boolean;
+      readonly unreads: readonly { threadId: string; unreadAt: string }[];
     }> {
       const response = await accept(
         threadMarkReadClient().markRead({

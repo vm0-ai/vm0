@@ -3,6 +3,7 @@ import {
   useSet,
   useLastResolved,
   useLastLoadable,
+  useLoadable,
 } from "ccstate-react";
 import {
   IconPlus,
@@ -10,6 +11,7 @@ import {
   IconTrash,
   IconPencil,
   IconDots,
+  IconLoader2,
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
@@ -77,10 +79,14 @@ import {
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
-  headerScheduleMenu$,
-  schedulesForThread,
-} from "../../signals/chat-page/header-schedule-menu.ts";
+  headerAutomationMenu$,
+  automationsForThread,
+  reloadHeaderAutomationMenu$,
+} from "../../signals/chat-page/header-automation-menu.ts";
+import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
+import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
+  openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
@@ -235,20 +241,24 @@ function handleChatThreadClick(
 
 function ChatThreadMenu({
   threadId,
+  title,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
+  usePinnedIndicatorTrigger,
 }: {
   threadId: string;
+  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
+  usePinnedIndicatorTrigger: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
-  const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
-  const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -265,9 +275,10 @@ function ChatThreadMenu({
   }
 
   function openRenameDialog() {
-    setRenameDialogInput("");
-    setRenameDialogThreadId(threadId);
+    openRenameChatThreadDialog({ threadId, title });
   }
+
+  const showMobileTrigger = !hasOtherIndicator || usePinnedIndicatorTrigger;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -277,7 +288,7 @@ function ChatThreadMenu({
             type="button"
             onClick={handleMenuTriggerClick}
             className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
-              hasOtherIndicator ? "invisible" : "visible"
+              showMobileTrigger ? "visible" : "invisible"
             } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
               isHighlighted
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
@@ -289,8 +300,26 @@ function ChatThreadMenu({
           >
             <Tooltip>
               <TooltipTrigger asChild>
-                <span>
-                  <IconDots size={16} stroke={2} />
+                <span
+                  aria-label={usePinnedIndicatorTrigger ? "Pinned" : undefined}
+                  data-testid={
+                    usePinnedIndicatorTrigger
+                      ? "chat-thread-pinned-indicator"
+                      : undefined
+                  }
+                >
+                  {usePinnedIndicatorTrigger ? (
+                    <>
+                      <IconPin size={16} stroke={2} className="md:hidden" />
+                      <IconDots
+                        size={16}
+                        stroke={2}
+                        className="hidden md:block"
+                      />
+                    </>
+                  ) : (
+                    <IconDots size={16} stroke={2} />
+                  )}
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -319,6 +348,9 @@ function ChatThreadMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
+              // Refetch automations so the delete confirmation reflects the
+              // thread's current linked automations.
+              reloadAutomations();
               setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
@@ -334,11 +366,13 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
+  title,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
+  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -353,13 +387,16 @@ function ChatThreadSideDecorator({
     );
   }
   const hasOtherIndicator = indicatorState !== null || isPinned;
+  const usePinnedIndicatorTrigger = isPinned && indicatorState === null;
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
+        title={title}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
+        usePinnedIndicatorTrigger={usePinnedIndicatorTrigger}
       />
       {indicatorState !== null ? (
         <span className="flex items-center justify-center group-hover:hidden peer-data-[state=open]:hidden">
@@ -371,8 +408,7 @@ function ChatThreadSideDecorator({
             <TooltipTrigger asChild>
               <span
                 aria-label="Pinned"
-                data-testid="chat-thread-pinned-indicator"
-                className="flex items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden"
+                className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
                 <IconPin size={16} stroke={2} />
               </span>
@@ -406,6 +442,8 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const loadRightThread = useSet(loadRightThread$);
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
+  const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -416,10 +454,12 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
+  const isUnread =
+    (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
-    hasDraft: (session.hasDraft ?? false) && !isHighlighted,
+    hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
     isRunning: session.running,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
   });
 
   return {
@@ -428,7 +468,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     isCurrentPage,
     isHighlighted,
     isPinned,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
     loadLeftThread,
     loadRightThread,
     onChatPage,
@@ -496,6 +536,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
+        title={session.title}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}
@@ -613,24 +654,19 @@ function DeleteChatThreadDialog() {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
-  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
-  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
-  const allSchedules =
-    schedulesLoadable.state === "hasData"
-      ? schedulesLoadable.data
-      : (lastResolvedSchedules ?? []);
+  // useLoadable (not useLastLoadable): the delete menu item bumps a refetch,
+  // and the dialog must reflect that in-flight check rather than render a
+  // stale automation list as if it were current.
+  const automationsLoadable = useLoadable(headerAutomationMenu$);
+  const checkingAutomations = automationsLoadable.state === "loading";
+  const allAutomations =
+    automationsLoadable.state === "hasData" ? automationsLoadable.data : [];
 
-  const pendingDeleteThread = pendingDeleteThreadId
-    ? chatThreads.find((thread) => {
-        return thread.id === pendingDeleteThreadId;
-      })
-    : null;
-  const scheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
-  const hasSchedules = scheduleCount > 0;
-  const pendingDeleteSchedules = pendingDeleteThreadId
-    ? schedulesForThread(allSchedules, pendingDeleteThreadId)
+  const pendingDeleteAutomations = pendingDeleteThreadId
+    ? automationsForThread(allAutomations, pendingDeleteThreadId)
     : [];
+  const automationCount = pendingDeleteAutomations.length;
+  const hasAutomations = !checkingAutomations && automationCount > 0;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -653,29 +689,38 @@ function DeleteChatThreadDialog() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {hasSchedules ? "Delete chat and automations?" : "Delete chat?"}
+            {hasAutomations ? "Delete chat and automations?" : "Delete chat?"}
           </DialogTitle>
           <DialogDescription>
-            {hasSchedules
-              ? `This will permanently delete this chat and its ${scheduleCount} linked ${
-                  scheduleCount === 1 ? "automation" : "automations"
+            {hasAutomations
+              ? `This will permanently delete this chat and its ${automationCount} linked ${
+                  automationCount === 1 ? "automation" : "automations"
                 }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
               : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
           </DialogDescription>
         </DialogHeader>
-        {hasSchedules && pendingDeleteSchedules.length > 0 && (
+        {checkingAutomations && (
+          <div
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+            data-testid="delete-chat-thread-checking"
+          >
+            <IconLoader2 size={16} className="animate-spin" />
+            Checking thread content…
+          </div>
+        )}
+        {hasAutomations && (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm font-medium">
               These automations will be deleted
             </p>
             <ul className="flex list-disc flex-col gap-1 pl-5">
-              {pendingDeleteSchedules.map((schedule) => {
+              {pendingDeleteAutomations.map((automation) => {
                 return (
                   <li
-                    key={schedule.id}
+                    key={automation.id}
                     className="break-words text-sm text-muted-foreground"
                   >
-                    {schedule.title}
+                    {automation.title}
                   </li>
                 );
               })}
@@ -691,8 +736,12 @@ function DeleteChatThreadDialog() {
           >
             Cancel
           </Button>
-          <Button variant="destructive" onClick={confirmDelete}>
-            {hasSchedules ? "Delete chat and automations" : "Delete"}
+          <Button
+            variant="destructive"
+            disabled={checkingAutomations}
+            onClick={confirmDelete}
+          >
+            {hasAutomations ? "Delete chat and automations" : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

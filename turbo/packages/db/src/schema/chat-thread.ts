@@ -8,7 +8,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  PersistedAttachment,
+  ThreadGenerationTemplates,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 
@@ -54,13 +57,13 @@ export const chatThreads = pgTable(
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
-     * Kept for compatibility with existing data; new read state is derived
-     * from `lastReadMessageId`.
+     * Primary read-state cursor; `lastReadMessageId` is retained only for
+     * legacy client compatibility during the migration window.
      */
     lastReadAt: timestamp("last_read_at"),
     /**
      * ID of the latest message the user has marked read in this thread.
-     * NULL means the thread has never been explicitly marked read.
+     * Deprecated: read state is derived from `lastReadAt`.
      */
     lastReadMessageId: uuid("last_read_message_id"),
     /**
@@ -74,6 +77,18 @@ export const chatThreads = pgTable(
     }),
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
+    /**
+     * Per-thread sticky generation templates, keyed by template type
+     * (illustration style / video preset / presentation design) so a thread can
+     * keep several active at once. Persisted so follow-up messages inherit the
+     * selections the user attached earlier without restating them, and the
+     * server re-injects them deterministically on every run. NULL means none are
+     * attached. Thread-scoped on purpose: a new thread starts clean (no
+     * cross-session carry-over) and there is intentionally no org/global default.
+     */
+    generationTemplate: jsonb(
+      "generation_template",
+    ).$type<ThreadGenerationTemplates>(),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;
@@ -95,11 +110,10 @@ export const chatThreads = pgTable(
     renamedAt: timestamp("renamed_at"),
     /**
      * Most recent message timestamp, denormalized from chat_messages.
-     * Maintained app-side at every chat_messages insert via GREATEST() —
-     * monotonic, never rewound. Backfilled from MAX(chat_messages.created_at)
-     * and falls back to chat_threads.created_at for empty threads.
-     * Powers the sidebar "recency" ordering with an index-driven LIMIT
-     * instead of scanning every thread + LATERAL last-message lookup.
+     * Maintained app-side for terminal runs with visible assistant text via
+     * GREATEST() — monotonic, never rewound. Billing rows and pure lifecycle
+     * markers do not advance it. Powers the sidebar recency and unread
+     * watermark comparisons with index-driven thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

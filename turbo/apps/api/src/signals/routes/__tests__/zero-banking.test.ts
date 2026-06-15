@@ -54,7 +54,7 @@ interface BankingFixture extends UsageInsightFixture {
 interface SeedBankingFixtureArgs {
   readonly triggerSource?: string;
   readonly operationScopes?: readonly BankingOperationScope[];
-  readonly allowScheduledRuns?: boolean;
+  readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
   readonly accountProviderIds?: readonly string[];
   readonly featureSwitchEnabled?: boolean;
@@ -180,7 +180,10 @@ async function seedBankingFixture(
         "transactions.read",
       ]),
     ],
-    allowScheduledRuns: args.allowScheduledRuns ?? false,
+    // #17307 D3: only allow_automation_runs is seeded; the legacy
+    // allow_scheduled_runs column is NOT NULL with a default and drops in the
+    // final phase.
+    allowAutomationRuns: args.allowAutomationRuns ?? false,
   });
 
   return {
@@ -496,40 +499,39 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it.each(["schedule", "automation"] as const)(
-    "denies %s-triggered runs unless the banking grant allows them",
-    async (triggerSource) => {
-      const fixture = await track(seedBankingFixture({ triggerSource }));
-      let authRequestCount = 0;
-      server.use(
-        http.post(FINICITY_AUTH_URL, () => {
-          authRequestCount += 1;
-          return HttpResponse.json({ token: "test-app-token" });
-        }),
-      );
+  it("denies automation-triggered runs unless the banking grant allows them", async () => {
+    const fixture = await track(
+      seedBankingFixture({ triggerSource: "automation" }),
+    );
+    let authRequestCount = 0;
+    server.use(
+      http.post(FINICITY_AUTH_URL, () => {
+        authRequestCount += 1;
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
+    );
 
-      const client = setupApp({ context })(zeroBankingContract);
-      const response = await accept(
-        client.accounts({
-          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-          body: {},
-        }),
-        [403],
-      );
+    const client = setupApp({ context })(zeroBankingContract);
+    const response = await accept(
+      client.accounts({
+        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        body: {},
+      }),
+      [403],
+    );
 
-      expect(response.body.error.message).toBe(
-        "Banking is not enabled for scheduled runs",
-      );
-      expect(authRequestCount).toBe(0);
-      await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
-        {
-          action: "accounts.read",
-          status: "denied",
-          failureCode: "SCHEDULE_NOT_ALLOWED",
-        },
-      ]);
-    },
-  );
+    expect(response.body.error.message).toBe(
+      "Banking is not enabled for automation runs",
+    );
+    expect(authRequestCount).toBe(0);
+    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+      {
+        action: "accounts.read",
+        status: "denied",
+        failureCode: "AUTOMATION_NOT_ALLOWED",
+      },
+    ]);
+  });
 
   it("denies revoked banking connections before provider access", async () => {
     const fixture = await track(

@@ -1,10 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use agent_diagnostics::FailureDiagnostic;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use api_contracts::generated::types::runners::storage::StorageManifest;
+use futures_util::FutureExt;
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ProcessControlMode, ProcessExit, ProcessOutputChunk,
     ProcessOutputMode, ProcessTerminationKind, Sandbox, SandboxError, SandboxFactory, SandboxId,
@@ -14,28 +17,46 @@ use sandbox_mock::{MockSandbox, MockSandboxFactory};
 use super::super::agent_run::RunStart;
 use super::super::env::{guest_user_env_dir_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
-    PreparedSandboxRun, execute_new_sandbox, execute_prepared_sandbox_run, execute_reused_sandbox,
-    register_proxy,
+    NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
+    execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
+    execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
     NewSandboxDispatch, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
-    USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
+    SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
 };
 use super::support::{
-    DestroyPanicFactory, QueuedCopyFileSandbox, api_storage, assert_proxy_registry_empty,
-    create_overridden_sandbox, default_params, make_reusable_idle_sandbox, minimal_context,
-    run_execute_inner, sandbox_create_error, sandbox_exec_error, sandbox_write_file_error,
-    seed_workspace_image_cache, test_budget_lease, test_device_rate_limits, test_executor_config,
-    test_telemetry,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_storage,
+    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    make_reusable_idle_sandbox, minimal_context, run_execute_inner, sandbox_create_error,
+    sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache, test_budget_lease,
+    test_device_rate_limits, test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
-use crate::paths::RunnerPaths;
+use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
 use crate::types::{ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImagePrepareRequest,
 };
+use tracing::Level;
+use tracing_subscriber::prelude::*;
+
+fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    tracing::subscriber::with_default(subscriber, action);
+    captured.entries()
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = event
+        .fields
+        .get(field)
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+    assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+}
 
 #[tokio::test]
 async fn execute_inner_happy_path() {
@@ -50,6 +71,79 @@ async fn execute_inner_happy_path() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
     assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[test]
+fn proxy_register_fast_success_logs_info() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_success(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_secs(1),
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "message", "proxy register timing");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "1000");
+    assert_event_field(event, "threshold_ms", "3000");
+    assert_event_field(event, "success", "true");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+}
+
+#[test]
+fn proxy_register_slow_success_warns_with_stable_fields() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_success(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_secs(3),
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "message", "slow proxy register");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "3000");
+    assert_event_field(event, "threshold_ms", "3000");
+    assert_event_field(event, "success", "true");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+}
+
+#[test]
+fn proxy_register_failure_warns_with_error() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_failure(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_millis(25),
+            "registry failed",
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "message", "proxy register failed");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "25");
+    assert_event_field(event, "success", "false");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+    assert_event_field(event, "error", "registry failed");
 }
 
 #[tokio::test]
@@ -88,6 +182,135 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
         overrides.start_process_calls().is_empty(),
         "agent must not start when proxy registry registration fails"
     );
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_notifies_after_successful_prepare() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = MockSandboxFactory::new();
+    let ctx = minimal_context();
+    let sandbox_id = SandboxId::new_v4();
+    let notifications = Arc::new(AtomicUsize::new(0));
+    let notifications_for_callback = Arc::clone(&notifications);
+    let expected_run_id = ctx.run_id;
+    let notifier = SandboxPreparedNotifier::new(move |run_id, prepared_sandbox_id| {
+        let notifications = Arc::clone(&notifications_for_callback);
+        async move {
+            assert_eq!(run_id, expected_run_id);
+            assert_eq!(prepared_sandbox_id, sandbox_id);
+            notifications.fetch_add(1, Ordering::SeqCst);
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: sandbox_id,
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            cancel: tokio_util::sync::CancellationToken::new(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(notifications.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_notify_before_start_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+        .await
+        .unwrap();
+    let factory = MockSandboxFactory::new();
+    let ctx = minimal_context();
+    let notifications = Arc::new(AtomicUsize::new(0));
+    let notifications_for_callback = Arc::clone(&notifications);
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        let notifications = Arc::clone(&notifications_for_callback);
+        async move {
+            notifications.fetch_add(1, Ordering::SeqCst);
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            cancel: tokio_util::sync::CancellationToken::new(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(notifications.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "mount -t ext4".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"mount denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let notifications = Arc::new(AtomicUsize::new(0));
+    let notifications_for_callback = Arc::clone(&notifications);
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        let notifications = Arc::clone(&notifications_for_callback);
+        async move {
+            notifications.fetch_add(1, Ordering::SeqCst);
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            cancel: tokio_util::sync::CancellationToken::new(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(notifications.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -602,7 +825,9 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         configs[0].workspace_drive,
         Some(sandbox::WorkspaceDriveConfig {
             size_mb: 16,
-            seed_image: Some(expected_seed.clone()),
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
+                expected_seed.clone(),
+            )),
         })
     );
     assert_eq!(
@@ -664,7 +889,7 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
         configs[0].workspace_drive,
         Some(sandbox::WorkspaceDriveConfig {
             size_mb: 16,
-            seed_image: Some(seeded_cache),
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(seeded_cache)),
         })
     );
 }
@@ -1499,10 +1724,24 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
         ..default_params()
     };
     let session_id = "sess-cache-unconfigured-reuse-invalidate-error";
-    let (idle_sandbox, current_image, overrides) =
-        reusable_idle_sandbox_with_workspace_promotion(&cache, &runner_paths, &params, session_id)
-            .await;
-    tokio::fs::remove_file(&current_image).await.unwrap();
+    let (idle_sandbox, overrides) = reusable_idle_sandbox_with_unlocked_workspace_promotion(
+        &cache,
+        &runner_paths,
+        &params,
+        session_id,
+    )
+    .await;
+    let cache_key = scoped_session_workspace_cache_key(
+        "",
+        &params.profile_name,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        u64::from(params.workspace_disk_mb) * 1024 * 1024,
+    );
+    let current_image = runner_paths.session_workspace_cache_current_image(&cache_key);
+    tokio::fs::create_dir_all(current_image.parent().unwrap())
+        .await
+        .unwrap();
     tokio::fs::create_dir(&current_image).await.unwrap();
 
     let mut ctx = minimal_context();

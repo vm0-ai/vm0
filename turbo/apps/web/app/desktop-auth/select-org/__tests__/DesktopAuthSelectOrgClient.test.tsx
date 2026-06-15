@@ -72,6 +72,14 @@ vi.mock("next/navigation", () => {
   };
 });
 
+vi.mock("next/image", () => {
+  return {
+    default: ({ alt, src }: { alt: string; src: string }) => {
+      return <span data-alt={alt} data-src={src} />;
+    },
+  };
+});
+
 const fetchMock = vi.fn<typeof fetch>();
 
 function installDesktopAuthBridge() {

@@ -36,10 +36,10 @@ export default defineConfig({
       name: "features",
       testMatch: [
         "agents.spec.ts",
-        "schedule.spec.ts",
+        "automation.spec.ts",
         "chat.spec.ts",
         "create-agent.spec.ts",
-        "create-schedule.spec.ts",
+        "create-automation.spec.ts",
         "billing-payment.spec.ts",
         "webchat.spec.ts",
       ],

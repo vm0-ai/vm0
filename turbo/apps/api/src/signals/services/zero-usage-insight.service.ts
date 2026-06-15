@@ -1,10 +1,10 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
 import type {
+  UsageInsightAutomationRow,
   UsageInsightBucket,
   UsageInsightChatRow,
   UsageInsightResponse,
-  UsageInsightScheduleRow,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
 
 import { nowDate } from "../../lib/time";
@@ -369,7 +369,7 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
           WHEN zr.trigger_source = 'web' THEN 'chat'
           WHEN zr.trigger_source = 'slack' THEN 'slack'
           WHEN zr.trigger_source = 'email' THEN 'email'
-          WHEN zr.trigger_source IN ('schedule', 'automation') THEN 'schedule'
+          WHEN zr.trigger_source = 'automation' THEN 'automation'
           ELSE 'others'
         END AS bucket,
         COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
@@ -485,18 +485,18 @@ async function queryUsageInsightChannelTotals(
   return { emailCredits, emailTokens, slackCredits, slackTokens };
 }
 
-async function queryUsageInsightTopSchedules(
+async function queryUsageInsightTopAutomations(
   db: Db,
   p: UsageInsightSqlParams,
 ): Promise<{
-  schedules: UsageInsightScheduleRow[];
-  scheduleOtherCount: number;
-  scheduleOtherCredits: number;
+  automations: UsageInsightAutomationRow[];
+  automationOtherCount: number;
+  automationOtherCredits: number;
 }> {
   const rows = await db.execute<{
-    schedule_id: string | null;
-    schedule_name: string | null;
-    schedule_description: string | null;
+    automation_id: string | null;
+    automation_name: string | null;
+    automation_description: string | null;
     credits: string;
     tokens: string;
     rn: string;
@@ -504,29 +504,29 @@ async function queryUsageInsightTopSchedules(
     sql.raw(`
       ${usageRowsWith(p)},
       agg AS (
-        -- Scheduled runs carry automation provenance (the drop migration
+        -- Automation runs carry automation provenance (the drop migration
         -- backfilled automation_id onto pre-cutover schedule fires, so the
         -- dimension spans the cutover).
         SELECT
-          zr.automation_id AS schedule_id,
-          COALESCE(a.name, 'Unnamed schedule') AS schedule_name,
-          a.description AS schedule_description,
+          zr.automation_id,
+          COALESCE(a.name, 'Unnamed automation') AS automation_name,
+          a.description AS automation_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
           ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
         FROM usage_rows ${USAGE_ROW_ALIAS}
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN automations a ON a.id = zr.automation_id
-        WHERE zr.trigger_source IN ('schedule', 'automation')
+        WHERE zr.trigger_source = 'automation'
           AND zr.automation_id IS NOT NULL
         GROUP BY zr.automation_id, a.name, a.description
       )
       SELECT * FROM agg WHERE rn <= 100
       UNION ALL
       SELECT
-        NULL AS schedule_id,
-        'others' AS schedule_name,
-        NULL AS schedule_description,
+        NULL AS automation_id,
+        'others' AS automation_name,
+        NULL AS automation_description,
         COALESCE(SUM(credits), 0)::bigint AS credits,
         COALESCE(SUM(tokens), 0)::bigint AS tokens,
         101 AS rn
@@ -535,26 +535,26 @@ async function queryUsageInsightTopSchedules(
     `),
   );
 
-  const schedules: UsageInsightScheduleRow[] = [];
-  let scheduleOtherCredits = 0;
-  let hasScheduleOverflow = false;
+  const automations: UsageInsightAutomationRow[] = [];
+  let automationOtherCredits = 0;
+  let hasAutomationOverflow = false;
   for (const row of rows.rows) {
     if (Number(row.rn) > 100) {
-      scheduleOtherCredits = Number(row.credits);
-      hasScheduleOverflow = true;
-    } else if (row.schedule_id) {
-      schedules.push({
-        scheduleId: row.schedule_id,
-        scheduleName: row.schedule_name ?? "Unnamed schedule",
-        scheduleDescription: row.schedule_description,
+      automationOtherCredits = Number(row.credits);
+      hasAutomationOverflow = true;
+    } else if (row.automation_id) {
+      automations.push({
+        automationId: row.automation_id,
+        automationName: row.automation_name ?? "Unnamed automation",
+        automationDescription: row.automation_description,
         credits: Number(row.credits),
         tokens: Number(row.tokens),
       });
     }
   }
 
-  let scheduleOtherCount = 0;
-  if (hasScheduleOverflow) {
+  let automationOtherCount = 0;
+  if (hasAutomationOverflow) {
     const countRows = await db.execute<{ cnt: string }>(
       sql.raw(`
         ${usageRowsWith(p)},
@@ -563,16 +563,16 @@ async function queryUsageInsightTopSchedules(
             ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
           FROM usage_rows ${USAGE_ROW_ALIAS}
           INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
-          WHERE zr.trigger_source IN ('schedule', 'automation') AND zr.automation_id IS NOT NULL
+          WHERE zr.trigger_source = 'automation' AND zr.automation_id IS NOT NULL
           GROUP BY zr.automation_id
         )
         SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100
       `),
     );
-    scheduleOtherCount = Number(countRows.rows[0]?.cnt ?? 0);
+    automationOtherCount = Number(countRows.rows[0]?.cnt ?? 0);
   }
 
-  return { schedules, scheduleOtherCount, scheduleOtherCredits };
+  return { automations, automationOtherCount, automationOtherCredits };
 }
 
 async function queryUsageInsightTopChats(
@@ -693,8 +693,8 @@ export const zeroUsageInsight$ = command(
     const { emailCredits, emailTokens, slackCredits, slackTokens } =
       await queryUsageInsightChannelTotals(db, params);
     signal.throwIfAborted();
-    const { schedules, scheduleOtherCount, scheduleOtherCredits } =
-      await queryUsageInsightTopSchedules(db, params);
+    const { automations, automationOtherCount, automationOtherCredits } =
+      await queryUsageInsightTopAutomations(db, params);
     signal.throwIfAborted();
     const { chats, chatOtherCount, chatOtherCredits } =
       await queryUsageInsightTopChats(db, params);
@@ -702,9 +702,9 @@ export const zeroUsageInsight$ = command(
 
     return {
       buckets,
-      schedules,
-      scheduleOtherCount,
-      scheduleOtherCredits,
+      automations,
+      automationOtherCount,
+      automationOtherCredits,
       chats,
       chatOtherCount,
       chatOtherCredits,

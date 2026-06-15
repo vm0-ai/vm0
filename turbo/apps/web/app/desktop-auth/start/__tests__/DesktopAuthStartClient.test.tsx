@@ -76,6 +76,35 @@ function mockMatchMedia() {
   });
 }
 
+function mockLocalStorage() {
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear: () => {
+      store.clear();
+    },
+    getItem: (key: string) => {
+      return store.get(key) ?? null;
+    },
+    key: (index: number) => {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+  };
+
+  Object.defineProperty(window, "localStorage", {
+    value: storage,
+    configurable: true,
+  });
+}
+
 function renderStartClient() {
   return render(
     <ThemeProvider>
@@ -89,7 +118,7 @@ describe("DesktopAuthStartClient", () => {
     clerkState.auth = { isLoaded: true, isSignedIn: false };
     clerkState.signInProps = null;
     clerkState.searchParams = new URLSearchParams();
-    localStorage.clear();
+    mockLocalStorage();
     document.documentElement.removeAttribute("data-theme");
     mockMatchMedia();
   });
@@ -138,7 +167,7 @@ describe("DesktopAuthStartClient", () => {
 
     renderStartClient();
 
-    expect(screen.getByText("Signing in...")).toBeTruthy();
+    expect(screen.getByText("Signing in to Zero")).toBeTruthy();
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith("/desktop-auth/callback");
     });

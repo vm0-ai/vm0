@@ -6,6 +6,7 @@ import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _write_github_firewall_registry
 
 _BROWSER_USER_AGENT = (
@@ -93,7 +94,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     with mitm_ctx():
         mitm_addon.response(flow)
 
-    entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["type"] == "http"
     assert entry["action"] == "DENY"
     assert entry["host"] == "attacker.example.com"
@@ -135,7 +136,7 @@ async def test_browser_user_agent_marker_survives_authority_validation_block(
     with mitm_ctx():
         mitm_addon.response(flow)
 
-    entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["action"] == "DENY"
     assert entry["browser_user_agent"] is True
 
@@ -1132,7 +1133,7 @@ async def test_rejects_invalid_https_sni_before_firewall_auth(
     assert flow.metadata["firewall_action"] == "DENY"
     assert flow.metadata["firewall_error"] == "invalid_sni"
     assert flow.metadata["original_url"] == expected_original_url
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "authority_validation"
     assert proxy_log_entry["reason"] == "invalid_sni"
     assert proxy_log_entry["sni"] == expected_sni

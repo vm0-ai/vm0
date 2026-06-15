@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -27,7 +28,7 @@ import {
   type AgentPhoneSendCapture,
 } from "./helpers/api-bdd-agentphone";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -56,7 +57,7 @@ interface LinkedAgentPhoneActor {
 
 async function entitledLinkedActor(): Promise<LinkedAgentPhoneActor> {
   const bdd = createBddApi(context);
-  const runs = createRunsSchedulesApi(context);
+  const runs = createRunsAutomationsApi(context);
   const integrations = createBddIntegrationApi(context);
   const ap = createAgentPhoneBddApi(context);
 
@@ -85,7 +86,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   readonly appendSystemPrompt: string;
   readonly zeroToken: string | undefined;
 }> {
-  const runs = createRunsSchedulesApi(context);
+  const runs = createRunsAutomationsApi(context);
   await runs.heartbeatRunner(runnerGroup);
   let runId: string | undefined;
   await expect
@@ -112,7 +113,7 @@ async function pollDispatchedJob(runnerGroup: string): Promise<{
   readonly runId: string;
   readonly appendSystemPrompt: string;
 }> {
-  const runs = createRunsSchedulesApi(context);
+  const runs = createRunsAutomationsApi(context);
   await runs.heartbeatRunner(runnerGroup);
   let job:
     | Awaited<ReturnType<typeof runs.pollRunner>>["body"]["job"]
@@ -158,6 +159,7 @@ async function completeSandboxRun(
     sandboxHeaders,
     [200],
   );
+  await flushWaitUntilForTest();
 }
 
 function lastSend(sends: AgentPhoneSendCapture): AgentPhoneProviderSend {
@@ -348,7 +350,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
     expect(completionReply.body).not.toContain("Audit:");
     expect(completionReply.body).not.toContain("Responded by");
-    const session1 = await ap.readRunSessionId(actor, run1.runId);
+    // Session persistence happens in background callback processing, so
+    // wait for the session id to be saved before reading it.
+    const session1 = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // The follow-up DM reuses the saved session and carries stored context.
     await ap.postAgentPhoneInboundMessage({
@@ -392,9 +396,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const run3 = await claimDispatchedRun(runnerGroup);
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
-    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
-      session1,
-    );
+    const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
+    expect(session3).not.toBe(session1);
 
     // A failed run replies with the Web-style generic failure text.
     await ap.postAgentPhoneInboundMessage({
@@ -498,7 +501,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
   it("answers the slash-command surface over SMS with link state and model selection", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const integrations = createBddIntegrationApi(context);
     const ap = createAgentPhoneBddApi(context);
 
@@ -579,7 +582,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("handles the iMessage group lifecycle: mentions, stored context, ambient silence, and account-command guards", async () => {
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const integrations = createBddIntegrationApi(context);
     const ap = createAgentPhoneBddApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
@@ -751,7 +754,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
   it("uploads and streams phone media with a real run-scoped zero token", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const integrations = createBddIntegrationApi(context);
     const ap = createAgentPhoneBddApi(context);
     const { actor, phone, runnerGroup, sends, storage } =

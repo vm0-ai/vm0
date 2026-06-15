@@ -175,6 +175,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Google Search Console connector",
     enabled: true,
   },
+  [FeatureSwitchKey.YouTubeConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the YouTube connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -218,18 +223,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
     description: "Show audit log links in integration replies",
-    enabled: false,
-  },
-  [FeatureSwitchKey.AudioInput]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable verbose (timestamped-segment) speech-to-text on /api/zero/voice-io/stt; when off, transcription falls back to plain text",
-    enabled: false,
-  },
-  [FeatureSwitchKey.AudioOutput]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
   [FeatureSwitchKey.SkillsViewer]: {
@@ -283,9 +276,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
+      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
@@ -315,17 +307,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatCompletedWorkFolding]: {
-    maintainer: "lancy@vm0.ai",
+  [FeatureSwitchKey.ChatRunUsage]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible. Users can opt in individually from Lab.",
+      "Show per-run usage chips in the Zero chat message action bar.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ChatRecommendedFollowups]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Generate and show recommended follow-up prompts after completed chat runs.",
-    enabled: true,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
@@ -336,27 +323,34 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatInlineFeedback]: {
     maintainer: "ming@vm0.ai",
     description:
-      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
+      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread. Individuals opt in via feature-switch overrides.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatSlashSkillCommands]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable slash command suggestions for agent and org skills in the Zero chat composer.",
+      "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CreditUsageRecords]: {
+  [FeatureSwitchKey.AssistantTextStreaming]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show ranged personal credit usage records and team member usage aggregates in settings, and enable scoped/ranged /api/zero/usage/record queries.",
-    enabled: true,
+      "Stream assistant text deltas from Claude web chat runs through user-scoped realtime channels before the final assistant message is stored.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Allow webhook triggers on automations: creating them (API + CLI sugar), the inbound dispatch endpoint, and secret rotation. Webhook triggers are a NEW capability on top of the schedule-parity automation surface; while off, automations are feature-equivalent to legacy schedules (time triggers only).",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AutomationMultiTrigger]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the resource-aware Automation trigger section in Apps/platform. While off, platform keeps the legacy single-time-trigger editing projection.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

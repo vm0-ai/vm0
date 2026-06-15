@@ -34,12 +34,16 @@ describe("buildGenerationTemplatePrompt", () => {
       },
     });
 
-    expect(result).toStrictEqual({
-      status: "resolved",
-      prompt: expect.stringContaining(
-        `Image style ID: ${item.illustrationStyleId}`,
-      ),
-    });
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    // Names the attached style and the capability fact that applies it, so the
+    // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
+    expect(result.prompt).toContain(item.illustrationStyleId);
+    expect(result.prompt).toContain(
+      `zero generate image --style ${item.illustrationStyleId}`,
+    );
   });
 
   it("builds video template preset guidance", () => {
@@ -62,7 +66,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`Preset ID: ${item.id}`);
     expect(result.prompt).toContain(`Preset name: ${item.nameEn}`);
     expect(result.prompt).toContain(
-      "The selected stylePresetId resolves to the seven video template dimensions below.",
+      "Apply all dimensions and constraints below as hard generation constraints.",
     );
     expect(result.prompt).toContain("- Visual Tone:");
     expect(result.prompt).toContain("- Camera Style:");
@@ -72,7 +76,10 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("- Emotional Tone:");
     expect(result.prompt).toContain("- Style Reference:");
     expect(result.prompt).toContain(
-      "Apply all seven preset dimensions below as hard generation constraints",
+      "- Style constraints (inject into the video prompt):",
+    );
+    expect(result.prompt).toContain(
+      `reflect every dimension and constraint above for the style ${item.nameEn}`,
     );
   });
 });

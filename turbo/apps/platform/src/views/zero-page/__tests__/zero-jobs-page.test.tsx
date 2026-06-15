@@ -13,14 +13,17 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsV2ByRefContract } from "@vm0/api-contracts/contracts/automations-v2";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import {
+  automationsByRefContract,
+  automationTriggersContract,
+} from "@vm0/api-contracts/contracts/automations";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 
 const context = testContext();
 
@@ -139,6 +142,100 @@ function dialogCreateButton(dialog: HTMLElement): HTMLElement {
   return createButton;
 }
 
+function mockAgentDetailStory(): string {
+  const agentId = "a0000000-0000-4000-a000-000000000301";
+  mockAgentsPage([
+    createDefaultAgent(),
+    {
+      id: agentId,
+      ownerId: "test-user-123",
+      displayName: "Research Agent",
+      description: "Finds launch risks",
+      sound: "professional",
+      avatarUrl: null,
+      customSkills: [],
+      visibility: "public",
+      headVersionId: "version_4",
+      updatedAt: "2026-03-10T00:00:00Z",
+    },
+  ]);
+  context.mocks.data.automations([
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000301",
+      agentId,
+      name: "weekday-risk-digest",
+      cronExpression: "30 14 * * 1-5",
+      description: "Research digest",
+      prompt: "Summarize launch risks",
+    }),
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000302",
+      agentId,
+      name: "office-climate-loop",
+      triggerType: "loop",
+      cronExpression: null,
+      intervalSeconds: 2700,
+      description: "Office AC",
+      prompt: "Turn on the office air conditioning",
+    }),
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000303",
+      agentId,
+      name: "wednesday-risk-review",
+      cronExpression: "15 14 * * 3",
+      description: "Wednesday risks",
+      prompt: "Review launch risks every Wednesday",
+    }),
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000304",
+      agentId,
+      name: "monthly-risk-audit",
+      cronExpression: "5 12 12 * *",
+      description: "Billing audit",
+      prompt: "Review monthly billing anomalies",
+    }),
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000305",
+      agentId,
+      name: "launch-readiness-check",
+      triggerType: "once",
+      cronExpression: null,
+      atTime: "2026-06-12T18:45:00Z",
+      description: "Release checklist",
+      prompt: "Run the launch readiness checklist",
+    }),
+  ]);
+  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    return respond(200, {
+      content: "Summarize risks with concise bullets.",
+      filename: "AGENTS.md",
+    });
+  });
+  return agentId;
+}
+
+async function openAgentAutomationList(agentId: string): Promise<void> {
+  detachedSetupPage({ context, path: `/agents/${agentId}` });
+
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText("Chat with Research Agent"),
+    ).toBeInTheDocument();
+  });
+
+  click(tabByText("Automations"));
+  await waitFor(() => {
+    expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
+    expect(screen.getByText("Add automation")).toBeInTheDocument();
+  });
+
+  click(tabByText("List"));
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
+  });
+}
+
 describe("zero jobs page", () => {
   it("shows agents, create actions, and scheduled work across the management surfaces", async () => {
     mockAgentsPage([
@@ -168,13 +265,13 @@ describe("zero jobs page", () => {
         updatedAt: "2024-01-03T00:00:00Z",
       },
     ]);
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
+    context.mocks.data.automations([
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000101",
         description: "Morning brief",
         prompt: "Send morning brief to the team channel",
       }),
-      createMockScheduleResponse({
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000102",
         description: "Office AC on",
         prompt: "Turn on the air conditioning in my office",
@@ -342,7 +439,7 @@ describe("zero jobs page", () => {
     });
   });
 
-  it("edits an agent weekly schedule while preserving custom minute and timezone fields", async () => {
+  it("edits an agent weekly automation while preserving custom minute and timezone fields", async () => {
     const agentId = "a0000000-0000-4000-a000-000000000331";
     mockAgentsPage([
       createDefaultAgent(),
@@ -359,8 +456,8 @@ describe("zero jobs page", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
-    let schedules: ScheduleResponse[] = [
-      createMockScheduleResponse({
+    let automations: AutomationView[] = [
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000331",
         agentId,
         name: "monday-risk-review",
@@ -372,43 +469,41 @@ describe("zero jobs page", () => {
     ];
     let capturedUpdateBody: unknown = null;
     let capturedTriggerBody: unknown = null;
-    context.mocks.data.schedules(schedules);
+    context.mocks.data.automations(automations);
     context.mocks.data.userPreferences({ timezone: "Asia/Kolkata" });
+    context.mocks.api(automationsByRefContract.update, ({ body, respond }) => {
+      capturedUpdateBody = body;
+      const currentAutomation = automations[0];
+      if (!currentAutomation) {
+        throw new Error("automation fixture not found");
+      }
+      const updated = createMockAutomationView({
+        ...currentAutomation,
+        prompt: body.instruction ?? currentAutomation.prompt,
+        description:
+          body.description === undefined
+            ? currentAutomation.description
+            : body.description,
+        updatedAt: "2026-03-10T00:05:00Z",
+      });
+      automations = [updated];
+      context.mocks.data.automations(automations);
+      return respond(200, toMockAutomationResponse(updated));
+    });
+    // A changed schedule is replaced in place via the trigger PATCH endpoint.
     context.mocks.api(
-      automationsV2ByRefContract.update,
-      ({ body, respond }) => {
-        capturedUpdateBody = body;
-        const currentSchedule = schedules[0];
-        if (!currentSchedule) {
-          throw new Error("schedule fixture not found");
-        }
-        const updated = createMockScheduleResponse({
-          ...currentSchedule,
-          prompt: body.instruction ?? currentSchedule.prompt,
-          description:
-            body.description === undefined
-              ? currentSchedule.description
-              : body.description,
-          updatedAt: "2026-03-10T00:05:00Z",
-        });
-        schedules = [updated];
-        context.mocks.data.schedules(schedules);
-        return respond(200, toMockAutomationResponse(updated));
-      },
-    );
-    context.mocks.api(
-      automationsV2ByRefContract.addTrigger,
+      automationTriggersContract.update,
       ({ body, respond }) => {
         capturedTriggerBody = body;
-        const currentSchedule = schedules[0];
-        if (!currentSchedule) {
-          throw new Error("schedule fixture not found");
+        const currentAutomation = automations[0];
+        if (!currentAutomation) {
+          throw new Error("automation fixture not found");
         }
         if (body.kind !== "cron") {
           throw new Error("expected a cron trigger replacement");
         }
-        const updated = createMockScheduleResponse({
-          ...currentSchedule,
+        const updated = createMockAutomationView({
+          ...currentAutomation,
           triggerType: "cron",
           cronExpression: body.cronExpression,
           atTime: null,
@@ -416,17 +511,17 @@ describe("zero jobs page", () => {
           timezone: body.timezone ?? "UTC",
           updatedAt: "2026-03-10T00:05:00Z",
         });
-        schedules = [updated];
-        context.mocks.data.schedules(schedules);
+        automations = [updated];
+        context.mocks.data.automations(automations);
         const trigger = toMockAutomationResponse(updated).triggers[0];
         if (!trigger) {
           throw new Error("expected a projected trigger");
         }
-        return respond(201, { trigger });
+        return respond(200, trigger);
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${agentId}?tab=schedule` });
+    detachedSetupPage({ context, path: `/agents/${agentId}?tab=automations` });
 
     await waitFor(() => {
       expect(
@@ -443,40 +538,40 @@ describe("zero jobs page", () => {
       )[0],
     );
     click(menuItemByText("Edit"));
-    const editScheduleDialog = await screen.findByRole("dialog", {
+    const editAutomationDialog = await screen.findByRole("dialog", {
       name: "Edit automation",
     });
 
     expect(
-      within(editScheduleDialog).getByText("Day of week"),
+      within(editAutomationDialog).getByText("Day of week"),
     ).toBeInTheDocument();
-    expect(buttonByText("Mon", editScheduleDialog)).toHaveAttribute(
+    expect(buttonByText("Mon", editAutomationDialog)).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    click(buttonByText("Wed", editScheduleDialog));
-    click(buttonByText("Mon", editScheduleDialog));
-    expect(buttonByText("Wed", editScheduleDialog)).toHaveAttribute(
+    click(buttonByText("Wed", editAutomationDialog));
+    click(buttonByText("Mon", editAutomationDialog));
+    expect(buttonByText("Wed", editAutomationDialog)).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(buttonByText("Mon", editScheduleDialog)).toHaveAttribute(
+    expect(buttonByText("Mon", editAutomationDialog)).toHaveAttribute(
       "aria-pressed",
       "false",
     );
 
-    selectOptionByLabel("Hour", "16", editScheduleDialog);
-    selectOptionByLabel("Minute", "45", editScheduleDialog);
+    selectOptionByLabel("Hour", "16", editAutomationDialog);
+    selectOptionByLabel("Minute", "45", editAutomationDialog);
     selectOptionByLabel(
       "Timezone",
       /^\(GMT[+-]\d{2}:\d{2}\) India Standard Time \(IST\)$/u,
-      editScheduleDialog,
+      editAutomationDialog,
     );
     await fill(
-      within(editScheduleDialog).getByLabelText(/Description/u),
+      within(editAutomationDialog).getByLabelText(/Description/u),
       "Updated Wednesday risks",
     );
-    click(buttonByText("Save", editScheduleDialog));
+    click(buttonByText("Save", editAutomationDialog));
 
     await waitFor(() => {
       expect(
@@ -493,75 +588,8 @@ describe("zero jobs page", () => {
     });
   });
 
-  it("switches through agent detail tabs from a loaded agent page", async () => {
-    const agentId = "a0000000-0000-4000-a000-000000000301";
-    mockAgentsPage([
-      createDefaultAgent(),
-      {
-        id: agentId,
-        ownerId: "test-user-123",
-        displayName: "Research Agent",
-        description: "Finds launch risks",
-        sound: "professional",
-        avatarUrl: null,
-        customSkills: [],
-        visibility: "public",
-        headVersionId: "version_4",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000301",
-        agentId,
-        name: "weekday-risk-digest",
-        cronExpression: "30 14 * * 1-5",
-        description: "Research digest",
-        prompt: "Summarize launch risks",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000302",
-        agentId,
-        name: "office-climate-loop",
-        triggerType: "loop",
-        cronExpression: null,
-        intervalSeconds: 2700,
-        description: "Office AC",
-        prompt: "Turn on the office air conditioning",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000303",
-        agentId,
-        name: "wednesday-risk-review",
-        cronExpression: "15 14 * * 3",
-        description: "Wednesday risks",
-        prompt: "Review launch risks every Wednesday",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000304",
-        agentId,
-        name: "monthly-risk-audit",
-        cronExpression: "5 12 12 * *",
-        description: "Billing audit",
-        prompt: "Review monthly billing anomalies",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000305",
-        agentId,
-        name: "launch-readiness-check",
-        triggerType: "once",
-        cronExpression: null,
-        atTime: "2026-06-12T18:45:00Z",
-        description: "Release checklist",
-        prompt: "Run the launch readiness checklist",
-      }),
-    ]);
-    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
-      return respond(200, {
-        content: "Summarize risks with concise bullets.",
-        filename: "AGENTS.md",
-      });
-    });
+  it("loads the automations tab and switches between calendar and list views", async () => {
+    const agentId = mockAgentDetailStory();
 
     detachedSetupPage({ context, path: `/agents/${agentId}` });
 
@@ -574,7 +602,7 @@ describe("zero jobs page", () => {
 
     expect(tabByText("Authorization")).toHaveAttribute("aria-selected", "true");
 
-    click(tabByText("Scheduled"));
+    click(tabByText("Automations"));
     await waitFor(() => {
       expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Office AC").length).toBeGreaterThan(0);
@@ -608,17 +636,29 @@ describe("zero jobs page", () => {
     await waitFor(() => {
       expect(screen.getByText("Instruction")).toBeInTheDocument();
     });
+  });
+
+  it("creates an automation from the agent automation list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentAutomationList(agentId);
 
     click(screen.getByText("Add automation"));
-    const createScheduleDialog = await screen.findByRole("dialog", {
+    const createAutomationDialog = await screen.findByRole("dialog", {
       name: "Add automation",
     });
     await fill(screen.getByLabelText("Prompt"), "Prepare launch summary");
-    click(buttonByText("Create", createScheduleDialog));
+    click(buttonByText("Create", createAutomationDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Prepare launch summary")).toBeInTheDocument();
     });
+  });
+
+  it("edits an automation from the agent automation list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentAutomationList(agentId);
 
     click(
       screen.getAllByLabelText(
@@ -626,23 +666,31 @@ describe("zero jobs page", () => {
       )[0],
     );
     click(menuItemByText("Edit"));
-    const editScheduleDialog = await screen.findByRole("dialog", {
+    const editAutomationDialog = await screen.findByRole("dialog", {
       name: "Edit automation",
     });
-    expect(
-      within(editScheduleDialog).getByText("Day of week"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(editAutomationDialog).getByText("Day of week"),
+      ).toBeInTheDocument();
+    });
     await fill(
       screen.getByLabelText(/Description/u),
       "Updated Wednesday risks",
     );
-    click(buttonByText("Save", editScheduleDialog));
+    click(buttonByText("Save", editAutomationDialog));
 
     await waitFor(() => {
       expect(
         screen.getAllByText("Updated Wednesday risks")[0],
       ).toBeInTheDocument();
     });
+  });
+
+  it("runs, toggles, and deletes automations from the agent automation list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentAutomationList(agentId);
 
     click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
     click(menuItemByText("Run now"));
@@ -666,14 +714,14 @@ describe("zero jobs page", () => {
       )[0],
     );
     click(menuItemByText("Delete"));
-    const deleteScheduleDialog = await screen.findByRole("dialog");
+    const deleteAutomationDialog = await screen.findByRole("dialog");
     expect(
-      within(deleteScheduleDialog).getByText("Delete automation?"),
+      within(deleteAutomationDialog).getByText("Delete automation?"),
     ).toBeInTheDocument();
     expect(
-      within(deleteScheduleDialog).getByText("monthly-risk-audit"),
+      within(deleteAutomationDialog).getByText("monthly-risk-audit"),
     ).toBeInTheDocument();
-    click(buttonByText("Cancel", deleteScheduleDialog));
+    click(buttonByText("Cancel", deleteAutomationDialog));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
@@ -690,6 +738,18 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Billing audit")).not.toBeInTheDocument();
+    });
+  });
+
+  it("navigates the Profile and Instructions agent detail tabs", async () => {
+    const agentId = mockAgentDetailStory();
+
+    detachedSetupPage({ context, path: `/agents/${agentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Chat with Research Agent"),
+      ).toBeInTheDocument();
     });
 
     click(tabByText("Profile"));

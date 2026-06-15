@@ -10,10 +10,10 @@ const usageInsightBucketSchema = z.object({
   tokens: z.record(z.string(), z.number()), // same keys, total token counts
 });
 
-const usageInsightScheduleRowSchema = z.object({
-  scheduleId: z.string(),
-  scheduleName: z.string(),
-  scheduleDescription: z.string().nullable(),
+const usageInsightAutomationRowSchema = z.object({
+  automationId: z.string(),
+  automationName: z.string(),
+  automationDescription: z.string().nullable(),
   credits: z.number(),
   tokens: z.number(),
 });
@@ -27,9 +27,9 @@ const usageInsightChatRowSchema = z.object({
 
 const usageInsightResponseSchema = z.object({
   buckets: z.array(usageInsightBucketSchema),
-  schedules: z.array(usageInsightScheduleRowSchema),
-  scheduleOtherCount: z.number(),
-  scheduleOtherCredits: z.number(),
+  automations: z.array(usageInsightAutomationRowSchema),
+  automationOtherCount: z.number(),
+  automationOtherCredits: z.number(),
   chats: z.array(usageInsightChatRowSchema),
   chatOtherCount: z.number(),
   chatOtherCredits: z.number(),
@@ -65,7 +65,7 @@ export const zeroUsageInsightContract = c.router({
 export type ZeroUsageInsightContract = typeof zeroUsageInsightContract;
 export type UsageInsightResponse = z.infer<typeof usageInsightResponseSchema>;
 export type UsageInsightBucket = z.infer<typeof usageInsightBucketSchema>;
-export type UsageInsightScheduleRow = z.infer<
-  typeof usageInsightScheduleRowSchema
+export type UsageInsightAutomationRow = z.infer<
+  typeof usageInsightAutomationRowSchema
 >;
 export type UsageInsightChatRow = z.infer<typeof usageInsightChatRowSchema>;

@@ -13,8 +13,9 @@ import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
-  extractPermissions,
+  findPermission,
   permissionAllowAction$,
+  permissionAllowActionParam$,
   permissionAllowAgent$,
   permissionAllowAgentId$,
   permissionAllowExpiresIn$,
@@ -22,6 +23,7 @@ import {
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
   resolveUserPermissionGrantPolicy,
+  type Permission,
   upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
@@ -36,11 +38,6 @@ import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
-
-interface Permission {
-  name: string;
-  description?: string;
-}
 
 function AgentPill({
   avatarUrl,
@@ -202,14 +199,6 @@ function resolveUserName(
     return user.username;
   }
   return "there";
-}
-
-function findPermission(ref: string, name: string): Permission | null {
-  return (
-    extractPermissions(ref).find((permission) => {
-      return permission.name === name;
-    }) ?? null
-  );
 }
 
 function ConfirmGrantCard({
@@ -418,6 +407,7 @@ export function PermissionAllowPage() {
   const agentId = useGet(permissionAllowAgentId$);
   const ref = useGet(permissionAllowRef$);
   const permission = useGet(permissionAllowPermission$);
+  const actionParam = useGet(permissionAllowActionParam$);
   const action = useGet(permissionAllowAction$);
   const expiresIn = useGet(permissionAllowExpiresIn$);
 
@@ -431,6 +421,12 @@ export function PermissionAllowPage() {
 
   if (!isFirewallConnectorType(ref)) {
     return <ErrorMessage message={`Unknown connector: ${ref}`} />;
+  }
+
+  if (actionParam !== null && action === null) {
+    return (
+      <ErrorMessage message={`Unknown permission action: ${actionParam}`} />
+    );
   }
 
   return (

@@ -12,9 +12,9 @@ import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageInsightResponse = {
   buckets: [],
-  schedules: [],
-  scheduleOtherCount: 0,
-  scheduleOtherCredits: 0,
+  automations: [],
+  automationOtherCount: 0,
+  automationOtherCredits: 0,
   chats: [],
   chatOtherCount: 0,
   chatOtherCredits: 0,

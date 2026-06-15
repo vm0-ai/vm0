@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -41,6 +41,8 @@ class _RecordingExecutor:
 def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_path):
     original = usage.webhook.usage_executor
     executors: list[ThreadPoolExecutor] = []
+    enqueue = Mock(side_effect=RuntimeError("flush failed"))
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
     def use_fresh_executor() -> None:
         with fresh_usage_executor_context() as executor:
@@ -56,9 +58,6 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_pa
 
     with (
         patch.object(usage, "flush_usage_events", wraps=usage.flush_usage_events) as flush,
-        patch.object(
-            usage_buffer, "_enqueue_webhook", side_effect=RuntimeError("flush failed")
-        ) as enqueue,
         pytest.raises(RuntimeError, match="flush failed"),
     ):
         use_fresh_executor()

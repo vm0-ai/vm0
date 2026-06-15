@@ -32,6 +32,7 @@ const SCHEMA = {
   VM0_API_BACKEND_URL: z.url().optional(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
+  PAID_ONBOARDING_URL: z.url().optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_FROM_DOMAIN: z.string().min(1).optional(),

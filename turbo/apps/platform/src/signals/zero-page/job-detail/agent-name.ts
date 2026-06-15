@@ -22,7 +22,7 @@ export const agentName$ = computed((get) => {
 function isValidTab(tab: string): boolean {
   return (
     tab === "authorization" ||
-    tab === "schedule" ||
+    tab === "automations" ||
     tab === "profile" ||
     tab === "instructions"
   );

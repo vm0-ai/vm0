@@ -5,6 +5,7 @@
 
 mod common;
 
+use common::SystemLogOverrideGuard;
 use guest_agent::error::AgentError;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
@@ -12,21 +13,6 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-
-struct SystemLogOverrideGuard;
-
-impl SystemLogOverrideGuard {
-    fn set(path: &std::path::Path) -> Self {
-        guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
-        Self
-    }
-}
-
-impl Drop for SystemLogOverrideGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
-    }
-}
 
 fn cleanup_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());

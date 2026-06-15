@@ -9,6 +9,8 @@ import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route";
 import { settle, tapError } from "../utils";
 import {
+  cleanupClerkBannedUser$,
+  cleanupClerkDeletedOrgMembership$,
   cleanupClerkDeletedOrg$,
   cleanupClerkDeletedUser$,
 } from "../services/webhooks-clerk-cleanup.service";
@@ -29,6 +31,38 @@ function eventDataId(data: unknown): string | undefined {
     return data.id;
   }
   return undefined;
+}
+
+function propertyOf(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  return Reflect.get(value, key);
+}
+
+function stringPropertyOf(value: unknown, key: string): string | undefined {
+  const property = propertyOf(value, key);
+  return typeof property === "string" ? property : undefined;
+}
+
+function organizationMembershipIdentity(data: unknown):
+  | {
+      readonly orgId: string;
+      readonly userId: string;
+    }
+  | undefined {
+  const organization = propertyOf(data, "organization");
+  const orgId =
+    stringPropertyOf(organization, "id") ??
+    stringPropertyOf(data, "organization_id");
+  const publicUserData =
+    propertyOf(data, "publicUserData") ?? propertyOf(data, "public_user_data");
+  const userId =
+    stringPropertyOf(publicUserData, "userId") ??
+    stringPropertyOf(publicUserData, "user_id") ??
+    stringPropertyOf(data, "user_id");
+
+  return orgId && userId ? { orgId, userId } : undefined;
 }
 
 const postClerkWebhook$ = command(
@@ -79,8 +113,43 @@ const postClerkWebhook$ = command(
       return new Response("OK", { status: 200 });
     }
 
+    // "user.banned" is not yet in the Clerk SDK WebhookEvent type union
+    if ((event.type as string) === "user.banned") {
+      const { data } = event as unknown as { data: unknown };
+      const userId = eventDataId(data);
+      if (!userId) {
+        L.error("user.banned event missing user ID", { data });
+        return new Response("OK", { status: 200 });
+      }
+
+      waitUntil(
+        tapError(set(cleanupClerkBannedUser$, userId, signal), (error) => {
+          L.error("user.banned cleanup failed", { userId, error });
+        }),
+      );
+      return new Response("OK", { status: 200 });
+    }
+
     if (event.type === "organizationMembership.deleted") {
-      L.debug("organizationMembership.deleted received");
+      const identity = organizationMembershipIdentity(event.data);
+      if (!identity) {
+        L.error("organizationMembership.deleted event missing org/user ID", {
+          data: event.data,
+        });
+        return new Response("OK", { status: 200 });
+      }
+
+      waitUntil(
+        tapError(
+          set(cleanupClerkDeletedOrgMembership$, identity, signal),
+          (error) => {
+            L.error("organizationMembership.deleted cleanup failed", {
+              ...identity,
+              error,
+            });
+          },
+        ),
+      );
       return new Response("OK", { status: 200 });
     }
 

@@ -1,22 +1,22 @@
 // ---------------------------------------------------------------------------
-// Shared cron / one-time schedule utilities
+// Shared cron / one-time trigger utilities
 // ---------------------------------------------------------------------------
 
 import { getGmtOffset } from "@vm0/core/timezone";
 
 import { now, nowDate } from "../../lib/time.ts";
 
-type ScheduleTimeOption =
+type AutomationTimeOption =
   | "every-weekday"
   | "every-day"
   | "every-week"
   | "every-month"
   | "loop";
 
-export type CronTimeOption = Exclude<ScheduleTimeOption, "loop">;
+export type CronTimeOption = Exclude<AutomationTimeOption, "loop">;
 
-/** Discriminated union for schedule creation/update request body. */
-export type ScheduleBody = {
+/** Discriminated union for automation creation/update request body. */
+export type AutomationFormBody = {
   agentId: string;
   name: string;
   timezone: string;
@@ -32,7 +32,7 @@ export type ScheduleBody = {
 );
 
 // ---------------------------------------------------------------------------
-// One-time schedule helpers
+// One-time trigger helpers
 // ---------------------------------------------------------------------------
 
 /** Build an ISO datetime string from local date + hour + minute. */
@@ -69,7 +69,7 @@ export function getTodayDateLocal(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Common timezones for schedule selectors
+// Common timezones for automation form selectors
 // ---------------------------------------------------------------------------
 
 export const COMMON_TIMEZONES = [

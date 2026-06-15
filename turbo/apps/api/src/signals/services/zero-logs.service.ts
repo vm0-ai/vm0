@@ -66,15 +66,6 @@ function normalizeTriggerSource(
   return parsed.success ? parsed.data : null;
 }
 
-// "automation" supersedes "schedule" (#17307); until the backfill migration
-// unifies historical rows, a filter on either value matches both.
-function triggerSourceCondition(source: TriggerSource): SQL {
-  if (source === "schedule" || source === "automation") {
-    return inArray(zeroRuns.triggerSource, ["schedule", "automation"]);
-  }
-  return eq(zeroRuns.triggerSource, source);
-}
-
 function buildCursorCondition(cursor: string): SQL | null {
   const separatorIndex = cursor.lastIndexOf("|");
   if (separatorIndex <= 0) {
@@ -102,7 +93,7 @@ interface LogsListParams {
   since?: number;
   status?: LogStatus;
   triggerSource?: TriggerSource;
-  scheduleId?: string;
+  automationId?: string;
 }
 
 function buildAgentFilterConditions(params: {
@@ -161,12 +152,10 @@ export function zeroLogsList(
       conditions.push(eq(agentRuns.status, params.status));
     }
     if (params.triggerSource) {
-      conditions.push(triggerSourceCondition(params.triggerSource));
+      conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
     }
-    if (params.scheduleId) {
-      // Schedule ids are automation ids (D2 on #16847); historical runs were
-      // backfilled with automation provenance by the drop migration.
-      conditions.push(eq(zeroRuns.automationId, params.scheduleId));
+    if (params.automationId) {
+      conditions.push(eq(zeroRuns.automationId, params.automationId));
     }
 
     const whereClause = and(...conditions);
@@ -182,7 +171,7 @@ export function zeroLogsList(
           startedAt: agentRuns.startedAt,
           completedAt: agentRuns.completedAt,
           triggerSource: zeroRuns.triggerSource,
-          scheduleId: zeroRuns.automationId,
+          automationId: zeroRuns.automationId,
           agentId: zeroAgents.id,
           composeName: agentComposes.name,
           composeContent: agentComposeVersions.content,
@@ -233,7 +222,7 @@ export function zeroLogsList(
           framework: extractFramework(run.composeContent),
           triggerSource: normalizeTriggerSource(run.triggerSource ?? "cli"),
           triggerAgentName: run.triggerAgentName ?? null,
-          scheduleId: run.scheduleId ?? null,
+          automationId: run.automationId ?? null,
           status: run.status as LogStatus,
           prompt: run.prompt,
           createdAt: run.createdAt.toISOString(),
@@ -269,10 +258,10 @@ async function getLogsTotalCount(
     conditions.push(eq(agentRuns.status, params.status));
   }
   if (params.triggerSource) {
-    conditions.push(triggerSourceCondition(params.triggerSource));
+    conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
   }
-  if (params.scheduleId) {
-    conditions.push(eq(zeroRuns.automationId, params.scheduleId));
+  if (params.automationId) {
+    conditions.push(eq(zeroRuns.automationId, params.automationId));
   }
 
   const [result] = await db
@@ -351,7 +340,6 @@ async function getAvailableFilters(
     .filter((s): s is TriggerSource => {
       return [
         "automation",
-        "schedule",
         "web",
         "slack",
         "email",
@@ -413,7 +401,7 @@ export function zeroLogDetail(
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
-        scheduleId: zeroRuns.automationId,
+        automationId: zeroRuns.automationId,
         triggerAgentName: triggerAgentAlias.displayName,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
@@ -452,7 +440,7 @@ export function zeroLogDetail(
       agentId,
       agentDisplayName,
       triggerSource,
-      scheduleId,
+      automationId,
       triggerAgentName,
       modelProvider,
       selectedModel,
@@ -471,7 +459,7 @@ export function zeroLogDetail(
       selectedModel: selectedModel ?? null,
       triggerSource: normalizeTriggerSource(triggerSource ?? "cli"),
       triggerAgentName: triggerAgentName ?? null,
-      scheduleId: scheduleId ?? null,
+      automationId: automationId ?? null,
       status: run.status as LogStatus,
       prompt: run.prompt,
       appendSystemPrompt: run.appendSystemPrompt ?? null,

@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
@@ -52,6 +54,21 @@ fn event_kind(event: &Value) -> String {
         }
         _ => event_type.to_string(),
     }
+}
+
+fn stream_json_user_frame(prompt: &str) -> String {
+    format!(
+        "{}\n",
+        serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt,
+            },
+            "uuid": "mock-test-user-1",
+            "parent_tool_use_id": null,
+        })
+    )
 }
 
 #[test]
@@ -163,6 +180,98 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
         events[4].get("is_error").and_then(Value::as_bool),
         Some(false)
     );
+    Ok(())
+}
+
+#[test]
+fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut child = mock_claude()
+        .env("HOME", home.path())
+        .args([
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--",
+            "printf argv-wrong",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdin = child.stdin.take().ok_or("missing stdin")?;
+    stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
+    drop(stdin);
+
+    let output = child.wait_with_output()?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let result = events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("result"))
+        .and_then(|event| event.get("result"))
+        .and_then(Value::as_str)
+        .ok_or("missing result")?;
+    assert_eq!(result, "stdin-ok");
+
+    let command = events
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("assistant")
+                && event
+                    .pointer("/message/content/0/type")
+                    .and_then(Value::as_str)
+                    == Some("tool_use")
+        })
+        .and_then(|event| event.pointer("/message/content/0/input/command"))
+        .and_then(Value::as_str)
+        .ok_or("missing command")?;
+    assert_eq!(command, "printf stdin-ok");
+    Ok(())
+}
+
+#[test]
+fn concurrent_stream_json_ids_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let children = (0..16)
+        .map(|_| {
+            let mut command = mock_claude();
+            command
+                .env("HOME", home.path())
+                .args(["--output-format", "stream-json", "--", "true"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut session_ids = HashSet::new();
+
+    for child in children {
+        let output = child.wait_with_output()?;
+        assert!(
+            output.status.success(),
+            "expected success, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+
+        let events = parse_jsonl(&output.stdout)?;
+        let session_id = init_session_id(&events)?;
+        assert!(
+            session_ids.insert(session_id.clone()),
+            "duplicate session id: {session_id}"
+        );
+        assert!(expected_history_path(home.path(), &session_id).exists());
+    }
+
     Ok(())
 }
 

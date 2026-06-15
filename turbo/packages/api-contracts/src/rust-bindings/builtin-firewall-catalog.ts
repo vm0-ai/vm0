@@ -30,8 +30,8 @@ function runtimeFirewall(firewall: Firewall): Firewall {
 }
 
 export function buildBuiltinFirewallCatalog(): BuiltinFirewallCatalog {
-  const connectorFirewalls = Object.entries(getAllConnectorFirewalls()).map(
-    ([, firewall]) => {
+  const connectorFirewalls = Object.values(getAllConnectorFirewalls()).map(
+    (firewall) => {
       return runtimeFirewall(firewall);
     },
   );

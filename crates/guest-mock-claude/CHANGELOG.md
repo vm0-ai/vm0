@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.1...guest-mock-claude-v0.20.0) (2026-06-15)
+
+
+### Features
+
+* send Claude prompt over stream-json stdin ([#17710](https://github.com/vm0-ai/vm0/issues/17710)) ([857762b](https://github.com/vm0-ai/vm0/commit/857762b76ed511314e37b145fa879309fe955fee))
+
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.0...guest-mock-claude-v0.19.1) (2026-06-15)
+
+
+### Refactoring
+
+* centralize mock claude scenario markers ([#17690](https://github.com/vm0-ai/vm0/issues/17690)) ([f154d2e](https://github.com/vm0-ai/vm0/commit/f154d2e854296ff5b52683886ec1bdd1ef95a68f))
+
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.10...guest-mock-claude-v0.19.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
+## [0.18.10](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.9...guest-mock-claude-v0.18.10) (2026-06-12)
+
+
+### Bug Fixes
+
+* set fable effort to low ([#17486](https://github.com/vm0-ai/vm0/issues/17486)) ([5a190d6](https://github.com/vm0-ai/vm0/commit/5a190d6b1c9c06f11f00437ef5110f51741b0f9a))
+
+## [0.18.9](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.8...guest-mock-claude-v0.18.9) (2026-06-12)
+
+
+### Bug Fixes
+
+* **guest-mock-claude:** prevent session id collisions ([#17449](https://github.com/vm0-ai/vm0/issues/17449)) ([ced6107](https://github.com/vm0-ai/vm0/commit/ced6107796391193b49240050e2b65cad241167e))
+
 ## [0.18.8](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.7...guest-mock-claude-v0.18.8) (2026-06-07)
 
 

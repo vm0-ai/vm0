@@ -132,7 +132,7 @@ async function seedRunAndCallback(
       orgId: fixture.orgId,
       userId: fixture.userId,
       composeId: fixture.composeId,
-      triggerSource: "schedule",
+      triggerSource: "automation",
       prompt: "Triggered task",
     },
     context.signal,

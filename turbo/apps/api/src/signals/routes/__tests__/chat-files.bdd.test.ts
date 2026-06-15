@@ -83,7 +83,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const markedRead = await api.markThreadRead(actor, created.id);
     expect(markedRead).toStrictEqual({
       lastReadMessageId: null,
-      changed: false,
+      unreads: [],
     });
 
     await api.updateThreadModelSelection(actor, created.id, null);
@@ -133,7 +133,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(outsiderRead.body);
     expect(outsiderRead.body.error.code).toBe("NOT_FOUND");
 
-    const peerList = await api.listThreads(peer);
+    const peerList = await api.listThreads(peer, {
+      agentId: compose.composeId,
+    });
     expect(
       [...peerList.pinned, ...peerList.threads].some((item) => {
         return item.id === thread.id;
@@ -163,7 +165,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     expect(readEmpty).toStrictEqual({
       lastReadMessageId: null,
-      changed: false,
+      unreads: [],
     });
 
     const pinnedList = await api.listThreads(owner, {
@@ -177,7 +179,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       renamedAt: expect.any(String),
     });
     expect(pinnedList.threads).toStrictEqual([]);
-    expect(pinnedList.totalCount).toBe(0);
 
     let detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBe("gpt-5.4-mini");
@@ -234,7 +235,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Pinned launch plan",
       pinnedAt: null,
     });
-    expect(unpinnedList.totalCount).toBe(1);
 
     detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBeNull();

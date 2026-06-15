@@ -39,7 +39,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
 
     let run_id = std::env::var("VM0_RUN_ID")?;
-    let runtime_dir = guest_runtime_paths::run_dir_from_env(&run_id)?;
+    let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join("user-env");
     std::fs::create_dir_all(&user_env_dir)?;
     let user_env_path = user_env_dir.join("env.json");

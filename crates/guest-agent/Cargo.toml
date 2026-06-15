@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.34.30"
+version = "0.36.0"
 edition.workspace = true
 
 [dependencies]
@@ -12,8 +12,8 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 flate2.workspace = true
 process-control-ipc.workspace = true
+guest-contracts.workspace = true
 guest-common.workspace = true
-guest-runtime-paths.workspace = true
 http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
@@ -27,7 +27,7 @@ thiserror.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync", "net"] }
 tokio-util.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v5"] }
 zstd.workspace = true
 
 [dev-dependencies]

@@ -2,12 +2,10 @@
 // oxlint-disable max-lines-per-function
 import type {
   ChangeEvent,
-  ClipboardEvent,
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useGet,
   useSet,
@@ -23,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconDownload,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -32,6 +31,7 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
+  IconQuote,
   IconSearch,
   IconTemplate,
   IconVideo,
@@ -40,6 +40,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
@@ -62,6 +63,7 @@ import {
   cn,
   matchShortcut,
   processShortcut,
+  type KeyboardEventLike,
 } from "@vm0/ui";
 import {
   bestEffort,
@@ -94,11 +96,13 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { TiptapSkillComposer } from "./tiptap-skill-composer.tsx";
+import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   VIDEO_STYLE_GROUPS,
@@ -106,10 +110,7 @@ import {
   type VideoStylePreset,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -145,6 +146,7 @@ import {
   composerSavingType$,
   setComposerSavingType$,
   clearComputerUsePopoverCloseSuppression$,
+  computerUseDownloadDialogOpen$,
   computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
@@ -165,14 +167,13 @@ import {
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
+  setComputerUseDownloadDialogOpen$,
   setTemplatePickerPreviewSlideIndex$,
+  illustrationVariantIndex$,
+  setIllustrationVariantIndex$,
   setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
-  slashSkillCaretIndex$,
-  setSlashSkillCaretIndex$,
-  selectedSlashSkillIndex$,
-  setSelectedSlashSkillIndex$,
   type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
@@ -189,8 +190,6 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import { currentChatAgent$ } from "../../signals/agent-chat.ts";
-import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
@@ -337,25 +336,33 @@ type ComposerTemplatePicker = NonNullable<
 >;
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
+const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
+const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
+const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
+const ILLUSTRATION_CARD_PREVIEW_SIZE = {
+  width: 768,
+  height: 768,
+  quality: 72,
+} as const;
+const ILLUSTRATION_VARIANT_THUMB_SIZE = {
+  width: 96,
+  height: 96,
+  quality: 65,
+} as const;
+const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = { width: 40, height: 40 } as const;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 interface ComposerConnectorItem {
-  type: string;
+  type: ConnectorType;
   label: string;
   helpText: string;
   tags: readonly string[];
   connected: boolean;
   authorized: boolean;
   available: boolean;
-}
-
-function resolveConnectorLabel(
-  type: string,
-  connectorMap: Map<ConnectorType, { label: string }>,
-): string {
-  return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
 function resolveComposerModelForSelection(
@@ -509,50 +516,89 @@ function QueuedMessagesStrip({
 // composer's toolbar and Send button.
 // ---------------------------------------------------------------------------
 
+// Grow the note input to fit its content so multi-line comments expand the
+// composer instead of scrolling inside a single row.
+function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
+  if (!element) {
+    return;
+  }
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  autoGrowFeedbackNote(element);
+}
+
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
   element?.focus();
+  autoGrowFeedbackNote(element);
 }
 
 function ComposerFeedbackRow({
   item,
   autoFocus,
+  showDivider,
   onChangeNote,
   onRemove,
   onKeyDown,
 }: {
   item: FeedbackItem;
   autoFocus: boolean;
+  showDivider: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-[3px] shrink-0 rounded-sm bg-primary" />
-        <span className="min-w-0 flex-1 truncate text-xs italic leading-snug text-muted-foreground">
-          {item.quote}
-        </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove feedback"
-          title="Remove feedback"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconX size={15} stroke={2} />
-        </button>
+    <div
+      className={cn(
+        // Bottom padding on every row; top padding only when a dashed divider
+        // separates stacked fragments. The first row gets no top inset so the
+        // quote chip sits as high as the attachment chips do (matching the
+        // composer's pt-3), letting the card extend upward instead of leaving a
+        // gap above the chip.
+        "flex flex-col gap-1.5 pb-1.5",
+        showDivider && "border-t border-dashed border-border/60 pt-1.5",
+      )}
+    >
+      {/* Quote reference reuses the selected-template chip treatment (bordered
+          pill, icon square, in-pill remove) so feedback references read the same
+          as template chips. */}
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
+            <IconQuote
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.quote}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove feedback"
+            title="Remove feedback"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
       </div>
       <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : undefined}
+        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
         value={item.note}
         onChange={(event) => {
+          autoGrowFeedbackNote(event.target);
           return onChangeNote(event.target.value);
         }}
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
       />
     </div>
   );
@@ -575,13 +621,17 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    <div className="flex flex-col px-3 pt-3">
-      {feedback.items.map((item) => {
+    // min-h keeps the card from shrinking below the textarea's resting height.
+    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
+    // up with attachments on both the left and top edges.
+    <div className="flex min-h-[96px] flex-col px-4 pb-2 pt-3">
+      {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
             key={item.id}
             item={item}
             autoFocus={item.id === newestId}
+            showDivider={index > 0}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
@@ -592,9 +642,6 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 text-xs leading-snug text-muted-foreground">
-        Select more text and click Provide feedback to add another comment
-      </span>
     </div>
   );
 }
@@ -689,12 +736,6 @@ function formatPresentationTemplateKind(templateId: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function formatIllustrationTemplateKind(
-  item: IllustrationTemplateItem,
-): string {
-  return `${item.variationCount} variations`;
-}
-
 function presentationTemplateMatchesSearch(
   item: PresentationTemplateItem,
   query: string,
@@ -720,11 +761,7 @@ function illustrationTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [
-    item.title,
-    item.illustrationStyleId,
-    formatIllustrationTemplateKind(item),
-  ].join(" ");
+  const searchable = [item.title, item.illustrationStyleId].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -781,42 +818,13 @@ function videoTemplateMatchesGroup(
 }
 
 function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
-  if (!item.sampleVideoUrl) {
-    return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        <IconTemplate size={28} stroke={1.5} />
-      </div>
-    );
-  }
-
-  if (!item.sampleVideoThumbnailUrl) {
-    return (
-      <video
-        src={item.sampleVideoUrl}
-        className="h-full w-full object-cover opacity-0 transition-opacity duration-300"
-        preload="metadata"
-        playsInline
-        muted
-        loop
-        onCanPlay={(event) => {
-          event.currentTarget.style.opacity = "1";
-        }}
-        onMouseEnter={(event) => {
-          detach(event.currentTarget.play(), Reason.DomCallback);
-        }}
-        onMouseLeave={(event) => {
-          const video = event.currentTarget;
-          video.pause();
-          video.currentTime = 0;
-        }}
-      />
-    );
-  }
-
   return (
     <video
       src={item.sampleVideoUrl}
-      poster={item.sampleVideoThumbnailUrl}
+      poster={r2ImageTransformUrl(
+        item.sampleVideoThumbnailUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      )}
       className="h-full w-full object-cover"
       preload="none"
       playsInline
@@ -846,14 +854,14 @@ function VideoTemplateCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
         <VideoTemplatePreview item={item} />
       </div>
-      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.nameEn}
@@ -882,9 +890,6 @@ function VideoTemplateCard({
   );
 }
 
-const VIDEO_GRID_COLS = 3;
-const VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-video-template-grid-scroll]";
-
 function VideoTemplateGrid({
   items,
   value,
@@ -894,97 +899,18 @@ function VideoTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoStylePreset) => void;
 }) {
-  const rows: VideoStylePreset[][] = [];
-  for (let i = 0; i < items.length; i += VIDEO_GRID_COLS) {
-    rows.push(items.slice(i, i + VIDEO_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 200;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => {
-          return (
-            <VideoTemplateCard
-              key={item.id}
-              item={item}
-              selected={isSelectedVideoTemplate(item, value)}
-              onSelect={onSelect}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        height: `${virtualizer.getTotalSize()}px`,
-        width: "100%",
-        position: "relative",
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const rowItems = rows[virtualRow.index]!;
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
         return (
-          <div
-            key={virtualRow.key}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {rowItems.map((item) => {
-              return (
-                <VideoTemplateCard
-                  key={item.id}
-                  item={item}
-                  selected={isSelectedVideoTemplate(item, value)}
-                  onSelect={onSelect}
-                />
-              );
-            })}
-          </div>
+          <VideoTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedVideoTemplate(item, value)}
+            onSelect={onSelect}
+          />
         );
       })}
-    </div>
-  );
-}
-
-function TemplateSectionHeader({
-  label,
-  count,
-}: {
-  label: string;
-  count: number;
-}) {
-  return (
-    <div className="mb-4 flex items-center gap-3">
-      <h3 className="rounded-md bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-        {label}
-      </h3>
-      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-        {count}
-      </span>
     </div>
   );
 }
@@ -997,7 +923,7 @@ function TemplateEmptyPanel({
   description: string;
 }) {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
         <IconSearch
           className="mb-4 h-8 w-8 text-muted-foreground/70"
@@ -1013,10 +939,7 @@ function TemplateEmptyPanel({
 function presentationTemplateSlideImages(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  if (item.previewImages.length > 0) {
-    return item.previewImages;
-  }
-  return [item.previewImage];
+  return item.previewImages;
 }
 
 interface PresentationPreviewImageCache {
@@ -1165,11 +1088,13 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item);
+  const slideImages = presentationTemplateSlideImages(item).map((imageUrl) => {
+    return r2ImageTransformUrl(imageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
+  });
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[0] ?? item.previewImage;
+  const previewImage = slideImages[0];
   const isHovering = hover?.slug === item.slug;
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1189,7 +1114,7 @@ function TemplatePreview({
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
-      const nextImage = slideImages[nextIndex] ?? item.previewImage;
+      const nextImage = slideImages[nextIndex];
       event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
       if (nextIndex === 0) {
         setHover({ slug: item.slug, index: nextIndex });
@@ -1216,7 +1141,7 @@ function TemplatePreview({
 
   return (
     <div
-      className="relative aspect-[16/9] overflow-hidden bg-muted"
+      className="relative h-44 shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         preloadPresentationPreviewImages(slideImages);
         detach(
@@ -1334,7 +1259,10 @@ function TemplatePreviewPage({
     0,
     Math.min(selectedSlideIndex, slideImages.length - 1),
   );
-  const selectedSlideImage = slideImages[safeSlideIndex] ?? item.previewImage;
+  const selectedSlideImage = slideImages[safeSlideIndex];
+  const selectedSlidePreviewImage = selectedSlideImage
+    ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
+    : selectedSlideImage;
   const hasMultipleSlides = slideImages.length > 1;
   const kind = formatPresentationTemplateKind(item.templateId);
 
@@ -1359,7 +1287,7 @@ function TemplatePreviewPage({
             Templates
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">Presentation</span>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
@@ -1372,7 +1300,7 @@ function TemplatePreviewPage({
             </div>
             <img
               key={selectedSlideImage}
-              src={selectedSlideImage}
+              src={selectedSlidePreviewImage}
               title={`${item.title} preview slide ${safeSlideIndex + 1}`}
               alt=""
               className="aspect-[16/9] w-full object-cover"
@@ -1404,6 +1332,10 @@ function TemplatePreviewPage({
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {slideImages.map((image, index) => {
               const selected = index === safeSlideIndex;
+              const thumbnailImage = r2ImageTransformUrl(
+                image,
+                TEMPLATE_STRIP_THUMB_SIZE,
+              );
               return (
                 <button
                   key={image}
@@ -1419,7 +1351,7 @@ function TemplatePreviewPage({
                   }}
                 >
                   <img
-                    src={image}
+                    src={thumbnailImage}
                     alt=""
                     className="aspect-[16/9] w-full object-cover"
                     loading="lazy"
@@ -1487,12 +1419,12 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
       <TemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.title}
@@ -1524,26 +1456,32 @@ function PptCard({
   );
 }
 
-function IllustrationTemplatePreview({
+function IllustrationTemplateHero({
   item,
-  onPreview,
+  source,
 }: {
   item: IllustrationTemplateItem;
-  onPreview: (item: IllustrationTemplateItem) => void;
+  source: string;
 }) {
+  const heroImage = illustrationHeroImageUrl(source);
+
   return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+    <div
+      className="relative w-full overflow-hidden bg-muted"
+      style={{ aspectRatio: `${String(item.width)} / ${String(item.height)}` }}
+    >
       <img
-        src={item.previewImage}
-        alt=""
-        title={`${item.title} illustration preview`}
-        className="h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        key={source}
+        src={heroImage}
+        alt={`${item.title} illustration preview`}
+        className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
         decoding="async"
+        fetchPriority="low"
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
-            markIllustrationPreviewImageLoaded(item.previewImage, image),
+            markIllustrationPreviewImageLoaded(heroImage, image),
             Reason.DomCallback,
           );
         }}
@@ -1560,23 +1498,14 @@ function IllustrationTemplatePreview({
       >
         <IconTemplate size={28} stroke={1.5} />
       </div>
-      <button
-        type="button"
-        aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={(event) => {
-          event.stopPropagation();
-          onPreview(item);
-        }}
-      >
-        <IconEye size={16} stroke={1.8} />
-      </button>
     </div>
   );
 }
 
 interface IllustrationPreviewImageCache {
   readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
 }
 
 function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
@@ -1590,9 +1519,81 @@ function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
 
   const cache: IllustrationPreviewImageCache = {
     decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
+}
+
+function illustrationHeroImageUrl(source: string): string {
+  return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
+}
+
+function preloadIllustrationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = illustrationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+async function decodeIllustrationPreviewImage(url: string): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadIllustrationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markIllustrationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markIllustrationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
 }
 
 async function markIllustrationPreviewImageLoaded(
@@ -1612,170 +1613,148 @@ async function markIllustrationPreviewImageLoaded(
     ?.setAttribute("hidden", "");
 }
 
+function illustrationPreviewImageDecoded(url: string): boolean {
+  return illustrationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedIllustrationVariant({
+  card,
+  imageUrl,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement;
+  imageUrl: string;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): Promise<void> {
+  await decodeIllustrationPreviewImage(imageUrl);
+  if (
+    card.dataset.targetVariantIndex === String(index) &&
+    illustrationPreviewImageDecoded(imageUrl)
+  ) {
+    onVariantChange(item.slug, index);
+  }
+}
+
 function IllustrationTemplateCard({
   item,
   selected,
+  activeIndex,
   onSelect,
-  onPreview,
+  onVariantChange,
 }: {
   item: IllustrationTemplateItem;
   selected: boolean;
+  activeIndex: number;
   onSelect: (item: IllustrationTemplateItem) => void;
-  onPreview: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
+  const images = item.previewImages;
+  const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
+  const heroSource = images[safeIndex] ?? item.previewImage;
+
   return (
     <div
+      data-illustration-template-card=""
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+        selected
+          ? "border-primary ring-1 ring-primary"
+          : "border-border hover:border-muted-foreground/30",
       )}
     >
-      <IllustrationTemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {formatIllustrationTemplateKind(item)}
-          </p>
+      <IllustrationTemplateHero item={item} source={heroSource} />
+      {images.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {images.map((image, index) => {
+            const active = index === safeIndex;
+            const thumbnailImage = r2ImageTransformUrl(
+              image,
+              ILLUSTRATION_VARIANT_THUMB_SIZE,
+            );
+            return (
+              <button
+                key={image}
+                type="button"
+                aria-label={`Show variant ${index + 1}`}
+                aria-pressed={active}
+                className={cn(
+                  "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active ? "border-primary" : "border-border",
+                )}
+                onFocus={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onMouseEnter={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onClick={(event) => {
+                  const imageUrl = illustrationHeroImageUrl(image);
+                  const card = event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  );
+                  if (
+                    card === null ||
+                    index === safeIndex ||
+                    illustrationPreviewImageDecoded(imageUrl)
+                  ) {
+                    onVariantChange(item.slug, index);
+                    return;
+                  }
+
+                  card.dataset.targetVariantIndex = String(index);
+                  detach(
+                    selectDecodedIllustrationVariant({
+                      card,
+                      imageUrl,
+                      index,
+                      item,
+                      onVariantChange,
+                    }),
+                    Reason.DomCallback,
+                  );
+                }}
+              >
+                <img
+                  src={thumbnailImage}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+            );
+          })}
         </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
-        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {item.title}
+        </p>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
       </div>
     </div>
-  );
-}
-
-function IllustrationPreviewPage({
-  item,
-  selectedImageIndex,
-  onImageChange,
-  onBack,
-  onSelect,
-}: {
-  item: IllustrationTemplateItem;
-  selectedImageIndex: number;
-  onImageChange: (index: number) => void;
-  onBack: () => void;
-  onSelect: (item: IllustrationTemplateItem) => void;
-}) {
-  const images =
-    item.previewImages.length > 0 ? item.previewImages : [item.previewImage];
-  const safeImageIndex = Math.max(
-    0,
-    Math.min(selectedImageIndex, images.length - 1),
-  );
-  const selectedImage = images[safeImageIndex] ?? item.previewImage;
-
-  return (
-    <>
-      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
-          <button
-            type="button"
-            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onBack}
-          >
-            Templates
-          </button>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">Illustration</span>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="min-w-0 truncate">{item.title}</span>
-        </DialogTitle>
-      </DialogHeader>
-      <div className="grid h-[min(72vh,680px)] min-h-0 gap-4 overflow-hidden bg-muted/20 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-3">
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-            <img
-              key={selectedImage}
-              src={selectedImage}
-              title={`${item.title} preview variant ${safeImageIndex + 1}`}
-              alt=""
-              className="h-full w-full object-contain"
-              loading="lazy"
-            />
-          </div>
-          <div className="mt-3 flex shrink-0 max-w-full items-center gap-2 overflow-x-auto pb-1">
-            {images.map((image, index) => {
-              const selected = index === safeImageIndex;
-              return (
-                <button
-                  key={image}
-                  type="button"
-                  aria-label={`Show variant ${index + 1}`}
-                  aria-pressed={selected}
-                  className={cn(
-                    "relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "border-orange-500" : "border-border",
-                  )}
-                  onClick={() => {
-                    onImageChange(index);
-                  }}
-                >
-                  <img
-                    src={image}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border bg-background p-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              {item.title}
-            </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {formatIllustrationTemplateKind(item)}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border bg-background p-4">
-            <h3 className="text-sm font-semibold text-muted-foreground">
-              Variants
-            </h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {images.length} reference images
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Illustration style
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            className="h-10 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onSelect(item);
-            }}
-          >
-            Use this template
-          </button>
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -1800,7 +1779,7 @@ function resolveTemplatePickerCategory({
   if (hasVideoTab) {
     categories.push("video");
   }
-  const defaultCategory = categories[0] ?? "slides";
+  const defaultCategory = categories[0];
   if (category === "video" && !hasVideoTab) {
     return defaultCategory;
   }
@@ -1842,7 +1821,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
@@ -1894,101 +1873,39 @@ function TemplatePickerTabs({
   );
 }
 
-const ILLUSTRATION_GRID_COLS = 3;
-const ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR =
-  "[data-illustration-template-grid-scroll]";
-
 function IllustrationTemplateGrid({
   items,
   value,
+  variantIndexBySlug,
   onSelect,
-  onPreview,
+  onVariantChange,
 }: {
   items: IllustrationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
+  variantIndexBySlug: Readonly<Record<string, number>>;
   onSelect: (item: IllustrationTemplateItem) => void;
-  onPreview: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
-  const rows: IllustrationTemplateItem[][] = [];
-  for (let i = 0; i < items.length; i += ILLUSTRATION_GRID_COLS) {
-    rows.push(items.slice(i, i + ILLUSTRATION_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 250;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => {
-          return (
-            <IllustrationTemplateCard
-              key={item.illustrationStyleId}
-              item={item}
-              selected={isSelectedIllustrationTemplate(item, value)}
-              onSelect={onSelect}
-              onPreview={onPreview}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
+  // CSS multi-column masonry mirrors www.vm0.ai/illustration: each tile renders
+  // the full illustration at its native aspect ratio (no cropping, letterbox,
+  // or fixed height), and the column count adapts to the dialog width.
   return (
-    <div
-      style={{
-        height: `${virtualizer.getTotalSize()}px`,
-        width: "100%",
-        position: "relative",
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const rowItems = rows[virtualRow.index]!;
+    <div className="columns-[244px] gap-4">
+      {items.map((item) => {
         return (
-          <div
-            key={virtualRow.key}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {rowItems.map((item) => {
-              return (
-                <IllustrationTemplateCard
-                  key={item.illustrationStyleId}
-                  item={item}
-                  selected={isSelectedIllustrationTemplate(item, value)}
-                  onSelect={onSelect}
-                  onPreview={onPreview}
-                />
-              );
-            })}
-          </div>
+          <IllustrationTemplateCard
+            key={item.illustrationStyleId}
+            item={item}
+            selected={isSelectedIllustrationTemplate(item, value)}
+            activeIndex={variantIndexBySlug[item.slug] ?? 0}
+            onSelect={onSelect}
+            onVariantChange={onVariantChange}
+          />
         );
       })}
     </div>
   );
 }
-
-const PPT_GRID_COLS = 3;
-const PPT_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-ppt-template-grid-scroll]";
 
 function PptTemplateGrid({
   items,
@@ -2001,88 +1918,19 @@ function PptTemplateGrid({
   onSelect: (item: PresentationTemplateItem) => void;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const rows: PresentationTemplateItem[][] = [];
-  for (let i = 0; i < items.length; i += PPT_GRID_COLS) {
-    rows.push(items.slice(i, i + PPT_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        PPT_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 220;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="overflow-y-auto" style={{ maxHeight: "60vh" }}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => {
-            return (
-              <PptCard
-                key={item.slug}
-                item={item}
-                selected={isSelectedPresentationTemplate(item, value)}
-                onSelect={onSelect}
-                onPreview={onPreview}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      data-ppt-template-grid-scroll=""
-      className="overflow-y-auto"
-      style={{ maxHeight: "60vh" }}
-    >
-      <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: "100%",
-          position: "relative",
-        }}
-      >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const rowItems = rows[virtualRow.index]!;
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-              className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-            >
-              {rowItems.map((item) => {
-                return (
-                  <PptCard
-                    key={item.slug}
-                    item={item}
-                    selected={isSelectedPresentationTemplate(item, value)}
-                    onSelect={onSelect}
-                    onPreview={onPreview}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <PptCard
+            key={item.slug}
+            item={item}
+            selected={isSelectedPresentationTemplate(item, value)}
+            onSelect={onSelect}
+            onPreview={onPreview}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -2112,18 +1960,20 @@ function TemplatePickerDialog({
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
+  const illustrationVariantIndex = useGet(illustrationVariantIndex$);
+  const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const illustrationPreviewItem =
-    ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
-      return item.slug === previewSlug;
-    }) ?? null;
-  const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
+  const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "p-0 gap-0 overflow-hidden",
-    isPreviewing ? "max-w-6xl" : "max-w-4xl",
+    // The auto-rendered close button defaults to top-4, which is tuned for the
+    // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
+    // 36px (size-9) close button within the 50px header.
+    "[&>button[aria-label=Close]]:top-[7px]",
+    isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
@@ -2164,11 +2014,6 @@ function TemplatePickerDialog({
     setPreviewSlug(item.slug);
   };
 
-  const handleIllustrationPreview = (item: IllustrationTemplateItem) => {
-    setSelectedSlideIndex(0);
-    setPreviewSlug(item.slug);
-  };
-
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
@@ -2203,16 +2048,6 @@ function TemplatePickerDialog({
             }}
             onSelect={handleSelectPresentation}
           />
-        ) : illustrationPreviewItem ? (
-          <IllustrationPreviewPage
-            item={illustrationPreviewItem}
-            selectedImageIndex={selectedSlideIndex}
-            onImageChange={setSelectedSlideIndex}
-            onBack={() => {
-              setPreviewSlug(null);
-            }}
-            onSelect={handleSelectIllustration}
-          />
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
@@ -2245,11 +2080,7 @@ function TemplatePickerDialog({
               </div>
             </div>
             {selectedCategory === "slides" && hasPptTab && (
-              <div className="px-5 pt-4">
-                <TemplateSectionHeader
-                  label="VM0 templates"
-                  count={filteredPptItems.length}
-                />
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
                     items={filteredPptItems}
@@ -2268,18 +2099,15 @@ function TemplatePickerDialog({
             {selectedCategory === "illustration" && (
               <div
                 data-illustration-template-grid-scroll=""
-                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 illustration styles"
-                  count={filteredIllustrationItems.length}
-                />
                 {filteredIllustrationItems.length > 0 ? (
                   <IllustrationTemplateGrid
                     items={filteredIllustrationItems}
                     value={value}
+                    variantIndexBySlug={illustrationVariantIndex}
                     onSelect={handleSelectIllustration}
-                    onPreview={handleIllustrationPreview}
+                    onVariantChange={setIllustrationVariantIndex}
                   />
                 ) : (
                   <TemplateEmptyPanel
@@ -2292,12 +2120,8 @@ function TemplatePickerDialog({
             {selectedCategory === "video" && hasVideoTab && (
               <div
                 data-video-template-grid-scroll=""
-                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 video styles"
-                  count={filteredVideoItems.length}
-                />
                 <div className="mb-4 flex flex-wrap gap-2">
                   {videoGroupFilters.map((group) => {
                     const selected = videoGroup === group.tag;
@@ -2344,29 +2168,43 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const label = formatPresentationTemplateKind(item.templateId);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={item.previewImage}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Presentation
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
@@ -2384,29 +2222,38 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: VideoStylePreset;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconVideo
-              size={12}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Video
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.nameEn}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video style ${item.nameEn}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.nameEn}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove video style ${item.nameEn}`}
@@ -2424,30 +2271,42 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={item.previewImage}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Illustration
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.title}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${item.title}`}
@@ -2470,16 +2329,35 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    setSearch("");
+    setVideoGroup("all");
+    setPreviewSlug(null);
+    setSelectedSlideIndex(0);
+    setCategory(category);
+    setOpen(true);
+  };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2491,6 +2369,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2502,6 +2383,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2620,7 +2504,7 @@ function ConnectorTriggerIcons({
         return (
           <span key={c.type} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon type={c.type as ConnectorType} size={16} />
+              <ConnectorIcon type={c.type} size={16} />
             </span>
           </span>
         );
@@ -2638,7 +2522,7 @@ function AddConnectorsDialog({
   unconnected: ConnectorTypeWithStatus[];
   pollingType: string | null;
   onClose: () => void;
-  onSelect: (type: string) => void;
+  onSelect: (type: ConnectorType) => void;
 }) {
   const search = useGet(addDialogSearch$);
   const setSearch = useSet(setAddDialogSearch$);
@@ -2690,18 +2574,7 @@ function AddConnectorsDialog({
                 >
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      {item.type in CONNECTOR_TYPES ? (
-                        <ConnectorIcon
-                          type={item.type as ConnectorType}
-                          size={20}
-                        />
-                      ) : (
-                        <IconPlug
-                          size={18}
-                          stroke={1.5}
-                          className="text-muted-foreground"
-                        />
-                      )}
+                      <ConnectorIcon type={item.type} size={20} />
                     </span>
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
                       {item.label}
@@ -2720,7 +2593,7 @@ function AddConnectorsDialog({
                   </div>
                   <div className="px-4 pb-4 pt-1">
                     <div className="text-xs text-muted-foreground line-clamp-2">
-                      {item.helpText ?? ""}
+                      {item.helpText}
                     </div>
                   </div>
                 </button>
@@ -2744,7 +2617,7 @@ function ConnectorsPopoverButton({
   connectorsLoading: boolean;
   savingType: string | null;
   onOpenAddDialog: () => void;
-  onToggle: (type: string, checked: boolean) => void | Promise<void>;
+  onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
 }) {
   const search = useGet(popoverSearch$);
   const setSearch = useSet(setPopoverSearch$);
@@ -2844,10 +2717,7 @@ function ConnectorsPopoverButton({
                       className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon
-                          type={item.type as ConnectorType}
-                          size={16}
-                        />
+                        <ConnectorIcon type={item.type} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
@@ -2903,6 +2773,8 @@ function ComputerUsePopoverButton({
   const active = computerUse.selectedHostId !== null;
   const open = useGet(computerUsePopoverOpen$);
   const setOpen = useSet(setComputerUsePopoverOpen$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const clearCloseSuppression = useSet(
     clearComputerUsePopoverCloseSuppression$,
   );
@@ -2921,108 +2793,165 @@ function ComputerUsePopoverButton({
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
-                  active && "text-primary",
-                )}
-                aria-label="Computer Use"
+    <>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <PopoverTrigger asChild>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                    active && "text-primary",
+                  )}
+                  aria-label="Computer Use"
+                >
+                  <IconDeviceDesktop size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+            </PopoverTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Computer
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-72 p-0 rounded-lg"
+        >
+          <div className="py-1">
+            {computerUse.loading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 2 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : computerUse.hosts.length > 0 ? (
+              <div
+                className="flex max-h-72 flex-col overflow-y-auto"
+                role="radiogroup"
+                aria-label="Computer Use host"
               >
-                <IconDeviceDesktop size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Computer
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
-        <div className="py-1">
-          {computerUse.loading ? (
-            <div className="flex flex-col animate-pulse">
-              {Array.from({ length: 2 }, (_, i) => {
-                return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2">
-                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
-                    <span className="h-3 w-6 rounded-full bg-muted/50" />
-                  </div>
-                );
-              })}
-            </div>
-          ) : computerUse.hosts.length > 0 ? (
-            <div
-              className="flex max-h-72 flex-col overflow-y-auto"
-              role="radiogroup"
-              aria-label="Computer Use host"
-            >
-              {computerUse.hosts.map((host) => {
-                const checked = computerUse.selectedHostId === host.id;
-                return (
-                  <button
-                    key={host.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => {
-                      computerUse.onChange(checked ? null : host.id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-                      checked ? "bg-primary/5" : "hover:bg-muted/50",
-                    )}
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                      <IconDeviceDesktop size={16} stroke={1.5} />
-                    </span>
-                    <span className="text-sm flex-1 truncate text-foreground">
-                      {host.hostName}
-                    </span>
-                    <span
+                {computerUse.hosts.map((host) => {
+                  const checked = computerUse.selectedHostId === host.id;
+                  return (
+                    <button
+                      key={host.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      onClick={() => {
+                        computerUse.onChange(checked ? null : host.id);
+                      }}
                       className={cn(
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                        checked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-transparent",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                        checked ? "bg-primary/5" : "hover:bg-muted/50",
                       )}
-                      aria-hidden="true"
                     >
-                      {checked && <IconCheck size={11} stroke={3} />}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                        <IconDeviceDesktop size={16} stroke={1.5} />
+                      </span>
+                      <span className="text-sm flex-1 truncate text-foreground">
+                        {host.hostName}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-transparent",
+                        )}
+                        aria-hidden="true"
+                      >
+                        {checked && <IconCheck size={11} stroke={3} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                No online computers
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border/50 p-1">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+              onClick={() => {
+                setOpen(false);
+                setDownloadDialogOpen(true);
+              }}
+            >
+              <IconPlug
+                size={18}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              Connect my computer
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <ComputerUseDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
+        downloadUrl={computerUse.downloadUrl}
+      />
+    </>
+  );
+}
+
+function ComputerUseDownloadDialog({
+  open,
+  onOpenChange,
+  downloadUrl,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  downloadUrl: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={18} stroke={1.5} />
             </div>
-          ) : (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              No online computers
+            <div className="min-w-0 space-y-1 text-left">
+              <DialogTitle>Connect your computer</DialogTitle>
+              <DialogDescription>
+                Download Zero Computer Use for macOS, then open it to let Zero
+                use your desktop.
+              </DialogDescription>
             </div>
-          )}
-        </div>
-        <div className="border-t border-border/50 p-1">
+          </div>
+        </DialogHeader>
+        <Button asChild className="mt-2 w-full">
           <a
-            href={computerUse.downloadUrl}
+            href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              onOpenChange(false);
+            }}
           >
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Connect my computer
+            <IconDownload size={16} stroke={1.5} />
+            Download for macOS
           </a>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3185,15 +3114,17 @@ function useResolvedComposerSignals(
 }
 
 function insertPastedText(
-  textarea: HTMLTextAreaElement,
+  target: HTMLElement,
   currentValue: string,
   pastedText: string,
 ): string {
-  if (!pastedText) {
+  // Only the plain textarea supports caret-based insertion. The TipTap composer
+  // inserts pasted text itself, so for it we leave the value unchanged here.
+  if (!pastedText || !(target instanceof HTMLTextAreaElement)) {
     return currentValue;
   }
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
+  const start = target.selectionStart;
+  const end = target.selectionEnd;
   return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
 }
 
@@ -3223,221 +3154,6 @@ function toPersistedAttachments(
 
 type KeyboardSendAction = "none" | "send" | "queue";
 
-interface SlashSkillRange {
-  readonly start: number;
-  readonly end: number;
-  readonly query: string;
-}
-
-interface ComposerSlashSkill extends ZeroAgentCustomSkill {
-  readonly token: string;
-}
-
-function findActiveSlashSkillRange(
-  value: string,
-  caretIndex: number,
-): SlashSkillRange | null {
-  const beforeCaret = value.slice(0, caretIndex);
-  const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
-  if (!match) {
-    return null;
-  }
-
-  const query = match[1] ?? "";
-  const slashOffset = match[0].lastIndexOf("/");
-  const start = beforeCaret.length - match[0].length + slashOffset;
-  return { start, end: caretIndex, query };
-}
-
-function matchesSkillQuery(skill: ComposerSlashSkill, query: string): boolean {
-  if (!query) {
-    return true;
-  }
-
-  const normalizedQuery = query.toLowerCase();
-  return [skill.name, skill.displayName ?? "", skill.description ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .includes(normalizedQuery);
-}
-
-function skillTokenPattern(skillNames: readonly string[]): RegExp | null {
-  if (skillNames.length === 0) {
-    return null;
-  }
-
-  const escaped = skillNames.map((name) => {
-    return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  });
-  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
-}
-
-function ComposerInputHighlight({
-  input,
-  skills,
-}: {
-  readonly input: string;
-  readonly skills: readonly ComposerSlashSkill[];
-}) {
-  const pattern = skillTokenPattern(
-    skills.map((skill) => {
-      return skill.name;
-    }),
-  );
-
-  if (!input || !pattern) {
-    return null;
-  }
-
-  const parts: { text: string; skill: boolean; start: number }[] = [];
-  let lastIndex = 0;
-  for (const match of input.matchAll(pattern)) {
-    const start = match.index ?? 0;
-    if (start > lastIndex) {
-      parts.push({
-        text: input.slice(lastIndex, start),
-        skill: false,
-        start: lastIndex,
-      });
-    }
-    parts.push({ text: match[0], skill: true, start });
-    lastIndex = start + match[0].length;
-  }
-
-  if (lastIndex < input.length) {
-    parts.push({
-      text: input.slice(lastIndex),
-      skill: false,
-      start: lastIndex,
-    });
-  }
-
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-transparent"
-      aria-hidden="true"
-    >
-      {parts.map((part) => {
-        return (
-          <span
-            key={`${part.start}:${part.skill ? "skill" : "text"}:${part.text}`}
-            className={part.skill ? "text-primary" : "text-transparent"}
-          >
-            {part.text}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function SlashSkillMenu({
-  skills,
-  loading,
-  selectedIndex,
-  onSelect,
-}: {
-  readonly skills: readonly ComposerSlashSkill[];
-  readonly loading: boolean;
-  readonly selectedIndex: number;
-  readonly onSelect: (skill: ComposerSlashSkill) => void;
-}) {
-  return (
-    <div
-      ref={(element) => {
-        placeSlashSkillMenu(element);
-      }}
-      className="fixed z-50 max-h-72 w-[260px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
-    >
-      <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
-        Skills
-      </div>
-      {loading ? (
-        <div className="px-2.5 py-2 text-sm text-muted-foreground">
-          Loading skills...
-        </div>
-      ) : skills.length > 0 ? (
-        <div className="max-h-60 overflow-y-auto px-1.5 pb-1.5">
-          {skills.map((skill, index) => {
-            const selected = index === selectedIndex;
-            return (
-              <button
-                id={slashSkillOptionId(skill.name)}
-                key={skill.name}
-                type="button"
-                className={cn(
-                  "flex w-full items-center rounded px-2 py-1.5 text-left transition-colors",
-                  selected ? "bg-accent" : "hover:bg-accent/60",
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(skill);
-                }}
-              >
-                <span className="truncate font-mono text-sm text-primary">
-                  {skill.token}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-          No matching skills
-        </div>
-      )}
-    </div>
-  );
-}
-
-function slashSkillOptionId(skillName: string): string {
-  return `slash-skill-option-${skillName}`;
-}
-
-function placeSlashSkillMenu(element: HTMLDivElement | null): void {
-  if (!element) {
-    return;
-  }
-
-  const container = element.parentElement;
-  if (!container) {
-    return;
-  }
-
-  const rect = container.getBoundingClientRect();
-  const spaceAbove = rect.top;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const menuHeight = Math.min(element.offsetHeight, 320);
-  const placement =
-    spaceAbove >= menuHeight + 8 || spaceAbove >= spaceBelow
-      ? "above"
-      : "below";
-  const left = Math.min(
-    Math.max(rect.left + 12, 12),
-    Math.max(window.innerWidth - 272, 12),
-  );
-  const top =
-    placement === "below"
-      ? rect.bottom + 8
-      : Math.max(rect.top - menuHeight - 8, 8);
-
-  element.style.left = `${left}px`;
-  element.style.top = `${top}px`;
-}
-
-function scrollSlashSkillIntoView(skill: ComposerSlashSkill | undefined): void {
-  if (!skill) {
-    return;
-  }
-
-  window.requestAnimationFrame(() => {
-    const option = document.getElementById(slashSkillOptionId(skill.name));
-    if (option && typeof option.scrollIntoView === "function") {
-      option.scrollIntoView({ block: "nearest" });
-    }
-  });
-}
-
 function ComposerTextarea({
   input,
   onInputChange,
@@ -3454,8 +3170,8 @@ function ComposerTextarea({
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
   readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
   readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
 }) {
@@ -3497,185 +3213,6 @@ function ComposerTextarea({
   );
 }
 
-function buildComposerSlashSkills({
-  agentSkillNames,
-  orgSkills,
-}: {
-  readonly agentSkillNames: readonly string[];
-  readonly orgSkills: readonly ZeroAgentCustomSkill[];
-}): readonly ComposerSlashSkill[] {
-  const metadataByName = new Map(
-    orgSkills.map((skill) => {
-      return [skill.name, skill];
-    }),
-  );
-  const skillNames = Array.from(
-    new Set([
-      ...agentSkillNames,
-      ...orgSkills.map((skill) => {
-        return skill.name;
-      }),
-    ]),
-  );
-
-  return skillNames.map((name) => {
-    const metadata = metadataByName.get(name);
-    return {
-      name,
-      displayName: metadata?.displayName ?? null,
-      description: metadata?.description ?? null,
-      token: `/${name}`,
-    };
-  });
-}
-
-function SlashSkillComposerInput({
-  input,
-  onInputChange,
-  onDraftChange,
-  sending,
-  autoFocus,
-  setInputRef,
-  onKeyDown,
-  onPaste,
-}: {
-  readonly input: string;
-  readonly onInputChange: (value: string) => void;
-  readonly onDraftChange: (() => void) | undefined;
-  readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
-  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
-}) {
-  const caretIndex = useGet(slashSkillCaretIndex$);
-  const setCaretIndex = useSet(setSlashSkillCaretIndex$);
-  const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
-  const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
-  const currentAgent = useLastResolved(currentChatAgent$);
-  const orgSkillsLoadable = useLastLoadable(orgSkills$);
-  const orgSkills =
-    orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
-  const composerSkills = buildComposerSlashSkills({
-    agentSkillNames: currentAgent?.customSkills ?? [],
-    orgSkills,
-  });
-  const slashRange = findActiveSlashSkillRange(input, caretIndex);
-  const slashSkillSuggestions = slashRange
-    ? composerSkills.filter((skill) => {
-        return matchesSkillQuery(skill, slashRange.query);
-      })
-    : [];
-  const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
-  const showSlashSkillMenu = slashRange !== null;
-
-  const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
-    setCaretIndex(textarea.selectionStart);
-  };
-
-  const insertSlashSkill = (
-    skill: ComposerSlashSkill,
-    textarea: HTMLTextAreaElement | null,
-  ) => {
-    if (!slashRange) {
-      return;
-    }
-
-    const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
-    const nextInput = `${input.slice(0, slashRange.start)}${skill.token}${suffix}${input.slice(slashRange.end)}`;
-    const nextCaret = slashRange.start + skill.token.length + suffix.length;
-    onInputChange(nextInput);
-    onDraftChange?.();
-    setCaretIndex(nextCaret);
-    window.requestAnimationFrame(() => {
-      textarea?.setSelectionRange(nextCaret, nextCaret);
-      textarea?.focus();
-    });
-  };
-
-  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (!showSlashSkillMenu) {
-      onKeyDown(e);
-      return;
-    }
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const nextIndex = Math.min(
-        selectedSkillIndex + 1,
-        Math.max(slashSkillSuggestions.length - 1, 0),
-      );
-      setSelectedSkillIndex(nextIndex);
-      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const nextIndex = Math.max(selectedSkillIndex - 1, 0);
-      setSelectedSkillIndex(nextIndex);
-      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
-      return;
-    }
-
-    if ((e.key === "Enter" || e.key === "Tab") && slashSkillSuggestions[0]) {
-      e.preventDefault();
-      insertSlashSkill(
-        slashSkillSuggestions[
-          Math.min(selectedSkillIndex, slashSkillSuggestions.length - 1)
-        ]!,
-        e.currentTarget,
-      );
-      return;
-    }
-
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setCaretIndex(-1);
-      return;
-    }
-
-    onKeyDown(e);
-  };
-
-  return (
-    <div className="relative">
-      {showSlashSkillMenu && (
-        <SlashSkillMenu
-          skills={slashSkillSuggestions}
-          loading={isLoadingOrgSkills}
-          selectedIndex={selectedSkillIndex}
-          onSelect={(skill) => {
-            insertSlashSkill(
-              skill,
-              document.activeElement instanceof HTMLTextAreaElement
-                ? document.activeElement
-                : null,
-            );
-          }}
-        />
-      )}
-      <div className="relative min-h-[96px]">
-        <ComposerInputHighlight input={input} skills={composerSkills} />
-        <ComposerTextarea
-          input={input}
-          onInputChange={onInputChange}
-          sending={sending}
-          autoFocus={autoFocus}
-          setInputRef={setInputRef}
-          onKeyDown={handleKeyDown}
-          onPaste={onPaste}
-          onAfterInputChange={(textarea) => {
-            setSelectedSkillIndex(0);
-            updateCaretIndex(textarea);
-          }}
-          onPointerSelectionChange={updateCaretIndex}
-        />
-      </div>
-    </div>
-  );
-}
-
 function ComposerInputSlot({
   input,
   onInputChange,
@@ -3692,8 +3229,8 @@ function ComposerInputSlot({
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
   const features = useLastResolved(featureSwitch$);
   const slashSkillCommandsEnabled =
@@ -3701,7 +3238,7 @@ function ComposerInputSlot({
 
   if (slashSkillCommandsEnabled) {
     return (
-      <SlashSkillComposerInput
+      <TiptapSkillComposer
         input={input}
         onInputChange={onInputChange}
         onDraftChange={onDraftChange}
@@ -3972,7 +3509,10 @@ export function ZeroChatComposer({
   const activeFeedback = resolveActiveFeedback(feedback);
 
   // File upload handlers (paste / drag-drop)
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: ComposerPasteEvent) => {
+    if (!e.clipboardData) {
+      return;
+    }
     const chatPayload = readChatMessageFromClipboard(e.clipboardData);
     if (chatPayload && chatPayload.attachments.length > 0) {
       const persistedAttachments = toPersistedAttachments(
@@ -4142,8 +3682,8 @@ export function ZeroChatComposer({
     };
   });
 
-  const handleConnectSuccess = async (type: string) => {
-    const label = resolveConnectorLabel(type, connectorMap);
+  const handleConnectSuccess = async (type: ConnectorType) => {
+    const label = connectorMap.get(type)!.label;
     await tapError(authorizeFn(type, pageSignal), () => {
       toast.error(`${label} was authorized but could not be saved`, {
         id: `connector-save-error-${type}`,
@@ -4154,7 +3694,7 @@ export function ZeroChatComposer({
     });
   };
 
-  const handleToggle = async (type: string, checked: boolean) => {
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
     setSavingType(type);
     await bestEffort(
       checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),
@@ -4205,7 +3745,7 @@ export function ZeroChatComposer({
   const toggleSidebar = useSet(toggleSidebarOff$);
   const newChat = useSet(navigateToNewChat$);
 
-  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEventLike) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
       return;
     }
@@ -4301,35 +3841,38 @@ export function ZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
+              {/* Template + attachment chips are shared by both modes: a feedback
+                  turn can also carry a template or attachments, so they render
+                  above the feedback rows just as they do above the textarea. */}
+              <SelectedTemplateChipSlot
+                picker={templatePicker}
+                onDraftChange={onDraftChange}
+              />
+              {visibleAttachments.length > 0 && (
+                <AttachmentChips
+                  attachments={visibleAttachments}
+                  onRemove={(attachment) => {
+                    removeAttachment(attachment);
+                    onDraftChange?.();
+                  }}
+                />
+              )}
               {activeFeedback ? (
                 <ComposerFeedbackRows feedback={activeFeedback} />
               ) : (
                 <>
-                  <SelectedTemplateChipSlot
-                    picker={templatePicker}
+                  <ComposerInputSlot
+                    input={input}
+                    onInputChange={onInputChange}
                     onDraftChange={onDraftChange}
+                    sending={sending}
+                    autoFocus={autoFocus}
+                    setInputRef={setInputRef}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                   />
-                  {visibleAttachments.length > 0 && (
-                    <AttachmentChips
-                      attachments={visibleAttachments}
-                      onRemove={(attachment) => {
-                        removeAttachment(attachment);
-                        onDraftChange?.();
-                      }}
-                    />
-                  )}
                 </>
               )}
-              <ComposerInputSlot
-                input={input}
-                onInputChange={onInputChange}
-                onDraftChange={onDraftChange}
-                sending={sending}
-                autoFocus={autoFocus}
-                setInputRef={setInputRef}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-              />
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <TooltipProvider delayDuration={300}>
@@ -4424,7 +3967,7 @@ export function ZeroChatComposer({
           }}
           onSelect={(type) => {
             setPendingConnectType(type);
-            setSelectedConnType(type as ConnectorType);
+            setSelectedConnType(type);
           }}
         />
       )}

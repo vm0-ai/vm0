@@ -173,39 +173,39 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
             agentNames: ["Research Bot"],
           },
         ],
-        schedules: [
+        automations: [
           {
-            scheduleId: "d0000000-0000-4000-a000-000000000001",
-            scheduleName: "Morning Briefing",
-            scheduleDescription: "Daily market briefing",
+            automationId: "d0000000-0000-4000-a000-000000000001",
+            automationName: "Morning Briefing",
+            automationDescription: "Daily market briefing",
             credits: 300,
             tokens: 600,
           },
           {
-            scheduleId: "d0000000-0000-4000-a000-000000000002",
-            scheduleName: "Lead Sync",
-            scheduleDescription: null,
+            automationId: "d0000000-0000-4000-a000-000000000002",
+            automationName: "Lead Sync",
+            automationDescription: null,
             credits: 250,
             tokens: 500,
           },
           {
-            scheduleId: "d0000000-0000-4000-a000-000000000003",
-            scheduleName: "CRM Sweep",
-            scheduleDescription: null,
+            automationId: "d0000000-0000-4000-a000-000000000003",
+            automationName: "CRM Sweep",
+            automationDescription: null,
             credits: 200,
             tokens: 400,
           },
           {
-            scheduleId: "d0000000-0000-4000-a000-000000000004",
-            scheduleName: "Support Digest",
-            scheduleDescription: null,
+            automationId: "d0000000-0000-4000-a000-000000000004",
+            automationName: "Support Digest",
+            automationDescription: null,
             credits: 150,
             tokens: 300,
           },
           {
-            scheduleId: "d0000000-0000-4000-a000-000000000005",
-            scheduleName: "Hidden Schedule",
-            scheduleDescription: null,
+            automationId: "d0000000-0000-4000-a000-000000000005",
+            automationName: "Hidden Schedule",
+            automationDescription: null,
             credits: 100,
             tokens: 200,
           },
@@ -281,7 +281,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
             agentNames: ["Archive Bot"],
           },
         ],
-        schedules: [],
+        automations: [],
         chats: [],
       },
     ],
@@ -314,17 +314,17 @@ function usageInsightResponse(): UsageInsightResponse {
         tokens: { chat: 800, slack: 500 },
       },
     ],
-    schedules: [
+    automations: [
       {
-        scheduleId: "d0000000-0000-4000-a000-000000000001",
-        scheduleName: "Morning Briefing",
-        scheduleDescription: null,
+        automationId: "d0000000-0000-4000-a000-000000000001",
+        automationName: "Morning Briefing",
+        automationDescription: null,
         credits: 300,
         tokens: 600,
       },
     ],
-    scheduleOtherCount: 0,
-    scheduleOtherCredits: 0,
+    automationOtherCount: 0,
+    automationOtherCredits: 0,
     chats: [
       {
         threadId: "b0000000-0000-4000-a000-000000000001",
@@ -364,7 +364,7 @@ function quoteVariantsInsightsResponse(): InsightsResponse &
         topTask: { name: "release prep", count: 9 },
         services: [{ domain: "github", calls: 20, agentNames: ["Busy Bot"] }],
         permissions: [],
-        schedules: [],
+        automations: [],
         chats: [],
       },
       {
@@ -386,7 +386,7 @@ function quoteVariantsInsightsResponse(): InsightsResponse &
           { domain: "github", calls: 45, agentNames: ["Traffic Bot"] },
         ],
         permissions: [],
-        schedules: [],
+        automations: [],
         chats: [],
       },
       {
@@ -423,7 +423,7 @@ function quoteVariantsInsightsResponse(): InsightsResponse &
         topTask: { name: "shared support", count: 4 },
         services: [{ domain: "gmail", calls: 35, agentNames: ["Alpha"] }],
         permissions: [],
-        schedules: [],
+        automations: [],
         chats: [],
       },
       {
@@ -442,7 +442,7 @@ function quoteVariantsInsightsResponse(): InsightsResponse &
         topTask: { name: "triage", count: 3 },
         services: [{ domain: "notion", calls: 40, agentNames: ["Steady Bot"] }],
         permissions: [],
-        schedules: [],
+        automations: [],
         chats: [],
       },
     ],
@@ -532,7 +532,7 @@ describe("network insights page", () => {
     });
 
     expect(screen.queryByText("Hidden Schedule")).not.toBeInTheDocument();
-    await user.click(screen.getByText("+1 more schedule"));
+    await user.click(screen.getByText("+1 more automation"));
     expect(screen.getByText("Hidden Schedule")).toBeInTheDocument();
 
     expect(screen.queryByText("Hidden chat")).not.toBeInTheDocument();

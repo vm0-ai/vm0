@@ -8,6 +8,8 @@ import {
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadsContract,
+  type GenerationTemplateRequest,
+  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -30,7 +32,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -50,7 +52,7 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
-const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
+const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
@@ -63,6 +65,20 @@ interface QueuedMessageCapture {
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
   clientMessageId: string;
+}
+
+interface RunCreateCapture {
+  prompt?: string;
+  attachFiles?: {
+    id: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+  hasTextContent?: boolean;
+  generationTemplate?: GenerationTemplateRequest;
+  modelSelection?: ModelSelectionRequest | null;
+  clientMessageId?: string;
 }
 
 interface PushBrowserMock {
@@ -184,6 +200,18 @@ async function expectQueuedMessages(contents: string[]): Promise<void> {
   });
 }
 
+function expectTextBefore(
+  container: HTMLElement,
+  beforeText: string,
+  afterText: string,
+): void {
+  const before = within(container).getByText(beforeText);
+  const after = within(container).getByText(afterText);
+  expect(
+    before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
 function makeMessage(id: string, text: string): PagedChatMessage {
   return {
     id,
@@ -228,7 +256,6 @@ function mockKeyboardNavigationThreads(): void {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-06-01T00:00:00Z",
             updatedAt: `2026-06-01T00:0${index}:00Z`,
-            isRead: true,
             running: false,
             pinnedAt: null,
           };
@@ -301,9 +328,9 @@ function mockActiveRunThread(threadId: string): void {
   });
 }
 
-function mockScheduleThread(): void {
+function mockAutomationThread(): void {
   mockChatLifecycle(context, {
-    threadId: SCHEDULE_THREAD_ID,
+    threadId: AUTOMATION_THREAD_ID,
     threadTitle: "Scheduled launch review",
     historyMessages: [
       {
@@ -318,11 +345,11 @@ function mockScheduleThread(): void {
       },
     ],
   });
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000701",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "launch-review",
       description: "Launch review",
       prompt: "Review launch risks",
@@ -330,10 +357,10 @@ function mockScheduleThread(): void {
       triggerType: "cron",
       nextRunAt: "2026-06-10T15:30:00.000Z",
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000702",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "paused-launch-audit",
       description: "Paused launch audit",
       prompt: "Audit launch readiness",
@@ -342,10 +369,10 @@ function mockScheduleThread(): void {
       enabled: false,
       nextRunAt: null,
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000703",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "manual-launch-reminder",
       description: "Manual launch reminder",
       prompt: "Remind the team about launch blockers",
@@ -446,7 +473,6 @@ function mockServerQueuedThreadStories(): void {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-06-09T10:00:00Z",
             updatedAt: `2026-06-09T10:0${index}:00Z`,
-            isRead: true,
             running: thread.activeRunIds.length > 0,
             pinnedAt: null,
           };
@@ -466,6 +492,8 @@ function mockServerQueuedThreadStories(): void {
       title: thread.title,
       agentId: AGENT_ID,
       activeRunIds: thread.activeRunIds,
+      lastReadAt: "2026-06-09T10:00:00Z",
+      lastMessageAt: "2026-06-09T10:00:00Z",
       createdAt: "2026-06-09T10:00:00Z",
       updatedAt: "2026-06-09T10:00:00Z",
       draftContent: null,
@@ -485,7 +513,7 @@ function mockServerQueuedThreadStories(): void {
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, changed: false });
+    return respond(200, { lastReadMessageId: null, unreads: [] });
   });
 }
 
@@ -692,6 +720,26 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
+function presentationTemplateLabel(
+  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
+): string {
+  const label = item.templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function queryButtonByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("button").find((candidate) => {
@@ -704,6 +752,14 @@ function chatScrollContainer(): HTMLElement {
   const element = document.querySelector("[data-scroll-container]");
   if (!(element instanceof HTMLElement)) {
     throw new Error("Chat scroll container not found");
+  }
+  return element;
+}
+
+function chatComposerTextarea(): HTMLTextAreaElement {
+  const element = document.querySelector("[data-chat-composer] textarea");
+  if (!(element instanceof HTMLTextAreaElement)) {
+    throw new Error("Chat composer textarea not found");
   }
   return element;
 }
@@ -1205,6 +1261,1027 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("ignores usage-only pages for rendering and thinking state", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-only",
+      chatMessages: [
+        {
+          id: "msg-usage-only",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-only",
+          usage: {
+            version: 1,
+            totalCredits: 0,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model",
+                credits: 0,
+                providers: [{ provider: "vm0", credits: 0 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-only",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-role='assistant']")).toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("shows thinking for an assistant run even without active run ids", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-thinking",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-message-list-assistant",
+          role: "assistant",
+          content: "I am working on this.",
+          runId: "run-message-list-thinking",
+          runEventId: "event-message-list-assistant-text",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-thinking",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("I am working on this.")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when the same run completes even with stale active run ids", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-completed",
+      activeRunIds: ["run-message-list-completed"],
+      chatMessages: [
+        {
+          id: "msg-message-list-completed-assistant",
+          role: "assistant",
+          content: "The answer is ready.",
+          runId: "run-message-list-completed",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-message-list-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-message-list-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-completed",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("The answer is ready.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking when a different run completes while another run is open", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-lifecycle-thinking",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-usage-r1",
+          role: "assistant",
+          content: null,
+          runId: "run-r1",
+          usage: {
+            version: 1,
+            totalCredits: 5,
+            settledAt: "2026-06-09T10:00:00Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 5,
+                providers: [{ provider: "moonshot", credits: 5 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-user-r2",
+          role: "user",
+          content: "Continue the plan",
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-stale-start-r2",
+          role: "assistant",
+          content: null,
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-stale-assistant-r2",
+          role: "assistant",
+          content: "The next step is ready.",
+          runId: "run-r2",
+          runEventId: "event-r2-assistant-text",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-stale-completed-r3",
+          role: "assistant",
+          content: null,
+          runId: "run-r3",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-lifecycle-thinking",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Continue the plan")).toBeInTheDocument();
+      expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("shows thinking when the latest message is a user message", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-latest-user",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-message-list-latest-user",
+          role: "user",
+          content: "Start the next run",
+          runId: "run-message-list-latest-user",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-latest-user",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Start the next run")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when a run is cancelled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-cancelled",
+      activeRunIds: ["run-message-list-cancelled"],
+      chatMessages: [
+        {
+          id: "msg-message-list-cancelled-assistant",
+          role: "assistant",
+          content: "I started this run.",
+          runId: "run-message-list-cancelled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-message-list-cancelled-marker",
+          role: "assistant",
+          content: "Run cancelled",
+          runId: "run-message-list-cancelled",
+          error: "Run cancelled",
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-cancelled",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("hides run credit usage when the usage feature switch is disabled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-switch-disabled",
+      chatMessages: [
+        {
+          id: "msg-usage-disabled-user",
+          role: "user",
+          content: "Summarize usage without usage UI",
+          runId: "run-usage-disabled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-disabled-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-disabled",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-disabled-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-disabled",
+          usage: {
+            version: 1,
+            totalCredits: 123,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 123,
+                providers: [{ provider: "moonshot", credits: 123 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-switch-disabled",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Usage summary is ready.")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Credit usage 123"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Thread credit usage 123"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows run credit usage with friendly popover details", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip",
+      chatMessages: [
+        {
+          id: "msg-usage-chip-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-usage-chip",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-chip-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-chip",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-chip",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-chip",
+          usage: {
+            version: 1,
+            totalCredits: 24_234,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 234,
+                providers: [{ provider: "moonshot", credits: 234 }],
+              },
+              {
+                kind: "model/kimi-k2.5/tokens.output",
+                credits: 1000,
+                providers: [{ provider: "moonshot", credits: 1000 }],
+              },
+              {
+                kind: "image",
+                credits: 23_000,
+                providers: [{ provider: "gpt-image-2", credits: 23_000 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 24,234");
+    const actions = credit.closest('[data-testid="chat-message-actions"]');
+    expect(actions).not.toBeNull();
+    const copy = within(actions as HTMLElement).getByLabelText("Copy message");
+    expect(
+      copy.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    click(credit);
+    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+
+    fireEvent.pointerEnter(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("23,000").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.queryByText("model/kimi-k2.5/tokens.input"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("moonshot")).not.toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(credit, { button: 0 });
+    expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+      1,
+    );
+    fireEvent.click(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.pointerLeave(credit);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+    });
+
+    click(credit);
+    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+  });
+
+  it("shows generation usage with model names only", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-generation-usage-model-names",
+      chatMessages: [
+        {
+          id: "msg-generation-usage-user",
+          role: "user",
+          content: "Generate image and video usage",
+          runId: "run-generation-usage",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-generation-usage-assistant",
+          role: "assistant",
+          content: "Generated media is ready.",
+          runId: "run-generation-usage",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-generation-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-generation-usage",
+          usage: {
+            version: 1,
+            totalCredits: 1976,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 96,
+                providers: [{ provider: "fal-ai/nano-banana-2", credits: 96 }],
+              },
+              {
+                kind: "video",
+                credits: 1880,
+                providers: [
+                  {
+                    provider: "dreamina-seedance-2-0-260128",
+                    credits: 1880,
+                  },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-generation-usage-model-names",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 1,976");
+    fireEvent.pointerEnter(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(
+        screen.getAllByText("Nano Banana 2").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("96").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Seedance 2.0").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("1,880").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/fal\.? ?ai/iu)).not.toBeInTheDocument();
+      expect(screen.queryByText(/dreamina/iu)).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the latest immutable run usage settlement", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-settlements",
+      chatMessages: [
+        {
+          id: "msg-usage-settlement-user",
+          role: "user",
+          content: "Summarize usage settlements",
+          runId: "run-usage-settlement",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-settlement-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-settlement",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-settlement-first",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-settlement",
+          usage: {
+            version: 1,
+            totalCredits: 12,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-settlement-second",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-settlement",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:05Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+              {
+                kind: "image",
+                credits: 96,
+                providers: [{ provider: "nano-banana-2", credits: 96 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-settlements",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Credit usage 108"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
+  });
+
+  it("shows aggregate thread credit usage from latest run settlements", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-aggregate-usage-chip",
+      chatMessages: [
+        {
+          id: "msg-thread-usage-user-a",
+          role: "user",
+          content: "Start usage run A",
+          runId: "run-thread-usage-a",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-assistant-a",
+          role: "assistant",
+          content: "Run A is ready.",
+          runId: "run-thread-usage-a",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-stale-a",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-a",
+          usage: {
+            version: 1,
+            totalCredits: 40,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 40,
+                providers: [{ provider: "moonshot", credits: 40 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-thread-usage-latest-a",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-a",
+          usage: {
+            version: 1,
+            totalCredits: 55,
+            settledAt: "2026-06-09T10:00:04Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 45,
+                providers: [{ provider: "moonshot", credits: 45 }],
+              },
+              {
+                kind: "connector",
+                credits: 10,
+                providers: [{ provider: "x", credits: 10 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-thread-usage-user-b",
+          role: "user",
+          content: "Start usage run B",
+          runId: "run-thread-usage-b",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-thread-usage-assistant-b",
+          role: "assistant",
+          content: "Run B is ready.",
+          runId: "run-thread-usage-b",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-thread-usage-latest-b",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-b",
+          usage: {
+            version: 1,
+            totalCredits: 70,
+            settledAt: "2026-06-09T10:01:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 70,
+                providers: [{ provider: "gpt-image-2", credits: 70 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-aggregate-usage-chip",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    const threadCredits = await screen.findAllByLabelText(
+      "Thread credit usage 125",
+    );
+    expect(threadCredits.length).toBeGreaterThanOrEqual(2);
+
+    const artifacts = screen.getByLabelText("Open artifacts");
+    const desktopThreadCredit = within(
+      artifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
+    expect(
+      desktopThreadCredit.compareDocumentPosition(artifacts) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const mobileArtifacts = screen.getByLabelText("Open mobile artifacts");
+    const mobileThreadCredit = within(
+      mobileArtifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
+    expect(
+      mobileThreadCredit.compareDocumentPosition(mobileArtifacts) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.pointerEnter(desktopThreadCredit);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Thread credit usage").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("45").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("10").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("70").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("40")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides aggregate thread credit usage until older history is loaded", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-aggregate-usage-paginated-history",
+      historyMessages: [
+        {
+          id: "msg-thread-usage-history-user",
+          role: "user",
+          content: "Start older usage run",
+          runId: "run-thread-usage-history",
+          createdAt: "2026-06-08T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-history-assistant",
+          role: "assistant",
+          content: "Earlier run is ready.",
+          runId: "run-thread-usage-history",
+          createdAt: "2026-06-08T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-history-latest",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-history",
+          usage: {
+            version: 1,
+            totalCredits: 75,
+            settledAt: "2026-06-08T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 75,
+                providers: [{ provider: "moonshot", credits: 75 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-08T10:00:02Z",
+        },
+      ],
+      chatMessages: [
+        {
+          id: "msg-thread-usage-current-user",
+          role: "user",
+          content: "Start current usage run",
+          runId: "run-thread-usage-current",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-current-assistant",
+          role: "assistant",
+          content: "Current run is ready.",
+          runId: "run-thread-usage-current",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-current-latest",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-current",
+          usage: {
+            version: 1,
+            totalCredits: 50,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 50,
+                providers: [{ provider: "gpt-image-2", credits: 50 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-aggregate-usage-paginated-history",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current run is ready.")).toBeInTheDocument();
+      expect(buttonByText("Load history")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Thread credit usage 50"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Thread credit usage 125"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Load history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Earlier run is ready.")).toBeInTheDocument();
+      expect(queryButtonByText("Load history")).not.toBeInTheDocument();
+    });
+
+    const threadCredits = await screen.findAllByLabelText(
+      "Thread credit usage 125",
+    );
+    expect(threadCredits.length).toBeGreaterThanOrEqual(2);
+    const artifacts = screen.getByLabelText("Open artifacts");
+    const threadCredit = within(
+      artifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
+    fireEvent.pointerEnter(threadCredit);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Thread credit usage").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("50").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("keeps connector usage visible when completed work is folded", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-folded-connector",
+      chatMessages: [
+        {
+          id: "msg-usage-folded-user",
+          role: "user",
+          content: "Use the connector",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-folded-work",
+          role: "assistant",
+          content: "Inspecting connector results.",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-folded-final",
+          role: "assistant",
+          content: "Connector usage is ready.",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-folded-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-folded-connector",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:03Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 108,
+                providers: [{ provider: "x", credits: 108 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-usage-folded-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-folded-connector",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-folded-connector",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Connector usage is ready."),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("Inspecting connector results."),
+    ).not.toBeInTheDocument();
+
+    const connectorCredit = await screen.findByLabelText("Credit usage 108");
+    fireEvent.pointerEnter(connectorCredit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("keeps connector usage attached to consecutive assistant runs", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-consecutive-runs",
+      chatMessages: [
+        {
+          id: "msg-usage-consecutive-user",
+          role: "user",
+          content: "Summarize two runs",
+          runId: "run-usage-model",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-consecutive-model-assistant",
+          role: "assistant",
+          content: "Model usage is ready.",
+          runId: "run-usage-model",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-consecutive-model",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-model",
+          usage: {
+            version: 1,
+            totalCredits: 12,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-consecutive-model-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-model",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector-assistant",
+          role: "assistant",
+          content: "Connector usage is ready.",
+          runId: "run-usage-connector",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-connector",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:05Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 108,
+                providers: [{ provider: "x", credits: 108 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-connector",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:06Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-consecutive-runs",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Credit usage 12"),
+    ).resolves.toBeInTheDocument();
+    const connectorCredit = await screen.findByLabelText("Credit usage 108");
+
+    fireEvent.pointerEnter(connectorCredit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("stops a server-queued run and recalls queued follow-up messages", async () => {
     const interrupts: string[] = [];
     const recalls: string[] = [];
@@ -1294,43 +2371,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps completed chat work visible when folding is disabled", async () => {
-    mockChatLifecycle(context, {
-      threadId: "thread-work-folding-disabled",
-      chatMessages: [
-        {
-          role: "user",
-          content: "Audit the launch checklist",
-          runId: "run-work-folding-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "The launch checklist is ready.",
-          runId: "run-work-folding-disabled",
-          runLifecycleEvent: "completed",
-          createdAt: "2026-06-09T10:00:55Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-work-folding-disabled",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Audit the launch checklist"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("The launch checklist is ready."),
-      ).toBeInTheDocument();
-      expect(screen.queryByLabelText("Expand work history")).toBeNull();
-    });
-  });
-
   it("keeps chat work visible while the run is active", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-running",
@@ -1354,7 +2394,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-running",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     await waitFor(() => {
@@ -1366,6 +2405,70 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
+  });
+
+  it("keeps completed chat work folded while a later run is active", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-completed-before-active",
+      activeRunIds: ["run-work-folding-active-later"],
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the earlier launch",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the earlier launch notes.",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The earlier launch summary is ready.",
+          runId: "run-work-folding-completed-before-active",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Investigate the current launch",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the current launch notes.",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:10Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-completed-before-active",
+    });
+
+    const expandButtons = await screen.findAllByLabelText(
+      "Expand work history",
+    );
+    expect(expandButtons).toHaveLength(1);
+    expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
+    expect(
+      screen.getByText("Summarize the earlier launch"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Checking the earlier launch notes.")).toBeNull();
+    expect(
+      screen.getByText("The earlier launch summary is ready."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Investigate the current launch"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Checking the current launch notes."),
+    ).toBeInTheDocument();
   });
 
   it("folds completed chat work and toggles the hidden history", async () => {
@@ -1397,12 +2500,21 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-completed",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
-    expect(expandButton.closest('[data-role="assistant"]')).not.toBeNull();
+    expect(expandButton.querySelectorAll('[aria-hidden="true"]')).toHaveLength(
+      1,
+    );
+    const foldedAssistantGroup = expandButton.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(foldedAssistantGroup).not.toBeNull();
+    expect(foldedAssistantGroup).not.toHaveClass("group");
+    expect(
+      within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
     expect(screen.getByText("Summarize the launch status")).toBeInTheDocument();
     expect(screen.queryByText("Checking launch status.")).toBeNull();
     expect(
@@ -1412,7 +2524,22 @@ describe("chat lifecycle", () => {
     click(expandButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getByText("Checking launch status."),
+      ).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Worked for 55s",
+        "Checking launch status.",
+      );
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Checking launch status.",
+        "Launch status is summarized.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1468,7 +2595,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-completion-marker",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -1541,7 +2667,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-each-run",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     const expandButtons = await screen.findAllByLabelText(
@@ -1550,6 +2675,10 @@ describe("chat lifecycle", () => {
     expect(expandButtons).toHaveLength(2);
     expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
     expect(expandButtons[1]).toHaveTextContent("Worked for 55s");
+    const secondAssistantGroup = expandButtons[1]!.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(secondAssistantGroup).not.toBeNull();
     expect(screen.getByText("Summarize the first launch")).toBeInTheDocument();
     expect(screen.queryByText("Checking the first launch notes.")).toBeNull();
     expect(
@@ -1572,8 +2701,23 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the second launch"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Checking the second launch notes."),
+        within(secondAssistantGroup!).getByText(
+          "Checking the second launch notes.",
+        ),
       ).toBeInTheDocument();
+      expect(
+        within(secondAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Worked for 55s",
+        "Checking the second launch notes.",
+      );
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Checking the second launch notes.",
+        "The second launch summary is ready.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1604,7 +2748,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-user-final-only",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     await waitFor(() => {
@@ -1631,7 +2774,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-work-folding-single-message",
-      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
     });
 
     await waitFor(() => {
@@ -1773,7 +2915,10 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, { lastReadMessageId: null, changed: false });
+      return respond(200, {
+        lastReadMessageId: null,
+        unreads: [],
+      });
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
@@ -1783,6 +2928,101 @@ describe("chat lifecycle", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    });
+  });
+
+  it("renders streaming assistant deltas until the server message arrives", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000706";
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const messageId = "f819e443-a3fc-5990-920b-5eb8e51e038e";
+
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: [runId],
+      chatMessages: [
+        {
+          id: "msg-stream-user",
+          role: "user",
+          content: "Start the streamed answer",
+          runId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageDelta:${threadId}`,
+        ),
+      ).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: "partial ",
+    });
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: "answer",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("partial answer")).toBeInTheDocument();
+    });
+
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (!query.sinceId) {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-stream-user",
+              role: "user",
+              content: "Start the streamed answer",
+              runId,
+              createdAt: "2026-06-09T10:00:00Z",
+            },
+          ],
+          hasHistoryBefore: false,
+        });
+      }
+      return respond(200, {
+        messages: [
+          {
+            id: messageId,
+            role: "assistant",
+            content: "partial answer",
+            runId,
+            runEventId: "msg_01",
+            createdAt: "2026-06-09T10:00:01Z",
+          },
+        ],
+      });
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("partial answer")).toHaveLength(1);
+    });
+
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: " ignored",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("partial answer ignored")).toBeNull();
     });
   });
 
@@ -1987,7 +3227,52 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
+      expect(screen.getByText("Rename chat")).toBeInTheDocument();
+      expect(screen.getByText("F2")).toBeInTheDocument();
     });
+  });
+
+  it("opens the current chat rename dialog with F2", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2" });
+
+    let dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
+
+    click(buttonByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Rename chat" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "F2" });
+
+    dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -2076,10 +3361,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows linked schedules from the chat header", async () => {
-    mockScheduleThread();
+  it("shows linked automations from the chat header", async () => {
+    mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
@@ -2098,10 +3383,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("opens a linked schedule detail from the chat header", async () => {
-    mockScheduleThread();
+  it("opens a linked automation detail from the chat header", async () => {
+    mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
 
     click(await screen.findByLabelText("Automations"));
 
@@ -2118,27 +3403,27 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows scheduled run messages as schedule links in chat history", async () => {
-    const threadId = "thread-scheduled-message";
-    const scheduleId = "f0000001-0000-4000-a000-000000000721";
+  it("shows automation run messages as automation links in chat history", async () => {
+    const threadId = "thread-automation-message";
+    const automationId = "f0000001-0000-4000-a000-000000000721";
     mockChatLifecycle(context, {
       threadId,
-      threadTitle: "Scheduled message",
+      threadTitle: "Automation message",
       chatMessages: [
         {
-          id: "msg-scheduled-user",
+          id: "msg-automation-user",
           role: "user",
           content: "Review launch risks",
-          scheduleId,
-          scheduleSnapshot: {
-            id: scheduleId,
+          automationId,
+          automationSnapshot: {
+            id: automationId,
             title: "Launch risk review",
             description: "Launch review",
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
-          id: "msg-scheduled-assistant",
+          id: "msg-automation-assistant",
           role: "assistant",
           content: "I'll review the launch risks on schedule.",
           createdAt: "2026-06-09T10:00:01Z",
@@ -2149,11 +3434,11 @@ describe("chat lifecycle", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled message")).toBeInTheDocument();
+      expect(screen.getByText("Automation message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
         screen.getByLabelText("Open automation Launch review"),
-      ).toHaveAttribute("href", `/automations/${scheduleId}`);
+      ).toHaveAttribute("href", `/automations/${automationId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });
@@ -2221,7 +3506,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(
         screen.getByLabelText(`Message template ${presentationTemplate.title}`),
-      ).toHaveTextContent("Slides");
+      ).toHaveTextContent("Presentation");
       expect(
         screen.getByLabelText(`Message template ${videoTemplate.nameEn}`),
       ).toHaveTextContent("Video");
@@ -2559,6 +3844,135 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("sends inline feedback with selected template and draft attachments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const templateChipLabel = presentationTemplateLabel(template);
+    const assistantReply = "The launch summary needs more source context.";
+    const sentBodies: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: "msg-feedback-attachment-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-attachment",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-attachment-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-attachment",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentBodies.push(body);
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-feedback-brief",
+      filename: "feedback-brief.txt",
+      contentType: "text/plain",
+      size: 14,
+      url: "https://cdn.vm7.io/artifacts/test/upload-feedback-brief/feedback-brief.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineFeedback]: true,
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(`Select template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${templateChipLabel}`),
+      ).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["feedback notes"], "feedback-brief.txt", {
+        type: "text/plain",
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Remove feedback-brief.txt"),
+      ).toBeInTheDocument();
+    });
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
+
+    await fill(
+      await screen.findByPlaceholderText("What should change about this?"),
+      "Use the attached brief as supporting context.",
+    );
+    expect(
+      screen.getByLabelText(`Remove template ${templateChipLabel}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Remove feedback-brief.txt"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    await waitFor(() => {
+      expect(sentBodies[0]).toMatchObject({
+        attachFiles: [
+          {
+            id: "upload-feedback-brief",
+            filename: "feedback-brief.txt",
+            contentType: "text/plain",
+            size: 14,
+          },
+        ],
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            designSystemId: template.designSystemId,
+            templateId: template.templateId,
+          },
+        },
+        modelSelection: {
+          modelProviderId: "00000000-0000-4000-8000-000000000000",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      });
+    });
+    const sentBody = sentBodies[0];
+    if (!sentBody) {
+      throw new Error("feedback send body not captured");
+    }
+    expect(sentBody?.prompt).toContain(
+      "Use the attached brief as supporting context.",
+    );
+  });
+
   it("keeps committed inline feedback while drafting another selected comment", async () => {
     const user = userEvent.setup();
     const assistantReply = "The launch summary needs clearer risk ownership.";
@@ -2620,11 +4034,6 @@ describe("chat lifecycle", () => {
     // an empty note, taking the composer position nearest Send.
     expect(comments[0]).toHaveValue("Assign each risk to an owner.");
     expect(comments[1]).toHaveValue("");
-    expect(
-      screen.getByText(
-        "Select more text and click Provide feedback to add another comment",
-      ),
-    ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
     await user.click(screen.getAllByLabelText("Remove feedback")[1]);
@@ -2709,7 +4118,16 @@ describe("chat lifecycle", () => {
       "What should change about this?",
     )[0];
     expect(editingComment).toHaveValue("Assign each risk to an owner.");
-    await fill(editingComment, "Assign named owners to each launch risk.");
+    await user.click(editingComment);
+    await user.keyboard("{Control>}a{/Control}");
+    await user.keyboard("Assign named owners to each launch risk.");
+    expect(editingComment).toHaveFocus();
+    expect(editingComment).toHaveValue(
+      "Assign named owners to each launch risk.",
+    );
+    expect(
+      screen.getAllByPlaceholderText("What should change about this?")[1],
+    ).toHaveValue("Mention launch dates before the risk summary.");
 
     await user.click(screen.getByLabelText("Send feedback"));
 
@@ -2803,7 +4221,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
     });
 
     await waitFor(() => {
@@ -2895,7 +4312,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
     });
 
     await waitFor(() => {
@@ -2971,6 +4387,38 @@ describe("chat lifecycle", () => {
         "false",
       );
     });
+  });
+
+  it("opens the Computer Use download dialog from the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Connect your computer")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Download Zero Computer Use for macOS, then open it to let Zero use your desktop.",
+      ),
+    ).toBeInTheDocument();
+    expect(linkByText("Download for macOS")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
   });
 
   it("does not auto-select the only online Computer Use host", async () => {
@@ -3273,76 +4721,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("sends readable assistant content to audio output", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "audio-output-thread";
-    const runId = "a0000000-0000-4000-a000-000000000401";
-    const assistantReply = [
-      "## Launch notes",
-      "- **Ship** the preview",
-      "- [Open dashboard](https://example.com)",
-      "",
-      "```ts",
-      "const hidden = true;",
-      "```",
-    ].join("\n");
-    let capturedTtsBody: unknown = null;
-
-    context.mocks.browser.audioContext();
-    context.mocks.http.post("*/api/zero/voice-io/tts", async ({ request }) => {
-      capturedTtsBody = await request.json();
-      return new Response(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(new Uint8Array([0, 0, 1, 0, 2, 0]));
-            controller.close();
-          },
-        }),
-        { headers: { "Content-Type": "audio/pcm" } },
-      );
-    });
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Audio output",
-      chatMessages: [
-        {
-          id: "msg-audio-output-user",
-          role: "user",
-          content: "Read the launch notes",
-          runId,
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-audio-output-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId,
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.AudioOutput]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch notes")).toBeInTheDocument();
-      expect(screen.getByLabelText("Read aloud")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Read aloud"));
-
-    await waitFor(() => {
-      expect(capturedTtsBody).toStrictEqual({
-        text: "Launch notes\nShip the preview\nOpen dashboard",
-      });
-      expect(screen.getByLabelText("Read aloud")).toBeInTheDocument();
-    });
-  });
-
   it("shows billing recovery guidance when credits are depleted", async () => {
     const threadId = "failed-guidance-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
@@ -3589,7 +4967,6 @@ describe("chat lifecycle", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
             running: true,
           },
           {
@@ -3598,13 +4975,11 @@ describe("chat lifecycle", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:01:00Z",
             updatedAt: "2026-03-10T00:01:00Z",
-            isRead: true,
             running: false,
           },
         ],
         hasMore: false,
         nextCursor: null,
-        totalCount: 2,
       });
     });
     context.mocks.api(
@@ -3675,7 +5050,7 @@ describe("chat lifecycle", () => {
         selectedModel: null,
         triggerSource: "web",
         triggerAgentName: null,
-        scheduleId: null,
+        automationId: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

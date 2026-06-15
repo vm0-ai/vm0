@@ -57,6 +57,24 @@ export interface ChatMessageRecommendedFollowup {
 
 export type ChatMessageRecommendedFollowups = ChatMessageRecommendedFollowup[];
 
+export interface ChatMessageUsageProviderBreakdown {
+  readonly provider: string;
+  readonly credits: number;
+}
+
+export interface ChatMessageUsageKindBreakdown {
+  readonly kind: string;
+  readonly credits: number;
+  readonly providers: readonly ChatMessageUsageProviderBreakdown[];
+}
+
+export interface ChatMessageUsagePayload {
+  readonly version: 1;
+  readonly totalCredits: number;
+  readonly settledAt: string;
+  readonly breakdown: readonly ChatMessageUsageKindBreakdown[];
+}
+
 export interface ChatMessageAttachFileMetadata {
   readonly id: string;
   readonly filename: string;
@@ -67,7 +85,7 @@ export interface ChatMessageAttachFileMetadata {
 
 export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
-export interface ChatMessageScheduleSnapshot {
+export interface ChatMessageAutomationSnapshot {
   readonly id: string;
   readonly title: string;
   readonly description: string | null;
@@ -115,6 +133,7 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
+    usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
@@ -127,15 +146,14 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Set when this user message was posted by a firing schedule rather than
-    // typed by a human. Historical rows reference the dropped
-    // zero_agent_schedules ids; `schedule_snapshot` preserves the basic
-    // schedule details at send time so the message keeps rendering its label.
-    // `schedule_title` is retained for legacy rows and fallback display.
-    scheduleId: uuid("schedule_id"),
-    scheduleTitle: text("schedule_title"),
-    scheduleSnapshot:
-      jsonb("schedule_snapshot").$type<ChatMessageScheduleSnapshot>(),
+    // Set when this user message was posted by a firing automation rather than
+    // typed by the user; the snapshot preserves the basic display details at
+    // send time so the bubble keeps its label after an edit/delete.
+    automationId: uuid("automation_id"),
+    automationTitle: text("automation_title"),
+    automationSnapshot: jsonb(
+      "automation_snapshot",
+    ).$type<ChatMessageAutomationSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),
@@ -162,6 +180,9 @@ export const chatMessages = pgTable(
         table.createdAt,
       ),
       index("idx_chat_messages_run_id").on(table.runId),
+      index("chat_messages_usage_run_id_idx")
+        .on(table.runId)
+        .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
         table.revokesMessageId,
       ),

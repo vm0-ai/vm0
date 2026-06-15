@@ -12,6 +12,7 @@ describe("builtin firewall catalog", () => {
     expect(catalog.firewalls.github?.apis[0]?.base).toBe(
       "https://api.github.com",
     );
+    expect(catalog.firewalls.fal).not.toHaveProperty("label");
     expect(
       catalog.firewalls["model-provider:openai-api-key"]?.apis[0]?.base,
     ).toBe("https://api.openai.com/v1/responses");

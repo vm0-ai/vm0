@@ -1,5 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, eq, inArray, lte } from "drizzle-orm";
@@ -10,7 +11,7 @@ import { now, nowDate } from "../../external/time";
 import { settle } from "../../utils";
 import {
   postAutomationUserMessage,
-  resolveScheduleChatThreadModelPin,
+  resolveAutomationChatThreadModelPin,
 } from "../../routes/zero-chat-messages";
 import {
   resolveModelFirstProviderAdmission,
@@ -21,6 +22,7 @@ import {
   automationRowToTimeAutomation,
   DefaultInterpreter,
 } from "./default-interpreter";
+import { suspendOrgMemberAutomations } from "./suspend";
 import { TimeTrigger } from "./time-trigger";
 
 const log = logger("api:automations:trigger-poller");
@@ -30,13 +32,18 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 /** The time-trigger kinds the poller scans; webhook triggers are not time-driven. */
 const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
 
+// Upper bound on triggers claimed per cron tick. Loop triggers are perpetually
+// due, so a busy workspace can have many simultaneously due at once; 200 covers
+// real load with headroom, and anything beyond is still due on the next tick.
+const DUE_BATCH_LIMIT = 200;
+
 type TriggerRow = typeof automationTriggers.$inferSelect;
 
 /**
  * The trigger row joined with its owning automation: everything the poller needs
  * to claim the recurrence (trigger columns) and build the run (automation
- * identity + instruction + linked thread). Mirrors the schedule row the live
- * poller reads, split across the two events-first tables.
+ * identity + instruction + linked thread), split across the two
+ * events-first tables.
  */
 interface DueTrigger {
   readonly trigger: TriggerRow;
@@ -51,6 +58,19 @@ interface DueTrigger {
     readonly instruction: string;
     readonly appendSystemPrompt: string | null;
   };
+}
+
+interface DueTriggerRow {
+  readonly trigger: TriggerRow;
+  readonly automationId: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
 }
 
 interface ExecuteDueTriggersResult {
@@ -88,6 +108,72 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
+function dueTriggerFromRow(row: DueTriggerRow): DueTrigger {
+  return {
+    trigger: row.trigger,
+    automation: {
+      id: row.automationId,
+      agentId: row.agentId,
+      orgId: row.orgId,
+      userId: row.userId,
+      chatThreadId: row.chatThreadId,
+      name: row.name,
+      description: row.description,
+      instruction: row.instruction,
+      appendSystemPrompt: row.appendSystemPrompt,
+    },
+  };
+}
+
+async function hasOrgMembership(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<boolean> {
+  const [membership] = await db
+    .select({ userId: orgMembersCache.userId })
+    .from(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.orgId, args.orgId),
+        eq(orgMembersCache.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return membership !== undefined;
+}
+
+async function suspendIfOwnerMissingMembership(
+  db: Db,
+  due: DueTrigger,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const ownerIsMember = await hasOrgMembership(db, {
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  signal.throwIfAborted();
+
+  if (ownerIsMember) {
+    return false;
+  }
+
+  log.warn("Suspending trigger: automation owner is no longer an org member", {
+    triggerId: due.trigger.id,
+    automationId: due.automation.id,
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  await suspendOrgMemberAutomations(db, {
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  signal.throwIfAborted();
+  return true;
+}
+
 function isRunTriggerFailure(error: unknown): error is RunTriggerFailure {
   return (
     typeof error === "object" &&
@@ -120,7 +206,7 @@ function isInsufficientCreditsFailure(error: unknown): boolean {
 // Resolve the model context for a triggered run: the linked thread's model pin
 // (org default if unpinned) and the admitted provider. No user is present to
 // receive a model-config / credits error, so failures surface as run_error
-// (normalized to 400) feeding consecutiveFailures — the schedule poller's policy.
+// (normalized to 400) feeding consecutiveFailures.
 async function resolveTriggerRunModelContext(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -128,7 +214,7 @@ async function resolveTriggerRunModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<TriggerRunModelContext> {
-  const threadModelPin = await resolveScheduleChatThreadModelPin({
+  const threadModelPin = await resolveAutomationChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
@@ -301,9 +387,6 @@ const runTriggerNow$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        // Time fires record automation provenance; trigger_source follows
-        // (#17307). Historical rows may still carry "schedule" until the
-        // backfill migration lands.
         triggerSource: "automation",
         chatThreadId: runInput.chatThreadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
@@ -322,7 +405,7 @@ const runTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    // The schedule chip: the snapshot keeps the label rendering after edits
+    // The automation chip: the snapshot keeps the label rendering after edits
     // or deletes.
     await postAutomationUserMessage({
       db,
@@ -331,8 +414,8 @@ const runTriggerNow$ = command(
       runId: result.body.runId,
       prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
-      scheduleTitle: automation.name,
-      scheduleSnapshot: {
+      automationTitle: automation.name,
+      automationSnapshot: {
         id: automation.id,
         title: automation.name,
         description: automation.description,
@@ -362,16 +445,13 @@ const runTriggerNow$ = command(
 );
 
 /**
- * Dormant time poller over `automation_triggers` — the events-first counterpart
- * of `executeDueSchedules$`, built for the (later, gated) cutover and NOT wired
- * to any live cron route in this slice. It mirrors the schedule poller's
- * semantics 1:1: scan enabled time triggers whose `next_run_at` is due, skip any
+ * Time poller over `automation_triggers`, run from the execute-automations
+ * cron route: scan enabled time triggers whose `next_run_at` is due, skip any
  * whose previous run is still active, optimistic-lock claim the due row (clears
  * `next_run_at`; disables once-triggers), then create the run via the default
  * interpreter (tagged with automation + trigger provenance, carrying the
  * trigger completion callback that advances the recurrence) and auto-disable a
- * trigger after consecutive pre-run failures. Nothing here changes live
- * execution; `executeDueSchedules$` remains the only schedule executor.
+ * trigger after consecutive pre-run failures.
  */
 export const executeDueTriggers$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteDueTriggersResult> => {
@@ -393,7 +473,6 @@ export const executeDueTriggers$ = command(
         description: automations.description,
         instruction: automations.instruction,
         appendSystemPrompt: automations.appendSystemPrompt,
-        automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
       .innerJoin(
@@ -402,44 +481,35 @@ export const executeDueTriggers$ = command(
       )
       .where(
         and(
+          eq(automations.enabled, true),
           eq(automationTriggers.enabled, true),
           inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
           lte(automationTriggers.nextRunAt, currentTime),
         ),
       )
-      .limit(10);
+      // Deliberately NOT ordered by next_run_at: that would prioritize the
+      // oldest rows, and historically the oldest were permanently-due "zombies"
+      // (disabled automations whose loop triggers stayed scheduled), which
+      // starved the batch (#17546). The disable-clears-next_run_at cure removes
+      // those, so an unordered, generously-capped batch can't starve — anything
+      // beyond the cap is still due on the next tick.
+      .limit(DUE_BATCH_LIMIT);
     signal.throwIfAborted();
 
     let executed = 0;
-    let skipped = 0;
+    let skippedActiveRun = 0;
+    let skippedClaimRace = 0;
+    let skippedMissingMembership = 0;
+    let preRunFailures = 0;
     const timeTrigger = new TimeTrigger();
 
     for (const row of rows) {
-      // A disabled automation suspends all its triggers without touching their
-      // own enabled flag (mirrors the webhook dispatch's automation gate).
-      if (!row.automationEnabled) {
-        log.debug("Skipping trigger: automation disabled", {
-          triggerId: row.trigger.id,
-          automationId: row.automationId,
-        });
-        skipped++;
+      const due = dueTriggerFromRow(row);
+
+      if (await suspendIfOwnerMissingMembership(db, due, signal)) {
+        skippedMissingMembership++;
         continue;
       }
-
-      const due: DueTrigger = {
-        trigger: row.trigger,
-        automation: {
-          id: row.automationId,
-          agentId: row.agentId,
-          orgId: row.orgId,
-          userId: row.userId,
-          chatThreadId: row.chatThreadId,
-          name: row.name,
-          description: row.description,
-          instruction: row.instruction,
-          appendSystemPrompt: row.appendSystemPrompt,
-        },
-      };
 
       if (row.trigger.lastRunId) {
         const [lastRun] = await db
@@ -454,7 +524,7 @@ export const executeDueTriggers$ = command(
             triggerId: row.trigger.id,
             automationId: row.automationId,
           });
-          skipped++;
+          skippedActiveRun++;
           continue;
         }
       }
@@ -471,7 +541,7 @@ export const executeDueTriggers$ = command(
           triggerId: row.trigger.id,
           automationId: row.automationId,
         });
-        skipped++;
+        skippedClaimRace++;
         continue;
       }
 
@@ -481,19 +551,52 @@ export const executeDueTriggers$ = command(
       signal.throwIfAborted();
       if (!runResult.ok) {
         await recordTriggerPreRunFailure(db, due, runResult.error, signal);
-        skipped++;
+        preRunFailures++;
         continue;
       }
       const result = runResult.value;
       if (result.kind !== "ok") {
         await recordTriggerPreRunFailure(db, due, result, signal);
-        skipped++;
+        preRunFailures++;
         continue;
       }
       executed++;
     }
 
-    log.debug("Executed due triggers", { executed, skipped });
+    const skipped =
+      skippedActiveRun +
+      skippedClaimRace +
+      skippedMissingMembership +
+      preRunFailures;
+    // Per-tick metrics with the skip reason broken out (#17546): the previous
+    // single "skipped" total hid whether the batch was draining real work or
+    // just churning on active-run/claim-race rows. Routine diagnostic, so debug
+    // per the API logging policy (info-level API logs are disallowed).
+    log.debug("execute-automations tick complete", {
+      dueCount: rows.length,
+      executed,
+      skippedActiveRun,
+      skippedClaimRace,
+      skippedMissingMembership,
+      preRunFailures,
+    });
+    if (rows.length >= DUE_BATCH_LIMIT && executed === 0) {
+      // A full batch that claimed nothing is the starvation fingerprint
+      // (#17546): the disable-clears-next_run_at cure should prevent it, so if
+      // it recurs surface it as actionable (warn is permitted where info is
+      // not). Active-run/claim-race rows are normally a small minority, so a
+      // full batch yielding zero runs points at a systemic stall.
+      log.warn(
+        "execute-automations claimed nothing from a full batch; investigate poller starvation",
+        {
+          dueCount: rows.length,
+          skippedActiveRun,
+          skippedClaimRace,
+          skippedMissingMembership,
+          preRunFailures,
+        },
+      );
+    }
     return { executed, skipped };
   },
 );

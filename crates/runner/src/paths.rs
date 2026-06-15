@@ -337,6 +337,10 @@ pub(crate) fn workspace_image_cache_lock_path(lock_dir: &Path, cache_key: &str) 
     lock_dir.join(format!("workspace-image-cache-{cache_key}.lock"))
 }
 
+pub(crate) fn workspace_image_cache_capacity_lock_path(lock_dir: &Path) -> PathBuf {
+    lock_dir.join("workspace-image-cache-capacity.lock")
+}
+
 /// Paths for a rootfs build output, keyed by rootfs hash.
 ///
 /// Layout: `<images_dir>/<rootfs_hash>/rootfs.ext4`

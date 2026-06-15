@@ -101,24 +101,16 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(
-      false,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
-      true,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -130,12 +122,16 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
   });
 
-  it("should let individuals opt in to completed work folding", () => {
+  it("should let individuals opt in to chat PR tracking and inline feedback", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      overrides: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+      overrides: {
+        [FeatureSwitchKey.ChatGithubPrTracking]: true,
+        [FeatureSwitchKey.ChatInlineFeedback]: true,
+      },
     });
-    expect(states[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(true);
+    expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
+    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

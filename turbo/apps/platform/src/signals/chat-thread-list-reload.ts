@@ -25,7 +25,8 @@ export const reloadChatThreads$ = command(({ set }) => {
  * Subscribe to the user-level `threadListChanged` topic and trigger a
  * sidebar reload on every signal. Server publishes this on any mutation
  * that alters the thread list shape (create, delete, new message, run
- * create/update, title update, mark-read).
+ * create/update, title update). Mark-read intentionally syncs through the
+ * unread snapshot returned by the mark-read response.
  *
  * Loop command returns false so it keeps listening until the signal aborts.
  * Isolated in its own file to avoid an import cycle when `route.ts` wires

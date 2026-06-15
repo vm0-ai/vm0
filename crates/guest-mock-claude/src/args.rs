@@ -1,5 +1,6 @@
 /// Parsed command-line arguments.
 pub(crate) struct ParsedArgs {
+    pub(crate) input_format: String,
     pub(crate) output_format: String,
     pub(crate) prompt: String,
 }
@@ -14,6 +15,7 @@ fn skip_flag_value(args: &[String], i: &mut usize) {
 
 /// Parse command-line arguments (matching the real Claude CLI interface).
 pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
+    let mut input_format = "text".to_string();
     let mut output_format = "text".to_string();
     let mut remaining: Vec<String> = Vec::new();
 
@@ -22,6 +24,14 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
         let arg = args.get(i).map(String::as_str).unwrap_or_default();
 
         match arg {
+            "--input-format" => {
+                if let Some(val) = args.get(i + 1) {
+                    input_format = val.clone();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
             "--output-format" => {
                 if let Some(val) = args.get(i + 1) {
                     output_format = val.clone();
@@ -30,7 +40,7 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
-            "--resume" | "--append-system-prompt" => {
+            "--resume" | "--append-system-prompt" | "--effort" => {
                 // Parsed for CLI compat but not used by mock-claude
                 skip_flag_value(args, &mut i);
             }
@@ -50,7 +60,11 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                 // Skip the flag and its single JSON value argument
                 skip_flag_value(args, &mut i);
             }
-            "--print" | "--verbose" | "--dangerously-skip-permissions" => {
+            "--print"
+            | "--verbose"
+            | "--dangerously-skip-permissions"
+            | "--include-partial-messages"
+            | "--replay-user-messages" => {
                 i += 1;
             }
             "--" => {
@@ -73,6 +87,7 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
     let prompt = remaining.into_iter().last().unwrap_or_default();
 
     ParsedArgs {
+        input_format,
         output_format,
         prompt,
     }
@@ -86,7 +101,19 @@ mod tests {
     fn parse_args_empty() {
         let args: Vec<String> = vec![];
         let result = parse_args(&args);
+        assert_eq!(result.input_format, "text");
         assert_eq!(result.output_format, "text");
+        assert!(result.prompt.is_empty());
+    }
+
+    #[test]
+    fn parse_args_input_format() {
+        let args: Vec<String> = vec!["--input-format", "stream-json"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.input_format, "stream-json");
         assert!(result.prompt.is_empty());
     }
 
@@ -105,9 +132,12 @@ mod tests {
         let args: Vec<String> = vec![
             "--output-format",
             "stream-json",
+            "--input-format",
+            "stream-json",
             "--print",
             "--verbose",
             "--dangerously-skip-permissions",
+            "--include-partial-messages",
             "--resume",
             "session-abc",
             "--append-system-prompt",
@@ -118,6 +148,7 @@ mod tests {
         .map(String::from)
         .collect();
         let result = parse_args(&args);
+        assert_eq!(result.input_format, "stream-json");
         assert_eq!(result.output_format, "stream-json");
         assert_eq!(result.prompt, "ls -la");
     }
@@ -155,6 +186,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_input_format_missing_value() {
+        let args: Vec<String> = vec!["--input-format".to_string()];
+        let result = parse_args(&args);
+        assert_eq!(result.input_format, "text");
+    }
+
+    #[test]
+    fn parse_args_replay_user_messages_skipped() {
+        let args: Vec<String> = vec!["--replay-user-messages", "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
     fn parse_args_resume_skipped() {
         let args: Vec<String> = vec!["--resume", "session-123", "echo hi"]
             .into_iter()
@@ -178,6 +226,16 @@ mod tests {
     #[test]
     fn parse_args_settings_skipped() {
         let args: Vec<String> = vec!["--settings", r#"{"permissions":{}}"#, "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
+    fn parse_args_effort_skipped() {
+        let args: Vec<String> = vec!["--effort", "low", "echo hi"]
             .into_iter()
             .map(String::from)
             .collect();

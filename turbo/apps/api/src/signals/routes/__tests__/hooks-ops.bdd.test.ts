@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-} from "@vm0/api-contracts/contracts/automations-v2";
+  automationsByRefContract,
+  automationsMainContract,
+} from "@vm0/api-contracts/contracts/automations";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
@@ -47,11 +47,11 @@ function reportErrorClient() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(automationsV2MainContract);
+  return setupApp({ context })(automationsMainContract);
 }
 
 function automationsByRefClient() {
-  return setupApp({ context })(automationsV2ByRefContract);
+  return setupApp({ context })(automationsByRefContract);
 }
 
 function headersFor(actor: ApiTestUser | null): {

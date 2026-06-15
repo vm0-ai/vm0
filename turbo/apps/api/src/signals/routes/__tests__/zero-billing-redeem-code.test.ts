@@ -18,14 +18,31 @@ const ATOM_M2M_TOKEN = "mt_test_atom";
 interface SessionFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly email: string;
 }
 
 function setAdminSession(): SessionFixture {
+  const userId = `user_${randomUUID()}`;
   const fixture = {
-    userId: `user_${randomUUID()}`,
+    userId,
     orgId: `org_${randomUUID()}`,
+    email: `${userId}@example.test`,
   };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [
+      {
+        id: fixture.userId,
+        primaryEmailAddressId: `email_${fixture.userId}`,
+        emailAddresses: [
+          {
+            id: `email_${fixture.userId}`,
+            emailAddress: fixture.email,
+          },
+        ],
+      },
+    ],
+  });
   return fixture;
 }
 
@@ -327,6 +344,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     expect(requestedAuthorization).toBe(`Bearer ${ATOM_M2M_TOKEN}`);
     expect(requestedBody).toStrictEqual({
       code: "YUMA-123",
+      email: fixture.email,
       org_id: fixture.orgId,
     });
   });

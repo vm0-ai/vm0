@@ -27,11 +27,6 @@ pub struct FirecrackerProcessIdentity {
     pub base_dir: Option<PathBuf>,
 }
 
-/// Info extracted from a runner process cmdline.
-pub struct RunnerProcessInfo {
-    pub pid: u32,
-}
-
 /// Info extracted from a firecracker process cmdline.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirecrackerProcessInfo {
@@ -60,7 +55,6 @@ pub struct DnsmasqProcessInfo {
 
 /// All discovered process info from a single `/proc` scan.
 pub struct DiscoveredProcesses {
-    pub runners: Vec<RunnerProcessInfo>,
     pub firecrackers: Vec<FirecrackerProcessInfo>,
     pub mitmdumps: Vec<MitmproxyProcessInfo>,
     pub dnsmasqs: Vec<DnsmasqProcessInfo>,

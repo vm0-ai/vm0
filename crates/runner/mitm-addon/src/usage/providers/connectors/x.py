@@ -41,9 +41,11 @@ _HTTP_STATUS_REDIRECT_MIN = 300
 
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
-# Streams deliver one JSON object per line, possibly for hours; the responseheaders
-# hook registers an incremental NDJSON parser as the stream callback so we never
-# buffer the response body.
+# Streams deliver one JSON object per line, possibly for hours.  The shared
+# response streaming wrapper remains the mitmproxy stream callback: it keeps the
+# capped forensic stream_buffer and, when a parser is configured, feeds the X
+# NDJSON parser incrementally so billing extraction does not require buffering
+# the full response body.
 _STREAM_ENDPOINTS = frozenset(
     {
         "/2/tweets/search/stream",
@@ -296,8 +298,10 @@ class _NdjsonExtractor:
 
         {"data": {...tweet...}, "includes": {...}, "matching_rules": [...]}
 
-    ``feed`` processes raw response bytes incrementally so we never buffer the
-    full body. ``state`` is a dict that accumulates:
+    ``feed`` processes raw response bytes incrementally so billing extraction
+    does not buffer the full body.  The shared response streaming wrapper may
+    still maintain a capped forensic ``stream_buffer`` independently. ``state``
+    is a dict that accumulates:
 
     - ``data_count``: int — number of lines whose top-level ``data`` is a
       dict (one tweet per line).  Lines whose ``data`` is an array or
@@ -682,20 +686,22 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         from ``/2/tweets/counts/*`` endpoints, where ``data`` carries time
         buckets, not tweets.
 
-    For X NDJSON streaming endpoints, the responseheaders hook registers an
-    incremental parser that populates ``flow.metadata[metadata_keys.X_NDJSON_STATE]``
-    as response bytes arrive.  When that state is present we return its
-    accumulated counters directly (``body_format: "ndjson"``) and skip
-    the legacy buffered fallback, since stream buffers are
-    capped at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
-    For streams ``body_truncated`` is always ``False`` — the incremental
-    parser saw every byte even if the forensic ``stream_buffer`` filled up.
+    For X NDJSON streaming endpoints with a configured parser, the shared
+    response streaming wrapper feeds an incremental parser that populates
+    ``flow.metadata[metadata_keys.X_NDJSON_STATE]`` as response bytes arrive.
+    When that state is present we return its accumulated counters directly
+    (``body_format: "ndjson"``) and skip the legacy buffered fallback, since
+    forensic stream buffers are capped at ``STREAM_BUFFER_LIMIT`` and don't
+    contain the full response. For streams, ``body_truncated`` is always
+    ``False`` because NDJSON billing does not parse from that capped capture
+    buffer; decoder/parser completeness is reported separately from forensic
+    buffer truncation.
 
-    Failures (truncated buffer, malformed JSON, unexpected shape) leave
-    ``body_parsed=False`` and emit no count fields, so analysis can
-    distinguish "field absent in response" from "we couldn't parse it".
-    Incremental parser failures may also include ``parse_error`` for proxy
-    audit logs.
+    Buffered JSON fallback failures (truncated buffer, malformed JSON,
+    unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
+    analysis can distinguish "field absent in response" from "we couldn't
+    parse it". NDJSON stream parser failures are reported through
+    ``ndjson_lines_failed``.
     """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))
@@ -706,10 +712,9 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     # intentionally tiny (64 KB) for streams and does NOT hold the body.
     #
     # Override body_truncated to False: the stream_buffer-derived truncated
-    # flag reflects the forensic buffer cap, but the NDJSON parser processed
-    # every chunk regardless of that cap, so billing counts are complete.
-    # Reporting body_truncated=True here would misleadingly suggest the
-    # counts are unreliable when they are not.
+    # flag reflects only the forensic capture cap, while NDJSON billing uses
+    # parser state instead of bytes(buf). Reporting body_truncated=True here
+    # would misleadingly tie billing reliability to capture truncation.
     ndjson_state = flow.metadata.get(metadata_keys.X_NDJSON_STATE)
     if ndjson_state is not None:
         result["body_parsed"] = True

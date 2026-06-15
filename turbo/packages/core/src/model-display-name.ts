@@ -33,6 +33,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Kimi / Moonshot
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
+  "kimi-k2.7-code": "Kimi K2.7 Code",
   "kimi-k2-thinking": "Kimi K2 Thinking",
   "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
   "moonshotai/kimi-k2.6": "Kimi K2.6",
@@ -52,6 +53,23 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "gpt-5.4-mini": "GPT-5.4 Mini",
   "gpt-5.3-codex": "GPT-5.3 Codex",
   "gpt-5.2": "GPT-5.2",
+  // Built-in image generation
+  "nano-banana-2": "Nano Banana 2",
+  "fal-ai/nano-banana-2": "Nano Banana 2",
+  "fal-ai/flux-pro/v1.1": "Flux Pro v1.1",
+  "fal-ai/flux-pro/v1.1-ultra": "Flux Pro v1.1 Ultra",
+  "fal-ai/qwen-image": "Qwen Image",
+  "fal-ai/bytedance/seedream/v4/text-to-image": "Seedream 4",
+  // Built-in video generation
+  "dreamina-seedance-2-0-260128": "Seedance 2.0",
+  "dreamina-seedance-2-0-fast-260128": "Seedance 2.0 Fast",
+  "seedance-2-0-260128": "Seedance 2.0",
+  "seedance-2-0-fast-260128": "Seedance 2.0 Fast",
+  "seedance-1-5-pro-251215": "Seedance 1.5 Pro",
+  "fal-ai/veo3.1": "Veo 3.1",
+  "fal-ai/veo3.1/fast": "Veo 3.1 Fast",
+  "fal-ai/kling-video/o3/standard/text-to-video": "Kling O3 Standard",
+  "fal-ai/kling-video/v3/4k/text-to-video": "Kling 3 4K",
 });
 
 /**

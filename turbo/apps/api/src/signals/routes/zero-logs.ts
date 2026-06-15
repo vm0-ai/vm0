@@ -39,7 +39,7 @@ const getLogsListInner$ = computed(async (get) => {
       since: query.since,
       status: query.status,
       triggerSource: query.triggerSource,
-      scheduleId: query.scheduleId,
+      automationId: query.automationId,
     }),
   );
   return { status: 200 as const, body: result };

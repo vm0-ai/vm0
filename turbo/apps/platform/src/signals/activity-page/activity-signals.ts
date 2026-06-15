@@ -87,6 +87,44 @@ export const initZeroActivity$ = command(
   },
 );
 
+const zeroActivityFetchParams$ = computed((get) => {
+  const params: Record<string, string> = {};
+
+  const agentFilter = get(zeroActivityAgentFilter$);
+  if (agentFilter !== "all") {
+    params.agentId = agentFilter;
+  }
+
+  const statusFilter = get(zeroActivityStatusFilter$);
+  if (statusFilter !== "all") {
+    params.status = statusFilter;
+  }
+
+  const sourceFilter = get(zeroActivitySourceFilter$);
+  if (sourceFilter !== "all") {
+    params.triggerSource = sourceFilter;
+  }
+
+  return params;
+});
+
+const zeroActivityPreserveUrlParams$ = computed((get) => {
+  const result: Record<string, string> = {};
+  const agent = get(zeroActivityAgentFilter$);
+  if (agent !== "all") {
+    result.agent = agent;
+  }
+  const status = get(zeroActivityStatusFilter$);
+  if (status !== "all") {
+    result.status = status;
+  }
+  const source = get(zeroActivitySourceFilter$);
+  if (source !== "all") {
+    result.source = source;
+  }
+  return result;
+});
+
 export const {
   limit$: zeroActivityLimit$,
   data$: zeroActivityData$,
@@ -101,46 +139,8 @@ export const {
   setRowsPerPage$: setZeroActivityRowsPerPage$,
   resetPaginationState$: resetZeroActivityPagination$,
 } = createCursorPagination({
-  buildFetchParams: (limit, cursor, get) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-    });
-
-    // Filter by specific agent when selected, otherwise fetch all
-    const agentFilter = get(zeroActivityAgentFilter$);
-    if (agentFilter !== "all") {
-      params.set("agentId", agentFilter);
-    }
-
-    if (cursor) {
-      params.set("cursor", cursor);
-    }
-    const statusFilter = get(zeroActivityStatusFilter$);
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
-    }
-    const sourceFilter = get(zeroActivitySourceFilter$);
-    if (sourceFilter !== "all") {
-      params.set("triggerSource", sourceFilter);
-    }
-    return params;
-  },
-  preserveUrlParams: (get) => {
-    const result: Record<string, string> = {};
-    const agent = get(zeroActivityAgentFilter$);
-    if (agent !== "all") {
-      result.agent = agent;
-    }
-    const status = get(zeroActivityStatusFilter$);
-    if (status !== "all") {
-      result.status = status;
-    }
-    const source = get(zeroActivitySourceFilter$);
-    if (source !== "all") {
-      result.source = source;
-    }
-    return result;
-  },
+  fetchParams$: zeroActivityFetchParams$,
+  preserveUrlParams$: zeroActivityPreserveUrlParams$,
 });
 
 /** Available status values from the server (only statuses that exist in the data). */
