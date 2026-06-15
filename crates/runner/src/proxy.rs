@@ -1060,6 +1060,65 @@ async fn wait_jsonl_flush_requesting(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct MitmdumpUsageUnderbillingStderr<'a> {
+    reason: &'a str,
+    underbilling_class: &'a str,
+    component: &'a str,
+}
+
+fn parse_mitmdump_usage_underbilling_stderr(
+    line: &str,
+) -> Option<MitmdumpUsageUnderbillingStderr<'_>> {
+    let mut has_underbilling_type = false;
+    let mut reason = None;
+    let mut underbilling_class = None;
+    let mut component = None;
+
+    for token in line.split_whitespace() {
+        let Some((key, value)) = token.split_once('=') else {
+            continue;
+        };
+        let value = value.trim_end_matches([',', ';']);
+        match key {
+            "type" if value == "usage_underbilling" => has_underbilling_type = true,
+            "reason" => reason = Some(value),
+            "underbilling_class" if value == "confirmed" || value == "risk" => {
+                underbilling_class = Some(value);
+            }
+            "component" if !value.is_empty() => component = Some(value),
+            _ => {}
+        }
+    }
+
+    if has_underbilling_type {
+        Some(MitmdumpUsageUnderbillingStderr {
+            reason: reason?,
+            underbilling_class: underbilling_class?,
+            component: component?,
+        })
+    } else {
+        None
+    }
+}
+
+fn log_mitmdump_stderr_line(line: &str) {
+    if let Some(signal) = parse_mitmdump_usage_underbilling_stderr(line) {
+        error!(
+            target: "mitmdump",
+            r#type = "usage_underbilling",
+            reason = signal.reason,
+            underbilling_class = signal.underbilling_class,
+            component = signal.component,
+            mitmdump_stderr = %line,
+            "mitmdump usage underbilling signal"
+        );
+        return;
+    }
+
+    warn!(target: "mitmdump", "stderr: {line}");
+}
+
 #[cfg(test)]
 impl MitmProxy {
     /// Create a noop proxy for testing. No real process is spawned.
@@ -1224,7 +1283,7 @@ pub(crate) async fn spawn_mitmdump(
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.is_empty() {
-                    warn!(target: "mitmdump", "stderr: {line}");
+                    log_mitmdump_stderr_line(&line);
                 }
             }
         });
@@ -1535,6 +1594,35 @@ PY
             0,
             "mkfifo failed: {}",
             std::io::Error::last_os_error()
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_extracts_fields() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
+             underbilling_class=risk component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_ignores_regular_stderr() {
+        assert!(parse_mitmdump_usage_underbilling_stderr("ordinary mitmdump warning").is_none());
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "type=usage_underbilling reason=missing_fields"
+            )
+            .is_none()
         );
     }
 

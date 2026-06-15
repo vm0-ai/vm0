@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
-import { usageUnderbillingFields } from "../../usage-underbilling";
 
 const context = testContext();
 
@@ -15,18 +14,7 @@ beforeEach(() => {
 });
 
 describe("agent usage event webhook", () => {
-  it("builds alertable API underbilling fields", () => {
-    expect(usageUnderbillingFields("run_not_found", "confirmed")).toStrictEqual(
-      {
-        type: "usage_underbilling",
-        reason: "run_not_found",
-        underbilling_class: "confirmed",
-        component: "api",
-      },
-    );
-  });
-
-  it("returns not found when a usage event targets a missing run", async () => {
+  it("returns not found and logs underbilling when a usage event targets a missing run", async () => {
     const runId = randomUUID();
     const orgId = `org_usage_missing_${randomUUID().slice(0, 8)}`;
     const userId = `user_usage_missing_${randomUUID().slice(0, 8)}`;
@@ -49,6 +37,20 @@ describe("agent usage event webhook", () => {
         },
       }),
       [404],
+    );
+
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Run not found for usage event, dropping",
+      expect.objectContaining({
+        type: "usage_underbilling",
+        reason: "run_not_found",
+        underbilling_class: "confirmed",
+        component: "api",
+        context: "webhooks:agent",
+        runId,
+        orgId,
+        eventCount: 1,
+      }),
     );
   });
 });

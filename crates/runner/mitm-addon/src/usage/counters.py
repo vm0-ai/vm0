@@ -27,12 +27,13 @@ _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
 # One-shot guard: sustained pending snapshot write failure makes the runner
 # hit the bounded usage-drain timeout without any local signal pointing at
-# filesystem trouble.  Emit one warn per addon process on first failure —
+# filesystem trouble.  Emit one error signal per addon process on first failure —
 # enough to seed the operator investigation without spamming logs under
 # persistent FS pressure.  Deliberately goes through mitmproxy's own
 # stderr logger (not ``log_proxy_entry``) because the per-job proxy log
 # shares the same filesystem we just failed to write and is likely
-# affected by the same root cause.
+# affected by the same root cause.  The runner stderr bridge parses the
+# leading key=value fields and re-emits them as structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
 
