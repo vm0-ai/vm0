@@ -43,7 +43,12 @@ Notes:
       }) => {
         let text = options.text;
         if (!text && !process.stdin.isTTY) {
-          text = readFileSync("/dev/stdin", "utf8").trim();
+          try {
+            text = readFileSync("/dev/stdin", "utf8").trim();
+          } catch {
+            // stdin not readable (e.g. test runner with no piped input);
+            // fall through to the missing-text validation below.
+          }
         }
 
         if (!text) {
