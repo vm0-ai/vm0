@@ -52,7 +52,6 @@ import {
   type Firewall,
   type FirewallPolicies,
   type FirewallPolicy,
-  type FirewallPolicyValue,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -2101,22 +2100,9 @@ function collectPermissionNames(
   return [...names];
 }
 
-function defaultUnknownPolicyForFirewall(
-  firewallName: string,
-): FirewallPolicyValue {
-  return isFirewallConnectorType(firewallName)
-    ? (getDefaultFirewallPolicies(firewallName).unknownPolicy ?? "allow")
-    : "allow";
-}
-
-function defaultPolicyForFirewall(
-  firewall: ExpandedFirewallConfig,
+function allAllowPolicyForPermissions(
   permissionNames: readonly string[],
 ): FirewallPolicy {
-  if (isFirewallConnectorType(firewall.name)) {
-    return getDefaultFirewallPolicies(firewall.name);
-  }
-
   return {
     policies: Object.fromEntries(
       permissionNames.map((name) => {
@@ -2125,6 +2111,16 @@ function defaultPolicyForFirewall(
     ),
     unknownPolicy: "allow",
   };
+}
+
+function defaultBuiltinConnectorPolicyForFirewall(
+  firewall: ExpandedFirewallConfig,
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  if (isFirewallConnectorType(firewall.name)) {
+    return getDefaultFirewallPolicies(firewall.name);
+  }
+  return allAllowPolicyForPermissions(permissionNames);
 }
 
 function networkPolicyForFirewallPolicy(
@@ -2208,6 +2204,10 @@ function applyConnectorPolicies(
   entryForFirewall: (
     firewall: ExpandedFirewallConfig,
   ) => ExecutionFirewallEntry,
+  defaultPolicyForFirewall: (
+    firewall: ExpandedFirewallConfig,
+    permissionNames: readonly string[],
+  ) => FirewallPolicy,
 ): Omit<PermissionManifest, "environmentFirewalls"> {
   const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
@@ -2215,12 +2215,13 @@ function applyConnectorPolicies(
   for (const firewall of connectorFirewalls) {
     const policy = policies?.[firewall.name];
     const permissionNames = collectPermissionNames(firewall.apis);
+    const defaultPolicy = defaultPolicyForFirewall(firewall, permissionNames);
     firewalls.push(entryForFirewall(firewall));
 
     if (!policy) {
       networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
         permissionNames,
-        defaultPolicyForFirewall(firewall, permissionNames),
+        defaultPolicy,
       );
       continue;
     }
@@ -2229,9 +2230,7 @@ function applyConnectorPolicies(
       permissionNames,
       {
         ...policy,
-        unknownPolicy:
-          policy.unknownPolicy ??
-          defaultUnknownPolicyForFirewall(firewall.name),
+        unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
       },
     );
   }
@@ -2296,6 +2295,7 @@ function buildPermissionManifest(args: {
     (firewall) => {
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
+    defaultBuiltinConnectorPolicyForFirewall,
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2305,6 +2305,9 @@ function buildPermissionManifest(args: {
     resolvedCustomConnectorFirewalls,
     args.permissionPolicies,
     inlineFirewallEntry,
+    (_firewall, permissionNames) => {
+      return allAllowPolicyForPermissions(permissionNames);
+    },
   );
   const providerManifest = modelProviderPermissionManifest(
     args.modelProvider,

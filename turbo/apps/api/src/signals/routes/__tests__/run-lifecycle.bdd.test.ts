@@ -1249,6 +1249,47 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("does not apply built-in defaults to a custom connector with a built-in slug", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: "cloudflare",
+      displayName: "BDD Cloudflare-Named Custom API",
+      prefixes: ["https://custom-cloudflare.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-cloudflare-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use a custom connector named like a built-in",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const customApis = inlineFirewallApis(claim.firewalls, "cloudflare");
+    expect(customApis[0]?.base).toBe(
+      "https://custom-cloudflare.example.test/api/",
+    );
+    expect(claim.networkPolicies?.cloudflare).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
