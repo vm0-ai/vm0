@@ -1249,7 +1249,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("does not apply built-in defaults to a custom connector with a built-in slug", async () => {
+  it("does not apply built-in defaults or grants to a custom connector with a built-in slug", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1267,6 +1267,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "custom-cloudflare-secret",
     );
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "cloudflare",
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
 
     const run = await api.createRun(actor, {
       agentId,

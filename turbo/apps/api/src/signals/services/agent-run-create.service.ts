@@ -2200,7 +2200,9 @@ function inlineFirewallEntry(
 
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
-  policies: FirewallPolicies | undefined,
+  policyForFirewall: (
+    firewall: ExpandedFirewallConfig,
+  ) => FirewallPolicy | undefined,
   entryForFirewall: (
     firewall: ExpandedFirewallConfig,
   ) => ExecutionFirewallEntry,
@@ -2213,7 +2215,7 @@ function applyConnectorPolicies(
   const networkPolicies: NetworkPolicies = {};
 
   for (const firewall of connectorFirewalls) {
-    const policy = policies?.[firewall.name];
+    const policy = policyForFirewall(firewall);
     const permissionNames = collectPermissionNames(firewall.apis);
     const defaultPolicy = defaultPolicyForFirewall(firewall, permissionNames);
     firewalls.push(entryForFirewall(firewall));
@@ -2291,7 +2293,9 @@ function buildPermissionManifest(args: {
     });
   const connectorManifest = applyConnectorPolicies(
     connectorFirewalls,
-    args.permissionPolicies,
+    (firewall) => {
+      return args.permissionPolicies?.[firewall.name];
+    },
     (firewall) => {
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
@@ -2303,7 +2307,11 @@ function buildPermissionManifest(args: {
   );
   const customConnectorManifest = applyConnectorPolicies(
     resolvedCustomConnectorFirewalls,
-    args.permissionPolicies,
+    (firewall) => {
+      return isFirewallConnectorType(firewall.name)
+        ? undefined
+        : args.permissionPolicies?.[firewall.name];
+    },
     inlineFirewallEntry,
     (_firewall, permissionNames) => {
       return allAllowPolicyForPermissions(permissionNames);
