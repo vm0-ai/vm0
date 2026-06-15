@@ -134,29 +134,25 @@ async fn overflowing_cooldown_keeps_actor_responsive_and_lock_held() {
 }
 
 #[tokio::test]
-async fn non_expiring_cooldown_does_not_block_deferred_scan_failure() {
+async fn non_expiring_cooldown_does_not_block_acquire_after_scan_failure() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut pool = test_pool(0, Duration::MAX, dir.path(), always_free);
     pool.in_flight.insert(3);
+    let handle = DevicePoolHandle::from_pool(pool);
 
-    pool.release_claim(claim(3, dir.path()));
-    let (respond_to, mut response) = oneshot::channel();
-    pool.waiting_acquires.push_back(respond_to);
-    pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
-    pool.ensure_waiting_progress(0);
-
-    let result = response
-        .try_recv()
-        .expect("waiter should receive scan failure behind non-expiring cooldown");
+    handle.release_clean(lease(3, dir.path())).await;
+    let result = tokio::time::timeout(Duration::from_secs(1), handle.acquire())
+        .await
+        .expect("acquire hung behind non-expiring cooldown");
     assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
-    assert_eq!(pool.snapshot().cooldown, vec![3]);
+    assert_eq!(handle.snapshot().await.cooldown, vec![3]);
     assert!(
         device_lock::try_acquire_device_claim_in(3, dir.path())
             .expect("lock probe")
             .is_none()
     );
 
-    pool.cleanup().await;
+    handle.cleanup().await;
     assert!(
         device_lock::try_acquire_device_claim_in(3, dir.path())
             .expect("lock probe")
