@@ -365,10 +365,7 @@ async fn exec_cancel_after_terminal_result_returns_result_without_cancel_frame()
     .await;
     wait_for_operation_count(&host, 0).await;
 
-    let result = handle
-        .cancel_and_wait(Duration::from_secs(5))
-        .await
-        .unwrap();
+    let result = handle.cancel_and_wait(Duration::ZERO).await.unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
