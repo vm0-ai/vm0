@@ -63,7 +63,7 @@ import {
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { settle, tapError } from "../utils";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -1319,9 +1319,11 @@ async function buildCreateQueuedChatRunInput(args: {
     startNewSession,
     incompleteContext,
   });
-  const generationTemplatePrompt = buildGenerationTemplatePrompt(
-    resolvedQueuedMessage.generationTemplate,
-  );
+  const generationTemplatePrompt = await resolveThreadGenerationTemplatePrompt({
+    db: args.db,
+    threadId: args.threadId,
+    explicit: resolvedQueuedMessage.generationTemplate,
+  });
 
   return {
     orgId: args.agent.orgId,
@@ -1336,9 +1338,7 @@ async function buildCreateQueuedChatRunInput(args: {
     appendSystemPrompt: buildAppendSystemPrompt(
       incompleteContext,
       priorContext,
-      generationTemplatePrompt.status === "resolved"
-        ? generationTemplatePrompt.prompt
-        : "",
+      generationTemplatePrompt,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,

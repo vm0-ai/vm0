@@ -6,7 +6,7 @@
  * - Real (internal): All CLI code, firewall configs from @vm0/core
  *
  * permission-deny is a pure diagnostic command — it identifies which permission
- * covers a denied request and tells the agent to run permission-change.
+ * or unknown endpoint policy covers a denied request and tells the agent to run permission-change.
  * It does not generate platform URLs.
  */
 
@@ -75,7 +75,9 @@ describe("zero doctor permission-deny command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Slack permission filtered DELETE");
       expect(logCalls).toContain("No named permission was found");
-      expect(logCalls).not.toContain("permission-change");
+      expect(logCalls).toContain(
+        "zero doctor permission-change slack --permission __unknown__ --enable --duration 1h",
+      );
     });
   });
 
@@ -163,7 +165,7 @@ describe("zero doctor permission-deny command", () => {
       expect(logCalls).not.toContain("--reason");
     });
 
-    it("should not suggest permission-change when no permission matches", async () => {
+    it("should suggest unknown endpoint permission-change when no permission matches", async () => {
       await permissionDenyCommand.parseAsync([
         "node",
         "cli",
@@ -175,7 +177,12 @@ describe("zero doctor permission-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("permission-change");
+      expect(logCalls).toContain(
+        "This request is governed by the unknown endpoint policy.",
+      );
+      expect(logCalls).toContain(
+        "zero doctor permission-change slack --permission __unknown__ --enable --duration 1h",
+      );
       expect(logCalls).not.toContain("--reason");
     });
 

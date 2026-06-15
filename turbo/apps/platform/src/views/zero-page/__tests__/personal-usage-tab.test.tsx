@@ -3,7 +3,7 @@ import {
   zeroUsageRecordContract,
   type UsageRecordRow,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -20,7 +20,18 @@ function usageRows(): UsageRecordRow[] {
       title: "Quarterly planning chat",
       credits: 980,
       tokens: 2200,
-      breakdown: [],
+      breakdown: [
+        {
+          kind: "connector",
+          credits: 18,
+          providers: [{ provider: "x", credits: 18 }],
+        },
+        {
+          kind: "image",
+          credits: 123,
+          providers: [{ provider: "fal-ai/nano-banana-2", credits: 123 }],
+        },
+      ],
       member: null,
       lastActivityAt: "2026-03-21T10:00:00Z",
     },
@@ -162,5 +173,50 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Last 7 days")).toBeInTheDocument();
       expect(requestedRanges).toContain("7d");
     });
+  });
+
+  it("shows usage breakdown as hoverable legend items with friendly tooltip labels", async () => {
+    mockPersonalUsageStory();
+    await openUsageSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByTestId("usage-kind-segment-connector"),
+    ).not.toBeInTheDocument();
+
+    const connectorLegend = screen.getByTestId("usage-kind-legend-connector");
+    expect(within(connectorLegend).getByText("18")).toBeInTheDocument();
+
+    fireEvent.pointerOver(connectorLegend);
+    fireEvent.pointerEnter(connectorLegend);
+    fireEvent.pointerMove(connectorLegend, { pointerType: "mouse" });
+    fireEvent.mouseOver(connectorLegend);
+    fireEvent.mouseEnter(connectorLegend);
+    fireEvent.mouseMove(connectorLegend);
+
+    await expect(
+      screen.findAllByText("Connectors 18"),
+    ).resolves.not.toHaveLength(0);
+    expect(screen.queryByText("Connectors - 18")).not.toBeInTheDocument();
+    expect(screen.getAllByText("x")).not.toHaveLength(0);
+
+    const imageLegend = screen.getByTestId("usage-kind-legend-image");
+    expect(within(imageLegend).getByText("123")).toBeInTheDocument();
+
+    fireEvent.pointerOver(imageLegend);
+    fireEvent.pointerEnter(imageLegend);
+    fireEvent.pointerMove(imageLegend, { pointerType: "mouse" });
+    fireEvent.mouseOver(imageLegend);
+    fireEvent.mouseEnter(imageLegend);
+    fireEvent.mouseMove(imageLegend);
+
+    await expect(screen.findAllByText("Image 123")).resolves.not.toHaveLength(
+      0,
+    );
+    expect(screen.getAllByText("Nano Banana 2")).not.toHaveLength(0);
+    expect(screen.queryByText("fal-ai/nano-banana-2")).not.toBeInTheDocument();
   });
 });

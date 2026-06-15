@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -19,11 +20,11 @@ class TestReportModelProviderUsage:
     ):
         """Model-provider usage reaches the webhook boundary with correct payload."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_usage_provider"] = "claude-opus-4-6"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-opus-4-6"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "message_id": "msg-usage-1",
             "tokens.input": 100,
@@ -81,10 +82,10 @@ class TestReportModelProviderUsage:
     ):
         """Provider falls back only when selected vm0 model metadata is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "msg-usage-1",
             "tokens.input": 100,
         }
@@ -98,10 +99,10 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["provider"] == "unknown"
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "msg-usage-2",
             "model": "claude-sonnet-4-6",
             "tokens.input": 100,
@@ -118,10 +119,10 @@ class TestReportModelProviderUsage:
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "msg-usage-1",
             "tokens.input": 0,
             "tokens.output": -1,
@@ -146,10 +147,10 @@ class TestReportModelProviderUsage:
         credits should be charged.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = False
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {"tokens.input": 100}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 100}
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -163,11 +164,11 @@ class TestReportModelProviderUsage:
     ):
         """BYOK model providers report observations without billing events."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = False
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "ignored-runtime-model",
             "message_id": "msg-byok-usage-1",
             "tokens.input": 100,
@@ -194,11 +195,11 @@ class TestReportModelProviderUsage:
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:vm0"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "msg-built-in-usage-1",
             "tokens.input": 100,
         }
@@ -228,8 +229,8 @@ class TestReportModelProviderUsage:
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["firewall_name"] = "github"
-        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -243,10 +244,10 @@ class TestReportModelProviderUsage:
         self, real_flow, fresh_usage_executor, usage_webhook_api, firewall_name
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = firewall_name
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
 
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-abc-123")
@@ -261,8 +262,8 @@ class TestReportModelProviderUsage:
     ):
         """Should NOT reach the webhook boundary when model_provider_usage is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         # No model_provider_usage in metadata
 
         with usage_webhook_api() as webhook:
@@ -275,8 +276,8 @@ class TestReportModelProviderUsage:
     def test_skips_when_no_run_id(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary when run_id is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "")
@@ -290,12 +291,12 @@ class TestReportModelProviderUsage:
     ):
         """Should write to proxy log and skip when sandbox_token is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = ""
-        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -312,12 +313,12 @@ class TestReportModelProviderUsage:
     def test_warns_when_missing_api_url(self, tmp_path, real_flow, fresh_usage_executor, mitm_ctx):
         """Should write to proxy log and skip when api_url is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
 
         with mitm_ctx(api_url=""):
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -335,10 +336,10 @@ class TestReportModelProviderUsage:
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "tokens.input": 10,
         }
@@ -357,10 +358,10 @@ class TestReportModelProviderUsage:
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "message_id": "msg_real_anthropic_id",
             "tokens.input": 10,
@@ -380,10 +381,10 @@ class TestReportModelProviderUsage:
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage_sources"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_ws_1": {
                 "model": "gpt-5.5",
                 "message_id": "resp_ws_1",
@@ -442,10 +443,10 @@ class TestReportModelProviderUsage:
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage_sources"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_ws_1": {
                 "model": "gpt-5.5",
                 "message_id": "resp_ws_1",
@@ -489,10 +490,10 @@ class TestReportModelProviderUsage:
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage_sources"] = {
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_invalid": "invalid",
             "": {"model": "gpt-5.5", "tokens.input": 10},
             42: {"model": "gpt-5.4", "tokens.input": 3},
@@ -516,10 +517,10 @@ class TestReportModelProviderUsage:
         second = real_flow(with_response=False, host="api.anthropic.com")
         second.id = "flow-second"
         for flow in (first, second):
-            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-            flow.metadata["firewall_billable"] = True
-            flow.metadata["vm_sandbox_token"] = "tok-xyz"
-            flow.metadata["model_provider_usage"] = {
+            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+            flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
                 "model": "claude-sonnet-4-6",
                 "tokens.input": 10,
             }
@@ -541,10 +542,10 @@ class TestReportModelProviderUsage:
         second = real_flow(with_response=False, host="api.anthropic.com")
         second.id = "flow-second"
         for flow in (first, second):
-            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-            flow.metadata["firewall_billable"] = True
-            flow.metadata["vm_sandbox_token"] = "tok-xyz"
-            flow.metadata["model_provider_usage"] = {
+            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+            flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
                 "model": "claude-sonnet-4-6",
                 "message_id": "msg_real_anthropic_id",
                 "tokens.input": 10,
@@ -567,11 +568,11 @@ class TestReportModelProviderUsage:
         second = real_flow(with_response=False, host="api.anthropic.com")
         second.id = "flow-second"
         for flow in (first, second):
-            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-            flow.metadata["firewall_billable"] = False
-            flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
-            flow.metadata["vm_sandbox_token"] = "tok-xyz"
-            flow.metadata["model_provider_usage"] = {
+            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+            flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
                 "model": "ignored-runtime-model",
                 "message_id": "msg_real_anthropic_id",
                 "tokens.input": 10,

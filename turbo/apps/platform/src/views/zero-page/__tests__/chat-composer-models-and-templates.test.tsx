@@ -1376,43 +1376,36 @@ describe("chat composer templates", () => {
     });
     click(tabByText("Illustration"));
 
+    const heroAlt = `${illustrationTemplate.title} illustration preview`;
+    const heroSrc = (index: number) => {
+      return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
+        width: 768,
+        height: 768,
+        quality: 72,
+      });
+    };
+
     await waitFor(() => {
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
-      ).toHaveAttribute(
-        "src",
-        r2ImageTransformUrl(illustrationTemplate.previewImage, {
-          width: 640,
-          height: 360,
-        }),
-      );
-      expect(screen.getAllByTitle(/ illustration preview$/u)).toHaveLength(
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+      expect(screen.getAllByAltText(/ illustration preview$/u)).toHaveLength(
         ILLUSTRATION_TEMPLATE_ITEMS.length,
       );
     });
 
-    click(screen.getByLabelText(`View template ${illustrationTemplate.title}`));
+    // Variant thumbnails switch the hero inline within the card; there is no
+    // longer a second preview dialog.
+    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    if (!card) {
+      throw new Error("Illustration card not found");
+    }
+    click(within(card).getByLabelText("Show variant 2"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    click(screen.getByLabelText("Show variant 2"));
+    click(within(card).getByLabelText("Show variant 1"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 2`),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Show variant 1"));
-    await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText("Templates"));
-    await waitFor(() => {
-      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");

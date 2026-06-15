@@ -5,7 +5,10 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
@@ -36,8 +39,12 @@ export const permissionAllowPermission$ = computed((get) => {
   return get(searchParams$).get("permission") ?? null;
 });
 
+export const permissionAllowActionParam$ = computed((get) => {
+  return get(searchParams$).get("action");
+});
+
 export const permissionAllowAction$ = computed((get) => {
-  const action = get(searchParams$).get("action");
+  const action = get(permissionAllowActionParam$);
   return action === "allow" || action === "deny" ? action : null;
 });
 
@@ -64,12 +71,12 @@ export const permissionAllowAgent$ = computed((get) => {
 // Permissions list (derived from connector config)
 // ---------------------------------------------------------------------------
 
-interface Permission {
+export interface Permission {
   name: string;
   description?: string;
 }
 
-export function extractPermissions(ref: string): Permission[] {
+function extractPermissions(ref: string): Permission[] {
   if (!isFirewallConnectorType(ref)) {
     return [];
   }
@@ -88,6 +95,20 @@ export function extractPermissions(ref: string): Permission[] {
   return [...seen.values()];
 }
 
+export function findPermission(ref: string, name: string): Permission | null {
+  if (name === UNKNOWN_PERMISSION_GRANT && isFirewallConnectorType(ref)) {
+    return {
+      name: UNKNOWN_PERMISSION_GRANT,
+      description: "Unknown endpoints",
+    };
+  }
+  return (
+    extractPermissions(ref).find((permission) => {
+      return permission.name === name;
+    }) ?? null
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Current-user permission grants
 // ---------------------------------------------------------------------------
@@ -99,9 +120,13 @@ export function resolveUserPermissionGrantPolicy(
   connectorRef: string,
   permission: string,
 ): FirewallPolicyValue | undefined {
-  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
-    connectorRef,
-  ])?.[connectorRef]?.policies[permission];
+  const policies = resolveFirewallPolicies(
+    permissionGrantsToFirewallPolicies(grants),
+    [connectorRef],
+  )?.[connectorRef];
+  return permission === UNKNOWN_PERMISSION_GRANT
+    ? policies?.unknownPolicy
+    : policies?.policies[permission];
 }
 
 interface UserPermissionGrantsByAgentParams {

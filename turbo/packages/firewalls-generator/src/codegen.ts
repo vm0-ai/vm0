@@ -194,6 +194,17 @@ export function renderDefaultAllowed(
   return lines;
 }
 
+export function renderDefaultUnknownPolicy(
+  varName: string,
+  policy: "allow" | "deny" | "ask",
+): string[] {
+  return [
+    "",
+    `export const ${varName} = "${escapeString(policy)}" satisfies FirewallPolicyValue;`,
+    "",
+  ];
+}
+
 // ── Categories ──────────────────────────────────────────────────────────
 
 export interface CategoryConfig {

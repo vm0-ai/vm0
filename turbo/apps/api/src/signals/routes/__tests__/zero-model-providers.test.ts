@@ -521,6 +521,31 @@ describe("POST /api/zero/model-providers", () => {
     ).resolves.toBe("sk-ant-v2");
   });
 
+  it("rejects whitespace-only org single-secret provider secrets", async () => {
+    const fixture = uniqueOrgUser("zmp-upsert-blank-secret");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    const response = await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          type: "openrouter-api-key",
+          secret: "   ",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      'Provider "openrouter-api-key" requires a non-empty secret',
+    );
+    await expect(
+      readOrgModelProviderState(fixture.orgId, "openrouter-api-key"),
+    ).resolves.toBeNull();
+  });
+
   it("creates org-level AWS Bedrock multi-auth provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-bedrock");
     await track(Promise.resolve({ orgId: fixture.orgId }));
