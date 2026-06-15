@@ -1638,6 +1638,19 @@ PY
         events[0].clone()
     }
 
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
     fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
         let actual = event
             .fields
@@ -3645,15 +3658,31 @@ while True:
         let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let requests = std::sync::Arc::clone(&request_count);
-        let flushed =
-            wait_usage_flush_requesting(dir.path(), Duration::from_secs(5), &request, || {
+        let (flushed, events) = capture_async_log_events(wait_usage_flush_requesting(
+            dir.path(),
+            Duration::from_secs(5),
+            &request,
+            || {
                 requests.fetch_add(1, Ordering::SeqCst);
                 false
-            })
-            .await;
+            },
+        ))
+        .await;
 
         assert!(!flushed);
         assert_eq!(request_count.load(Ordering::SeqCst), 1);
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(
+            event,
+            "message",
+            "usage flush request failed, proceeding with proxy stop",
+        );
+        assert_event_field(event, "type", "usage_underbilling");
+        assert_event_field(event, "reason", "usage_flush_request_failed");
+        assert_event_field(event, "underbilling_class", "risk");
+        assert_event_field(event, "component", "runner");
     }
 
     #[tokio::test(start_paused = true)]
@@ -3662,7 +3691,26 @@ while True:
         let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), usage_state(1, 0, 3)).unwrap();
         // Very short timeout — should return false.
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+        let (flushed, events) = capture_async_log_events(wait_usage_flush(
+            dir.path(),
+            Duration::from_millis(50),
+            &request,
+        ))
+        .await;
+
+        assert!(!flushed);
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(
+            event,
+            "message",
+            "usage flush timed out, proceeding with proxy stop",
+        );
+        assert_event_field(event, "type", "usage_underbilling");
+        assert_event_field(event, "reason", "usage_flush_timeout");
+        assert_event_field(event, "underbilling_class", "risk");
+        assert_event_field(event, "component", "runner");
     }
 
     #[tokio::test(start_paused = true)]
