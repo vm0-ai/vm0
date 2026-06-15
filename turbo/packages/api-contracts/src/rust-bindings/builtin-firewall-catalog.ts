@@ -182,11 +182,11 @@ function renderPythonPackageInit(): string {
   return [
     ...pythonGeneratedHeader,
     "",
-    "import importlib",
     "import json",
     "from collections.abc import Iterator, Mapping",
     "from typing import Any",
     "",
+    "from .loader import load_json_parts",
     "from .manifest import FIREWALL_MODULES",
     "",
     "",
@@ -195,10 +195,11 @@ function renderPythonPackageInit(): string {
     "        self._cache: dict[str, dict[str, Any]] = {}",
     "",
     "    def __getitem__(self, name: str) -> dict[str, Any]:",
-    "        value = self.get(name)",
-    "        if value is None:",
+    "        if name not in FIREWALL_MODULES:",
     "            raise KeyError(name)",
-    "        return value",
+    "        if name not in self._cache:",
+    "            self._cache[name] = self._load(name)",
+    "        return self._cache[name]",
     "",
     "    def __iter__(self) -> Iterator[str]:",
     "        return iter(FIREWALL_MODULES)",
@@ -209,29 +210,46 @@ function renderPythonPackageInit(): string {
     "    def __contains__(self, name: object) -> bool:",
     "        return name in FIREWALL_MODULES",
     "",
-    "    def get(",
-    "        self, name: str, default: object = None",
-    "    ) -> dict[str, Any] | object:",
-    "        if name not in FIREWALL_MODULES:",
-    "            return default",
-    "        if name not in self._cache:",
-    "            self._cache[name] = self._load(name)",
-    "        return self._cache[name]",
-    "",
     "    def _load(self, name: str) -> dict[str, Any]:",
-    "        parts = []",
-    "        for module_name in FIREWALL_MODULES[name]:",
-    "            module = importlib.import_module(f'.{module_name}', __name__)",
-    "            parts.append(module.JSON_PART)",
-    "        value = json.loads(''.join(parts))",
+    "        parts = load_json_parts(name)",
+    '        value = json.loads("".join(parts))',
     "        if not isinstance(value, dict):",
-    "            raise TypeError(f'builtin firewall {name} is not a JSON object')",
+    '            raise TypeError(f"builtin firewall {name} is not a JSON object")',
     "        return value",
     "",
     "",
     "BUILTIN_FIREWALLS = _BuiltinFirewallCatalog()",
     "",
   ].join("\n");
+}
+
+function renderPythonLoader(
+  modulesByFirewall: ReadonlyMap<string, readonly string[]>,
+): string {
+  const lines = [
+    ...pythonGeneratedHeader,
+    "",
+    "",
+    "def load_json_parts(name: str) -> tuple[str, ...]:",
+  ];
+
+  for (const [name, modules] of modulesByFirewall) {
+    lines.push(`    if name == ${pythonEscapedStringLiteral(name)}:`);
+    for (const moduleName of modules) {
+      lines.push(`        from . import ${moduleName}`);
+    }
+    lines.push("");
+    const renderedParts = modules
+      .map((moduleName) => {
+        return `${moduleName}.JSON_PART`;
+      })
+      .join(", ");
+    const tupleSuffix = modules.length === 1 ? "," : "";
+    lines.push(`        return (${renderedParts}${tupleSuffix})`);
+  }
+
+  lines.push("    raise KeyError(name)", "");
+  return lines.join("\n");
 }
 
 function renderPythonManifest(
@@ -313,6 +331,10 @@ export function renderPythonBuiltinFirewallCatalogFiles(
     {
       path: "manifest.py",
       content: renderPythonManifest(modulesByFirewall),
+    },
+    {
+      path: "loader.py",
+      content: renderPythonLoader(modulesByFirewall),
     },
     ...partFiles,
   ];

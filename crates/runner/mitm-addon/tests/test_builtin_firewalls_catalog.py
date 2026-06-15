@@ -1,7 +1,5 @@
 """Generated builtin firewall catalog tests."""
 
-import pytest
-
 import generated.builtin_firewalls as builtin_firewalls
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
@@ -15,11 +13,11 @@ def test_get_existing_builtin_firewall():
 
 
 def test_unknown_builtin_firewall_does_not_import(monkeypatch):
-    def fail_import(*_args, **_kwargs):
-        raise AssertionError("unknown builtin lookup should not import modules")
+    def fail_load(_name: str) -> tuple[str, ...]:
+        raise AssertionError("unknown builtin lookup should not load JSON parts")
 
     sentinel = object()
-    monkeypatch.setattr(builtin_firewalls.importlib, "import_module", fail_import)
+    monkeypatch.setattr(builtin_firewalls, "load_json_parts", fail_load)
 
     assert BUILTIN_FIREWALLS.get("__missing__") is None
     assert BUILTIN_FIREWALLS.get("__missing__", sentinel) is sentinel
@@ -48,5 +46,4 @@ def test_builtin_firewalls_cache_loaded_values():
 
 
 def test_builtin_firewalls_mapping_is_read_only():
-    with pytest.raises(TypeError):
-        BUILTIN_FIREWALLS["github"] = {}
+    assert not hasattr(BUILTIN_FIREWALLS, "__setitem__")

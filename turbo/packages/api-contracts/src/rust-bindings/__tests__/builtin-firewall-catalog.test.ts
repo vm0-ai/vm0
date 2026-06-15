@@ -95,11 +95,18 @@ describe("builtin firewall catalog", () => {
 
     expect(secondRender).toStrictEqual(firstRender);
     expect(paths).toContain("__init__.py");
+    expect(paths).toContain("loader.py");
     expect(paths).toContain("manifest.py");
     expect(paths).toContain("github_0.py");
     expect(paths).toContain("model_provider_openai_api_key_0.py");
     expect(findGeneratedFile(firstRender, "__init__.py").content).toContain(
       "BUILTIN_FIREWALLS = _BuiltinFirewallCatalog()",
+    );
+    expect(findGeneratedFile(firstRender, "__init__.py").content).not.toContain(
+      "importlib",
+    );
+    expect(findGeneratedFile(firstRender, "loader.py").content).toContain(
+      "from . import github_0",
     );
     expect(findGeneratedFile(firstRender, "manifest.py").content).toContain(
       '"github": ("github_0",),',

@@ -1883,6 +1883,7 @@ PY
             "generated/builtin_firewalls/__init__.py",
             "generated/builtin_firewalls/cloudflare_0.py",
             "generated/builtin_firewalls/github_0.py",
+            "generated/builtin_firewalls/loader.py",
             "generated/builtin_firewalls/manifest.py",
             "matching.py",
             "registry.py",
