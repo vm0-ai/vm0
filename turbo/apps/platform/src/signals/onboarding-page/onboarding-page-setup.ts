@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -12,6 +13,7 @@ import {
   zeroNeedsOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
+import { redirectToConfiguredOnboarding$ } from "../zero-page/onboard-guard.ts";
 import {
   onboardingEffectiveStep$,
   continueOnboardingAfterCheckout$,
@@ -23,6 +25,7 @@ import {
 } from "../zero-page/billing.ts";
 import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   startOnboardingSessionRecording,
   stopOnboardingSessionRecording,
@@ -106,6 +109,12 @@ export const setupOnboardingPage$ = command(
     // use-case deep link, send the user home — the page has nothing to show.
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
+
+    const features = get(featureSwitch$);
+    if (needsOnboarding && features[FeatureSwitchKey.PaidOnboardingRedirect]) {
+      set(redirectToConfiguredOnboarding$, params);
+      return;
+    }
 
     if (!needsOnboarding && !hasUseCaseLink) {
       set(detachedNavigateTo$, "/", { replace: true });
