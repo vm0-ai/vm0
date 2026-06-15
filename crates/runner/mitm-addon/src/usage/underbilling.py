@@ -19,11 +19,11 @@ def underbilling_fields(
     **extra: object,
 ) -> dict[str, object]:
     return {
+        **extra,
         "type": USAGE_UNDERBILLING_LOG_TYPE,
         "reason": reason,
         "underbilling_class": underbilling_class,
         "component": USAGE_UNDERBILLING_COMPONENT_MITM_ADDON,
-        **extra,
     }
 
 
