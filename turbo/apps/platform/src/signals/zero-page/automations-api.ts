@@ -26,7 +26,31 @@ type TimeTrigger = Extract<
   { kind: "cron" | "once" | "loop" }
 >;
 
-function isTimeTrigger(
+export type AutomationTriggerReadOnlyReason =
+  | "multiple_triggers"
+  | "unsupported_trigger"
+  | "no_trigger";
+
+export type PlatformAutomationView = Omit<
+  AutomationView,
+  "triggerType" | "timezone" | "consecutiveFailures" | "nextRunAt" | "lastRunAt"
+> & {
+  triggerType: TimeTrigger["kind"] | null;
+  cronExpression: string | null;
+  atTime: string | null;
+  intervalSeconds: number | null;
+  timezone: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  consecutiveFailures: number | null;
+  triggers: AutomationTriggerResponse[];
+  triggerCount: number;
+  triggerKinds: AutomationTriggerResponse["kind"][];
+  triggerEditable: boolean;
+  triggerReadOnlyReason: AutomationTriggerReadOnlyReason | null;
+};
+
+export function isTimeTrigger(
   trigger: AutomationTriggerResponse,
 ): trigger is TimeTrigger {
   return (
@@ -40,34 +64,55 @@ function timeTriggerOf(automation: AutomationResponse): TimeTrigger | null {
   return automation.triggers.find(isTimeTrigger) ?? null;
 }
 
-// The flat single-trigger projection of an automation: the pages' view model.
-// `retryStartedAt` is vestigial in the contract and always null.
-function toAutomationView(
+function triggerReadOnlyReason(
   automation: AutomationResponse,
-  trigger: TimeTrigger,
-): AutomationView {
+): AutomationTriggerReadOnlyReason | null {
+  if (automation.triggers.length === 0) {
+    return "no_trigger";
+  }
+  if (automation.triggers.length > 1) {
+    return "multiple_triggers";
+  }
+  return timeTriggerOf(automation) ? null : "unsupported_trigger";
+}
+
+// The platform-local projection of an automation. It keeps the legacy flat time
+// fields for existing list/calendar/detail code, while carrying the resource
+// triggers needed by the new Trigger section.
+function toPlatformAutomationView(
+  automation: AutomationResponse,
+): PlatformAutomationView {
+  const trigger = timeTriggerOf(automation);
+  const readOnlyReason = triggerReadOnlyReason(automation);
   return {
     id: automation.id,
     agentId: automation.agentId,
     displayName: automation.displayName,
     userId: automation.userId,
     name: automation.name,
-    triggerType: trigger.kind,
-    cronExpression: trigger.kind === "cron" ? trigger.cronExpression : null,
-    atTime: trigger.kind === "once" ? trigger.atTime : null,
-    intervalSeconds: trigger.kind === "loop" ? trigger.intervalSeconds : null,
-    timezone: trigger.timezone,
+    triggerType: trigger?.kind ?? null,
+    cronExpression: trigger?.kind === "cron" ? trigger.cronExpression : null,
+    atTime: trigger?.kind === "once" ? trigger.atTime : null,
+    intervalSeconds: trigger?.kind === "loop" ? trigger.intervalSeconds : null,
+    timezone: trigger?.timezone ?? null,
     prompt: automation.instruction,
     description: automation.description,
     appendSystemPrompt: automation.appendSystemPrompt,
     enabled: automation.enabled,
-    nextRunAt: trigger.nextRunAt,
-    lastRunAt: trigger.lastRunAt,
+    nextRunAt: trigger?.nextRunAt ?? null,
+    lastRunAt: trigger?.lastRunAt ?? null,
     retryStartedAt: null,
-    consecutiveFailures: trigger.consecutiveFailures,
+    consecutiveFailures: trigger?.consecutiveFailures ?? null,
     chatThreadId: automation.chatThreadId,
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,
+    triggers: automation.triggers,
+    triggerCount: automation.triggers.length,
+    triggerKinds: automation.triggers.map((t) => {
+      return t.kind;
+    }),
+    triggerEditable: readOnlyReason === null,
+    triggerReadOnlyReason: readOnlyReason,
   };
 }
 
@@ -144,13 +189,13 @@ async function findByNameAndAgent(
 export async function listAutomations(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-): Promise<AutomationView[]> {
+  options?: { includeUnsupported?: boolean },
+): Promise<PlatformAutomationView[]> {
   const automations = await listAutomationResources(client, fetchOptions);
-  const views: AutomationView[] = [];
+  const views: PlatformAutomationView[] = [];
   for (const automation of automations) {
-    const trigger = timeTriggerOf(automation);
-    if (trigger) {
-      views.push(toAutomationView(automation, trigger));
+    if (options?.includeUnsupported || timeTriggerOf(automation)) {
+      views.push(toPlatformAutomationView(automation));
     }
   }
   return views;
@@ -181,8 +226,17 @@ async function createAutomation(
 async function updateAutomation(
   client: ZeroClientFactory,
   body: AutomationFormBody,
+  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findByNameAndAgent(client, body.name, body.agentId);
+  if (
+    options?.requireEditableTrigger &&
+    triggerReadOnlyReason(existing) !== null
+  ) {
+    throw new Error(
+      "This automation has triggers managed outside platform. Edit the trigger from the CLI or API.",
+    );
+  }
 
   await accept(
     client(automationsByRefContract).update({
@@ -235,10 +289,33 @@ export function deployAutomation(
   client: ZeroClientFactory,
   body: AutomationFormBody,
   isUpdate: boolean,
+  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
   return isUpdate
-    ? updateAutomation(client, body)
+    ? updateAutomation(client, body, options)
     : createAutomation(client, body);
+}
+
+export async function updateAutomationIntent(
+  client: ZeroClientFactory,
+  params: {
+    id: string;
+    prompt?: string;
+    description?: string | null;
+  },
+): Promise<void> {
+  await accept(
+    client(automationsByRefContract).update({
+      params: { ref: params.id },
+      body: {
+        ...(params.prompt !== undefined && { instruction: params.prompt }),
+        ...(params.description !== undefined && {
+          description: params.description,
+        }),
+      },
+    }),
+    [200],
+  );
 }
 
 /**

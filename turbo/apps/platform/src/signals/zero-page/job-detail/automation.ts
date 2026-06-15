@@ -31,11 +31,11 @@ interface AutomationItem {
   agentId: string;
   name: string;
   enabled: boolean;
-  triggerType: "cron" | "once" | "loop";
+  triggerType: "cron" | "once" | "loop" | null;
   cronExpression: string | null;
   atTime: string | null;
   intervalSeconds: number | null;
-  timezone: string;
+  timezone: string | null;
   prompt: string;
   description: string | null;
   createdAt: string;

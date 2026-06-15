@@ -77,6 +77,12 @@ export type CombinedEntry = AutomationEntry & {
   nextRunAt: string | null;
   lastRunAt: string | null;
   chatThreadId: string;
+  triggerCount: number;
+  triggerKinds: OrgAutomationEntry["triggerKinds"];
+  triggerBadges: OrgAutomationEntry["triggerBadges"];
+  triggerEditable: boolean;
+  triggerReadOnlyReason: OrgAutomationEntry["triggerReadOnlyReason"];
+  triggerSummary: string;
 };
 
 export function buildCombinedAutomations(
@@ -97,6 +103,12 @@ export function buildCombinedAutomations(
       nextRunAt: e.nextRunAt,
       lastRunAt: e.lastRunAt,
       chatThreadId: e.chatThreadId,
+      triggerCount: e.triggerCount,
+      triggerKinds: e.triggerKinds,
+      triggerBadges: e.triggerBadges,
+      triggerEditable: e.triggerEditable,
+      triggerReadOnlyReason: e.triggerReadOnlyReason,
+      triggerSummary: e.triggerSummary,
     };
   });
 }
