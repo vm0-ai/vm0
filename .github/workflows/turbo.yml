@@ -834,7 +834,8 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           WEB_API_ENV_FILE: ${{ steps.api-seed-env.outputs.file }}
-          DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY || 'fake-key' }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           DEV_MODEL_DEEPSEEK_KEY: fake-key
         run: |
           while IFS= read -r line; do

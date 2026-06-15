@@ -217,6 +217,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-maps": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-search-console": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-sheets": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -2575,7 +2576,7 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Google Maps API-token auth only when its switch is enabled", () => {
+  it("exposes Google Maps OAuth only when its switch is enabled", () => {
     expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
       [],
     );
@@ -2583,7 +2584,7 @@ describe("getAvailableConnectorAuthMethodIds", () => {
       getAvailableConnectorAuthMethodIds("google-maps", {
         [FeatureSwitchKey.GoogleMapsConnector]: true,
       }),
-    ).toStrictEqual(["api-token"]);
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Google Analytics OAuth only when its switch is enabled", () => {
@@ -3717,6 +3718,17 @@ describe("getConnectorEnvBindingEntries", () => {
     }
   });
 
+  it("declares generated Google Maps firewall bearer auth header", () => {
+    const firewall = getConnectorFirewall("google-maps");
+    expect(firewall.apis).toHaveLength(1);
+    expect(firewall.apis[0]?.base).toBe("https://maps.googleapis.com");
+    expect(firewall.apis[0]?.auth).toStrictEqual({
+      headers: {
+        Authorization: "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}",
+      },
+    });
+  });
+
   it("OAuth auth-code auth methods keep the documented secret naming convention", () => {
     // This is a registry naming convention. Runtime behavior must use
     // grant output metadata and runtimeBindings, not infer roles from names.
@@ -4075,6 +4087,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
         "google-calendar",
         "google-docs",
         "google-drive",
+        "google-maps",
         "google-meet",
         "google-search-console",
         "google-sheets",
@@ -4175,6 +4188,20 @@ describe("getConnectorAuthMethodGrantScopes - google-analytics scopes", () => {
       "https://www.googleapis.com/auth/analytics.readonly",
     );
     expect(scopes).toContain("https://www.googleapis.com/auth/analytics.edit");
+    expect(scopes).toContain("https://www.googleapis.com/auth/userinfo.email");
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - google-maps scopes", () => {
+  it("uses Google Cloud Platform and userinfo scopes", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "google-maps",
+      "oauth",
+    );
+    const scopes = getConnectorAuthMethodGrantScopes("google-maps", "oauth");
+
+    expect(scopes).toStrictEqual(grant?.scopes);
+    expect(scopes).toContain("https://www.googleapis.com/auth/cloud-platform");
     expect(scopes).toContain("https://www.googleapis.com/auth/userinfo.email");
   });
 });
