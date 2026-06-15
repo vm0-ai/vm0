@@ -5,6 +5,7 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -195,10 +196,134 @@ describe("permission allow page", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
       expect(
-        screen.queryByText("Hey Taylor, you're updating your permissions"),
+        screen.queryByText(/Hey Taylor, you're updating your permissions/u),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
     });
     expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
+  });
+
+  it("lets a user grant unknown endpoints to an agent", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000004";
+    let grants: UserPermissionGrantResponse[] = [];
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Cloudflare Bot",
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        const grant: UserPermissionGrantResponse = {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: "2026-03-10T01:00:00Z",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        };
+        grants = [grant];
+        return respond(200, grant);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=1h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Casey Reviewer",
+        firstName: "Casey",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Hey Casey, you're updating your permissions for Cloudflare Bot.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Cloudflare")).toBeInTheDocument();
+    expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
+    expect(screen.getByText(UNKNOWN_PERMISSION_GRANT)).toBeInTheDocument();
+
+    await user.click(screen.getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(grants).toMatchObject([
+      {
+        agentId,
+        connectorRef: "cloudflare",
+        permission: UNKNOWN_PERMISSION_GRANT,
+        action: "allow",
+      },
+    ]);
+  });
+
+  it("shows the completed state when an unknown endpoint grant already applies", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000005";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Edge Bot",
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "cloudflare",
+          permission: UNKNOWN_PERMISSION_GRANT,
+          action: "allow",
+          expiresAt: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=always`,
+      user: {
+        id: "test-user-123",
+        fullName: "Riley Reviewer",
+        firstName: "Riley",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Hey Riley, you're updating your permissions/u),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    });
   });
 });

@@ -13,7 +13,7 @@ import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
-  extractPermissions,
+  findPermission,
   permissionAllowAction$,
   permissionAllowAgent$,
   permissionAllowAgentId$,
@@ -22,6 +22,7 @@ import {
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
   resolveUserPermissionGrantPolicy,
+  type Permission,
   upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
@@ -36,11 +37,6 @@ import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
-
-interface Permission {
-  name: string;
-  description?: string;
-}
 
 function AgentPill({
   avatarUrl,
@@ -202,14 +198,6 @@ function resolveUserName(
     return user.username;
   }
   return "there";
-}
-
-function findPermission(ref: string, name: string): Permission | null {
-  return (
-    extractPermissions(ref).find((permission) => {
-      return permission.name === name;
-    }) ?? null
-  );
 }
 
 function ConfirmGrantCard({

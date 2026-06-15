@@ -233,7 +233,7 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
-  extractPermissions,
+  findPermission,
   resolveUserPermissionGrantPolicy,
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
@@ -4223,9 +4223,7 @@ function isPermissionActionAlreadyApplied(params: {
 }
 
 function findPermissionActionPermission(block: PermissionActionBlock) {
-  return extractPermissions(block.connectorRef).find((permission) => {
-    return permission.name === block.permission;
-  });
+  return findPermission(block.connectorRef, block.permission) ?? undefined;
 }
 
 function permissionActionUserGrantPolicy(
