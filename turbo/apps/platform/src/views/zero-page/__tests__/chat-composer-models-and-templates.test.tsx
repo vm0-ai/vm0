@@ -1515,7 +1515,7 @@ describe("chat composer templates", () => {
       expect(
         screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
       ).toBeInTheDocument();
-      expect(screen.queryByText("PPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
       expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
     });
   });
