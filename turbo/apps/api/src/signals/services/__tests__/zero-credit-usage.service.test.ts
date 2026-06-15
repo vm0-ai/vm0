@@ -760,6 +760,22 @@ describe("processOrgUsageEvents$ usage underbilling signals", () => {
       billingError: "missing_pricing",
       status: "processed",
     });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Missing usage_pricing — charged zero",
+      expect.objectContaining({
+        type: "usage_underbilling",
+        reason: "missing_pricing",
+        underbilling_class: "confirmed",
+        component: "api",
+        context: "CreditUsage",
+        orgId: fixture.orgId,
+        userId: fixture.billingUserId,
+        kind: TEST_KIND,
+        provider: fixture.provider,
+        category: TEST_CATEGORY,
+        quantity: 25,
+      }),
+    );
   });
 
   it("logs alertable underbilling fields when fallback pricing is used", async () => {
@@ -795,5 +811,22 @@ describe("processOrgUsageEvents$ usage underbilling signals", () => {
       billingError: "fallback_pricing",
       status: "processed",
     });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Missing usage_pricing — billed at fallback rate",
+      expect.objectContaining({
+        type: "usage_underbilling",
+        reason: "fallback_pricing",
+        underbilling_class: "confirmed",
+        component: "api",
+        context: "CreditUsage",
+        orgId: fixture.orgId,
+        userId: fixture.billingUserId,
+        kind: TEST_KIND,
+        provider: fixture.provider,
+        category: TEST_CATEGORY,
+        quantity: 7,
+        fallbackUnitPrice: 2,
+      }),
+    );
   });
 });
