@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.142.0](https://github.com/vm0-ai/vm0/compare/api-v1.141.0...api-v1.142.0) (2026-06-15)
+
+
+### Features
+
+* configure connector unknown endpoint defaults ([#17699](https://github.com/vm0-ai/vm0/issues/17699)) ([d9f193e](https://github.com/vm0-ai/vm0/commit/d9f193efdd6c2209b2de7aa96b6a3f8fddd023d1))
+* persist generation template per thread so style sticks across follow-ups ([#17525](https://github.com/vm0-ai/vm0/issues/17525)) ([#17681](https://github.com/vm0-ai/vm0/issues/17681)) ([37b295e](https://github.com/vm0-ai/vm0/commit/37b295ed9e5c4ca7b550dc5c19aaf964ff483a31))
+
+
+### Bug Fixes
+
+* harden openrouter provider auth ([#17704](https://github.com/vm0-ai/vm0/issues/17704)) ([9ada505](https://github.com/vm0-ai/vm0/commit/9ada5055216f0ba6f875f28b17d2ce67e57b8f9f))
+* seed deepseek dev api key ([#17607](https://github.com/vm0-ai/vm0/issues/17607)) ([e957b49](https://github.com/vm0-ai/vm0/commit/e957b4993dd1f7fddfa28822c7ac9a0a4c021c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+    * @vm0/core bumped to 8.339.0
+    * @vm0/db bumped to 1.52.0
+
 ## [1.141.0](https://github.com/vm0-ai/vm0/compare/api-v1.140.1...api-v1.141.0) (2026-06-15)
 
 

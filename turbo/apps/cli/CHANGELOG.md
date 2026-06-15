@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.193.0](https://github.com/vm0-ai/vm0/compare/cli-v9.192.5...cli-v9.193.0) (2026-06-15)
+
+
+### Features
+
+* configure connector unknown endpoint defaults ([#17699](https://github.com/vm0-ai/vm0/issues/17699)) ([d9f193e](https://github.com/vm0-ai/vm0/commit/d9f193efdd6c2209b2de7aa96b6a3f8fddd023d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+    * @vm0/core bumped to 8.339.0
+
 ## [9.192.5](https://github.com/vm0-ai/vm0/compare/cli-v9.192.4...cli-v9.192.5) (2026-06-15)
 
 
