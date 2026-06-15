@@ -2,7 +2,7 @@ use super::*;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::device_lock::{self, NbdDeviceClaim};
 use crate::error::{NbdCowError, Result};
