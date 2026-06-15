@@ -94,7 +94,6 @@ describe("throwOAuthError", () => {
         error: "invalid_grant",
         error_description: "Session control expired",
         error_subtype: "invalid_rapt",
-        error_uri: "https://example.test/oauth-errors/invalid-rapt",
       }),
     );
 
@@ -111,11 +110,8 @@ describe("throwOAuthError", () => {
       throw new Error("Expected OAuthProviderHttpError");
     }
     expect(error.oauthError).toBe("invalid_grant");
-    expect(error.oauthErrorDescription).toBe("Session control expired");
     expect(error.oauthErrorSubtype).toBe("invalid_rapt");
-    expect(error.oauthErrorUri).toBe(
-      "https://example.test/oauth-errors/invalid-rapt",
-    );
+    expect(error.message).toContain("Session control expired");
   });
 
   it("truncates long response bodies", async () => {

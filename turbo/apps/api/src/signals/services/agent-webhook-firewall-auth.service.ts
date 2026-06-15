@@ -742,7 +742,6 @@ function oauthRefreshFailureLogFields(error: unknown): {
   readonly oauthError?: string;
   readonly oauthErrorSubtype?: string;
   readonly oauthStatus?: number;
-  readonly oauthErrorUri?: string;
 } {
   if (!isOAuthProviderHttpError(error)) {
     return {};
@@ -753,7 +752,6 @@ function oauthRefreshFailureLogFields(error: unknown): {
       ? { oauthErrorSubtype: error.oauthErrorSubtype }
       : {}),
     oauthStatus: error.status,
-    ...(error.oauthErrorUri ? { oauthErrorUri: error.oauthErrorUri } : {}),
   };
 }
 
