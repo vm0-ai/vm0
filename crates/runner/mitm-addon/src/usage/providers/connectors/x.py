@@ -23,7 +23,7 @@ from logging_utils import log_proxy_entry
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
-from ...underbilling import log_usage_underbilling, underbilling_fields
+from ...underbilling import log_usage_underbilling
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
     bucket_needs_body_refinement,
@@ -992,21 +992,16 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         parse_error = resp_meta.get("parse_error")
         if isinstance(parse_error, str) and (parse_error := parse_error.strip()):
             log_extra["parse_error"] = parse_error
-        log_proxy_entry(
+        log_usage_underbilling(
             proxy_log_path,
-            "error",
             (
                 "X count endpoint response unparseable — skipping billing"
                 if req_meta.get("is_count_endpoint")
                 else "X response unparseable and request carries no count hints — skipping billing"
             ),
-            **{
-                **log_context,
-                **underbilling_fields(
-                    "unparseable_usage_response",
-                    "confirmed",
-                ),
-            },
+            "unparseable_usage_response",
+            "confirmed",
+            **log_context,
             **log_extra,
         )
 

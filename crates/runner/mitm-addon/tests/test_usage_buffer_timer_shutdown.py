@@ -699,6 +699,43 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
     assert dropped_entries[0]["component"] == "mitm_addon"
 
 
+def test_shutdown_retry_exhaustion_logs_underbilling_without_proxy_log_path(mitm_ctx):
+    enqueue = RecordingEnqueue(return_value=False)
+    install_recording_usage_timer(
+        enqueue_webhook=enqueue,
+        max_retained_batch_retries=1,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [event(source_key="source-1")],
+        "",
+    )
+
+    with mitm_ctx() as log:
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+        enqueue.clear()
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+
+    messages = [call.args[0] for call in log.error.call_args_list]
+    assert any(
+        message.startswith(
+            "type=usage_underbilling reason=shutdown_retained_without_retry "
+            "underbilling_class=risk component=mitm_addon "
+        )
+        for message in messages
+    )
+    assert any(
+        message.startswith(
+            "type=usage_underbilling reason=retry_budget_exhausted "
+            "underbilling_class=confirmed component=mitm_addon "
+        )
+        for message in messages
+    )
+    assert all("secret-token" not in message for message in messages)
+
+
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
     enqueue = RecordingEnqueue()
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
