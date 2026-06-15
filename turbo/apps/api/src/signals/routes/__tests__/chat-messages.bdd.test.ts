@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -1703,6 +1707,61 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(videoPrompt).not.toContain(preset.scene);
     await cancelChatRun(actor, video.runId);
+  }, 90_000);
+
+  it("keeps an attached illustration style sticky across follow-ups and clears it for new threads", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.proxyChatCallbackToApp();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    // Turn 1: the user explicitly attaches the style.
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const firstPrompt = (await api.readRun(actor, first.runId))
+      .appendSystemPrompt;
+    expect(firstPrompt).toContain("# Attached illustration style");
+    expect(firstPrompt).toContain(style.illustrationStyleId);
+
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "here is a fox")]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === "here is a fox";
+      });
+    });
+
+    // Turn 2: a follow-up in the same thread without re-attaching the style
+    // still gets it — inherited from thread-sticky state (vm0-ai/vm0#17525).
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "another one",
+    });
+    const secondPrompt = (await api.readRun(actor, second.runId))
+      .appendSystemPrompt;
+    expect(secondPrompt).toContain("# Attached illustration style");
+    expect(secondPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, second.runId);
+
+    // A brand-new thread starts clean: the style does not carry over.
+    const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
+    const freshPrompt = (await api.readRun(actor, fresh.runId))
+      .appendSystemPrompt;
+    expect(freshPrompt).not.toContain("# Attached illustration style");
+    expect(freshPrompt).not.toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, fresh.runId);
   }, 90_000);
 
   it("rejects unknown generation template selections", async () => {
