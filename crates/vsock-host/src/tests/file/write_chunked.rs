@@ -236,7 +236,7 @@ async fn test_write_file_chunked() {
 }
 
 #[tokio::test]
-async fn write_file_chunked_preserves_sudo_on_chunks_rename_and_cleanup() {
+async fn write_file_chunked_preserves_sudo_on_chunks_rename_cleanup_and_retry() {
     let mut rename_fixture = ChunkedWriteFixture::new("/tmp/sudo-big.bin").await;
     let rename_task = rename_fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), true);
 
@@ -268,17 +268,28 @@ async fn write_file_chunked_preserves_sudo_on_chunks_rename_and_cleanup() {
     send_write_file_failure(&mut cleanup_fixture.guest, second.seq(), "disk full").await;
 
     let cleanup = cleanup_fixture.expect_cleanup().await;
-    send_exec_result(
+    send_guest_error(
         &mut cleanup_fixture.guest,
         cleanup.seq(),
-        ExecTermination::Exited { exit_code: 0 },
-        &[],
-        &[],
+        "cleanup unavailable",
     )
     .await;
 
     let err = cleanup_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
+    cleanup_fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+
+    let retry = tokio::time::timeout(Duration::from_secs(2), cleanup_fixture.expect_cleanup())
+        .await
+        .expect("cleanup retry was not sent after sudo cleanup error");
+    send_exec_result(
+        &mut cleanup_fixture.guest,
+        retry.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
