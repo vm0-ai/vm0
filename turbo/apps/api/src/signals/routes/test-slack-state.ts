@@ -751,6 +751,11 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
     .limit(1);
   signal.throwIfAborted();
 
+  if (existing?.orgId) {
+    await deleteVm0ManagedKeysForSeededDefaultAgents(db, existing.orgId);
+    signal.throwIfAborted();
+  }
+
   await db
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
@@ -762,9 +767,6 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existing?.orgId) {
-    await deleteVm0ManagedKeysForSeededDefaultAgents(db, existing.orgId);
-    signal.throwIfAborted();
-
     const slackAgentRuns = await db
       .select({ id: agentRuns.id })
       .from(agentRuns)
