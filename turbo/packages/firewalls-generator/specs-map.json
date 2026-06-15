@@ -6,7 +6,7 @@
     "https://axiom.co/docs/restapi/versions/v2.json": "eb322168e3592b1bdc56ebd9f6b5357a0e80dc293c42cced2e2a95cf2b972ca4"
   },
   "clerk": {
-    "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml": "0df70f63b6ecbaf8498d9c0a1546b5abf8abf79c3a4f72ad7395403cfed06b1d"
+    "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2026-05-12.yml": "80d68cc9fbb0ec1be27afae1031109dfca9c819ad565cd5f98f479f4c881849a"
   },
   "cloudflare": {
     "https://api.cloudflare.com/client/v4/oauth/scopes": "279c7007f429bf74250073fb8d9addc1af9f76606fdca8e300b59daac6711291",
