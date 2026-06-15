@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use vsock_proto::{ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START};
+use tokio::io::AsyncWriteExt;
+use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
@@ -274,6 +275,36 @@ async fn exec_cancel_terminal_before_cancel_write_returns_result() {
         .unwrap()
         .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(is_connected(&host));
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exec_cancel_error_before_cancel_write_returns_error_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = start_capture_operation(&host, "cancel-before-error-race").await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+
+    let writer_guard = host.shared.writer.lock().await;
+    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    tokio::task::yield_now().await;
+
+    let payload = vsock_proto::encode_error("guest rejected exec");
+    let frame = vsock_proto::encode(MSG_ERROR, start.seq, &payload).unwrap();
+    guest.write_all(&frame).await.unwrap();
+    wait_for_operation_count(&host, 0).await;
+
+    drop(writer_guard);
+    let err = tokio::time::timeout(Duration::from_secs(5), cancel_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest rejected exec");
     assert!(is_connected(&host));
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;

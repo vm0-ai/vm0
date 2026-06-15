@@ -9,7 +9,7 @@ use super::super::super::support::{
     operation_count, read_guest_message, send_exec_result, send_exec_started, setup_host_and_guest,
     wait_for_operation_count,
 };
-use super::support::supervised_request;
+use super::support::{send_guest_error, supervised_request};
 use crate::ExecOwnedCapturedOutput;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
@@ -277,6 +277,46 @@ async fn supervised_exec_cancel_terminal_before_cancel_write_returns_result() {
         .unwrap()
         .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(is_connected(&host));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn supervised_exec_cancel_error_before_cancel_write_returns_error_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-before-error-race"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let writer_guard = host.shared.writer.lock().await;
+    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    tokio::task::yield_now().await;
+
+    send_guest_error(&mut guest, start.seq, "guest rejected supervised exec").await;
+    wait_for_operation_count(&host, 0).await;
+
+    drop(writer_guard);
+    let err = tokio::time::timeout(Duration::from_secs(5), cancel_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest rejected supervised exec");
     assert!(is_connected(&host));
     assert_eq!(
         normal_operation_readiness(&host),
