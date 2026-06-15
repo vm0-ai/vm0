@@ -670,6 +670,58 @@ describe("FW-4: test-oauth connector refresh", () => {
     );
   });
 
+  it("logs OAuth refresh error subtype without changing reconnect behavior", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    fw.mockTestOauthTokenRefresh(() => {
+      return HttpResponse.json(
+        {
+          error: "invalid_grant",
+          error_description: "Session control expired",
+          error_subtype: "invalid_rapt",
+        },
+        { status: 400 },
+      );
+    });
+
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({
+        TEST_OAUTH_TOKEN: "stale-access",
+      }),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+      },
+      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+    };
+
+    context.mocks.axiomLogging.warn.mockClear();
+    const failed = await fw.requestFirewallAuth(headers, body, [502]);
+    if (failed.status !== 502) {
+      throw new Error("Expected invalid_grant to fail with 502");
+    }
+    expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
+    expect(failed.body.error.failureReason).toBe("reconnect_required");
+    expect(failed.body.error.connectors).toStrictEqual(["test-oauth"]);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      expect.stringContaining("test-oauth token refresh failed"),
+      expect.objectContaining({
+        connectorType: "test-oauth",
+        errorCode: "invalid_grant",
+        failureReason: "reconnect_required",
+        oauthError: "invalid_grant",
+        oauthErrorSubtype: "invalid_rapt",
+        oauthStatus: 400,
+      }),
+    );
+  });
+
   it("classifies provider 500s as upstream failures without marking reconnect", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();

@@ -2,17 +2,30 @@ import { ProviderHttpError } from "../provider-error";
 
 const MAX_BODY_LENGTH = 500;
 
+interface OAuthProviderHttpErrorDetails {
+  readonly oauthErrorDescription?: string | undefined;
+  readonly oauthErrorSubtype?: string | undefined;
+  readonly oauthErrorUri?: string | undefined;
+}
+
 export class OAuthProviderHttpError extends ProviderHttpError {
   readonly oauthError: string | undefined;
+  readonly oauthErrorDescription: string | undefined;
+  readonly oauthErrorSubtype: string | undefined;
+  readonly oauthErrorUri: string | undefined;
 
   constructor(
     message: string,
     status: number,
     oauthError: string | undefined = undefined,
+    details: OAuthProviderHttpErrorDetails = {},
   ) {
     super(message, status);
     this.name = "OAuthProviderHttpError";
     this.oauthError = oauthError;
+    this.oauthErrorDescription = details.oauthErrorDescription;
+    this.oauthErrorSubtype = details.oauthErrorSubtype;
+    this.oauthErrorUri = details.oauthErrorUri;
   }
 }
 
@@ -38,6 +51,9 @@ export async function throwOAuthError(
   const status = response.status;
   let detail = "";
   let oauthError: string | undefined;
+  let oauthErrorDescription: string | undefined;
+  let oauthErrorSubtype: string | undefined;
+  let oauthErrorUri: string | undefined;
 
   const raw = await response.text();
   if (raw.length > 0) {
@@ -51,8 +67,17 @@ export async function throwOAuthError(
           typeof obj["error_description"] === "string"
             ? obj["error_description"]
             : null;
+        const errorSubtype =
+          typeof obj["error_subtype"] === "string"
+            ? obj["error_subtype"]
+            : null;
+        const errorUri =
+          typeof obj["error_uri"] === "string" ? obj["error_uri"] : null;
         if (errorCode) {
           oauthError = errorCode;
+          oauthErrorDescription = errorDesc ?? undefined;
+          oauthErrorSubtype = errorSubtype ?? undefined;
+          oauthErrorUri = errorUri ?? undefined;
           detail = errorDesc ? ` ${errorCode} (${errorDesc})` : ` ${errorCode}`;
         } else {
           const truncated =
@@ -75,5 +100,10 @@ export async function throwOAuthError(
     `${provider} token ${operation} failed: ${status}${detail}`,
     status,
     oauthError,
+    {
+      oauthErrorDescription,
+      oauthErrorSubtype,
+      oauthErrorUri,
+    },
   );
 }

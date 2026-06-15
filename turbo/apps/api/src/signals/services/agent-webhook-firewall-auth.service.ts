@@ -738,6 +738,25 @@ function classifyRefreshFailure(
   };
 }
 
+function oauthRefreshFailureLogFields(error: unknown): {
+  readonly oauthError?: string;
+  readonly oauthErrorSubtype?: string;
+  readonly oauthStatus?: number;
+  readonly oauthErrorUri?: string;
+} {
+  if (!isOAuthProviderHttpError(error)) {
+    return {};
+  }
+  return {
+    ...(error.oauthError ? { oauthError: error.oauthError } : {}),
+    ...(error.oauthErrorSubtype
+      ? { oauthErrorSubtype: error.oauthErrorSubtype }
+      : {}),
+    oauthStatus: error.status,
+    ...(error.oauthErrorUri ? { oauthErrorUri: error.oauthErrorUri } : {}),
+  };
+}
+
 function isFetchNetworkError(error: unknown): boolean {
   return (
     error instanceof TypeError && error.message.toLowerCase().includes("fetch")
@@ -1950,6 +1969,7 @@ async function markAndReturnRefreshFailure(
     userId: args.userId,
     errorCode,
     failureReason,
+    ...oauthRefreshFailureLogFields(error),
   });
   await markRefreshFailure(args, context, errorCode, failureReason);
   return refreshFailedResult(failureReason);

@@ -82,6 +82,40 @@ describe("throwOAuthError", () => {
     expect(isOAuthProviderHttpError(error) ? error.oauthError : null).toBe(
       "invalid_grant",
     );
+    expect(
+      isOAuthProviderHttpError(error) ? error.oauthErrorSubtype : null,
+    ).toBeUndefined();
+  });
+
+  it("preserves standard OAuth diagnostic fields", async () => {
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: "Session control expired",
+        error_subtype: "invalid_rapt",
+        error_uri: "https://example.test/oauth-errors/invalid-rapt",
+      }),
+    );
+
+    const error = await throwOAuthError(
+      "Google Cloud",
+      "refresh",
+      response,
+    ).catch((e: unknown) => {
+      return e;
+    });
+
+    expect(isOAuthProviderHttpError(error)).toBe(true);
+    if (!isOAuthProviderHttpError(error)) {
+      throw new Error("Expected OAuthProviderHttpError");
+    }
+    expect(error.oauthError).toBe("invalid_grant");
+    expect(error.oauthErrorDescription).toBe("Session control expired");
+    expect(error.oauthErrorSubtype).toBe("invalid_rapt");
+    expect(error.oauthErrorUri).toBe(
+      "https://example.test/oauth-errors/invalid-rapt",
+    );
   });
 
   it("truncates long response bodies", async () => {
