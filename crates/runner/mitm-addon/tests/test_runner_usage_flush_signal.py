@@ -563,6 +563,13 @@ class TestRunnerUsageFlushSignal:
             wait_for_usage_flush_worker_to_stop()
             assert flush_count == 1
 
+    def test_reset_runner_usage_flush_state_clears_stranded_pending_signal(self):
+        mitm_addon._usage_flush_requested.set()
+
+        mitm_addon.reset_runner_usage_flush_state_for_tests()
+
+        assert not mitm_addon._usage_flush_requested.is_set()
+
     def test_failed_signal_flush_releases_worker_for_later_signal(self, mitm_ctx):
         second_flush_completed = threading.Event()
         flush_triggers: list[str] = []
