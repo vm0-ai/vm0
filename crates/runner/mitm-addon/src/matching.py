@@ -489,6 +489,14 @@ def _match_segment_literal(runtime: str, prefix: str, suffix: str) -> str | None
     return runtime[len(prefix) : len(runtime) - len(suffix)]
 
 
+def _segment_literal_matches(runtime: str, prefix: str, suffix: str) -> bool:
+    if not runtime.startswith(prefix):
+        return False
+    if not runtime.endswith(suffix):
+        return False
+    return len(runtime) > len(prefix) + len(suffix)
+
+
 def match_host(host: str, pattern: str) -> dict | None:
     """Match a hostname against a pattern. Returns extracted params or None.
 
@@ -1001,11 +1009,13 @@ def _match_compiled_path_traversal(
             if params is not None:
                 params[parsed.name] = runtime
         else:
-            captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
-            if captured is None:
-                return None
             if params is not None:
+                captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
+                if captured is None:
+                    return None
                 params[parsed.name] = captured
+            elif not _segment_literal_matches(runtime, parsed.prefix, parsed.suffix):
+                return None
         pi += 1
 
     return params, pi
