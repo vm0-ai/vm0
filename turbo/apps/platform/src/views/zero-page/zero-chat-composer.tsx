@@ -1301,7 +1301,7 @@ function TemplatePreviewPage({
             Templates
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">Presentation</span>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
@@ -1800,7 +1800,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
