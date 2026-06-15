@@ -203,3 +203,92 @@ def test_valid_later_permission_can_still_allow_after_malformed_auth():
     assert isinstance(result, matching.FirewallAllow)
     assert result.name == "specific"
     assert result.permission == "items-read"
+
+
+# Malformed network policy precedence
+
+
+def test_later_malformed_policy_wins_after_earlier_unknown_allow():
+    fws = [
+        {
+            "name": "broad",
+            "apis": [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer broad"}},
+                    "permissions": [],
+                }
+            ],
+        },
+        {
+            "name": "specific",
+            "apis": [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer specific"}},
+                    "permissions": [
+                        {"name": "items-read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+        },
+    ]
+    policies = {
+        "broad": {"allow": [], "deny": [], "unknownPolicy": "allow"},
+        "specific": {"deny": "items-read", "unknownPolicy": "deny"},
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/items/123",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        matching.compile_network_policies(policies),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.name == "specific"
+    assert result.permissions == ()
+    assert result.reason == "malformed_network_policy"
+
+
+def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match():
+    fws = [
+        {
+            "name": "broad",
+            "apis": [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer broad"}},
+                    "permissions": [
+                        {"name": "broad-read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+        },
+        {
+            "name": "specific",
+            "apis": [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer specific"}},
+                    "permissions": [
+                        {"name": "items-read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+        },
+    ]
+    policies = {
+        "broad": "denied",
+        "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+    }
+    url = "https://api.example.com/items/123"
+    compiled = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+    assert isinstance(compiled, matching.FirewallAllow)
+    assert compiled.name == "specific"
+    assert compiled.permission == "items-read"
