@@ -35,6 +35,18 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
+  it("allows callers to tune output quality", () => {
+    expect(
+      r2ImageTransformUrl("https://cdn.vm0.io/artifacts/user/id/image.jpg", {
+        width: 768,
+        height: 768,
+        quality: 72,
+      }),
+    ).toBe(
+      "https://cdn.vm0.io/cdn-cgi/image/width=768,height=768,fit=scale-down,format=auto,quality=72,metadata=none/artifacts/user/id/image.jpg",
+    );
+  });
+
   it("leaves already transformed URLs untouched", () => {
     const url =
       "https://cdn.vm0.io/cdn-cgi/image/width=100,height=100,fit=scale-down/artifacts/user/id/image.png";

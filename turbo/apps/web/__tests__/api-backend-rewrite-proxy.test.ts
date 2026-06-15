@@ -2280,7 +2280,7 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero desktop update release rewrite path exactly", () => {
+  it("matches the zero desktop update release and DMG rewrite paths exactly", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/desktop/updates/stable/darwin/arm64/release",
@@ -2288,7 +2288,17 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
         "/api/zero/desktop/updates/stable/darwin/arm64/release/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg/extra",
       ),
     ).toBe(false);
     expect(

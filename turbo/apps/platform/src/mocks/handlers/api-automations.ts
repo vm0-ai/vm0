@@ -72,6 +72,7 @@ function toTrigger(view: AutomationView): AutomationTriggerResponse {
 /** Project a mock store row as its resource-API automation (for test overrides). */
 export function toMockAutomationResponse(
   view: AutomationView,
+  options?: { triggers?: AutomationTriggerResponse[] },
 ): AutomationResponse {
   return {
     id: view.id,
@@ -86,7 +87,7 @@ export function toMockAutomationResponse(
     chatThreadId: view.chatThreadId,
     createdAt: view.createdAt,
     updatedAt: view.updatedAt,
-    triggers: [toTrigger(view)],
+    triggers: options?.triggers ?? [toTrigger(view)],
   };
 }
 
@@ -140,7 +141,9 @@ export const apiAutomationsHandlers = [
   // GET /api/automations
   mockApi(automationsMainContract.list, ({ respond }) =>
     respond(200, {
-      automations: getMockAutomations().map(toMockAutomationResponse),
+      automations: getMockAutomations().map((view) => {
+        return toMockAutomationResponse(view);
+      }),
     }),
   ),
 

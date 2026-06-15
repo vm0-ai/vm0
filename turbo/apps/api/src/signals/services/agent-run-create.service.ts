@@ -38,6 +38,7 @@ import {
 import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
@@ -50,6 +51,7 @@ import {
   type ExpandedFirewallConfig,
   type Firewall,
   type FirewallPolicies,
+  type FirewallPolicy,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -1049,6 +1051,10 @@ function modelProviderEnvironmentSecretValue(
     : secretValue;
 }
 
+function hasUsableModelProviderSecretValue(value: string): boolean {
+  return value.trim().length > 0;
+}
+
 function modelProviderEnvironment(
   id: string | null,
   type: ModelProviderType,
@@ -1057,6 +1063,7 @@ function modelProviderEnvironment(
   selectedModel: string | null,
 ): ResolvedModelProviderEnvironment {
   const model = selectedModel ?? config.defaultModel ?? "";
+  const runtimeModel = model ? getProviderRuntimeModel(type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
     type,
     config.secretName,
@@ -1066,7 +1073,7 @@ function modelProviderEnvironment(
   for (const [key, value] of Object.entries(config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
-      .replaceAll("$model", model);
+      .replaceAll("$model", runtimeModel);
   }
 
   return {
@@ -1428,14 +1435,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
+  const secretValue = await decryptStoredSecretValue(
+    row.encryptedValue,
+    args.featureSwitchContext,
+  );
+  if (!hasUsableModelProviderSecretValue(secretValue)) {
+    return null;
+  }
   return modelProviderEnvironment(
     row.id,
     row.type,
     config,
-    await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    ),
+    secretValue,
     args.selectedModelOverride ?? row.selectedModel,
   );
 }
@@ -2098,6 +2109,55 @@ function collectPermissionNames(
   return [...names];
 }
 
+function allAllowPolicyForPermissions(
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  return {
+    policies: Object.fromEntries(
+      permissionNames.map((name) => {
+        return [name, "allow" as const];
+      }),
+    ),
+    unknownPolicy: "allow",
+  };
+}
+
+function defaultBuiltinConnectorPolicyForFirewall(
+  firewall: ExpandedFirewallConfig,
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  if (isFirewallConnectorType(firewall.name)) {
+    return getDefaultFirewallPolicies(firewall.name);
+  }
+  return allAllowPolicyForPermissions(permissionNames);
+}
+
+function networkPolicyForFirewallPolicy(
+  permissionNames: readonly string[],
+  policy: FirewallPolicy,
+): NetworkPolicies[string] {
+  const allow: string[] = [];
+  const deny: string[] = [];
+  const ask: string[] = [];
+  for (const name of permissionNames) {
+    const value = policy.policies[name];
+    if (value === "allow") {
+      allow.push(name);
+    } else if (value === "deny") {
+      deny.push(name);
+    } else if (value === "ask") {
+      ask.push(name);
+    }
+  }
+
+  return {
+    allow,
+    deny,
+    ask,
+    unknownPolicy: policy.unknownPolicy ?? "allow",
+  };
+}
+
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
@@ -2153,6 +2213,10 @@ function applyConnectorPolicies(
   entryForFirewall: (
     firewall: ExpandedFirewallConfig,
   ) => ExecutionFirewallEntry,
+  defaultPolicyForFirewall: (
+    firewall: ExpandedFirewallConfig,
+    permissionNames: readonly string[],
+  ) => FirewallPolicy,
 ): Omit<PermissionManifest, "environmentFirewalls"> {
   const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
@@ -2160,37 +2224,24 @@ function applyConnectorPolicies(
   for (const firewall of connectorFirewalls) {
     const policy = policies?.[firewall.name];
     const permissionNames = collectPermissionNames(firewall.apis);
+    const defaultPolicy = defaultPolicyForFirewall(firewall, permissionNames);
     firewalls.push(entryForFirewall(firewall));
 
     if (!policy) {
-      networkPolicies[firewall.name] = {
-        allow: [...permissionNames],
-        deny: [],
-        ask: [],
-        unknownPolicy: "allow",
-      };
+      networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+        permissionNames,
+        defaultPolicy,
+      );
       continue;
     }
 
-    const allow: string[] = [];
-    const deny: string[] = [];
-    const ask: string[] = [];
-    for (const name of permissionNames) {
-      const value = policy.policies[name];
-      if (value === "allow") {
-        allow.push(name);
-      } else if (value === "deny") {
-        deny.push(name);
-      } else if (value === "ask") {
-        ask.push(name);
-      }
-    }
-    networkPolicies[firewall.name] = {
-      allow,
-      deny,
-      ask,
-      unknownPolicy: policy.unknownPolicy ?? "allow",
-    };
+    networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+      permissionNames,
+      {
+        ...policy,
+        unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+      },
+    );
   }
 
   return { firewalls, networkPolicies };
@@ -2253,6 +2304,7 @@ function buildPermissionManifest(args: {
     (firewall) => {
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
+    defaultBuiltinConnectorPolicyForFirewall,
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2262,6 +2314,9 @@ function buildPermissionManifest(args: {
     resolvedCustomConnectorFirewalls,
     args.permissionPolicies,
     inlineFirewallEntry,
+    (_firewall, permissionNames) => {
+      return allAllowPolicyForPermissions(permissionNames);
+    },
   );
   const providerManifest = modelProviderPermissionManifest(
     args.modelProvider,

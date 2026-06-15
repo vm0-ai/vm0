@@ -9,11 +9,11 @@ import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
-const ZERO_DESKTOP_RELEASE_PATH =
-  "/api/zero/desktop/updates/stable/darwin/arm64/release";
+const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
+  "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
 
 export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
-  ZERO_DESKTOP_RELEASE_PATH,
+  ZERO_DESKTOP_DMG_DOWNLOAD_PATH,
   resolveApiBaseForNavigation("api"),
 ).toString();
 

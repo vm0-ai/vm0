@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.117.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.0...runner-rs-v0.117.1) (2026-06-15)
+
+
+### Refactoring
+
+* centralize model-provider metadata test setup ([#17722](https://github.com/vm0-ai/vm0/issues/17722)) ([e6c880f](https://github.com/vm0-ai/vm0/commit/e6c880f7b3900b0de7a61378e2ed03f77ed64d3f))
+
+## [0.117.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.7...runner-rs-v0.117.0) (2026-06-15)
+
+
+### Features
+
+* replace YouTube API key auth with OAuth ([#17661](https://github.com/vm0-ai/vm0/issues/17661)) ([c548213](https://github.com/vm0-ai/vm0/commit/c54821371703d3be2c996db429630b36b1404e67))
+
+
+### Bug Fixes
+
+* bound websocket model usage sources ([#17639](https://github.com/vm0-ai/vm0/issues/17639)) ([499347c](https://github.com/vm0-ai/vm0/commit/499347cc6551b413b50fdc925049bfcb45340332))
+
+
+### Documentation
+
+* **mitm-addon:** clarify x stream buffering ([#17634](https://github.com/vm0-ai/vm0/issues/17634)) ([2bc2930](https://github.com/vm0-ai/vm0/commit/2bc2930c9d4227d2604b5c8931b8616f7f8dfe80))
+
+
+### Refactoring
+
+* centralize guest env key names ([#17626](https://github.com/vm0-ai/vm0/issues/17626)) ([476546d](https://github.com/vm0-ai/vm0/commit/476546de9d385733c481558b422511b30b1cc45a))
+
+
+### Performance Improvements
+
+* **runner:** move workspace cache hits into sandboxes ([#17629](https://github.com/vm0-ai/vm0/issues/17629)) ([3ec0448](https://github.com/vm0-ai/vm0/commit/3ec04481481f46589b219dfbf08d80555e86ed95))
+
 ## [0.116.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.6...runner-rs-v0.116.7) (2026-06-14)
 
 ## [0.116.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.5...runner-rs-v0.116.6) (2026-06-14)

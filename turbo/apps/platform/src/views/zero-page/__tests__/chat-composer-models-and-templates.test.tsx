@@ -1376,43 +1376,36 @@ describe("chat composer templates", () => {
     });
     click(tabByText("Illustration"));
 
+    const heroAlt = `${illustrationTemplate.title} illustration preview`;
+    const heroSrc = (index: number) => {
+      return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
+        width: 768,
+        height: 768,
+        quality: 72,
+      });
+    };
+
     await waitFor(() => {
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
-      ).toHaveAttribute(
-        "src",
-        r2ImageTransformUrl(illustrationTemplate.previewImage, {
-          width: 640,
-          height: 360,
-        }),
-      );
-      expect(screen.getAllByTitle(/ illustration preview$/u)).toHaveLength(
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+      expect(screen.getAllByAltText(/ illustration preview$/u)).toHaveLength(
         ILLUSTRATION_TEMPLATE_ITEMS.length,
       );
     });
 
-    click(screen.getByLabelText(`View template ${illustrationTemplate.title}`));
+    // Variant thumbnails switch the hero inline within the card; there is no
+    // longer a second preview dialog.
+    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    if (!card) {
+      throw new Error("Illustration card not found");
+    }
+    click(within(card).getByLabelText("Show variant 2"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    click(screen.getByLabelText("Show variant 2"));
+    click(within(card).getByLabelText("Show variant 1"));
     await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 2`),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Show variant 1"));
-    await waitFor(() => {
-      expect(
-        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText("Templates"));
-    await waitFor(() => {
-      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");
@@ -1669,5 +1662,127 @@ describe("chat composer templates", () => {
         screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("reopens the picker on the presentation tab from the selected chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    await selectTemplate(user, template);
+
+    click(
+      await screen.findByLabelText(
+        `Preview template ${templateLabel(template)}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    // Select an illustration style, which leaves the picker on the
+    // Illustration tab.
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+    click(
+      await screen.findByLabelText(
+        `Select template ${illustrationTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    // Move the last-used tab back to Presentation, then close without changing
+    // the selection so the persisted tab no longer matches the selection.
+    click(screen.getByLabelText("Template"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(tabByText("Presentation"));
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Clicking the chip reopens on the tab matching the selection's type.
+    click(
+      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("removes the selected template from the chip without opening the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await selectTemplate(user, template);
+
+    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+    ).not.toBeInTheDocument();
   });
 });

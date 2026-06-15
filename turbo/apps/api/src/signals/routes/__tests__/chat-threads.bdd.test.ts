@@ -417,9 +417,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const unauthenticated = await app.request("/api/zero/chat-threads", {
-      headers: { authorization: "Bearer clerk-session" },
-    });
+    const unauthenticated = await app.request(
+      `/api/zero/chat-threads?agentId=${randomUUID()}`,
+      {
+        headers: { authorization: "Bearer clerk-session" },
+      },
+    );
     expect(unauthenticated.status).toBe(401);
     const unauthenticatedBody = (await unauthenticated.json()) as {
       readonly error: { readonly code: string };
@@ -644,13 +647,17 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
 describe("CHAT-01 chat thread list pagination and read state", () => {
   it("rejects unauthenticated list requests and yields empty lists for unknown agent scopes", async () => {
-    const unauthenticated = await chat.requestListThreads(null, {}, [401]);
+    const unauthenticated = await chat.requestListThreads(
+      null,
+      { agentId: randomUUID() },
+      [401],
+    );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
     const orgless = await chat.requestListThreads(
       bdd.user({ orgId: null }),
-      {},
+      { agentId: randomUUID() },
       [401],
     );
     expectApiError(orgless.body);
@@ -806,18 +813,22 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     expect(scoped.pinned).toStrictEqual([]);
     expect(listedThreadIds(scoped)).not.toContain(pinnedThread.id);
 
-    const unified = await chat.listThreads(owner);
+    const otherAgentList = await chat.listThreads(owner, {
+      agentId: otherAgent.agentId,
+    });
     expect(
-      unified.pinned.map((thread) => {
+      otherAgentList.pinned.map((thread) => {
         return thread.id;
       }),
     ).toStrictEqual([pinnedThread.id]);
-    expect(unified.pinned[0]?.pinnedAt).toStrictEqual(expect.any(String));
-    expect(listedThreadIds(unified)).toContain(readStateThreadId);
+    expect(otherAgentList.pinned[0]?.pinnedAt).toStrictEqual(
+      expect.any(String),
+    );
+    expect(listedThreadIds(otherAgentList)).not.toContain(readStateThreadId);
 
-    // Cursor walk over three empty threads scoped to the second agent.
+    // Cursor walk over one full default sidebar page plus one additional row.
     const cursorThreadIds = [pinnedThread.id];
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < 25; index += 1) {
       const created = await chat.createThread(owner, {
         agentId: otherAgent.agentId,
         title: `Cursor thread ${index}`,
@@ -828,9 +839,8 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 
     const firstPage = await chat.listThreads(owner, {
       agentId: otherAgent.agentId,
-      limit: 2,
     });
-    expect(firstPage.threads).toHaveLength(2);
+    expect(firstPage.threads).toHaveLength(25);
     expect(firstPage.hasMore).toBeTruthy();
     expect(firstPage.nextCursor).not.toBeNull();
     if (!firstPage.nextCursor) {
@@ -839,7 +849,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 
     const secondPage = await chat.listThreads(owner, {
       agentId: otherAgent.agentId,
-      limit: 2,
       cursor: firstPage.nextCursor,
     });
     expect(secondPage.threads).toHaveLength(1);
@@ -865,7 +874,7 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     for (const cursor of invalidCursors) {
       const fallback = await chat.requestListThreads(
         owner,
-        { agentId: otherAgent.agentId, limit: 2, cursor },
+        { agentId: otherAgent.agentId, cursor },
         [200],
       );
       if (fallback.status !== 200) {
@@ -884,10 +893,14 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     }
 
     // Peer users and other orgs never see the owner's threads.
-    const peerList = await chat.listThreads(peer);
+    const peerList = await chat.listThreads(peer, {
+      agentId: otherAgent.agentId,
+    });
     expect(listedThreadIds(peerList)).toStrictEqual([]);
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
-    const otherOrgList = await chat.listThreads(sameUserOtherOrg);
+    const otherOrgList = await chat.listThreads(sameUserOtherOrg, {
+      agentId: otherAgent.agentId,
+    });
     expect(listedThreadIds(otherOrgList)).toStrictEqual([]);
   }, 60_000);
 

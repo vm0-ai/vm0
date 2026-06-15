@@ -720,6 +720,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function presentationTemplateLabel(
   item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
 ): string {
@@ -1550,7 +1560,6 @@ describe("chat lifecycle", () => {
   });
 
   it("shows run credit usage with friendly popover details", async () => {
-    const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip",
       chatMessages: [
@@ -1616,14 +1625,21 @@ describe("chat lifecycle", () => {
       copy.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
+    click(credit);
+    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+
     fireEvent.pointerEnter(credit);
 
     await waitFor(() => {
-      expect(screen.getByText("Credit usage")).toBeInTheDocument();
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getAllByText("23,000").length).toBeGreaterThanOrEqual(1);
       expect(
         screen.queryByText("model/kimi-k2.5/tokens.input"),
@@ -1631,12 +1647,105 @@ describe("chat lifecycle", () => {
       expect(screen.queryByText("moonshot")).not.toBeInTheDocument();
     });
 
-    await user.click(credit);
+    fireEvent.pointerDown(credit, { button: 0 });
+    expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+      1,
+    );
+    fireEvent.click(credit);
 
     await waitFor(() => {
-      expect(screen.getByText("Credit usage")).toBeInTheDocument();
-      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.pointerLeave(credit);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+    });
+
+    click(credit);
+    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+  });
+
+  it("shows generation usage with model names only", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-generation-usage-model-names",
+      chatMessages: [
+        {
+          id: "msg-generation-usage-user",
+          role: "user",
+          content: "Generate image and video usage",
+          runId: "run-generation-usage",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-generation-usage-assistant",
+          role: "assistant",
+          content: "Generated media is ready.",
+          runId: "run-generation-usage",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-generation-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-generation-usage",
+          usage: {
+            version: 1,
+            totalCredits: 1976,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 96,
+                providers: [{ provider: "fal-ai/nano-banana-2", credits: 96 }],
+              },
+              {
+                kind: "video",
+                credits: 1880,
+                providers: [
+                  {
+                    provider: "dreamina-seedance-2-0-260128",
+                    credits: 1880,
+                  },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-generation-usage-model-names",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 1,976");
+    fireEvent.pointerEnter(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(
+        screen.getAllByText("Nano Banana 2").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("96").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Seedance 2.0").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("1,880").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/fal\.? ?ai/iu)).not.toBeInTheDocument();
+      expect(screen.queryByText(/dreamina/iu)).not.toBeInTheDocument();
     });
   });
 
@@ -1849,13 +1958,17 @@ describe("chat lifecycle", () => {
     fireEvent.pointerEnter(desktopThreadCredit);
 
     await waitFor(() => {
-      expect(screen.getByText("Thread credit usage")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Thread credit usage").length,
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("45").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("10").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getAllByText("70").length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText("40")).not.toBeInTheDocument();
     });
@@ -1973,11 +2086,15 @@ describe("chat lifecycle", () => {
     fireEvent.pointerEnter(threadCredit);
 
     await waitFor(() => {
-      expect(screen.getByText("Thread credit usage")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Thread credit usage").length,
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getAllByText("50").length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -2056,7 +2173,7 @@ describe("chat lifecycle", () => {
     fireEvent.pointerEnter(connectorCredit);
 
     await waitFor(() => {
-      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -2160,7 +2277,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
-      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -4270,6 +4387,38 @@ describe("chat lifecycle", () => {
         "false",
       );
     });
+  });
+
+  it("opens the Computer Use download dialog from the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Connect your computer")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Download Zero Computer Use for macOS, then open it to let Zero use your desktop.",
+      ),
+    ).toBeInTheDocument();
+    expect(linkByText("Download for macOS")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
   });
 
   it("does not auto-select the only online Computer Use host", async () => {

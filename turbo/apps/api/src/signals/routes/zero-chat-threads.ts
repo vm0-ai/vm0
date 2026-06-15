@@ -121,7 +121,6 @@ const listChatThreadsInner$ = computed(async (get) => {
       userId: auth.userId,
       orgId: auth.orgId,
       agentComposeId: query.agentId,
-      limit: query.limit,
       cursor: query.cursor,
     }),
   );

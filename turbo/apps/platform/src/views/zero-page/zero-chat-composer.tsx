@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconDownload,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -39,6 +40,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
@@ -144,6 +146,7 @@ import {
   composerSavingType$,
   setComposerSavingType$,
   clearComputerUsePopoverCloseSuppression$,
+  computerUseDownloadDialogOpen$,
   computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
@@ -164,7 +167,10 @@ import {
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
+  setComputerUseDownloadDialogOpen$,
   setTemplatePickerPreviewSlideIndex$,
+  illustrationVariantIndex$,
+  setIllustrationVariantIndex$,
   setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
@@ -333,7 +339,16 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
 const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
 const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
-const ILLUSTRATION_DETAIL_PREVIEW_SIZE = { width: 1400, height: 1400 } as const;
+const ILLUSTRATION_CARD_PREVIEW_SIZE = {
+  width: 768,
+  height: 768,
+  quality: 72,
+} as const;
+const ILLUSTRATION_VARIANT_THUMB_SIZE = {
+  width: 96,
+  height: 96,
+  quality: 65,
+} as const;
 const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = { width: 40, height: 40 } as const;
 
 // ---------------------------------------------------------------------------
@@ -721,12 +736,6 @@ function formatPresentationTemplateKind(templateId: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function formatIllustrationTemplateKind(
-  item: IllustrationTemplateItem,
-): string {
-  return `${item.variationCount} variations`;
-}
-
 function presentationTemplateMatchesSearch(
   item: PresentationTemplateItem,
   query: string,
@@ -752,11 +761,7 @@ function illustrationTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [
-    item.title,
-    item.illustrationStyleId,
-    formatIllustrationTemplateKind(item),
-  ].join(" ");
+  const searchable = [item.title, item.illustrationStyleId].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -1451,24 +1456,24 @@ function PptCard({
   );
 }
 
-function IllustrationTemplatePreview({
+function IllustrationTemplateHero({
   item,
-  onPreview,
+  source,
 }: {
   item: IllustrationTemplateItem;
-  onPreview: (item: IllustrationTemplateItem) => void;
+  source: string;
 }) {
-  const previewImage = r2ImageTransformUrl(
-    item.previewImage,
-    TEMPLATE_CARD_PREVIEW_SIZE,
-  );
+  const heroImage = illustrationHeroImageUrl(source);
 
   return (
-    <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+    <div
+      className="relative w-full overflow-hidden bg-muted"
+      style={{ aspectRatio: `${String(item.width)} / ${String(item.height)}` }}
+    >
       <img
-        src={previewImage}
-        alt=""
-        title={`${item.title} illustration preview`}
+        key={source}
+        src={heroImage}
+        alt={`${item.title} illustration preview`}
         className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
         decoding="async"
@@ -1476,7 +1481,7 @@ function IllustrationTemplatePreview({
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
-            markIllustrationPreviewImageLoaded(previewImage, image),
+            markIllustrationPreviewImageLoaded(heroImage, image),
             Reason.DomCallback,
           );
         }}
@@ -1493,23 +1498,14 @@ function IllustrationTemplatePreview({
       >
         <IconTemplate size={28} stroke={1.5} />
       </div>
-      <button
-        type="button"
-        aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={(event) => {
-          event.stopPropagation();
-          onPreview(item);
-        }}
-      >
-        <IconEye size={16} stroke={1.8} />
-      </button>
     </div>
   );
 }
 
 interface IllustrationPreviewImageCache {
   readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
 }
 
 function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
@@ -1523,9 +1519,81 @@ function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
 
   const cache: IllustrationPreviewImageCache = {
     decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
+}
+
+function illustrationHeroImageUrl(source: string): string {
+  return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
+}
+
+function preloadIllustrationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = illustrationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+async function decodeIllustrationPreviewImage(url: string): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadIllustrationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markIllustrationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markIllustrationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
 }
 
 async function markIllustrationPreviewImageLoaded(
@@ -1545,176 +1613,148 @@ async function markIllustrationPreviewImageLoaded(
     ?.setAttribute("hidden", "");
 }
 
+function illustrationPreviewImageDecoded(url: string): boolean {
+  return illustrationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedIllustrationVariant({
+  card,
+  imageUrl,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement;
+  imageUrl: string;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): Promise<void> {
+  await decodeIllustrationPreviewImage(imageUrl);
+  if (
+    card.dataset.targetVariantIndex === String(index) &&
+    illustrationPreviewImageDecoded(imageUrl)
+  ) {
+    onVariantChange(item.slug, index);
+  }
+}
+
 function IllustrationTemplateCard({
   item,
   selected,
+  activeIndex,
   onSelect,
-  onPreview,
+  onVariantChange,
 }: {
   item: IllustrationTemplateItem;
   selected: boolean;
+  activeIndex: number;
   onSelect: (item: IllustrationTemplateItem) => void;
-  onPreview: (item: IllustrationTemplateItem) => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <IllustrationTemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {formatIllustrationTemplateKind(item)}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function IllustrationPreviewPage({
-  item,
-  selectedImageIndex,
-  onImageChange,
-  onBack,
-  onSelect,
-}: {
-  item: IllustrationTemplateItem;
-  selectedImageIndex: number;
-  onImageChange: (index: number) => void;
-  onBack: () => void;
-  onSelect: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
   const images = item.previewImages;
-  const safeImageIndex = Math.max(
-    0,
-    Math.min(selectedImageIndex, images.length - 1),
-  );
-  const selectedImage = images[safeImageIndex];
-  const selectedPreviewImage = selectedImage
-    ? r2ImageTransformUrl(selectedImage, ILLUSTRATION_DETAIL_PREVIEW_SIZE)
-    : selectedImage;
+  const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
+  const heroSource = images[safeIndex] ?? item.previewImage;
 
   return (
-    <>
-      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
-          <button
-            type="button"
-            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onBack}
-          >
-            Templates
-          </button>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">Illustration</span>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="min-w-0 truncate">{item.title}</span>
-        </DialogTitle>
-      </DialogHeader>
-      <div className="grid h-[min(72vh,680px)] min-h-0 gap-4 overflow-hidden bg-muted/20 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-3">
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-            <img
-              key={selectedImage}
-              src={selectedPreviewImage}
-              title={`${item.title} preview variant ${safeImageIndex + 1}`}
-              alt=""
-              className="h-full w-full object-contain"
-              loading="lazy"
-            />
-          </div>
-          <div className="mt-3 flex shrink-0 max-w-full items-center gap-2 overflow-x-auto pb-1">
-            {images.map((image, index) => {
-              const selected = index === safeImageIndex;
-              const thumbnailImage = r2ImageTransformUrl(
-                image,
-                TEMPLATE_STRIP_THUMB_SIZE,
-              );
-              return (
-                <button
-                  key={image}
-                  type="button"
-                  aria-label={`Show variant ${index + 1}`}
-                  aria-pressed={selected}
-                  className={cn(
-                    "relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "border-orange-500" : "border-border",
-                  )}
-                  onClick={() => {
-                    onImageChange(index);
-                  }}
-                >
-                  <img
-                    src={thumbnailImage}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-              );
-            })}
-          </div>
+    <div
+      data-illustration-template-card=""
+      className={cn(
+        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+        selected
+          ? "border-primary ring-1 ring-primary"
+          : "border-border hover:border-muted-foreground/30",
+      )}
+    >
+      <IllustrationTemplateHero item={item} source={heroSource} />
+      {images.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {images.map((image, index) => {
+            const active = index === safeIndex;
+            const thumbnailImage = r2ImageTransformUrl(
+              image,
+              ILLUSTRATION_VARIANT_THUMB_SIZE,
+            );
+            return (
+              <button
+                key={image}
+                type="button"
+                aria-label={`Show variant ${index + 1}`}
+                aria-pressed={active}
+                className={cn(
+                  "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active ? "border-primary" : "border-border",
+                )}
+                onFocus={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onMouseEnter={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onClick={(event) => {
+                  const imageUrl = illustrationHeroImageUrl(image);
+                  const card = event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  );
+                  if (
+                    card === null ||
+                    index === safeIndex ||
+                    illustrationPreviewImageDecoded(imageUrl)
+                  ) {
+                    onVariantChange(item.slug, index);
+                    return;
+                  }
+
+                  card.dataset.targetVariantIndex = String(index);
+                  detach(
+                    selectDecodedIllustrationVariant({
+                      card,
+                      imageUrl,
+                      index,
+                      item,
+                      onVariantChange,
+                    }),
+                    Reason.DomCallback,
+                  );
+                }}
+              >
+                <img
+                  src={thumbnailImage}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+            );
+          })}
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border bg-background p-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              {item.title}
-            </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {formatIllustrationTemplateKind(item)}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border bg-background p-4">
-            <h3 className="text-sm font-semibold text-muted-foreground">
-              Variants
-            </h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {images.length} reference images
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Illustration style
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            className="h-10 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onSelect(item);
-            }}
-          >
-            Use this template
-          </button>
-        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {item.title}
+        </p>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1836,24 +1876,30 @@ function TemplatePickerTabs({
 function IllustrationTemplateGrid({
   items,
   value,
+  variantIndexBySlug,
   onSelect,
-  onPreview,
+  onVariantChange,
 }: {
   items: IllustrationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
+  variantIndexBySlug: Readonly<Record<string, number>>;
   onSelect: (item: IllustrationTemplateItem) => void;
-  onPreview: (item: IllustrationTemplateItem) => void;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
+  // CSS multi-column masonry mirrors www.vm0.ai/illustration: each tile renders
+  // the full illustration at its native aspect ratio (no cropping, letterbox,
+  // or fixed height), and the column count adapts to the dialog width.
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="columns-[244px] gap-4">
       {items.map((item) => {
         return (
           <IllustrationTemplateCard
             key={item.illustrationStyleId}
             item={item}
             selected={isSelectedIllustrationTemplate(item, value)}
+            activeIndex={variantIndexBySlug[item.slug] ?? 0}
             onSelect={onSelect}
-            onPreview={onPreview}
+            onVariantChange={onVariantChange}
           />
         );
       })}
@@ -1914,15 +1960,13 @@ function TemplatePickerDialog({
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
+  const illustrationVariantIndex = useGet(illustrationVariantIndex$);
+  const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const illustrationPreviewItem =
-    ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
-      return item.slug === previewSlug;
-    }) ?? null;
-  const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
+  const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "p-0 gap-0 overflow-hidden",
     // The auto-rendered close button defaults to top-4, which is tuned for the
@@ -1970,11 +2014,6 @@ function TemplatePickerDialog({
     setPreviewSlug(item.slug);
   };
 
-  const handleIllustrationPreview = (item: IllustrationTemplateItem) => {
-    setSelectedSlideIndex(0);
-    setPreviewSlug(item.slug);
-  };
-
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
@@ -2008,16 +2047,6 @@ function TemplatePickerDialog({
               setPreviewSlug(null);
             }}
             onSelect={handleSelectPresentation}
-          />
-        ) : illustrationPreviewItem ? (
-          <IllustrationPreviewPage
-            item={illustrationPreviewItem}
-            selectedImageIndex={selectedSlideIndex}
-            onImageChange={setSelectedSlideIndex}
-            onBack={() => {
-              setPreviewSlug(null);
-            }}
-            onSelect={handleSelectIllustration}
           />
         ) : (
           <>
@@ -2076,8 +2105,9 @@ function TemplatePickerDialog({
                   <IllustrationTemplateGrid
                     items={filteredIllustrationItems}
                     value={value}
+                    variantIndexBySlug={illustrationVariantIndex}
                     onSelect={handleSelectIllustration}
-                    onPreview={handleIllustrationPreview}
+                    onVariantChange={setIllustrationVariantIndex}
                   />
                 ) : (
                   <TemplateEmptyPanel
@@ -2138,32 +2168,43 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const label = formatPresentationTemplateKind(item.templateId);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Presentation
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
@@ -2181,29 +2222,38 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: VideoStylePreset;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconVideo
-              size={12}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Video
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.nameEn}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video style ${item.nameEn}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.nameEn}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove video style ${item.nameEn}`}
@@ -2221,33 +2271,42 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Illustration
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.title}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${item.title}`}
@@ -2270,16 +2329,35 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    setSearch("");
+    setVideoGroup("all");
+    setPreviewSlug(null);
+    setSelectedSlideIndex(0);
+    setCategory(category);
+    setOpen(true);
+  };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2291,6 +2369,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2302,6 +2383,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2689,6 +2773,8 @@ function ComputerUsePopoverButton({
   const active = computerUse.selectedHostId !== null;
   const open = useGet(computerUsePopoverOpen$);
   const setOpen = useSet(setComputerUsePopoverOpen$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const clearCloseSuppression = useSet(
     clearComputerUsePopoverCloseSuppression$,
   );
@@ -2707,108 +2793,165 @@ function ComputerUsePopoverButton({
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
-                  active && "text-primary",
-                )}
-                aria-label="Computer Use"
+    <>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <PopoverTrigger asChild>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                    active && "text-primary",
+                  )}
+                  aria-label="Computer Use"
+                >
+                  <IconDeviceDesktop size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+            </PopoverTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Computer
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-72 p-0 rounded-lg"
+        >
+          <div className="py-1">
+            {computerUse.loading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 2 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : computerUse.hosts.length > 0 ? (
+              <div
+                className="flex max-h-72 flex-col overflow-y-auto"
+                role="radiogroup"
+                aria-label="Computer Use host"
               >
-                <IconDeviceDesktop size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Computer
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
-        <div className="py-1">
-          {computerUse.loading ? (
-            <div className="flex flex-col animate-pulse">
-              {Array.from({ length: 2 }, (_, i) => {
-                return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2">
-                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
-                    <span className="h-3 w-6 rounded-full bg-muted/50" />
-                  </div>
-                );
-              })}
-            </div>
-          ) : computerUse.hosts.length > 0 ? (
-            <div
-              className="flex max-h-72 flex-col overflow-y-auto"
-              role="radiogroup"
-              aria-label="Computer Use host"
-            >
-              {computerUse.hosts.map((host) => {
-                const checked = computerUse.selectedHostId === host.id;
-                return (
-                  <button
-                    key={host.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => {
-                      computerUse.onChange(checked ? null : host.id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-                      checked ? "bg-primary/5" : "hover:bg-muted/50",
-                    )}
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                      <IconDeviceDesktop size={16} stroke={1.5} />
-                    </span>
-                    <span className="text-sm flex-1 truncate text-foreground">
-                      {host.hostName}
-                    </span>
-                    <span
+                {computerUse.hosts.map((host) => {
+                  const checked = computerUse.selectedHostId === host.id;
+                  return (
+                    <button
+                      key={host.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      onClick={() => {
+                        computerUse.onChange(checked ? null : host.id);
+                      }}
                       className={cn(
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                        checked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-transparent",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                        checked ? "bg-primary/5" : "hover:bg-muted/50",
                       )}
-                      aria-hidden="true"
                     >
-                      {checked && <IconCheck size={11} stroke={3} />}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                        <IconDeviceDesktop size={16} stroke={1.5} />
+                      </span>
+                      <span className="text-sm flex-1 truncate text-foreground">
+                        {host.hostName}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-transparent",
+                        )}
+                        aria-hidden="true"
+                      >
+                        {checked && <IconCheck size={11} stroke={3} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                No online computers
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border/50 p-1">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+              onClick={() => {
+                setOpen(false);
+                setDownloadDialogOpen(true);
+              }}
+            >
+              <IconPlug
+                size={18}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              Connect my computer
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <ComputerUseDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
+        downloadUrl={computerUse.downloadUrl}
+      />
+    </>
+  );
+}
+
+function ComputerUseDownloadDialog({
+  open,
+  onOpenChange,
+  downloadUrl,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  downloadUrl: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={18} stroke={1.5} />
             </div>
-          ) : (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              No online computers
+            <div className="min-w-0 space-y-1 text-left">
+              <DialogTitle>Connect your computer</DialogTitle>
+              <DialogDescription>
+                Download Zero Computer Use for macOS, then open it to let Zero
+                use your desktop.
+              </DialogDescription>
             </div>
-          )}
-        </div>
-        <div className="border-t border-border/50 p-1">
+          </div>
+        </DialogHeader>
+        <Button asChild className="mt-2 w-full">
           <a
-            href={computerUse.downloadUrl}
+            href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              onOpenChange(false);
+            }}
           >
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Connect my computer
+            <IconDownload size={16} stroke={1.5} />
+            Download for macOS
           </a>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -8,7 +8,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  PersistedAttachment,
+  ThreadGenerationTemplates,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 
@@ -74,6 +77,18 @@ export const chatThreads = pgTable(
     }),
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
+    /**
+     * Per-thread sticky generation templates, keyed by template type
+     * (illustration style / video preset / presentation design) so a thread can
+     * keep several active at once. Persisted so follow-up messages inherit the
+     * selections the user attached earlier without restating them, and the
+     * server re-injects them deterministically on every run. NULL means none are
+     * attached. Thread-scoped on purpose: a new thread starts clean (no
+     * cross-session carry-over) and there is intentionally no org/global default.
+     */
+    generationTemplate: jsonb(
+      "generation_template",
+    ).$type<ThreadGenerationTemplates>(),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;

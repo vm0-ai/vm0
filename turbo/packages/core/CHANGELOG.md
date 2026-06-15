@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.339.0](https://github.com/vm0-ai/vm0/compare/core-v8.338.0...core-v8.339.0) (2026-06-15)
+
+
+### Features
+
+* add automation multi trigger section ([#17720](https://github.com/vm0-ai/vm0/issues/17720)) ([715a9a8](https://github.com/vm0-ai/vm0/commit/715a9a86bc67fc504b91fb07a7e22e30df149ccb))
+* show illustration variations inline in a single template popup ([#17717](https://github.com/vm0-ai/vm0/issues/17717)) ([55f9f07](https://github.com/vm0-ai/vm0/commit/55f9f074f58164c5ec83718a954ccd02889a29d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+
+## [8.338.0](https://github.com/vm0-ai/vm0/compare/core-v8.337.0...core-v8.338.0) (2026-06-15)
+
+
+### Features
+
+* replace YouTube API key auth with OAuth ([#17661](https://github.com/vm0-ai/vm0/issues/17661)) ([c548213](https://github.com/vm0-ai/vm0/commit/c54821371703d3be2c996db429630b36b1404e67))
+
+
+### Performance Improvements
+
+* serve AVIF/WebP for CDN image previews via format=auto ([#17655](https://github.com/vm0-ai/vm0/issues/17655)) ([2b41c78](https://github.com/vm0-ai/vm0/commit/2b41c7836e8b890c001802d02d1f61ceee3c1771))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/connectors bumped to 1.76.0
+
 ## [8.337.0](https://github.com/vm0-ai/vm0/compare/core-v8.336.0...core-v8.337.0) (2026-06-14)
 
 

@@ -135,6 +135,16 @@ export const clearComputerUsePopoverCloseSuppression$ = command(({ set }) => {
   set(internalComputerUsePopoverIgnoreClose$, false);
 });
 
+const internalComputerUseDownloadDialogOpen$ = state(false);
+export const computerUseDownloadDialogOpen$ = computed((get) => {
+  return get(internalComputerUseDownloadDialogOpen$);
+});
+export const setComputerUseDownloadDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalComputerUseDownloadDialogOpen$, open);
+  },
+);
+
 // -- Model picker open state ------------------------------------------------
 
 const internalModelPickerOpen$ = state(false);
@@ -203,6 +213,24 @@ export const templatePickerPreviewSlideIndex$ = computed((get) => {
 export const setTemplatePickerPreviewSlideIndex$ = command(
   ({ set }, index: number) => {
     set(internalTemplatePickerPreviewSlideIndex$, index);
+  },
+);
+
+// Inline illustration cards show a hero image plus a variant thumbnail strip.
+// Several cards are visible at once, so the active variant index is tracked per
+// illustration style slug rather than as a single shared value.
+const internalIllustrationVariantIndex$ = state<
+  Readonly<Record<string, number>>
+>({});
+export const illustrationVariantIndex$ = computed((get) => {
+  return get(internalIllustrationVariantIndex$);
+});
+export const setIllustrationVariantIndex$ = command(
+  ({ get, set }, slug: string, index: number) => {
+    set(internalIllustrationVariantIndex$, {
+      ...get(internalIllustrationVariantIndex$),
+      [slug]: index,
+    });
   },
 );
 

@@ -6,7 +6,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { createElement } from "react";
 import { Link } from "../../views/router/link.tsx";
-import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { zeroClient$ } from "../api-client.ts";
 import {
   buildCronExpression,
@@ -20,14 +19,18 @@ import {
 import {
   listAutomations,
   deployAutomation,
+  updateAutomationIntent,
   setAutomationEnabled,
   deleteAutomation,
   runAutomationNow as runAutomationNowApi,
+  type PlatformAutomationView,
 } from "./automations-api.ts";
 import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const AUTOMATION_TIME_PAST_MESSAGE = "The selected time must be in the future";
 
@@ -47,14 +50,25 @@ export const setAutomationTabSaving$ = command(({ set }, value: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
-// Convert AutomationView to display time string
+// Convert the platform automation projection to a display trigger string
 // ---------------------------------------------------------------------------
 
 function automationToTimeString(
-  s: AutomationView,
+  s: PlatformAutomationView,
   displayTimezone?: string,
 ): string {
   const tz = displayTimezone ?? s.timezone ?? "UTC";
+
+  if (s.triggerReadOnlyReason === "multiple_triggers") {
+    return `${s.triggerCount} triggers`;
+  }
+  if (s.triggerReadOnlyReason === "unsupported_trigger") {
+    const [kind] = s.triggerKinds;
+    return triggerKindLabel(kind);
+  }
+  if (s.triggerReadOnlyReason === "no_trigger") {
+    return "No trigger";
+  }
 
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
@@ -76,6 +90,24 @@ function automationToTimeString(
   }
 
   return "Upcoming";
+}
+
+function triggerKindLabel(
+  kind: PlatformAutomationView["triggerKinds"][number] | undefined,
+): string {
+  if (kind === "cron") {
+    return "Schedule";
+  }
+  if (kind === "once") {
+    return "Once";
+  }
+  if (kind === "loop") {
+    return "Loop";
+  }
+  if (kind === "webhook") {
+    return "Webhook";
+  }
+  return "No trigger";
 }
 
 function cronToTimeString(cron: string, timezone = "UTC"): string {
@@ -210,9 +242,18 @@ export interface OrgAutomationEntry {
   nextRunAt: string | null;
   lastRunAt: string | null;
   chatThreadId: string;
+  triggerCount: number;
+  triggerKinds: PlatformAutomationView["triggerKinds"];
+  triggerBadges: {
+    id: string;
+    kind: PlatformAutomationView["triggerKinds"][number];
+  }[];
+  triggerEditable: boolean;
+  triggerReadOnlyReason: PlatformAutomationView["triggerReadOnlyReason"];
+  triggerSummary: string;
 }
 
-const internalAllAutomations$ = state<AutomationView[]>([]);
+const internalAllAutomations$ = state<PlatformAutomationView[]>([]);
 const internalAllAutomationsLoaded$ = state(false);
 
 /** True after the first successful org automation fetch has completed. */
@@ -230,9 +271,10 @@ export const allOrgAutomationEntries$ = computed(async (get) => {
       return b.createdAt.localeCompare(a.createdAt);
     })
     .map((s): OrgAutomationEntry => {
+      const triggerSummary = automationToTimeString(s, displayTz);
       return {
         id: s.id,
-        time: automationToTimeString(s, displayTz),
+        time: triggerSummary,
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
@@ -244,15 +286,31 @@ export const allOrgAutomationEntries$ = computed(async (get) => {
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
         chatThreadId: s.chatThreadId,
+        triggerCount: s.triggerCount,
+        triggerKinds: s.triggerKinds,
+        triggerBadges: s.triggers.map((trigger) => {
+          return { id: trigger.id, kind: trigger.kind };
+        }),
+        triggerEditable: s.triggerEditable,
+        triggerReadOnlyReason: s.triggerReadOnlyReason,
+        triggerSummary,
       };
     });
 });
 
 export const fetchAllOrgAutomations$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const automations = await listAutomations(get(zeroClient$), {
-      signal,
-    }).finally(() => {
+    const features = get(featureSwitch$);
+    const automations = await listAutomations(
+      get(zeroClient$),
+      {
+        signal,
+      },
+      {
+        includeUnsupported:
+          features[FeatureSwitchKey.AutomationMultiTrigger] ?? false,
+      },
+    ).finally(() => {
       set(internalAllAutomationsLoaded$, true);
     });
     signal.throwIfAborted();
@@ -274,6 +332,11 @@ export const saveOrgAutomation$ = command(
         get(zeroClient$),
         body,
         params.editName !== undefined,
+        {
+          requireEditableTrigger:
+            get(featureSwitch$)[FeatureSwitchKey.AutomationMultiTrigger] ??
+            false,
+        },
       );
       signal.throwIfAborted();
       automationId = result.id;
@@ -296,6 +359,24 @@ export const saveOrgAutomation$ = command(
     await set(fetchAllOrgAutomations$, signal);
 
     return automationId;
+  },
+);
+
+export const updateOrgAutomationIntent$ = command(
+  async (
+    { get, set },
+    params: {
+      id: string;
+      prompt?: string;
+      description?: string | null;
+    },
+    signal: AbortSignal,
+  ) => {
+    await updateAutomationIntent(get(zeroClient$), params);
+    signal.throwIfAborted();
+
+    toast.success("Automation updated");
+    await set(fetchAllOrgAutomations$, signal);
   },
 );
 

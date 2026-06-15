@@ -1453,6 +1453,105 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
+
+  it("uses connector-specific unknown endpoint defaults with user grant overrides", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Cloudflare unknown policy agent",
+    });
+    const agentId = agent.agentId;
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-bdd-token",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["cloudflare"]);
+
+    async function claimCloudflarePolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      await api.requestCancelRun(actor, run.runId, [200]);
+      const policy = claim.networkPolicies?.cloudflare;
+      if (!policy) {
+        throw new Error("Expected a cloudflare network policy on the claim");
+      }
+      return policy;
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const defaults = await claimCloudflarePolicy("default unknown policy");
+    expect(defaults.allow).toContain("dns-firewall.read");
+    expect(defaults.deny).toContain("dns-firewall.write");
+    expect(defaults.unknownPolicy).toBe("deny");
+
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "cloudflare",
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "allow",
+    });
+
+    const overridden = await claimCloudflarePolicy("allow unknown endpoints");
+    expect(overridden.allow).toContain("dns-firewall.read");
+    expect(overridden.deny).toContain("dns-firewall.write");
+    expect(overridden.unknownPolicy).toBe("allow");
+  });
+
+  it("applies connector default named policies to direct runs without explicit policies", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-direct-bdd-token",
+    });
+    const composeName = `bdd-cloudflare-direct-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run cloudflare defaults",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const policy = claim.networkPolicies?.cloudflare;
+    if (!policy) {
+      throw new Error("Expected a cloudflare network policy on the claim");
+    }
+    expect(policy.allow).toContain("dns-firewall.read");
+    expect(policy.deny).toContain("dns-firewall.write");
+    expect(policy.unknownPolicy).toBe("deny");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
@@ -2588,7 +2687,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
-    const threadsBefore = await chat.listThreads(actor);
+    const threadsBefore = await chat.listThreads(actor, { agentId });
     const detachedRun = await api.createRun(actor, {
       agentId,
       prompt: "report events without a thread",
@@ -2612,7 +2711,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       { authorization: `Bearer ${detachedClaim.sandboxToken}` },
       [200],
     );
-    const threadsAfter = await chat.listThreads(actor);
+    const threadsAfter = await chat.listThreads(actor, { agentId });
     expect(threadsAfter.threads).toHaveLength(threadsBefore.threads.length);
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);

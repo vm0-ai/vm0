@@ -28,6 +28,7 @@ pub(super) enum TerminationState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TerminationReason {
     PostResult,
+    InitialPromptStdin,
     StuckTool,
     HeartbeatError,
     HeartbeatPanic,
@@ -37,6 +38,7 @@ impl TerminationReason {
     pub(super) fn label(self) -> &'static str {
         match self {
             TerminationReason::PostResult => "post-result reap",
+            TerminationReason::InitialPromptStdin => "initial-prompt stdin",
             TerminationReason::StuckTool => "stuck-tool watchdog",
             TerminationReason::HeartbeatError => "heartbeat error",
             TerminationReason::HeartbeatPanic => "heartbeat panic",

@@ -91,6 +91,7 @@ import {
   cloudflareCategories,
   cloudflareCategoryOrder,
   cloudflareDefaultAllowed,
+  cloudflareDefaultUnknownPolicy,
   cloudflareFirewall,
 } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
@@ -827,12 +828,18 @@ const DEFAULT_ALLOWED: Partial<
   stripe: stripeDefaultAllowed,
 };
 
+const DEFAULT_UNKNOWN_POLICY: Partial<
+  Record<FirewallConnectorType, FirewallPolicyValue>
+> = {
+  cloudflare: cloudflareDefaultUnknownPolicy,
+};
+
 /**
  * Get the default firewall policies for a connector type.
  *
  * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
  * default-allowed list get "allow"/"deny" selectively; others get all-allow.
- * `unknownPolicy` defaults to "allow".
+ * `unknownPolicy` defaults to "allow" unless a connector overrides it.
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
@@ -848,7 +855,7 @@ export function getDefaultFirewallPolicies(
       }
     }
   }
-  return { policies, unknownPolicy: "allow" };
+  return { policies, unknownPolicy: DEFAULT_UNKNOWN_POLICY[type] ?? "allow" };
 }
 
 /**
