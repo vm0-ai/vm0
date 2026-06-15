@@ -206,6 +206,24 @@ export const setTemplatePickerPreviewSlideIndex$ = command(
   },
 );
 
+// Inline illustration cards show a hero image plus a variant thumbnail strip.
+// Several cards are visible at once, so the active variant index is tracked per
+// illustration style slug rather than as a single shared value.
+const internalIllustrationVariantIndex$ = state<
+  Readonly<Record<string, number>>
+>({});
+export const illustrationVariantIndex$ = computed((get) => {
+  return get(internalIllustrationVariantIndex$);
+});
+export const setIllustrationVariantIndex$ = command(
+  ({ get, set }, slug: string, index: number) => {
+    set(internalIllustrationVariantIndex$, {
+      ...get(internalIllustrationVariantIndex$),
+      [slug]: index,
+    });
+  },
+);
+
 // Hover scrubbing on template cards. Only one card is hovered at a time, so a
 // single signal tracks the active card's slug plus the scrubbed slide index;
 // each card resolves its own index by matching the stored slug.

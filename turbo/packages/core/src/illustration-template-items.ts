@@ -876,6 +876,11 @@ export interface IllustrationTemplateItem {
   readonly previewImage: string;
   readonly previewImages: readonly string[];
   readonly variationCount: number;
+  /** Intrinsic pixel dimensions of the style's reference frame, used to reserve
+   * the card's aspect ratio so the full illustration renders without cropping,
+   * letterboxing, or layout shift. */
+  readonly width: number;
+  readonly height: number;
   readonly tag: "illustration";
 }
 
@@ -895,6 +900,8 @@ export const ILLUSTRATION_TEMPLATE_ITEMS: readonly IllustrationTemplateItem[] =
         return illustrationAssetUrl(`refs/${style.slug}/${ref}`);
       }),
       variationCount: style.refs.length,
+      width: style.width,
+      height: style.height,
       tag: "illustration",
     };
   });
