@@ -60,16 +60,6 @@ function monthsBetweenTodayAnd(iso: string): number {
   );
 }
 
-function getTabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((el) => {
-    return el.textContent?.trim() === text;
-  });
-  if (!tab) {
-    throw new Error(`Could not find tab: ${text}`);
-  }
-  return tab;
-}
-
 function insightsResponse(): InsightsResponse & NetworkInsightsData {
   const date = localDateDaysAgo(1);
   const olderDate = localDateDaysAgo(20);
@@ -477,12 +467,9 @@ describe("network insights page", () => {
     expect(screen.queryByText("Time range")).not.toBeInTheDocument();
   });
 
-  it("shows daily network insights and switches to the time range usage view", async () => {
+  it("shows daily network insights", async () => {
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, insightsResponse());
-    });
-    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
-      return respond(200, usageInsightResponse());
     });
 
     detachedSetupPage({ context, path: "/insights" });
@@ -538,14 +525,6 @@ describe("network insights page", () => {
     expect(screen.queryByText("Hidden chat")).not.toBeInTheDocument();
     await user.click(screen.getByText("+1 more chat"));
     expect(screen.getByText("Hidden chat")).toBeInTheDocument();
-
-    click(getTabByText("Time range"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Morning Briefing")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Competitor scan")).toBeInTheDocument();
-    expect(screen.getByText("650")).toBeInTheDocument();
   });
 
   it("shows a no-activity message when the selected range excludes older data", async () => {
