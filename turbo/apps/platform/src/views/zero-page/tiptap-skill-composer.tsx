@@ -2,7 +2,6 @@
 // inline decorations rather than a transparent-textarea + colored overlay, so the
 // color lives in the same layer as the text and moves/scrolls with it — there is
 // no second layer to keep aligned when the input scrolls (issue #17539).
-import { useRef } from "react";
 import {
   useGet,
   useSet,
@@ -188,24 +187,58 @@ function insertSkillToken(
     .run();
 }
 
-// A virtual Popover anchor that tracks the slash character rather than the whole
-// input box, so the suggestion menu opens at the `/` the user typed instead of a
-// fixed corner. `getBoundingClientRect` reads live, so Floating UI keeps the menu
-// aligned as the input scrolls or the window resizes.
-interface SlashAnchor {
-  getBoundingClientRect: () => DOMRect;
+// Viewport position of the slash that started the active query, used to place the
+// suggestion menu at the `/` the user typed instead of a fixed corner. The slash
+// and caret sit on the same line (the range regex never spans a newline), so their
+// distance in string offsets equals their distance in ProseMirror positions.
+interface SlashCaretPosition {
+  readonly left: number;
+  readonly top: number;
+  readonly height: number;
 }
 
-// Screen rect of the slash that started the active query. The slash and caret sit
-// on the same line (the range regex never spans a newline), so their distance in
-// string offsets equals their distance in ProseMirror positions.
-function slashCaretRect(editor: Editor, slashRange: SlashSkillRange): DOMRect {
+function slashCaretPosition(
+  editor: Editor,
+  slashRange: SlashSkillRange,
+): SlashCaretPosition {
   const slashPos = Math.max(
     editor.state.selection.head - (slashRange.end - slashRange.start),
     0,
   );
   const coords = editor.view.coordsAtPos(slashPos);
-  return new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top);
+  return {
+    left: coords.left,
+    top: coords.top,
+    height: coords.bottom - coords.top,
+  };
+}
+
+// Zero-size Popover anchor pinned to the active slash so the suggestion menu opens
+// at the `/` the user typed rather than a fixed corner. Falls back to the viewport
+// origin when there is no active slash (the menu is closed then anyway).
+function SlashCaretAnchor({
+  editor,
+  slashRange,
+}: {
+  readonly editor: Editor | null;
+  readonly slashRange: SlashSkillRange | null;
+}) {
+  const caret =
+    editor && slashRange ? slashCaretPosition(editor, slashRange) : null;
+  return (
+    <PopoverAnchor asChild>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed"
+        style={{
+          left: caret?.left ?? 0,
+          top: caret?.top ?? 0,
+          width: 0,
+          height: caret?.height ?? 0,
+        }}
+      />
+    </PopoverAnchor>
+  );
 }
 
 interface SlashMenuKeyContext {
@@ -411,19 +444,6 @@ export function TiptapSkillComposer({
     syncEditorState(editor, skillNames, input);
   }
 
-  // Stable virtual anchor; its rect is refreshed each render to follow the active
-  // slash, so the menu opens at the `/` without re-registering the anchor.
-  const slashAnchorRef = useRef<SlashAnchor>({
-    getBoundingClientRect: () => {
-      return new DOMRect();
-    },
-  });
-  slashAnchorRef.current.getBoundingClientRect = () => {
-    return editor && slashRange
-      ? slashCaretRect(editor, slashRange)
-      : new DOMRect();
-  };
-
   function insertSkill(skill: ComposerSlashSkill): void {
     if (!editor || !slashRange) {
       return;
@@ -454,11 +474,11 @@ export function TiptapSkillComposer({
 
   return (
     // Radix Popover (Floating UI) positions the menu cross-browser; the anchor is
-    // a virtual element tracking the slash the user typed, so the menu opens at
-    // the `/` rather than a fixed corner. `open` is fully controlled by composer
-    // state, so Escape/typing close it via showSlashSkillMenu.
+    // a zero-size element pinned to the slash the user typed (viewport coords from
+    // ProseMirror), so the menu opens at the `/` rather than a fixed corner. `open`
+    // is fully controlled by composer state, so Escape/typing close it.
     <Popover open={showSlashSkillMenu}>
-      <PopoverAnchor virtualRef={slashAnchorRef} />
+      <SlashCaretAnchor editor={editor} slashRange={slashRange} />
       <div className="relative min-h-[96px]">
         {input === "" && (
           <div
