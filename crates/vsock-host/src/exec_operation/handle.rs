@@ -13,8 +13,9 @@ use crate::{ConnectionState, FrameWriteObserver, Shared};
 use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
-    clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write, write_frame, write_frame_with_pre_write,
+    ExecCancelFrameWriteOutcome, clear_exec_operation_stream_sender, exec_cancel_write_observer,
+    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame_for_wait,
+    write_frame, write_frame_with_pre_write,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
@@ -353,22 +354,25 @@ impl ExecOperationHandle {
         let seq = self
             .wait_core
             .active_seq_or_closed(ExecWaitLifecycle::OneShot.operation_closed_message())?;
-        send_exec_cancel_frame(
+        let cancel_outcome = send_exec_cancel_frame_for_wait(
             self.wait_core.shared(),
             seq,
             self.wait_core.diagnostic(),
-            ExecWaitLifecycle::OneShot,
         )
         .await?;
+        let cancel_seq = match cancel_outcome {
+            ExecCancelFrameWriteOutcome::Sent => {
+                ExecWaitLifecycle::OneShot.log_cancel_sent(seq, self.wait_core.diagnostic());
+                Some(seq)
+            }
+            ExecCancelFrameWriteOutcome::AlreadyTerminal => None,
+        };
 
         let result = self
             .wait_core
-            .wait_with_timeout(timeout, true, ExecWaitLifecycle::OneShot)
+            .wait_with_timeout(timeout, cancel_seq.is_some(), ExecWaitLifecycle::OneShot)
             .await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+        Ok(ExecCancelWaitResult { result, cancel_seq })
     }
 }
 
@@ -544,23 +548,28 @@ impl SupervisedExecHandle {
         let seq = self
             .wait_core
             .active_seq_or_closed(ExecWaitLifecycle::Supervised.operation_closed_message())?;
-        send_exec_cancel_frame(
+        let cancel_outcome = send_exec_cancel_frame_for_wait(
             self.wait_core.shared(),
             seq,
             self.wait_core.diagnostic(),
-            ExecWaitLifecycle::Supervised,
         )
         .await?;
+        let cancel_seq = match cancel_outcome {
+            ExecCancelFrameWriteOutcome::Sent => {
+                ExecWaitLifecycle::Supervised.log_cancel_sent(seq, self.wait_core.diagnostic());
+                Some(seq)
+            }
+            ExecCancelFrameWriteOutcome::AlreadyTerminal => None,
+        };
 
-        self.clear_unclaimed_stream_sender();
+        if cancel_seq.is_some() {
+            self.clear_unclaimed_stream_sender();
+        }
         let result = self
             .wait_core
-            .wait_with_timeout(timeout, true, ExecWaitLifecycle::Supervised)
+            .wait_with_timeout(timeout, cancel_seq.is_some(), ExecWaitLifecycle::Supervised)
             .await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+        Ok(ExecCancelWaitResult { result, cancel_seq })
     }
 }
 

@@ -240,6 +240,49 @@ async fn supervised_exec_cancel_after_terminal_result_returns_result_without_can
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn supervised_exec_cancel_terminal_before_cancel_write_returns_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-before-write-race"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let writer_guard = host.shared.writer.lock().await;
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+    tokio::task::yield_now().await;
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    drop(writer_guard);
+    let result = cancel_task.await.unwrap().unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(is_connected(&host));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
 #[tokio::test]
 async fn supervised_exec_cancel_non_cancelled_terminal_result_cleans_without_poisoning() {
     let (host, mut guest) = setup_host_and_guest().await;

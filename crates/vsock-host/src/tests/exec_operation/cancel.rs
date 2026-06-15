@@ -245,6 +245,37 @@ async fn exec_cancel_after_terminal_result_returns_result_without_cancel_frame()
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn exec_cancel_terminal_before_cancel_write_returns_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = start_capture_operation(&host, "cancel-before-write-race").await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+
+    let writer_guard = host.shared.writer.lock().await;
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+    tokio::task::yield_now().await;
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    drop(writer_guard);
+    let result = cancel_task.await.unwrap().unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(is_connected(&host));
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
 #[tokio::test]
 async fn exec_cancel_non_cancelled_terminal_result_cleans_operation_without_poisoning() {
     let (host, mut guest) = setup_host_and_guest().await;
