@@ -3,6 +3,7 @@ import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
+  revokeGoogleToken,
 } from "../../oauth/google";
 import { oauthRefreshResultToProviderResult } from "../../oauth/types";
 
@@ -64,5 +65,10 @@ export const youtubeProvider: AuthCodeConnectorAuthProvider<"youtube"> = {
       );
     },
   },
-  revoke: { kind: "none" },
+  revoke: {
+    kind: "token-revoke",
+    revokeToken: (args) => {
+      return revokeGoogleToken("youtube", args.inputs.refreshToken);
+    },
+  },
 };

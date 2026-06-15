@@ -526,7 +526,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   "tiktok-ads": { oauth: authCodeRefreshProviderEntry(tiktokAdsProvider) },
   x: { oauth: authCodeRefreshProviderEntry(xProvider) },
   xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
-  youtube: { oauth: authCodeRefreshProviderEntry(youtubeProvider) },
+  youtube: { oauth: authCodeRefreshTokenRevokeProviderEntry(youtubeProvider) },
   zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },
 } satisfies ConnectorAuthMethodProviderRegistry;
 

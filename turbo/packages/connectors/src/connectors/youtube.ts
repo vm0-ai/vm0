@@ -53,7 +53,12 @@ export const youtube = {
             YOUTUBE_TOKEN: "$secrets.YOUTUBE_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "none" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            refreshToken: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          },
+        },
       },
     },
   },

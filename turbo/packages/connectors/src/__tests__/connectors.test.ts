@@ -3572,6 +3572,17 @@ describe("getConnectorAuthMethodRevokeMetadata", () => {
         },
       },
     });
+    expect(
+      getConnectorAuthMethodRevokeMetadata("youtube", "oauth"),
+    ).toStrictEqual({
+      kind: "token-revoke",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          secretName: "YOUTUBE_REFRESH_TOKEN",
+        },
+      },
+    });
   });
 });
 
