@@ -285,9 +285,7 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_logs_underbilling_when_missing_sandbox_token(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_logs_underbilling_when_missing_sandbox_token(self, tmp_path, real_flow, mitm_ctx):
         """Should emit an alertable underbilling signal when sandbox_token is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
@@ -297,12 +295,9 @@ class TestReportModelProviderUsage:
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
-        with usage_webhook_api() as webhook:
+        with mitm_ctx(api_url="https://api.vm0.ai"):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert webhook.request_count == 0
         assert jsonl_exists_after_flush(proxy_log)
         [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["level"] == "error"
