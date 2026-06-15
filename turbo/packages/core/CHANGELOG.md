@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.341.0](https://github.com/vm0-ai/vm0/compare/core-v8.340.0...core-v8.341.0) (2026-06-15)
+
+
+### Features
+
+* enable paid onboarding redirect ([#17752](https://github.com/vm0-ai/vm0/issues/17752)) ([ee814ba](https://github.com/vm0-ai/vm0/commit/ee814ba39b3a2da41e2f740cd3b1ba64ac47327a))
+* enable youtube connector by default ([#17754](https://github.com/vm0-ai/vm0/issues/17754)) ([d378cea](https://github.com/vm0-ai/vm0/commit/d378cea01569c5cbddceb978e88af294db9919a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.0
+    * @vm0/connectors bumped to 1.79.0
+
 ## [8.340.0](https://github.com/vm0-ai/vm0/compare/core-v8.339.0...core-v8.340.0) (2026-06-15)
 
 

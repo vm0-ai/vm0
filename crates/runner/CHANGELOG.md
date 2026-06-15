@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.118.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.2...runner-rs-v0.118.0) (2026-06-15)
+
+
+### Features
+
+* add google maps oauth connector ([#17351](https://github.com/vm0-ai/vm0/issues/17351)) ([c89bd02](https://github.com/vm0-ai/vm0/commit/c89bd0254903898ce5cdc7df4859ba7497364cc7))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stream firewall rule decisions ([#17766](https://github.com/vm0-ai/vm0/issues/17766)) ([c218798](https://github.com/vm0-ai/vm0/commit/c2187982dc6b225229d22d65bc2692632d9c5646))
+
 ## [0.117.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.1...runner-rs-v0.117.2) (2026-06-15)
 
 

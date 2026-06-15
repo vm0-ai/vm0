@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.0...desktop-v0.14.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* **desktop:** gray out tray icon while offline ([#17750](https://github.com/vm0-ai/vm0/issues/17750)) ([c34c6c2](https://github.com/vm0-ai/vm0/commit/c34c6c2c336285a14c31690265b2822cf11e4a48))
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.13.0...desktop-v0.14.0) (2026-06-15)
 
 
