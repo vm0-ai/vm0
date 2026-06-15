@@ -1,5 +1,5 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
 
@@ -32,6 +32,7 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 
   // Complete onboarding if needed
   if (page.url().includes("/onboarding")) {
+    await signInThroughExternalOnboardingGate(page, email);
     await completeOnboarding(page);
   }
 
@@ -46,7 +47,50 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE });
 });
 
-async function completeOnboarding(page: import("@playwright/test").Page) {
+async function signInThroughExternalOnboardingGate(
+  page: Page,
+  email: string,
+): Promise<void> {
+  const continueToSignUp = page.getByRole("link", {
+    name: "Continue to sign up",
+  });
+  const visible = await continueToSignUp
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!visible) {
+    return;
+  }
+
+  await continueToSignUp.click();
+  await page.waitForURL(
+    (url) => {
+      return (
+        url.pathname.includes("/sign-up") || url.pathname.includes("/sign-in")
+      );
+    },
+    { timeout: 30_000, waitUntil: "domcontentloaded" },
+  );
+
+  const redirectUrl = new URL(page.url()).searchParams.get("redirect_url");
+  await clerk.signIn({ page, emailAddress: email });
+  if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
+    await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
+  }
+  await page.waitForURL(isOnboardingOrChatUrl, {
+    timeout: 60_000,
+    waitUntil: "domcontentloaded",
+  });
+}
+
+function isOnboardingOrChatUrl(url: URL): boolean {
+  return (
+    url.pathname.includes("/onboarding") ||
+    /\/agents\/.*\/chat/.test(url.pathname)
+  );
+}
+
+async function completeOnboarding(page: Page) {
   // NOTE: Playwright's locator.isVisible() returns the *current* visibility
   // synchronously — the `timeout` option only controls element resolution,
   // not visibility polling. waitFor({ state: "visible" }) does the real wait

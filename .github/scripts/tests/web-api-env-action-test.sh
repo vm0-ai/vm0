@@ -158,6 +158,7 @@ assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partne
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
+assert_env_value "$success_env_file" PAID_ONBOARDING_URL "https://staging-so.vm6.ai"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
 assert_env_absent_value "$success_env_file" "github-slack-client-id"
