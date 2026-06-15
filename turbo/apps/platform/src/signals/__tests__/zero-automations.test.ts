@@ -26,6 +26,22 @@ describe("allOrgAutomationEntries$", () => {
     expect(entries[0].timezone).toBe("Asia/Shanghai");
   });
 
+  it("keeps cron times in place when the trigger timezone matches the display timezone", async () => {
+    ctx.mocks.data.automations([
+      createMockAutomationView({
+        cronExpression: "0 19 * * *",
+        timezone: "Asia/Shanghai",
+      }),
+    ]);
+    ctx.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+
+    await ctx.store.set(fetchAllOrgAutomations$, ctx.signal);
+    const entries = await ctx.store.get(allOrgAutomationEntries$);
+
+    expect(entries[0].time).toBe("Every day at 7:00 PM");
+    expect(entries[0].timezone).toBe("Asia/Shanghai");
+  });
+
   it("displays one-time automation times in the user's preferred timezone", async () => {
     ctx.mocks.data.automations([
       createMockAutomationView({

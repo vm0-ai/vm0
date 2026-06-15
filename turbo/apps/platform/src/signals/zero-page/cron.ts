@@ -135,27 +135,104 @@ export function cronUtcToLocalTime(
   utcMinute: number,
   timezone: string,
 ): { hour: number; minute: number } {
-  if (timezone === "UTC" || timezone === "Etc/UTC") {
-    return { hour: utcHour, minute: utcMinute };
-  }
-  const d = nowDate();
-  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  return cronTimeInTimezone(utcHour, utcMinute, "UTC", timezone);
+}
+
+function datePart(parts: Intl.DateTimeFormatPart[], type: string): string {
+  return (
+    parts.find((p) => {
+      return p.type === type;
+    })?.value ?? "0"
+  );
+}
+
+// Interpret a cron wall-clock time in its trigger timezone, then format it in
+// the user's display timezone.
+function timezoneOffsetMinutes(timezone: string, instantMs: number): number {
   const parts = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    second: "2-digit",
+    hourCycle: "h23",
     timeZone: timezone,
+  }).formatToParts(new Date(instantMs));
+  const wallTimeAsUtc = Date.UTC(
+    Number(datePart(parts, "year")),
+    Number(datePart(parts, "month")) - 1,
+    Number(datePart(parts, "day")),
+    Number(datePart(parts, "hour")),
+    Number(datePart(parts, "minute")),
+    Number(datePart(parts, "second")),
+  );
+  return (wallTimeAsUtc - instantMs) / 60_000;
+}
+
+function zonedWallTimeToUtc(
+  timezone: string,
+  wallTime: {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+  },
+): Date {
+  const utcGuess = Date.UTC(
+    wallTime.year,
+    wallTime.month - 1,
+    wallTime.day,
+    wallTime.hour,
+    wallTime.minute,
+    0,
+    0,
+  );
+  const firstOffset = timezoneOffsetMinutes(timezone, utcGuess);
+  const firstInstant = utcGuess - firstOffset * 60_000;
+  const secondOffset = timezoneOffsetMinutes(timezone, firstInstant);
+  return new Date(utcGuess - secondOffset * 60_000);
+}
+
+export function cronTimeInTimezone(
+  hour: number,
+  minute: number,
+  sourceTimezone: string,
+  displayTimezone: string,
+): { hour: number; minute: number } {
+  if (sourceTimezone === displayTimezone) {
+    return { hour, minute };
+  }
+  const sourceDateParts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: sourceTimezone,
+  }).formatToParts(nowDate());
+  const d = zonedWallTimeToUtc(sourceTimezone, {
+    year: Number(datePart(sourceDateParts, "year")),
+    month: Number(datePart(sourceDateParts, "month")),
+    day: Number(datePart(sourceDateParts, "day")),
+    hour,
+    minute,
+  });
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: displayTimezone,
   }).formatToParts(d);
   return {
     hour: Number(
       parts.find((p) => {
         return p.type === "hour";
-      })?.value ?? utcHour,
+      })?.value ?? hour,
     ),
     minute: Number(
       parts.find((p) => {
         return p.type === "minute";
-      })?.value ?? utcMinute,
+      })?.value ?? minute,
     ),
   };
 }

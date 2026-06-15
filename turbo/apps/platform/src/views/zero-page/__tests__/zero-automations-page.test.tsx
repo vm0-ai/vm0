@@ -84,6 +84,7 @@ function mockAutomationsPageStory(): void {
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
   context.mocks.data.automations([
     createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000301",
@@ -146,6 +147,7 @@ function mockAutomationCreateStory(): void {
 
 function mockAutomationListEdgeStory(): void {
   context.mocks.data.team([createAgent(zeroAgentId, "Zero")]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
   context.mocks.data.automations([
     createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000305",
@@ -157,6 +159,24 @@ function mockAutomationListEdgeStory(): void {
       prompt: "Review overnight escalations",
       description: null,
       enabled: false,
+    }),
+  ]);
+}
+
+function mockShanghaiEveningSchedule(): void {
+  context.mocks.data.team([createAgent(zeroAgentId, "Zero")]);
+  context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+  context.mocks.data.automations([
+    createMockAutomationView({
+      id: "f0000001-0000-4000-a000-000000000307",
+      agentId: zeroAgentId,
+      displayName: "Zero",
+      name: "shanghai-evening-sync",
+      cronExpression: "0 19 * * *",
+      timezone: "Asia/Shanghai",
+      prompt: "Send the Shanghai evening sync",
+      description: "Shanghai evening sync",
+      enabled: true,
     }),
   ]);
 }
@@ -226,6 +246,16 @@ describe("zero automations page", () => {
     expect(
       screen.getByText("Once on 2026-06-12 at 6:45 PM"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps GMT+8 saved schedule time in the calendar after refresh", async () => {
+    mockShanghaiEveningSchedule();
+
+    await openAutomationsPage();
+
+    expect(screen.getAllByText("7:00 PM")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Shanghai evening sync")[0]).toBeInTheDocument();
+    expect(screen.queryByText("3:00 AM")).not.toBeInTheDocument();
   });
 
   it("detects unsaved basic-field edits in the create dialog", async () => {
@@ -397,6 +427,16 @@ describe("zero automations page", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps GMT+8 saved schedule time in the list after refresh", async () => {
+    mockShanghaiEveningSchedule();
+
+    await openAutomationList();
+
+    expect(screen.getAllByText("Shanghai evening sync")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Every day at 7:00 PM")[0]).toBeInTheDocument();
+    expect(screen.queryByText("Every day at 3:00 AM")).not.toBeInTheDocument();
+  });
+
   it("opens automation creation from the empty list", async () => {
     mockAutomationCreateStory();
 
@@ -432,6 +472,7 @@ describe("zero automations page", () => {
       createAgent(zeroAgentId, "Zero"),
       createAgent(researchAgentId, "Research Agent"),
     ]);
+    context.mocks.data.userPreferences({ timezone: "UTC" });
 
     const automationsReady = context.mocks.deferred<void>();
 
