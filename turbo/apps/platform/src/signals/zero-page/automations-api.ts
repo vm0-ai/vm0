@@ -50,7 +50,7 @@ export type PlatformAutomationView = Omit<
   triggerReadOnlyReason: AutomationTriggerReadOnlyReason | null;
 };
 
-export function isTimeTrigger(
+function isTimeTrigger(
   trigger: AutomationTriggerResponse,
 ): trigger is TimeTrigger {
   return (
