@@ -4,12 +4,11 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
-use vsock_proto::{ExecControlStatus, MSG_EXEC_CANCEL, MSG_EXEC_START};
+use vsock_proto::{ExecControlStatus, MSG_EXEC_START};
 
 use crate::{ConnectionState, FrameWriteObserver, Shared, normal_operation_transition_error};
 
 use super::diagnostics::{ExecOperationDiagnostic, ExecOperationFrameDiagnostic};
-use super::handle::ExecWaitLifecycle;
 use super::types::exec_control_status_error;
 use super::{
     EXEC_OPERATION_FRAME_WRITE_COMPLETED, EXEC_OPERATION_FRAME_WRITE_NOT_STARTED,
@@ -51,27 +50,6 @@ fn mark_exec_operation_host_cancel_requested(shared: &Arc<Shared>, seq: u32) {
     if let ConnectionState::Connected { operations, .. } = &mut *guard {
         operations.mark_host_cancel_requested(seq);
     }
-}
-
-pub(in crate::exec_operation) async fn send_exec_cancel_frame(
-    shared: &Arc<Shared>,
-    seq: u32,
-    diagnostic: &ExecOperationDiagnostic,
-    lifecycle: ExecWaitLifecycle,
-) -> io::Result<()> {
-    let payload = vsock_proto::encode_exec_cancel();
-    write_frame(
-        shared,
-        MSG_EXEC_CANCEL,
-        seq,
-        &payload,
-        Some(diagnostic.frame("cancel")),
-        None,
-        exec_cancel_write_observer(shared, seq),
-    )
-    .await?;
-    lifecycle.log_cancel_sent(seq, diagnostic);
-    Ok(())
 }
 
 fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {

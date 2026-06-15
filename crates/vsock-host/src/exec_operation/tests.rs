@@ -19,8 +19,7 @@ use crate::{ConnectionState, Shared};
 
 use super::diagnostics::*;
 use super::dispatch::dispatch_result;
-use super::frame::send_exec_cancel_frame;
-use super::handle::{ExecOperationHandle, ExecWaitCore, ExecWaitLifecycle};
+use super::handle::{ExecOperationHandle, ExecWaitCore, ExecWaitLifecycle, send_exec_cancel_frame};
 use super::state::*;
 use super::types::ExecOperationResult;
 use super::{

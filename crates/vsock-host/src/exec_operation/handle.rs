@@ -14,8 +14,7 @@ use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
     clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame, write_frame,
-    write_frame_with_pre_write,
+    mark_pending_exec_control_possible_guest_write, write_frame, write_frame_with_pre_write,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
@@ -69,11 +68,7 @@ impl ExecWaitLifecycle {
         }
     }
 
-    pub(in crate::exec_operation) fn log_cancel_sent(
-        self,
-        seq: u32,
-        diagnostic: &ExecOperationDiagnostic,
-    ) {
+    fn log_cancel_sent(self, seq: u32, diagnostic: &ExecOperationDiagnostic) {
         match self {
             ExecWaitLifecycle::OneShot => {
                 tracing::info!(
@@ -146,6 +141,27 @@ impl ExecCancelWaitResult {
             lifecycle.unexpected_cancel_terminal_state_message(self.result.termination),
         ))
     }
+}
+
+pub(in crate::exec_operation) async fn send_exec_cancel_frame(
+    shared: &Arc<Shared>,
+    seq: u32,
+    diagnostic: &ExecOperationDiagnostic,
+    lifecycle: ExecWaitLifecycle,
+) -> io::Result<()> {
+    let payload = vsock_proto::encode_exec_cancel();
+    write_frame(
+        shared,
+        MSG_EXEC_CANCEL,
+        seq,
+        &payload,
+        Some(diagnostic.frame("cancel")),
+        None,
+        exec_cancel_write_observer(shared, seq),
+    )
+    .await?;
+    lifecycle.log_cancel_sent(seq, diagnostic);
+    Ok(())
 }
 
 impl ExecWaitCore {
