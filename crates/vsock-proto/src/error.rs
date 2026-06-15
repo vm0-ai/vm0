@@ -1,9 +1,13 @@
 /// Protocol error.
 #[derive(Debug, Clone)]
 pub enum ProtocolError {
+    /// Encoded message body or payload length exceeded the protocol limit.
     MessageTooLarge(usize),
+    /// Encoded message body length was smaller than the minimum frame body.
     MessageTooSmall(usize),
+    /// Payload contents were structurally invalid.
     InvalidPayload(&'static str),
+    /// Named payload field exceeded its encoded size or count limit.
     PayloadTooLarge(&'static str, usize),
 }
 

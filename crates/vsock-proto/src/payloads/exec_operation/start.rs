@@ -38,13 +38,18 @@ pub enum ExecOutputPolicy {
     /// Retain at most `limit_bytes` bytes in the final exec result.
     ///
     /// A zero limit is valid and means captured output is intentionally empty.
-    Capture { limit_bytes: u32 },
+    Capture {
+        /// Maximum retained bytes for this stream.
+        limit_bytes: u32,
+    },
     /// Emit output chunks to the host up to `limit_bytes` total bytes.
     ///
     /// A zero stream limit is valid and means no chunks should be emitted.
     /// `chunk_limit_bytes` must be non-zero.
     Stream {
+        /// Maximum emitted bytes for this stream.
         limit_bytes: u32,
+        /// Maximum bytes per emitted output chunk.
         chunk_limit_bytes: u32,
     },
     /// Retain output in the final result and also emit output chunks.
@@ -52,8 +57,11 @@ pub enum ExecOutputPolicy {
     /// Zero capture or stream limits are valid. `chunk_limit_bytes` must be
     /// non-zero.
     CaptureAndStream {
+        /// Maximum retained bytes for this stream in the final exec result.
         capture_limit_bytes: u32,
+        /// Maximum emitted bytes for this stream.
         stream_limit_bytes: u32,
+        /// Maximum bytes per emitted output chunk.
         chunk_limit_bytes: u32,
     },
 }
@@ -71,7 +79,10 @@ pub enum ExecLifecyclePolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecTimeoutPolicy {
     /// Kill the operation after `timeout_ms`.
-    Duration { timeout_ms: u32 },
+    Duration {
+        /// Positive timeout in milliseconds.
+        timeout_ms: u32,
+    },
     /// Do not apply a protocol-level timeout.
     None,
 }
@@ -83,39 +94,72 @@ pub enum ExecControlPolicy {
     Disabled,
     /// Enable exec control messages using a per-operation nonce.
     Enabled {
+        /// Per-operation nonce registered with the exec operation.
         control_nonce: ExecControlNonce,
+        /// Whether the guest should expose a local sink for exec control.
         sink: bool,
     },
 }
 
 /// Parameters for encoding an exec_start payload with extended metadata.
 pub struct ExecStartEncodeRequest<'a> {
+    /// Process lifecycle policy to encode.
     pub lifecycle: ExecLifecyclePolicy,
+    /// Protocol timeout policy to encode.
     pub timeout: ExecTimeoutPolicy,
+    /// UTF-8 command string to execute.
     pub command: &'a str,
+    /// Environment key/value pairs to encode.
+    ///
+    /// At most 4096 pairs are accepted.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether the guest should run the command through sudo.
     pub sudo: bool,
+    /// UTF-8 operation label encoded with a `u16` byte length.
     pub label: &'a str,
+    /// Standard output handling policy.
     pub stdout: ExecOutputPolicy,
+    /// Standard error handling policy.
     pub stderr: ExecOutputPolicy,
+    /// Additional exit codes treated as expected by the caller.
+    ///
+    /// At most 64 exit codes are accepted.
     pub expected_exit_codes: &'a [i32],
+    /// Exec control channel policy.
     pub control: ExecControlPolicy,
+    /// Optional bounded stdin bytes.
+    ///
+    /// Present stdin is limited to [`MAX_EXEC_STDIN_BYTES`].
     pub stdin_bytes: Option<&'a [u8]>,
 }
 
 /// Decoded exec_start payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedExecStart<'a> {
+    /// Decoded process lifecycle policy.
     pub lifecycle: ExecLifecyclePolicy,
+    /// Decoded protocol timeout policy.
     pub timeout: ExecTimeoutPolicy,
+    /// Command string borrowed from the decoded payload.
     pub command: &'a str,
+    /// Decoded environment key/value pairs.
+    ///
+    /// The vector is allocated during decoding; keys and values borrow from the
+    /// decoded payload.
     pub env: Vec<(&'a str, &'a str)>,
+    /// Whether sudo execution was requested.
     pub sudo: bool,
+    /// Operation label borrowed from the decoded payload.
     pub label: &'a str,
+    /// Decoded standard output handling policy.
     pub stdout: ExecOutputPolicy,
+    /// Decoded standard error handling policy.
     pub stderr: ExecOutputPolicy,
+    /// Decoded additional expected exit codes.
     pub expected_exit_codes: Vec<i32>,
+    /// Decoded exec control channel policy.
     pub control: ExecControlPolicy,
+    /// Optional stdin bytes borrowed from the decoded payload.
     pub stdin_bytes: Option<&'a [u8]>,
 }
 

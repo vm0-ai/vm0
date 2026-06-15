@@ -11,16 +11,25 @@ const EXEC_OUTPUT_STREAM_STDERR: u8 = 0x01;
 /// Exec output stream selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecOutputStream {
+    /// Standard output stream.
     Stdout,
+    /// Standard error stream.
     Stderr,
 }
 
 /// Decoded exec_output payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedExecOutput<'a> {
+    /// Output stream that produced this chunk.
     pub stream: ExecOutputStream,
+    /// Per-operation output sequence number.
+    ///
+    /// This starts at `0` for each exec operation and increments across stdout
+    /// and stderr output frames.
     pub output_seq: u32,
+    /// Output bytes borrowed from the decoded payload.
     pub chunk: &'a [u8],
+    /// Whether this emitted output frame was marked as truncated.
     pub truncated: bool,
 }
 

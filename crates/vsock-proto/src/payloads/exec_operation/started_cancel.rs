@@ -4,6 +4,7 @@ use crate::read::{expect_consumed, read_u32};
 /// Decoded exec_started payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedExecStarted {
+    /// Non-zero process id reported by the guest.
     pub pid: u32,
 }
 
