@@ -110,6 +110,33 @@ describe("Axiom log source field", () => {
       [EVENT]: { source: "api" },
     });
   });
+
+  it("lifts usage underbilling fields into the Axiom event root", () => {
+    const log = logger("underbilling-test");
+    log.error("underbilling", {
+      type: "usage_underbilling",
+      reason: "run_not_found",
+      underbilling_class: "confirmed",
+      component: "api",
+      orgId: "org-test",
+    });
+
+    expect(axiomLogging.error).toHaveBeenCalledWith("underbilling", {
+      type: "usage_underbilling",
+      reason: "run_not_found",
+      underbilling_class: "confirmed",
+      component: "api",
+      orgId: "org-test",
+      context: "underbilling-test",
+      [EVENT]: {
+        source: "api",
+        type: "usage_underbilling",
+        reason: "run_not_found",
+        underbilling_class: "confirmed",
+        component: "api",
+      },
+    });
+  });
 });
 
 // ── flushLogs ───────────────────────────────────────────────────────────────
