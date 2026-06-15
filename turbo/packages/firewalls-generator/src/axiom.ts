@@ -10,8 +10,8 @@
  * The v1 spec uses legacy scope names (CanIngest, CanQuery, ManageDatasets)
  * which are mapped to the modern format.
  *
- * Endpoints without scopes are tracked in SCOPELESS_ENDPOINTS — unknown
- * scopeless endpoints cause a build error.
+ * Endpoints without scopes either need a manual scope in SCOPE_OVERRIDES or
+ * explicit tracking in SCOPELESS_ENDPOINTS — unknown entries fail generation.
  */
 
 import {
@@ -70,6 +70,7 @@ const SCOPE_OVERRIDES: Record<string, string> = {
   "POST /v2/dashboards": "dashboards|create",
   "GET /v2/dashboards/uid/{uid}": "dashboards|read",
   "PUT /v2/dashboards/uid/{uid}": "dashboards|update",
+  "PATCH /v2/dashboards/uid/{uid}/charts/{chartId}": "dashboards|update",
   "DELETE /v2/dashboards/uid/{uid}": "dashboards|delete",
   // orgs
   "GET /v2/orgs": "orgs|read",
@@ -157,7 +158,7 @@ function buildGroups(specs: Array<{ spec: AxiomSpec }>): PermissionGroup[] {
   if (unknownScopeless.length > 0) {
     throw new Error(
       `Unknown scopeless endpoints: ${unknownScopeless.join(", ")}\n` +
-        "Add them to SCOPELESS_ENDPOINTS in axiom.ts to fix this error.",
+        "Add scope-bearing endpoints to SCOPE_OVERRIDES, or genuinely unscoped endpoints to SCOPELESS_ENDPOINTS in axiom.ts.",
     );
   }
 

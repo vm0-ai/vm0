@@ -1,9 +1,9 @@
 {
   "axiom": {
-    "https://axiom.co/docs/restapi/versions/v1-edge-ingest.json": "d6a868da397d7312096c68f2295b5f0569693ec139cf9dd2b27f91c02d58d19a",
-    "https://axiom.co/docs/restapi/versions/v1-edge-query.json": "5e1f5080b7af1b7480b982876e437fdf42c6ecd1751f2f386357a8616d98a877",
+    "https://axiom.co/docs/restapi/versions/v1-edge-ingest.json": "a285eddb0526aac63d795c2947ca488be1530bc5d006fffbd087ec2131a39999",
+    "https://axiom.co/docs/restapi/versions/v1-edge-query.json": "3fefcf8963a5ab62f40f3ba5824aa093424109f0180c6918422353dec876cbd6",
     "https://axiom.co/docs/restapi/versions/v1.json": "f500e8c9cd83fe22aebd289d90c81a290712c3f2355f363a18a2090491b19499",
-    "https://axiom.co/docs/restapi/versions/v2.json": "eb322168e3592b1bdc56ebd9f6b5357a0e80dc293c42cced2e2a95cf2b972ca4"
+    "https://axiom.co/docs/restapi/versions/v2.json": "0f70412eb7310a579ab93d47d0d4063d51aa47ac871d8d661f42b80913d15d55"
   },
   "clerk": {
     "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml": "0df70f63b6ecbaf8498d9c0a1546b5abf8abf79c3a4f72ad7395403cfed06b1d"
