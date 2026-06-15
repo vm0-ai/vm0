@@ -406,11 +406,12 @@ export function createComputerUseBddApi(context: TestContext) {
 
     async heartbeatComputerUseHost(
       hostToken: string,
+      options: ComputerUseHostStartOptions = {},
     ): Promise<{ readonly ok: true; readonly hostId: string }> {
       const response = await accept(
         heartbeatClient().heartbeat({
           headers: hostHeaders(hostToken),
-          body: hostRuntimeBody(),
+          body: hostRuntimeBody(options),
         }),
         [200],
       );

@@ -4371,21 +4371,19 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
       expect(screen.getByText("Office Mac")).toBeInTheDocument();
       expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
       expect(screen.getByText("Connect my computer")).toBeInTheDocument();
-      expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
-      expect(screen.getByRole("radio", { name: "Office Mac" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
+      expect(
+        screen.getByRole("switch", { name: "Connect Studio Mac" }),
+      ).toHaveAttribute("aria-checked", "false");
+      expect(
+        screen.getByRole("switch", { name: "Connect Office Mac" }),
+      ).toHaveAttribute("aria-checked", "false");
     });
   });
 
@@ -4403,7 +4401,7 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByLabelText("Connectors"));
     await user.click(await screen.findByText("Connect my computer"));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -4455,11 +4453,10 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
-    expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(
+      screen.getByRole("switch", { name: "Connect Studio Mac" }),
+    ).toHaveAttribute("aria-checked", "false");
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -4470,11 +4467,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Open the app on my computer"),
       ).toBeInTheDocument();
-      expect(sentComputerUseHostId).toBeNull();
+      expect(sentComputerUseHostId).toBeUndefined();
     });
   });
 
-  it("refreshes online computers when the chat composer popover opens", async () => {
+  it("refreshes computers when the computer-use hosts Ably event arrives", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-refresh";
     let hostOnline = true;
@@ -4505,26 +4502,26 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("computerUseHostsChanged"),
+      ).toBeTruthy();
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Computer Use"));
-    await waitFor(() => {
-      expect(screen.queryByText("Connect my computer")).not.toBeInTheDocument();
-    });
-
-    const requestCountAfterFirstOpen = requestCount;
+    const requestCountAfterInitialLoad = requestCount;
     hostOnline = false;
 
-    await user.click(screen.getByLabelText("Computer Use"));
+    context.mocks.ably.trigger("computerUseHostsChanged");
 
     await waitFor(() => {
-      expect(requestCount).toBeGreaterThan(requestCountAfterFirstOpen);
+      expect(requestCount).toBeGreaterThan(requestCountAfterInitialLoad);
       expect(screen.queryByText("Studio Mac")).not.toBeInTheDocument();
-      expect(screen.getByText("No online computers")).toBeInTheDocument();
     });
   });
 
@@ -4562,8 +4559,10 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
-    await user.click(await screen.findByRole("radio", { name: "Studio Mac" }));
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(
+      await screen.findByRole("switch", { name: "Connect Studio Mac" }),
+    );
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -4582,10 +4581,14 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-saved-selection";
     const hostId = "11111111-1111-4111-8111-111111111111";
+    let sentComputerUseHostId: string | null | undefined;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Computer Use",
       computerUseHostId: hostId,
+      onRunCreate: (body) => {
+        sentComputerUseHostId = body.computerUseHostId;
+      },
     });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
@@ -4611,17 +4614,66 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByLabelText("Connectors"));
 
-    const selectedComputer = await screen.findByRole("radio", {
-      name: "Studio Mac",
+    const selectedComputer = await screen.findByRole("switch", {
+      name: "Disconnect Studio Mac",
     });
     expect(selectedComputer).toHaveAttribute("aria-checked", "true");
     await user.click(selectedComputer);
 
+    const textarea = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Do not use my computer");
+
     await waitFor(() => {
-      expect(selectedComputer).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByText("Do not use my computer")).toBeInTheDocument();
+      expect(sentComputerUseHostId).toBeNull();
     });
+  });
+
+  it("shows a saved offline Computer Use host selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-saved-offline-selection";
+    const hostId = "22222222-2222-4222-8222-222222222222";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Computer Use",
+      computerUseHostId: hostId,
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "offline",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Connectors"));
+
+    const hostName = await screen.findByText("Studio Mac");
+    expect(hostName).toBeInTheDocument();
+    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Disconnect Studio Mac" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
   it("shows a computer use empty state when host listing is unavailable", async () => {
@@ -4643,7 +4695,7 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
-    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
       expect(screen.getByText("No online computers")).toBeInTheDocument();

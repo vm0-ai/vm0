@@ -245,6 +245,59 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ).toStrictEqual([first.hostId]);
   });
 
+  it("publishes computer-use host list changes", async () => {
+    const actor = bdd.user();
+    await api.enableComputerUse(actor);
+    const base = now();
+    mockNow(base);
+
+    context.mocks.ably.publish.mockClear();
+    const host = await api.startComputerUseHost(actor, {
+      hostName: "Studio Mac",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "computerUseHostsChanged",
+      null,
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await api.heartbeatComputerUseHost(host.hostToken, {
+      hostName: "Studio Mac",
+    });
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+
+    mockNow(base + 120_000);
+    await api.heartbeatComputerUseHost(host.hostToken, {
+      hostName: "Studio Mac",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "computerUseHostsChanged",
+      null,
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await api.stopComputerUseHost(host.hostToken);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "computerUseHostsChanged",
+      null,
+    );
+
+    clearMockNow();
+    const restarted = await api.startComputerUseHost(actor, {
+      hostName: "Recovered Desktop",
+    });
+    context.mocks.ably.publish.mockClear();
+    await api.deleteComputerUseHost(actor, restarted.hostId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "computerUseHostsChanged",
+      null,
+    );
+  });
+
   it("rejects host-token routes with missing or invalid host tokens", async () => {
     const garbageToken = "vm0-bdd-garbage-host-token";
     const commandId = randomUUID();

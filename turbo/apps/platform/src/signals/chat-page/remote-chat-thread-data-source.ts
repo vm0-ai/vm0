@@ -98,7 +98,7 @@ const appendQueuedMessage$ = command(
           clientMessageId,
           modelSelection,
           generationTemplate,
-          computerUseHostId,
+          ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           attachFiles: attachments ?? undefined,
         },
         fetchOptions: { signal },

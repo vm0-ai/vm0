@@ -54,7 +54,6 @@ import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { hostIsOnline } from "../services/zero-computer-use.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -190,8 +189,13 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly priorContext: string;
   readonly generationTemplatePrompt: string;
-  readonly computerUseHostId: string | null;
+  readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
+}
+
+interface ResolvedComputerUseHostGrant {
+  readonly hostId: string;
+  readonly displayName: string;
 }
 
 type NormalSendFailure =
@@ -462,17 +466,30 @@ function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
+  computerUseHostDisplayName: string | null,
 ): string {
   return [
     buildWebChatPrompt(),
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
+    computerUseHostDisplayName
+      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
+      : "",
   ]
     .filter((part) => {
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function buildComputerUseSystemPrompt(displayName: string): string {
+  return [
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${displayName}.`,
+    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+  ].join("\n");
 }
 
 function buildFullPrompt(
@@ -1319,14 +1336,17 @@ async function updateThreadComputerUseHost(params: {
     );
 }
 
-async function selectedComputerUseHostIsOnline(params: {
+async function selectedComputerUseHostGrant(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly hostId: string;
-}): Promise<"online" | "offline" | "missing"> {
+}): Promise<ResolvedComputerUseHostGrant | "missing"> {
   const [host] = await params.db
-    .select()
+    .select({
+      id: computerUseHosts.id,
+      displayName: computerUseHosts.displayName,
+    })
     .from(computerUseHosts)
     .where(
       and(
@@ -1340,7 +1360,10 @@ async function selectedComputerUseHostIsOnline(params: {
   if (!host) {
     return "missing";
   }
-  return hostIsOnline(host, nowDate()) ? "online" : "offline";
+  return {
+    hostId: host.id,
+    displayName: host.displayName,
+  };
 }
 
 async function resolveComputerUseHostGrant(params: {
@@ -1349,7 +1372,7 @@ async function resolveComputerUseHostGrant(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly thread: ResolvedThread;
-}): Promise<string | null | NormalSendFailure> {
+}): Promise<ResolvedComputerUseHostGrant | null | NormalSendFailure> {
   const explicitSelection = hasComputerUseHostSelection(params.body);
   const requestedHostId = explicitSelection
     ? params.body.computerUseHostId
@@ -1380,13 +1403,13 @@ async function resolveComputerUseHostGrant(params: {
     return null;
   }
 
-  const hostStatus = await selectedComputerUseHostIsOnline({
+  const hostGrant = await selectedComputerUseHostGrant({
     db: params.db,
     orgId: params.orgId,
     userId: params.userId,
     hostId: requestedHostId,
   });
-  if (hostStatus === "missing") {
+  if (hostGrant === "missing") {
     if (explicitSelection) {
       return notFound("Computer-use host not found");
     }
@@ -1396,12 +1419,6 @@ async function resolveComputerUseHostGrant(params: {
       userId: params.userId,
       hostId: null,
     });
-    return null;
-  }
-  if (hostStatus === "offline") {
-    if (explicitSelection) {
-      return conflict("Selected computer-use host is offline");
-    }
     return null;
   }
 
@@ -1416,7 +1433,7 @@ async function resolveComputerUseHostGrant(params: {
       hostId: requestedHostId,
     });
   }
-  return requestedHostId;
+  return hostGrant;
 }
 
 async function createChatThread(
@@ -2136,7 +2153,7 @@ const prepareNormalSend$ = command(
         modelSelection: args.body.modelSelection,
       });
     signal.throwIfAborted();
-    const computerUseHostId = await resolveComputerUseHostGrant({
+    const computerUseHostGrant = await resolveComputerUseHostGrant({
       db,
       orgId: args.orgId,
       userId: args.userId,
@@ -2144,8 +2161,8 @@ const prepareNormalSend$ = command(
       thread,
     });
     signal.throwIfAborted();
-    if (typeof computerUseHostId !== "string" && computerUseHostId !== null) {
-      return computerUseHostId;
+    if (computerUseHostGrant !== null && "status" in computerUseHostGrant) {
+      return computerUseHostGrant;
     }
 
     return {
@@ -2154,7 +2171,7 @@ const prepareNormalSend$ = command(
       thread,
       priorContext,
       generationTemplatePrompt,
-      computerUseHostId,
+      computerUseHostGrant,
       persistedExplicitSelection,
     };
   },
@@ -2478,7 +2495,7 @@ const createNormalChatRun$ = command(
         auth: args.auth,
         apiStartTime: args.apiStartTime,
         chatThreadId: prepared.thread.threadId,
-        computerUseHostId: prepared.computerUseHostId ?? undefined,
+        computerUseHostId: prepared.computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
@@ -2510,6 +2527,7 @@ const createNormalChatRun$ = command(
           prepared.thread.incompleteContext,
           prepared.priorContext,
           prepared.generationTemplatePrompt,
+          prepared.computerUseHostGrant?.displayName ?? null,
         ),
       },
       signal,

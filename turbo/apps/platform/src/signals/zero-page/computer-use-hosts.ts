@@ -8,6 +8,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
@@ -19,20 +20,35 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
 
 const computerUseHostsReload$ = state(0);
 
-export const reloadOnlineComputerUseHosts$ = command(({ set }) => {
+const reloadComputerUseHosts$ = command(({ set }) => {
   set(computerUseHostsReload$, (n) => {
     return n + 1;
   });
 });
 
-interface OnlineComputerUseHost extends Pick<
+export const subscribeComputerUseHostsChanged$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const switches = get(featureSwitch$);
+    if (!switches[FeatureSwitchKey.ComputerUse]) {
+      return;
+    }
+
+    const onChanged$ = command(({ set }) => {
+      set(reloadComputerUseHosts$);
+      return false;
+    });
+    await set(setAblyLoop$, "computerUseHostsChanged", onChanged$, signal);
+  },
+);
+
+interface ListedComputerUseHost extends Pick<
   ComputerUseHost,
-  "id" | "displayName" | "lastSeenAt"
+  "id" | "displayName" | "lastSeenAt" | "status"
 > {
   readonly hostName: string;
 }
 
-export function selectedOnlineComputerUseHostId(
+export function selectedComputerUseHostId(
   hosts: readonly { readonly id: string }[],
   selectedHostId: string | null | undefined,
 ): string | null {
@@ -46,8 +62,24 @@ export function selectedOnlineComputerUseHostId(
     : null;
 }
 
-export const onlineComputerUseHosts$ = computed(
-  async (get): Promise<OnlineComputerUseHost[]> => {
+export function visibleComputerUseHosts(
+  hosts: readonly ListedComputerUseHost[],
+  selectedHostId: string | null | undefined,
+): ListedComputerUseHost[] {
+  const selected = selectedComputerUseHostId(hosts, selectedHostId);
+  const selectedHost = selected
+    ? hosts.find((host) => {
+        return host.id === selected;
+      })
+    : undefined;
+  const onlineHosts = hosts.filter((host) => {
+    return host.status === "online" && host.id !== selected;
+  });
+  return selectedHost ? [selectedHost, ...onlineHosts] : onlineHosts;
+}
+
+export const computerUseHosts$ = computed(
+  async (get): Promise<ListedComputerUseHost[]> => {
     get(computerUseHostsReload$);
     const switches = get(featureSwitch$);
     if (!switches[FeatureSwitchKey.ComputerUse]) {
@@ -62,17 +94,14 @@ export const onlineComputerUseHosts$ = computed(
       return [];
     }
 
-    return result.body.hosts
-      .filter((host) => {
-        return host.status === "online";
-      })
-      .map((host) => {
-        return {
-          id: host.id,
-          hostName: host.hostName ?? host.displayName,
-          displayName: host.displayName,
-          lastSeenAt: host.lastSeenAt,
-        };
-      });
+    return result.body.hosts.map((host) => {
+      return {
+        id: host.id,
+        hostName: host.hostName ?? host.displayName,
+        displayName: host.displayName,
+        lastSeenAt: host.lastSeenAt,
+        status: host.status,
+      };
+    });
   },
 );

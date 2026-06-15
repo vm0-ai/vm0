@@ -20,7 +20,10 @@ import {
 } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import { talkDraft$ } from "../zero-page/chat-draft.ts";
+import {
+  talkDraft$,
+  type ZeroChatAttachment,
+} from "../zero-page/chat-draft.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -92,7 +95,7 @@ interface SendNewThreadMessageRequest {
   prompt: string;
   modelSelection: ModelSelectionRequest | null;
   generationTemplate: GenerationTemplateRequest | undefined;
-  computerUseHostId: string | null;
+  computerUseHostId?: string | null;
 }
 
 interface SendNewThreadMessageResult {
@@ -102,6 +105,12 @@ interface SendNewThreadMessageResult {
 
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+function hasVisualDraftAttachments(
+  attachments: readonly ZeroChatAttachment[],
+): boolean {
+  return attachments.some(isVisualAttachment);
 }
 
 async function appendQueuedMessage(
@@ -128,7 +137,9 @@ async function appendQueuedMessage(
         clientMessageId: append.clientMessageId,
         modelSelection: append.modelSelection,
         generationTemplate: append.generationTemplate,
-        computerUseHostId: append.computerUseHostId,
+        ...(append.computerUseHostId === undefined
+          ? {}
+          : { computerUseHostId: append.computerUseHostId }),
         attachFiles: append.attachments ?? undefined,
       },
       fetchOptions: { signal },
@@ -153,7 +164,7 @@ function queuedReplayAppendArgs({
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
-  computerUseHostId: string | null;
+  computerUseHostId?: string | null;
   entry: OptimisticChatMessageEntry;
 }): AppendQueuedMessageArgs {
   return {
@@ -182,7 +193,7 @@ async function replayQueuedOptimisticMessages({
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
-  computerUseHostId: string | null;
+  computerUseHostId?: string | null;
   entries: OptimisticChatMessageEntry[];
   signal: AbortSignal;
 }): Promise<void> {
@@ -474,19 +485,15 @@ export const sidebarChatThreads$ = computed(
 const sendNewThreadMessage$ = command(
   async (
     { get, set },
-    {
-      agentId,
-      prompt,
-      modelSelection,
-      generationTemplate,
-      computerUseHostId,
-    }: SendNewThreadMessageRequest,
+    request: SendNewThreadMessageRequest,
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
+    const { agentId, prompt, modelSelection, generationTemplate } = request;
+    const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    const hasVisualAttachments = get(draft.attachments$).some((attachment) => {
-      return isVisualAttachment(attachment);
-    });
+    const hasVisualAttachments = hasVisualDraftAttachments(
+      get(draft.attachments$),
+    );
     let effectiveSelectedModel = modelSelection?.selectedModel;
     if (!effectiveSelectedModel && hasVisualAttachments) {
       const policies = await get(orgModelPolicies$);
@@ -510,11 +517,9 @@ const sendNewThreadMessage$ = command(
       },
       signal,
     );
-
     if (!prepared) {
       return null;
     }
-
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const messageCreatedAt = nowDate().toISOString();
@@ -541,7 +546,6 @@ const sendNewThreadMessage$ = command(
       signal,
     );
     set(draft.clear$);
-
     const createClient = get(zeroClient$);
     const client = createClient(chatMessagesContract);
     const queuedOptimisticMessages$ =
@@ -561,7 +565,7 @@ const sendNewThreadMessage$ = command(
             clientMessageId,
             modelSelection,
             generationTemplate,
-            computerUseHostId,
+            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
             attachFiles: prepared.attachFiles,
           },
           fetchOptions: { signal },
@@ -585,15 +589,14 @@ const sendNewThreadMessage$ = command(
         threadId: result.body.threadId,
         agentId,
         modelSelection: replayModelSelection,
-        computerUseHostId: replayComputerUseHostId,
+        computerUseHostId:
+          computerUseHostId === undefined ? undefined : replayComputerUseHostId,
         entries: queuedMessages,
         signal,
       });
       set(reloadChatThreads$);
-
       return { threadId: result.body.threadId, runId: result.body.runId };
     })();
-
     return {
       pane: "main",
       threadId,
