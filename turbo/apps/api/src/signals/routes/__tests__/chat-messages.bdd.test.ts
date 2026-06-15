@@ -1229,7 +1229,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "openrouter-api-key",
-      secret: "sk-or-v1-bdd-openrouter",
+      secret: "test-openrouter-key",
     });
 
     const run = await sendChatRun(actor, {
@@ -1279,7 +1279,7 @@ describe("CHAT-02: explicit provider pins", () => {
       throw new Error("Expected OpenRouter firewall auth to resolve");
     }
     expect(resolved.body.headers.Authorization).toBe(
-      "Bearer sk-or-v1-bdd-openrouter",
+      "Bearer test-openrouter-key",
     );
     expect(resolved.body.resolvedSecrets).toStrictEqual(["OPENROUTER_API_KEY"]);
 
