@@ -334,12 +334,13 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
     enqueue = RecordingEnqueue(side_effect=fail_enqueue)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
         "run-1",
         [event(source_key="source-1")],
-        str(tmp_path / "proxy.jsonl"),
+        str(proxy_log_path),
     )
     assert len(timers) == 1
 
@@ -349,6 +350,18 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    retained_entries = [
+        entry
+        for entry in flush_log_entries(proxy_log_path)
+        if entry.get("reason") == "shutdown_retained_without_retry"
+    ]
+    assert len(retained_entries) == 1
+    assert retained_entries[0]["level"] == "error"
+    assert retained_entries[0]["type"] == "usage_underbilling"
+    assert retained_entries[0]["underbilling_class"] == "risk"
+    assert retained_entries[0]["component"] == "mitm_addon"
+    assert retained_entries[0]["retained_source_event_count"] == 1
+    assert retained_entries[0]["retained_webhook_batch_count"] == 1
 
     enqueue.side_effect = None
     enqueue.clear()
