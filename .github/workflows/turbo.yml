@@ -1945,14 +1945,30 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
+            local SERVICE_SECRETS_SOURCE="${RUNNER_DIR}/.service-secrets.env.source"
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo rm -f ${SERVICE_SECRETS_SOURCE}"
+            if ! printf 'VERCEL_AUTOMATION_BYPASS_SECRET=%s\n' "$VERCEL_BYPASS" \
+              | ssh "$REMOTE" "sudo sh -c 'umask 077; cat > \"\$1\" && chmod 600 \"\$1\"' sh ${SERVICE_SECRETS_SOURCE}"; then
+              # shellcheck disable=SC2029
+              ssh "$REMOTE" "sudo rm -f ${SERVICE_SECRETS_SOURCE}" || true
+              return 1
+            fi
+
             # Start as systemd transient service
+            local START_STATUS=0
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
-              --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
+              --service-secrets-file ${SERVICE_SECRETS_SOURCE} \
               --env USE_MOCK_CLAUDE=true \
-              --env USE_MOCK_CODEX=true"
+              --env USE_MOCK_CODEX=true" || START_STATUS=$?
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo rm -f ${SERVICE_SECRETS_SOURCE}" || true
+            if [ "$START_STATUS" -ne 0 ]; then
+              return "$START_STATUS"
+            fi
 
             # Wait for the runner main loop to publish status.json before
             # health checks. systemd-run returns once the process starts, but
