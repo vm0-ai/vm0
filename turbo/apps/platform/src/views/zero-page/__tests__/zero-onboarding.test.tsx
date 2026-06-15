@@ -2,6 +2,7 @@ import {
   onboardingSetupContract,
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   fill,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 
@@ -42,12 +44,30 @@ async function completeWorkspaceStep(): Promise<void> {
 }
 
 describe("zero onboarding", () => {
+  it("keeps admins in app onboarding when the paid redirect switch is disabled", async () => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/onboarding");
+      const params = new URLSearchParams(search());
+      expect(params.get("prompt")).toBe("hello world");
+      expect(params.get("connector")).toBe("github");
+      expect(params.get("vm0_source")).toBeNull();
+    });
+  });
+
   it("redirects admins who need onboarding to paid onboarding with query params", async () => {
     mockOnboardingNeeded();
 
     detachedSetupPage({
       context,
       path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: true },
     });
 
     await waitFor(() => {

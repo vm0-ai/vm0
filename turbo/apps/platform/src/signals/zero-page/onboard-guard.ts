@@ -1,6 +1,8 @@
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { command } from "ccstate";
 import { clerk$, resolveWebOrigin } from "../auth.ts";
-import { searchParams$ } from "../route.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   onboardingEagerInitialized$,
   zeroOnboardingStatus$,
@@ -8,6 +10,7 @@ import {
 } from "./zero-onboarding.ts";
 
 const PAID_ONBOARDING_PATH = "/onboarding/2afcf6";
+const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
 
 function paidOnboardingUrl(searchParams: URLSearchParams): string {
   const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
@@ -31,11 +34,47 @@ function paidOnboardingUrl(searchParams: URLSearchParams): string {
   return url.toString();
 }
 
-export const redirectToPaidOnboarding$ = command(
+const redirectToPaidOnboarding$ = command(
   ({ get }, searchParams?: URLSearchParams) => {
     window.location.href = paidOnboardingUrl(
       searchParams ?? get(searchParams$),
     );
+  },
+);
+
+function inAppOnboardingSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams | undefined {
+  const forwarded = new URLSearchParams();
+  for (const key of FORWARDED_ONBOARDING_PARAMS) {
+    const value = searchParams.get(key);
+    if (value !== null) {
+      forwarded.set(key, value);
+    }
+  }
+  return forwarded.toString().length > 0 ? forwarded : undefined;
+}
+
+const redirectToInAppOnboarding$ = command(
+  ({ get, set }, searchParams?: URLSearchParams) => {
+    set(detachedNavigateTo$, "/onboarding", {
+      replace: true,
+      searchParams: inAppOnboardingSearchParams(
+        searchParams ?? get(searchParams$),
+      ),
+    });
+  },
+);
+
+export const redirectToConfiguredOnboarding$ = command(
+  ({ get, set }, searchParams?: URLSearchParams) => {
+    const incoming = searchParams ?? get(searchParams$);
+    const features = get(featureSwitch$);
+    if (features[FeatureSwitchKey.PaidOnboardingRedirect]) {
+      set(redirectToPaidOnboarding$, incoming);
+      return;
+    }
+    set(redirectToInAppOnboarding$, incoming);
   },
 );
 
@@ -45,8 +84,7 @@ export const redirectToPaidOnboarding$ = command(
  * `false` otherwise.
  *
  * Onboarding is purely admin workspace setup — only an admin whose org has no
- * default agent yet is sent to the paid-onboarding site. Non-admins never go
- * through it.
+ * default agent yet is sent through onboarding. Non-admins never go through it.
  *
  * When the backend cannot resolve the current org (e.g. it was deleted) but the
  * user still belongs to other orgs, redirect to the web app's
@@ -81,7 +119,7 @@ export const onboardGuard$ = command(
       }
     }
 
-    set(redirectToPaidOnboarding$);
+    set(redirectToConfiguredOnboarding$);
     return true;
   },
 );

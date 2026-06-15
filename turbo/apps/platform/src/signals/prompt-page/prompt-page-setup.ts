@@ -13,7 +13,7 @@ import {
 import { showAppSkeleton$ } from "../app-skeleton.ts";
 import {
   onboardGuard$,
-  redirectToPaidOnboarding$,
+  redirectToConfiguredOnboarding$,
 } from "../zero-page/onboard-guard.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
@@ -44,7 +44,7 @@ export const setupPromptPage$ = command(
     const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
     if (!agentId) {
-      set(redirectToPaidOnboarding$, params);
+      set(redirectToConfiguredOnboarding$, params);
       return;
     }
 
