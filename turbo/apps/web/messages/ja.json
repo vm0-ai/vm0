@@ -4611,7 +4611,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "×0.3クレジットで強力なコードベンチマーク。セルフホストセットアップに最適。"
+            "reason": "×0.1クレジットで強力なコードベンチマーク。セルフホストセットアップに最適。"
           }
         ],
         "routingNotes": "On VM0, Opus 4.7 is routed directly to Anthropic's Messages API and is exposed three ways: through the VM0 Managed credit pool, through a direct Anthropic API key, and through the Claude Code OAuth provider for teams already authenticated with Claude Code.",
@@ -5102,7 +5102,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "×0.3クレジットでオープンソースライセンスの同等推論品質。"
+            "reason": "×0.1クレジットでオープンソースライセンスの同等推論品質。"
           }
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Default model on VM0 Managed.",
@@ -5406,7 +5406,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "類似コスト（×0.3クレジット）のオープンソース代替。"
+            "reason": "類似コスト（×0.1クレジット）のオープンソース代替。"
           },
           {
             "slug": "claude-sonnet-4-6",

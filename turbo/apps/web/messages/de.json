@@ -4611,7 +4611,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Open-Source-Flaggschiff mit starken Code-Benchmarks bei ×0,3 Credits."
+            "reason": "Open-Source-Flaggschiff mit starken Code-Benchmarks bei ×0,1 Credits."
           }
         ],
         "routingNotes": "On VM0, Opus 4.7 is routed directly to Anthropic's Messages API and is exposed three ways: through the VM0 Managed credit pool, through a direct Anthropic API key, and through the Claude Code OAuth provider for teams already authenticated with Claude Code.",
@@ -5094,7 +5094,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Ähnliche Reasoning-Qualität mit Open-Source-Lizenz zu ×0,3 Credits."
+            "reason": "Ähnliche Reasoning-Qualität mit Open-Source-Lizenz zu ×0,1 Credits."
           }
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Default model on VM0 Managed.",
@@ -5398,7 +5398,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Open-Source-Alternative mit ähnlichen Kosten (×0,3 Credits)."
+            "reason": "Open-Source-Alternative mit ähnlichen Kosten (×0,1 Credits)."
           },
           {
             "slug": "claude-sonnet-4-6",
@@ -5726,7 +5726,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Stärkere Code-Benchmarks mit ähnlichem Preis (×0,3 Credits)."
+            "reason": "Stärkere Code-Benchmarks mit ähnlichem Preis (×0,1 Credits)."
           }
         ],
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed and via OpenRouter.",
@@ -5897,7 +5897,7 @@
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Stärkere Code-Benchmarks mit ähnlichem Preis (×0,3 Credits)."
+            "reason": "Stärkere Code-Benchmarks mit ähnlichem Preis (×0,1 Credits)."
           }
         ],
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed.",
