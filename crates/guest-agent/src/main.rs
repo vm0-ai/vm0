@@ -1142,6 +1142,16 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_ignores_generic_402_error() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 Payment Required",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
     fn cli_failure_reason_classifies_claude_invalid_credentials() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
