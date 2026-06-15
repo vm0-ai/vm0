@@ -170,11 +170,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Google Search Console connector",
     enabled: true,
   },
-  [FeatureSwitchKey.YouTubeConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the YouTube connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",

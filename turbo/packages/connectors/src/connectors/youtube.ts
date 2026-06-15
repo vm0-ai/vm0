@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const youtube = {
   youtube: {
@@ -9,7 +8,6 @@ export const youtube = {
       "Connect your YouTube account to search videos, get channel info, and fetch comments via the Data API",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.YouTubeConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant YouTube Data API access.",
         client: {
