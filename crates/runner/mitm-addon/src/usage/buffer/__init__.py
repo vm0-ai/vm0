@@ -9,9 +9,11 @@ bucketing. The seen-key set survives flushes and is bounded by
 ``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
 response/error observations do not become separate aggregate rows.
 
-Accepted events are separated by webhook destination and output shape, then
-aggregated by ``run_id``, ``kind``, provider/model resource id, and
+By default, accepted events are separated by webhook destination and output
+shape, then aggregated by ``run_id``, ``kind``, provider/model resource id, and
 ``category``. Matching aggregate buckets sum ``quantity`` before delivery.
+Source-preserving wrappers skip aggregation and keep the original event
+idempotency keys in the webhook payload for finalized source-level reports.
 
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
 calls. The trigger label is emitted in ``usage_event_buffer_flush`` proxy-log
@@ -52,6 +54,8 @@ __all__ = [
     "UsageEventBuffer",
     "UsageFlushTrigger",
     "buffer_model_usage_observations",
+    "buffer_source_model_usage_observations",
+    "buffer_source_usage_events",
     "buffer_usage_events",
     "configure_usage_buffer",
     "flush_usage_events",
@@ -108,6 +112,45 @@ def buffer_model_usage_observations(
         resource_field_name="model",
         include_kind=False,
         log_type="model_usage_observation",
+    )
+
+
+def buffer_source_usage_events(
+    url: str,
+    sandbox_token: str,
+    run_id: str,
+    events: Iterable[UsageEvent],
+    proxy_log_path: str,
+) -> int:
+    """Buffer source events without replacing their idempotency keys."""
+    return _usage_event_buffer.buffer_usage_events(
+        url,
+        sandbox_token,
+        run_id,
+        events,
+        proxy_log_path,
+        preserve_source_idempotency=True,
+    )
+
+
+def buffer_source_model_usage_observations(
+    url: str,
+    sandbox_token: str,
+    run_id: str,
+    events: Iterable[UsageEvent],
+    proxy_log_path: str,
+) -> int:
+    """Buffer model usage observations without replacing their source keys."""
+    return _usage_event_buffer.buffer_usage_events(
+        url,
+        sandbox_token,
+        run_id,
+        events,
+        proxy_log_path,
+        resource_field_name="model",
+        include_kind=False,
+        log_type="model_usage_observation",
+        preserve_source_idempotency=True,
     )
 
 
