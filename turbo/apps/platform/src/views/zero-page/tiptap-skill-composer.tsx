@@ -187,6 +187,60 @@ function insertSkillToken(
     .run();
 }
 
+// Viewport position of the slash that started the active query, used to place the
+// suggestion menu at the `/` the user typed instead of a fixed corner. The slash
+// and caret sit on the same line (the range regex never spans a newline), so their
+// distance in string offsets equals their distance in ProseMirror positions.
+interface SlashCaretPosition {
+  readonly left: number;
+  readonly top: number;
+  readonly height: number;
+}
+
+function slashCaretPosition(
+  editor: Editor,
+  slashRange: SlashSkillRange,
+): SlashCaretPosition {
+  const slashPos = Math.max(
+    editor.state.selection.head - (slashRange.end - slashRange.start),
+    0,
+  );
+  const coords = editor.view.coordsAtPos(slashPos);
+  return {
+    left: coords.left,
+    top: coords.top,
+    height: coords.bottom - coords.top,
+  };
+}
+
+// Zero-size Popover anchor pinned to the active slash so the suggestion menu opens
+// at the `/` the user typed rather than a fixed corner. Falls back to the viewport
+// origin when there is no active slash (the menu is closed then anyway).
+function SlashCaretAnchor({
+  editor,
+  slashRange,
+}: {
+  readonly editor: Editor | null;
+  readonly slashRange: SlashSkillRange | null;
+}) {
+  const caret =
+    editor && slashRange ? slashCaretPosition(editor, slashRange) : null;
+  return (
+    <PopoverAnchor asChild>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed"
+        style={{
+          left: caret?.left ?? 0,
+          top: caret?.top ?? 0,
+          width: 0,
+          height: caret?.height ?? 0,
+        }}
+      />
+    </PopoverAnchor>
+  );
+}
+
 interface SlashMenuKeyContext {
   readonly suggestions: readonly ComposerSlashSkill[];
   readonly selectedIndex: number;
@@ -419,25 +473,25 @@ export function TiptapSkillComposer({
   }
 
   return (
-    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor
-    // is the input region so the menu sits above it. `open` is fully controlled
-    // by composer state, so Escape/typing close it via showSlashSkillMenu.
+    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor is
+    // a zero-size element pinned to the slash the user typed (viewport coords from
+    // ProseMirror), so the menu opens at the `/` rather than a fixed corner. `open`
+    // is fully controlled by composer state, so Escape/typing close it.
     <Popover open={showSlashSkillMenu}>
-      <PopoverAnchor asChild>
-        <div className="relative min-h-[96px]">
-          {input === "" && (
-            <div
-              className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
-              aria-hidden="true"
-            >
-              {sending
-                ? "Type your next message…"
-                : "Ask me to automate workflows, manage tasks..."}
-            </div>
-          )}
-          <EditorContent editor={editor} />
-        </div>
-      </PopoverAnchor>
+      <SlashCaretAnchor editor={editor} slashRange={slashRange} />
+      <div className="relative min-h-[96px]">
+        {input === "" && (
+          <div
+            className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+            aria-hidden="true"
+          >
+            {sending
+              ? "Type your next message…"
+              : "Ask me to automate workflows, manage tasks..."}
+          </div>
+        )}
+        <EditorContent editor={editor} />
+      </div>
       {showSlashSkillMenu && (
         <SlashSkillMenu
           skills={suggestions}
