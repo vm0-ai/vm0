@@ -18,27 +18,48 @@ function launchOptions(
     readonly consumeAuthCallback?: (
       callback: DesktopAuthCallback,
     ) => Promise<void>;
+    readonly isComputerUseSetupRequired?: () => Promise<boolean>;
+    readonly openSetupWindow?: () => Promise<void>;
     readonly requestAutoStartComputerUse?: () => void;
     readonly logAuthError?: (error: unknown) => void;
+    readonly logLaunchError?: (error: unknown) => void;
   } = {},
 ) {
   return {
     pendingCallback: null,
     consumeAuthCallback: vi.fn(async () => {}),
+    isComputerUseSetupRequired: vi.fn(async () => false),
+    openSetupWindow: vi.fn(async () => {}),
     requestAutoStartComputerUse: vi.fn(),
     logAuthError: vi.fn(),
+    logLaunchError: vi.fn(),
     ...overrides,
   };
 }
 
 describe("startDesktopLaunchComputerUse", () => {
-  it("auto-starts Computer Use when launch has no pending auth callback", async () => {
+  it("auto-starts Computer Use when setup is ready", async () => {
     const options = launchOptions();
 
     startDesktopLaunchComputerUse(options);
     await flushLaunchHandlers();
 
+    expect(options.isComputerUseSetupRequired).toHaveBeenCalledOnce();
     expect(options.requestAutoStartComputerUse).toHaveBeenCalledOnce();
+    expect(options.openSetupWindow).not.toHaveBeenCalled();
+    expect(options.consumeAuthCallback).not.toHaveBeenCalled();
+  });
+
+  it("opens the setup window instead of auto-starting when setup is required", async () => {
+    const options = launchOptions({
+      isComputerUseSetupRequired: vi.fn(async () => true),
+    });
+
+    startDesktopLaunchComputerUse(options);
+    await flushLaunchHandlers();
+
+    expect(options.openSetupWindow).toHaveBeenCalledOnce();
+    expect(options.requestAutoStartComputerUse).not.toHaveBeenCalled();
     expect(options.consumeAuthCallback).not.toHaveBeenCalled();
   });
 
@@ -49,6 +70,8 @@ describe("startDesktopLaunchComputerUse", () => {
     await flushLaunchHandlers();
 
     expect(options.consumeAuthCallback).toHaveBeenCalledWith(pendingCallback);
+    expect(options.isComputerUseSetupRequired).not.toHaveBeenCalled();
+    expect(options.openSetupWindow).not.toHaveBeenCalled();
     expect(options.requestAutoStartComputerUse).not.toHaveBeenCalled();
     expect(options.logAuthError).not.toHaveBeenCalled();
   });
@@ -66,5 +89,20 @@ describe("startDesktopLaunchComputerUse", () => {
     await flushLaunchHandlers();
 
     expect(options.logAuthError).toHaveBeenCalledWith(error);
+  });
+
+  it("logs setup check failures and falls back to auto-start", async () => {
+    const error = new Error("setup check failed");
+    const options = launchOptions({
+      isComputerUseSetupRequired: vi.fn(async () => {
+        throw error;
+      }),
+    });
+
+    startDesktopLaunchComputerUse(options);
+    await flushLaunchHandlers();
+
+    expect(options.logLaunchError).toHaveBeenCalledWith(error);
+    expect(options.requestAutoStartComputerUse).toHaveBeenCalledOnce();
   });
 });
