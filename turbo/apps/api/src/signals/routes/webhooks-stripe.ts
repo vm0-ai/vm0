@@ -45,7 +45,7 @@ const postStripeWebhook$ = command(
     );
     signal.throwIfAborted();
     if (!eventResult.ok) {
-      return jsonError("Invalid webhook signature", 401);
+      return new Response("OK", { status: 200 });
     }
 
     const event = eventResult.value;
