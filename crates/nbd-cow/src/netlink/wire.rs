@@ -6,12 +6,8 @@ const GENL_ATTR_OFFSET: usize = NLMSG_HEADER_LEN + GENL_HEADER_LEN;
 
 const NLMSG_LEN_OFFSET: usize = 0;
 const NLMSG_TYPE_OFFSET: usize = 4;
-const NLMSG_FLAGS_OFFSET: usize = 6;
 const NLMSG_SEQ_OFFSET: usize = 8;
 const NLMSG_ERROR_CODE_OFFSET: usize = NLMSG_HEADER_LEN;
-
-const GENL_CMD_OFFSET: usize = NLMSG_HEADER_LEN;
-const GENL_VERSION_OFFSET: usize = NLMSG_HEADER_LEN + 1;
 
 const U16_LEN: usize = 2;
 const U32_LEN: usize = 4;
@@ -23,6 +19,7 @@ const NLMSG_ERROR: u16 = 2;
 const NLA_HEADER_LEN: usize = 4;
 const NLA_ALIGNTO: usize = 4;
 const NLA_F_NESTED: u16 = 1 << 15;
+pub(super) const MAX_NLA_PAYLOAD_LEN: usize = u16::MAX as usize - NLA_HEADER_LEN;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct NlHeader {
@@ -48,35 +45,29 @@ pub(super) fn build_genl_msg(
     seq: u32,
     request_ack: bool,
 ) -> Vec<u8> {
-    let total_len = GENL_ATTR_OFFSET + attrs.len();
-    assert!(total_len <= u32::MAX as usize, "netlink message too large");
-    let mut msg = vec![0u8; total_len];
-
-    write_at(
-        &mut msg,
-        NLMSG_LEN_OFFSET,
-        &(total_len as u32).to_ne_bytes(),
+    assert!(
+        attrs.len() <= u32::MAX as usize - GENL_ATTR_OFFSET,
+        "netlink message too large"
     );
-    write_at(&mut msg, NLMSG_TYPE_OFFSET, &msg_type.to_ne_bytes());
+    let total_len = GENL_ATTR_OFFSET + attrs.len();
+    let mut msg = Vec::with_capacity(total_len);
 
     let mut flags = NLM_F_REQUEST;
     if request_ack {
         flags |= NLM_F_ACK;
     }
-    write_at(&mut msg, NLMSG_FLAGS_OFFSET, &flags.to_ne_bytes());
-    write_at(&mut msg, NLMSG_SEQ_OFFSET, &seq.to_ne_bytes());
 
-    // pid and genl reserved fields are intentionally left as zero.
-    if let Some(b) = msg.get_mut(GENL_CMD_OFFSET) {
-        *b = cmd;
-    }
-    if let Some(b) = msg.get_mut(GENL_VERSION_OFFSET) {
-        *b = version;
-    }
-    if let Some(dest) = msg.get_mut(GENL_ATTR_OFFSET..) {
-        dest.copy_from_slice(attrs);
-    }
+    msg.extend_from_slice(&(total_len as u32).to_ne_bytes());
+    msg.extend_from_slice(&msg_type.to_ne_bytes());
+    msg.extend_from_slice(&flags.to_ne_bytes());
+    msg.extend_from_slice(&seq.to_ne_bytes());
+    msg.extend_from_slice(&0u32.to_ne_bytes());
+    msg.push(cmd);
+    msg.push(version);
+    msg.extend_from_slice(&0u16.to_ne_bytes());
+    msg.extend_from_slice(attrs);
 
+    debug_assert_eq!(msg.len(), total_len);
     msg
 }
 
@@ -208,19 +199,25 @@ fn build_nla_with_encoded_type(
     payload: &[u8],
     too_large_message: &'static str,
 ) -> Vec<u8> {
+    assert!(payload.len() <= MAX_NLA_PAYLOAD_LEN, "{too_large_message}");
     let nla_len = NLA_HEADER_LEN + payload.len();
-    assert!(nla_len <= u16::MAX as usize, "{too_large_message}");
     let aligned_len = align_nla_len(nla_len);
-    let mut buf = vec![0u8; aligned_len];
+    let mut buf = Vec::with_capacity(aligned_len);
 
-    if let Some(header) = buf.get_mut(..NLA_HEADER_LEN) {
-        write_at(header, 0, &(nla_len as u16).to_ne_bytes());
-        write_at(header, U16_LEN, &encoded_type.to_ne_bytes());
-    }
-    if let Some(dest) = buf.get_mut(NLA_HEADER_LEN..NLA_HEADER_LEN + payload.len()) {
-        dest.copy_from_slice(payload);
-    }
+    buf.extend_from_slice(&(nla_len as u16).to_ne_bytes());
+    buf.extend_from_slice(&encoded_type.to_ne_bytes());
+    buf.extend_from_slice(payload);
+    buf.resize(aligned_len, 0);
+
+    debug_assert_eq!(buf.len(), aligned_len);
     buf
+}
+
+pub(super) fn aligned_nla_len_for_payload(payload_len: usize) -> Option<usize> {
+    if payload_len > MAX_NLA_PAYLOAD_LEN {
+        return None;
+    }
+    Some(align_nla_len(NLA_HEADER_LEN + payload_len))
 }
 
 fn received_slice(buf: &[u8], n: usize) -> Result<&[u8]> {
@@ -270,35 +267,48 @@ fn read_i32_at(
     Ok(i32::from_ne_bytes(bytes))
 }
 
-fn write_at(buf: &mut [u8], offset: usize, bytes: &[u8]) {
-    if let Some(dest) = buf.get_mut(offset..offset + bytes.len()) {
-        dest.copy_from_slice(bytes);
-    }
-}
-
 fn align_nla_len(len: usize) -> usize {
     (len + NLA_ALIGNTO - 1) & !(NLA_ALIGNTO - 1)
 }
 
 #[cfg(test)]
 pub(super) fn build_nlmsg_error_for_test(seq: u32, error: i32) -> Vec<u8> {
-    let mut buf = vec![0u8; NLMSG_HEADER_LEN + U32_LEN + U32_LEN];
-    let len = buf.len() as u32;
-    write_at(&mut buf, NLMSG_LEN_OFFSET, &len.to_ne_bytes());
-    write_at(&mut buf, NLMSG_TYPE_OFFSET, &NLMSG_ERROR.to_ne_bytes());
-    write_at(&mut buf, NLMSG_SEQ_OFFSET, &seq.to_ne_bytes());
-    write_at(&mut buf, NLMSG_ERROR_CODE_OFFSET, &error.to_ne_bytes());
+    let len = (NLMSG_HEADER_LEN + U32_LEN + U32_LEN) as u32;
+    let mut buf = Vec::with_capacity(len as usize);
+    buf.extend_from_slice(&len.to_ne_bytes());
+    buf.extend_from_slice(&NLMSG_ERROR.to_ne_bytes());
+    buf.extend_from_slice(&0u16.to_ne_bytes());
+    buf.extend_from_slice(&seq.to_ne_bytes());
+    buf.extend_from_slice(&0u32.to_ne_bytes());
+    buf.extend_from_slice(&error.to_ne_bytes());
+    buf.extend_from_slice(&0u32.to_ne_bytes());
     buf
 }
 
 #[cfg(test)]
 pub(super) fn set_nlmsg_len_for_test(buf: &mut [u8], len: u32) {
-    write_at(buf, NLMSG_LEN_OFFSET, &len.to_ne_bytes());
+    write_u32_for_test(buf, NLMSG_LEN_OFFSET, len);
+}
+
+#[cfg(test)]
+fn write_u16_for_test(buf: &mut [u8], offset: usize, value: u16) {
+    buf[offset..offset + U16_LEN].copy_from_slice(&value.to_ne_bytes());
+}
+
+#[cfg(test)]
+fn write_u32_for_test(buf: &mut [u8], offset: usize, value: u32) {
+    buf[offset..offset + U32_LEN].copy_from_slice(&value.to_ne_bytes());
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NLMSG_FLAGS_OFFSET: usize = 6;
+    const NLMSG_PID_OFFSET: usize = 12;
+    const GENL_CMD_OFFSET: usize = NLMSG_HEADER_LEN;
+    const GENL_VERSION_OFFSET: usize = NLMSG_HEADER_LEN + 1;
+    const GENL_RESERVED_OFFSET: usize = NLMSG_HEADER_LEN + U16_LEN;
 
     fn nlmsg_flags(msg: &[u8]) -> u16 {
         read_u16_at(msg, NLMSG_FLAGS_OFFSET, "flags slice", "flags conversion").unwrap()
@@ -397,8 +407,26 @@ mod tests {
         let msg = build_genl_msg(0x10, 3, 1, &attrs, 42, false);
         let header = parse_nl_header(&msg, msg.len()).unwrap();
 
+        assert_eq!(msg.len(), GENL_ATTR_OFFSET + attrs.len());
         assert_eq!(nlmsg_flags(&msg), NLM_F_REQUEST);
         assert_eq!(header.seq, 42);
+        assert_eq!(
+            read_u32_at(&msg, NLMSG_PID_OFFSET, "pid slice", "pid conversion").unwrap(),
+            0
+        );
+        assert_eq!(msg.get(GENL_CMD_OFFSET), Some(&3));
+        assert_eq!(msg.get(GENL_VERSION_OFFSET), Some(&1));
+        assert_eq!(
+            read_u16_at(
+                &msg,
+                GENL_RESERVED_OFFSET,
+                "genl reserved slice",
+                "genl reserved conversion"
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(msg.get(GENL_ATTR_OFFSET..), Some(attrs.as_slice()));
     }
 
     #[test]
@@ -436,12 +464,8 @@ mod tests {
     #[test]
     fn parse_genl_response_reply_requires_genl_header() {
         let mut buf = vec![0u8; NLMSG_HEADER_LEN];
-        write_at(
-            &mut buf,
-            NLMSG_LEN_OFFSET,
-            &(NLMSG_HEADER_LEN as u32).to_ne_bytes(),
-        );
-        write_at(&mut buf, NLMSG_TYPE_OFFSET, &0x19u16.to_ne_bytes());
+        write_u32_for_test(&mut buf, NLMSG_LEN_OFFSET, NLMSG_HEADER_LEN as u32);
+        write_u16_for_test(&mut buf, NLMSG_TYPE_OFFSET, 0x19);
 
         let result = parse_genl_response(&buf, buf.len());
 
@@ -485,8 +509,8 @@ mod tests {
     #[test]
     fn parse_genl_response_error_response_truncated() {
         let mut buf = vec![0u8; 4096];
-        write_at(&mut buf, NLMSG_LEN_OFFSET, &20u32.to_ne_bytes());
-        write_at(&mut buf, NLMSG_TYPE_OFFSET, &NLMSG_ERROR.to_ne_bytes());
+        write_u32_for_test(&mut buf, NLMSG_LEN_OFFSET, 20);
+        write_u16_for_test(&mut buf, NLMSG_TYPE_OFFSET, NLMSG_ERROR);
 
         let result = parse_genl_response(&buf, 18);
 
@@ -496,7 +520,7 @@ mod tests {
     #[test]
     fn parse_genl_response_declared_length_too_short() {
         let mut buf = vec![0u8; NLMSG_HEADER_LEN + U32_LEN + U32_LEN];
-        write_at(&mut buf, NLMSG_LEN_OFFSET, &15u32.to_ne_bytes());
+        write_u32_for_test(&mut buf, NLMSG_LEN_OFFSET, 15);
 
         let result = parse_genl_response(&buf, buf.len());
 
@@ -506,7 +530,7 @@ mod tests {
     #[test]
     fn parse_genl_response_error_body_bounded_by_declared_length() {
         let mut buf = build_nlmsg_error_for_test(2, 0);
-        write_at(&mut buf, NLMSG_LEN_OFFSET, &18u32.to_ne_bytes());
+        write_u32_for_test(&mut buf, NLMSG_LEN_OFFSET, 18);
 
         let result = parse_genl_response(&buf, buf.len());
 
