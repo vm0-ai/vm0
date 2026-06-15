@@ -2,6 +2,7 @@ import {
   onboardingSetupContract,
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -82,10 +83,62 @@ describe("zero onboarding", () => {
     });
   });
 
+  it("redirects direct onboarding visits to paid onboarding when enabled", async () => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world&connector=github&vm0_source=presentation",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: true },
+    });
+
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.searchParams.get("prompt")).toBe("hello world");
+      expect(url.searchParams.get("connector")).toBe("github");
+      expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+    });
+  });
+
+  it("redirects direct paid onboarding without loading connectors first", async () => {
+    mockOnboardingNeeded();
+    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
+      return respond(500, {
+        error: {
+          message: "Failed to load connectors",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world&connector=github&vm0_source=presentation",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: true },
+    });
+
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.searchParams.get("prompt")).toBe("hello world");
+      expect(url.searchParams.get("connector")).toBe("github");
+      expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+    });
+  });
+
   it("lets an admin create a workspace, choose connectors, and reach trial", async () => {
     mockOnboardingNeeded();
 
-    detachedSetupPage({ context, path: "/onboarding" });
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: false },
+    });
 
     await waitFor(() => {
       expect(
@@ -157,7 +210,11 @@ describe("zero onboarding", () => {
   it("shows an empty connector search result while choosing tools", async () => {
     mockOnboardingNeeded();
 
-    detachedSetupPage({ context, path: "/onboarding" });
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: false },
+    });
 
     await completeWorkspaceStep();
 
@@ -185,6 +242,7 @@ describe("zero onboarding", () => {
     detachedSetupPage({
       context,
       path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: false },
       org: {
         activeOrg: { id: "org_current", name: "Current Org" },
         memberships: [

@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -12,6 +13,7 @@ import {
   zeroNeedsOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
+import { redirectToConfiguredOnboarding$ } from "../zero-page/onboard-guard.ts";
 import {
   onboardingEffectiveStep$,
   continueOnboardingAfterCheckout$,
@@ -23,6 +25,7 @@ import {
 } from "../zero-page/billing.ts";
 import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   startOnboardingSessionRecording,
   stopOnboardingSessionRecording,
@@ -36,11 +39,56 @@ export const setupOnboardingPage$ = command(
     set(resetOnboardingStep$);
     signal.throwIfAborted();
 
+    const params = get(searchParams$);
+    const promptParam = params.get("prompt");
+    const hasUseCaseLink = (promptParam?.length ?? 0) > 0;
+
+    // Seed use-case mode before async status checks so the visible onboarding
+    // step cannot race ahead as the regular connector flow.
+    if (promptParam !== null && promptParam.length > 0) {
+      set(markUseCaseMode$, promptParam);
+    }
+
+    const completedBillingCheckoutState = get(completedBillingCheckout$);
+    if (completedBillingCheckoutState) {
+      const continued = await set(
+        continueOnboardingAfterCheckout$,
+        completedBillingCheckoutState.sessionId,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (continued) {
+        set(clearCompletedBillingCheckout$);
+        return;
+      }
+    }
+
+    // Use-case deep links intentionally land already-onboarded users here, so
+    // compute that before deciding whether the page should send users home.
+    // Onboarding is purely admin workspace setup. If onboarding is not needed
+    // (non-admins, or admins whose workspace is already set up) and there's no
+    // use-case deep link, send the user home — the page has nothing to show.
+    const needsOnboarding = await get(zeroNeedsOnboarding$);
+    signal.throwIfAborted();
+
+    const features = get(featureSwitch$);
+    if (needsOnboarding && features[FeatureSwitchKey.PaidOnboardingRedirect]) {
+      set(redirectToConfiguredOnboarding$, params);
+      return;
+    }
+
+    if (!needsOnboarding && !hasUseCaseLink) {
+      set(detachedNavigateTo$, "/", { replace: true });
+      return;
+    }
+
+    // Connector pre-selection runs only after the paid-redirect decision, so
+    // direct paid links can forward raw query params without waiting on the
+    // connector catalog.
     // Consume ?connector= (comma-separated) to pre-select connectors. The
     // param is left on the URL so a refresh during onboarding still pre-fills
     // the same selection; it gets dropped naturally when finishing onboarding
     // navigates away to /agents/.../chat.
-    const params = get(searchParams$);
     const connectorParam = params.get("connector");
     if (connectorParam !== null) {
       const availableConnectors = await get(allConnectorTypes$);
@@ -76,42 +124,6 @@ export const setupOnboardingPage$ = command(
     // an editable prompt draft and switch onboarding into condensed mode
     // where the flow collapses to step 3, which grows a composer + "Try It"
     // CTA that goes straight to the web chat.
-    const promptParam = params.get("prompt");
-    if (promptParam !== null && promptParam.length > 0) {
-      set(markUseCaseMode$, promptParam);
-    }
-
-    const completedBillingCheckoutState = get(completedBillingCheckout$);
-    if (completedBillingCheckoutState) {
-      const continued = await set(
-        continueOnboardingAfterCheckout$,
-        completedBillingCheckoutState.sessionId,
-        signal,
-      );
-      signal.throwIfAborted();
-      if (continued) {
-        set(clearCompletedBillingCheckout$);
-        return;
-      }
-    }
-
-    // Detect use-case deep link early — `?prompt=...` (optionally with
-    // `&connector=...`) lets even already-onboarded users (including
-    // non-admins) land here intentionally to try a suggested task, so we
-    // must NOT auto-redirect them home then.
-    const hasUseCaseLink = (params.get("prompt")?.length ?? 0) > 0;
-
-    // Onboarding is purely admin workspace setup. If onboarding is not needed
-    // (non-admins, or admins whose workspace is already set up) and there's no
-    // use-case deep link, send the user home — the page has nothing to show.
-    const needsOnboarding = await get(zeroNeedsOnboarding$);
-    signal.throwIfAborted();
-
-    if (!needsOnboarding && !hasUseCaseLink) {
-      set(detachedNavigateTo$, "/", { replace: true });
-      return;
-    }
-
     const effectiveStep = await get(onboardingEffectiveStep$);
     signal.throwIfAborted();
     if (effectiveStep === "4") {
