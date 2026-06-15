@@ -229,9 +229,6 @@ importers:
       tar:
         specifier: '>=7.5.7'
         version: 7.5.13
-      undici:
-        specifier: ^6.24.1
-        version: 6.24.1
       uuid:
         specifier: ^14.0.0
         version: 14.0.0
@@ -436,9 +433,6 @@ importers:
       '@electron/osx-sign':
         specifier: 2.4.0
         version: 2.4.0
-      '@testing-library/dom':
-        specifier: ^10.4.1
-        version: 10.4.1
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
