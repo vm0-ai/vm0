@@ -33,6 +33,7 @@ import {
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
+import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -308,7 +309,11 @@ function sessionHeaders(actor: ApiTestUser): {
 async function upsertOrgModelProvider(
   actor: ApiTestUser,
   body: {
-    readonly type: "anthropic-api-key" | "deepseek-api-key" | "vm0";
+    readonly type:
+      | "anthropic-api-key"
+      | "deepseek-api-key"
+      | "openrouter-api-key"
+      | "vm0";
     readonly secret?: string;
   },
 ): Promise<{ readonly providerId: string; readonly created: boolean }> {
@@ -1217,6 +1222,72 @@ describe("CHAT-02: explicit provider pins", () => {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
       }
     }
+  }, 90_000);
+
+  it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "sk-or-v1-bdd-openrouter",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with the selected openrouter provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-opus-4-7",
+      },
+    });
+
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const environment = claimEnvironment(claim);
+    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+    expect(environment.ANTHROPIC_API_KEY).toBe("");
+    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.7");
+    expect(environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(
+      "anthropic/claude-opus-4.7",
+    );
+    expect(environment.CLAUDE_CODE_SUBAGENT_MODEL).toBe(
+      "anthropic/claude-opus-4.7",
+    );
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected OpenRouter firewall auth to resolve");
+    }
+    expect(resolved.body.headers.Authorization).toBe(
+      "Bearer sk-or-v1-bdd-openrouter",
+    );
+    expect(resolved.body.resolvedSecrets).toStrictEqual(["OPENROUTER_API_KEY"]);
+
+    const thread = await chat.readThread(actor, run.threadId);
+    expect(thread.selectedModel).toBe("claude-opus-4-7");
+    expect(thread.modelProviderId ?? null).toBeNull();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 });
 

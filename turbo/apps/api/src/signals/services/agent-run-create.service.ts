@@ -1057,6 +1057,7 @@ function modelProviderEnvironment(
   selectedModel: string | null,
 ): ResolvedModelProviderEnvironment {
   const model = selectedModel ?? config.defaultModel ?? "";
+  const runtimeModel = model ? getProviderRuntimeModel(type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
     type,
     config.secretName,
@@ -1066,7 +1067,7 @@ function modelProviderEnvironment(
   for (const [key, value] of Object.entries(config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
-      .replaceAll("$model", model);
+      .replaceAll("$model", runtimeModel);
   }
 
   return {

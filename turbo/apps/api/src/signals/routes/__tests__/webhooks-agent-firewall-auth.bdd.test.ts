@@ -205,6 +205,34 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
+  it("fails locally when referenced secret values are empty or blank", async () => {
+    const fw = createFirewallApi(context);
+    const { headers } = await firewallRun();
+
+    for (const value of ["", "   "]) {
+      const failed = await fw.requestFirewallAuth(
+        headers,
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({
+            OPENROUTER_API_KEY: value,
+            UNUSED_EMPTY: "",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          },
+        },
+        [502],
+      );
+      if (failed.status !== 502) {
+        throw new Error("Expected blank referenced secret to fail locally");
+      }
+      expect(failed.body.error.code).toBe("TOKEN_ACCESS_RESOLUTION_FAILED");
+      expect(failed.body.error.connectors).toStrictEqual([
+        "OPENROUTER_API_KEY",
+      ]);
+    }
+  });
+
   it("passes literals through query templates and keeps basic-literal templates opaque", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();

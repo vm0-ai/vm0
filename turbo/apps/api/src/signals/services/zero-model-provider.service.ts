@@ -30,6 +30,10 @@ const L = logger("zero-model-provider.service");
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
+function hasUsableSecretValue(value: string | undefined): value is string {
+  return value !== undefined && value.trim().length > 0;
+}
+
 function modelProviderResponse(row: {
   readonly id: string;
   readonly type: string;
@@ -477,6 +481,11 @@ export const upsertUserModelProvider$ = command(
         `Provider "${args.type}" does not have a secret name`,
       );
     }
+    if (!hasUsableSecretValue(args.secret)) {
+      return badRequestMessage(
+        `Provider "${args.type}" requires a non-empty secret`,
+      );
+    }
 
     const writeDb = set(writeDb$);
     const featureSwitchContext = await get(
@@ -766,7 +775,7 @@ function validateMultiAuthUpsertInput(args: {
 
   const missingRequired: string[] = [];
   for (const [name, config] of Object.entries(secretsConfig)) {
-    if (config.required && !args.secretValues[name]) {
+    if (config.required && !hasUsableSecretValue(args.secretValues[name])) {
       missingRequired.push(name);
     }
   }
