@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.5...guest-agent-v0.35.6) (2026-06-15)
+
+
+### Bug Fixes
+
+* classify provider credit limit failures ([#17688](https://github.com/vm0-ai/vm0/issues/17688)) ([b967f1b](https://github.com/vm0-ai/vm0/commit/b967f1b2d3cf17ba15501022f2249423feaeb9ed))
+
+
+### Refactoring
+
+* centralize guest env key names ([#17626](https://github.com/vm0-ai/vm0/issues/17626)) ([476546d](https://github.com/vm0-ai/vm0/commit/476546de9d385733c481558b422511b30b1cc45a))
+* share archive manifest verification ([#17705](https://github.com/vm0-ai/vm0/issues/17705)) ([a4e5ea1](https://github.com/vm0-ai/vm0/commit/a4e5ea1c2cfbaef7ff48b8ef59278cb5150d1ab2))
+
 ## [0.35.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.4...guest-agent-v0.35.5) (2026-06-14)
 
 

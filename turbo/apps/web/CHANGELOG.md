@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.427.0](https://github.com/vm0-ai/vm0/compare/web-v12.426.1...web-v12.427.0) (2026-06-15)
+
+
+### Features
+
+* add desktop dmg download dialog ([#17706](https://github.com/vm0-ai/vm0/issues/17706)) ([7586bbc](https://github.com/vm0-ai/vm0/commit/7586bbc2cf3c6272717639c05bdd49c88a294952))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/core bumped to 8.338.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.76.0
+
 ## [12.426.1](https://github.com/vm0-ai/vm0/compare/web-v12.426.0...web-v12.426.1) (2026-06-14)
 
 

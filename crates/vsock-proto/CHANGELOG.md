@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.15](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.14...vsock-proto-v0.18.15) (2026-06-15)
+
+
+### Documentation
+
+* document vsock protocol public api ([#17668](https://github.com/vm0-ai/vm0/issues/17668)) ([4cf6102](https://github.com/vm0-ai/vm0/commit/4cf61029ab5193a70850100b54c39a98c8a87702))
+
+
+### Refactoring
+
+* split exec operation payload codec ([#17663](https://github.com/vm0-ai/vm0/issues/17663)) ([e311881](https://github.com/vm0-ai/vm0/commit/e311881c404c54770aa42d2bdd4a8d1dca8759e3))
+
 ## [0.18.14](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.13...vsock-proto-v0.18.14) (2026-06-11)
 
 
