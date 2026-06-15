@@ -53,6 +53,10 @@ impl ChunkedWriteFixture {
         vec![0xABu8; Self::chunk_limit() + 100]
     }
 
+    fn three_chunk_content() -> Vec<u8> {
+        vec![0xABu8; Self::chunk_limit() * 2 + 100]
+    }
+
     fn spawn_write(&mut self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
         self.sudo = sudo;
         spawn_write_file(Arc::clone(&self.host), self.target_path, content, sudo)
@@ -197,7 +201,7 @@ async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
 async fn test_write_file_chunked() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
-    let content = ChunkedWriteFixture::two_chunk_content();
+    let content = ChunkedWriteFixture::three_chunk_content();
     let write_task = fixture.spawn_write(content.clone(), false);
 
     let mut chunks_received = Vec::new();
@@ -212,15 +216,23 @@ async fn test_write_file_chunked() {
     chunks_received.push((second.append, second.content));
     send_write_file_success(&mut fixture.guest, second_seq).await;
 
+    let third = fixture.expect_chunk().await;
+    let third_seq = third.seq();
+    chunks_received.push((third.append, third.content));
+    send_write_file_success(&mut fixture.guest, third_seq).await;
+
     let rename = fixture.expect_rename().await;
 
-    assert_eq!(chunks_received.len(), 2);
+    assert_eq!(chunks_received.len(), 3);
     assert!(!chunks_received[0].0);
     assert_eq!(chunks_received[0].1.len(), chunk_limit);
     assert!(chunks_received[1].0);
-    assert_eq!(chunks_received[1].1.len(), 100);
+    assert_eq!(chunks_received[1].1.len(), chunk_limit);
+    assert!(chunks_received[2].0);
+    assert_eq!(chunks_received[2].1.len(), 100);
     let mut reassembled = chunks_received[0].1.clone();
     reassembled.extend_from_slice(&chunks_received[1].1);
+    reassembled.extend_from_slice(&chunks_received[2].1);
     assert_eq!(reassembled, content);
 
     send_exec_result(
