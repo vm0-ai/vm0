@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.456.0](https://github.com/vm0-ai/vm0/compare/app-v0.455.0...app-v0.456.0) (2026-06-15)
+
+
+### Features
+
+* move computer use into connectors menu ([#17791](https://github.com/vm0-ai/vm0/issues/17791)) ([5758078](https://github.com/vm0-ai/vm0/commit/5758078dff13e951d289fc9923bfef9e7f9ea222))
+
+
+### Bug Fixes
+
+* redirect direct onboarding visits to paid flow ([#17788](https://github.com/vm0-ai/vm0/issues/17788)) ([8560b10](https://github.com/vm0-ai/vm0/commit/8560b10212d9d6b5751ea7dddafe568c8e33b4c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.1
+    * @vm0/connectors bumped to 1.79.1
+    * @vm0/core bumped to 8.341.1
+
 ## [0.455.0](https://github.com/vm0-ai/vm0/compare/app-v0.454.0...app-v0.455.0) (2026-06-15)
 
 

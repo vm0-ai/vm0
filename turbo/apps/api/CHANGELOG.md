@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.145.0](https://github.com/vm0-ai/vm0/compare/api-v1.144.0...api-v1.145.0) (2026-06-15)
+
+
+### Features
+
+* move computer use into connectors menu ([#17791](https://github.com/vm0-ai/vm0/issues/17791)) ([5758078](https://github.com/vm0-ai/vm0/commit/5758078dff13e951d289fc9923bfef9e7f9ea222))
+
+
+### Bug Fixes
+
+* clean slack test vm0 keys ([#17784](https://github.com/vm0-ai/vm0/issues/17784)) ([13488e4](https://github.com/vm0-ai/vm0/commit/13488e4106908f496a8e0212bdf74e1c3761b2e9))
+* clean up stripe billing for deleted clerk users ([#17324](https://github.com/vm0-ai/vm0/issues/17324)) ([0d578b6](https://github.com/vm0-ai/vm0/commit/0d578b61341a1f4ccfab4e9d58992a41b1205cb6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.1
+    * @vm0/connectors bumped to 1.79.1
+    * @vm0/core bumped to 8.341.1
+    * @vm0/db bumped to 1.52.3
+
 ## [1.144.0](https://github.com/vm0-ai/vm0/compare/api-v1.143.0...api-v1.144.0) (2026-06-15)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.193.3](https://github.com/vm0-ai/vm0/compare/cli-v9.193.2...cli-v9.193.3) (2026-06-15)
+
+
+### Bug Fixes
+
+* detect piped stdin with !isTTY instead of === false ([#17759](https://github.com/vm0-ai/vm0/issues/17759)) ([f21fadc](https://github.com/vm0-ai/vm0/commit/f21fadc97d8a7b5194de626c559acd172413f9c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.95.1
+    * @vm0/connectors bumped to 1.79.1
+    * @vm0/core bumped to 8.341.1
+
 ## [9.193.2](https://github.com/vm0-ai/vm0/compare/cli-v9.193.1...cli-v9.193.2) (2026-06-15)
 
 
