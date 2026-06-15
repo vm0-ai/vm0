@@ -15,9 +15,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -43,15 +40,11 @@ import {
   toggleExpandedAutomationDay$,
   expandedChatDays$,
   toggleExpandedChatDay$,
-  insightsActiveTab$,
-  setInsightsActiveTab$,
   type DayInsight,
   type DayAutomation,
   type DayChat,
-  type InsightsTab,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
-import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -1315,8 +1308,6 @@ function formatAbsoluteTime(iso: string): string {
 function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
-  const activeTab = useGet(insightsActiveTab$);
-  const setActiveTab = useSet(setInsightsActiveTab$);
   const prefsLoadable = useLastLoadable(userPreferences$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);
   const userLoadable = useLastLoadable(user$);
@@ -1338,7 +1329,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Insights &amp; Usage</h1>
+              <h1 className="text-xl font-semibold">Insights</h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Monitor what your agents access, how credits are spent, which
                 permissions they use, and spot anything unusual.
@@ -1365,23 +1356,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           )}
         </div>
 
-        {data.days.length > 0 && (
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => {
-              setActiveTab(v as InsightsTab);
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="daily">Daily breakdown</TabsTrigger>
-              <TabsTrigger value="time-range">Time range</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
-        {activeTab === "time-range" && data.days.length > 0 ? (
-          <UsageInsightView />
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <img
               src={emptyInsightsImg}
