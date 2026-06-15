@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconDownload,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -39,6 +40,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
@@ -144,6 +146,7 @@ import {
   composerSavingType$,
   setComposerSavingType$,
   clearComputerUsePopoverCloseSuppression$,
+  computerUseDownloadDialogOpen$,
   computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
@@ -164,6 +167,7 @@ import {
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
+  setComputerUseDownloadDialogOpen$,
   setTemplatePickerPreviewSlideIndex$,
   setComputerUsePopoverOpen$,
   templateCardHover$,
@@ -910,25 +914,6 @@ function VideoTemplateGrid({
   );
 }
 
-function TemplateSectionHeader({
-  label,
-  count,
-}: {
-  label: string;
-  count: number;
-}) {
-  return (
-    <div className="mb-4 flex items-center gap-3">
-      <h3 className="rounded-md bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-        {label}
-      </h3>
-      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-        {count}
-      </span>
-    </div>
-  );
-}
-
 function TemplateEmptyPanel({
   title,
   description,
@@ -1301,7 +1286,7 @@ function TemplatePreviewPage({
             Templates
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">Presentation</span>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
@@ -1800,7 +1785,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
@@ -2071,10 +2056,6 @@ function TemplatePickerDialog({
             </div>
             {selectedCategory === "slides" && hasPptTab && (
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
-                <TemplateSectionHeader
-                  label="VM0 templates"
-                  count={filteredPptItems.length}
-                />
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
                     items={filteredPptItems}
@@ -2095,10 +2076,6 @@ function TemplatePickerDialog({
                 data-illustration-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 illustration styles"
-                  count={filteredIllustrationItems.length}
-                />
                 {filteredIllustrationItems.length > 0 ? (
                   <IllustrationTemplateGrid
                     items={filteredIllustrationItems}
@@ -2119,10 +2096,6 @@ function TemplatePickerDialog({
                 data-video-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 video styles"
-                  count={filteredVideoItems.length}
-                />
                 <div className="mb-4 flex flex-wrap gap-2">
                   {videoGroupFilters.map((group) => {
                     const selected = videoGroup === group.tag;
@@ -2169,32 +2142,43 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const label = formatPresentationTemplateKind(item.templateId);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Presentation
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
@@ -2212,29 +2196,38 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: VideoStylePreset;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconVideo
-              size={12}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Video
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.nameEn}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video style ${item.nameEn}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.nameEn}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove video style ${item.nameEn}`}
@@ -2252,33 +2245,42 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Illustration
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.title}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${item.title}`}
@@ -2301,16 +2303,35 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    setSearch("");
+    setVideoGroup("all");
+    setPreviewSlug(null);
+    setSelectedSlideIndex(0);
+    setCategory(category);
+    setOpen(true);
+  };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2322,6 +2343,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2333,6 +2357,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2720,6 +2747,8 @@ function ComputerUsePopoverButton({
   const active = computerUse.selectedHostId !== null;
   const open = useGet(computerUsePopoverOpen$);
   const setOpen = useSet(setComputerUsePopoverOpen$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const clearCloseSuppression = useSet(
     clearComputerUsePopoverCloseSuppression$,
   );
@@ -2738,108 +2767,165 @@ function ComputerUsePopoverButton({
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
-                  active && "text-primary",
-                )}
-                aria-label="Computer Use"
+    <>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <PopoverTrigger asChild>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                    active && "text-primary",
+                  )}
+                  aria-label="Computer Use"
+                >
+                  <IconDeviceDesktop size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+            </PopoverTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Computer
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-72 p-0 rounded-lg"
+        >
+          <div className="py-1">
+            {computerUse.loading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 2 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : computerUse.hosts.length > 0 ? (
+              <div
+                className="flex max-h-72 flex-col overflow-y-auto"
+                role="radiogroup"
+                aria-label="Computer Use host"
               >
-                <IconDeviceDesktop size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Computer
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
-        <div className="py-1">
-          {computerUse.loading ? (
-            <div className="flex flex-col animate-pulse">
-              {Array.from({ length: 2 }, (_, i) => {
-                return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2">
-                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
-                    <span className="h-3 w-6 rounded-full bg-muted/50" />
-                  </div>
-                );
-              })}
-            </div>
-          ) : computerUse.hosts.length > 0 ? (
-            <div
-              className="flex max-h-72 flex-col overflow-y-auto"
-              role="radiogroup"
-              aria-label="Computer Use host"
-            >
-              {computerUse.hosts.map((host) => {
-                const checked = computerUse.selectedHostId === host.id;
-                return (
-                  <button
-                    key={host.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => {
-                      computerUse.onChange(checked ? null : host.id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-                      checked ? "bg-primary/5" : "hover:bg-muted/50",
-                    )}
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                      <IconDeviceDesktop size={16} stroke={1.5} />
-                    </span>
-                    <span className="text-sm flex-1 truncate text-foreground">
-                      {host.hostName}
-                    </span>
-                    <span
+                {computerUse.hosts.map((host) => {
+                  const checked = computerUse.selectedHostId === host.id;
+                  return (
+                    <button
+                      key={host.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      onClick={() => {
+                        computerUse.onChange(checked ? null : host.id);
+                      }}
                       className={cn(
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                        checked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-transparent",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                        checked ? "bg-primary/5" : "hover:bg-muted/50",
                       )}
-                      aria-hidden="true"
                     >
-                      {checked && <IconCheck size={11} stroke={3} />}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                        <IconDeviceDesktop size={16} stroke={1.5} />
+                      </span>
+                      <span className="text-sm flex-1 truncate text-foreground">
+                        {host.hostName}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-transparent",
+                        )}
+                        aria-hidden="true"
+                      >
+                        {checked && <IconCheck size={11} stroke={3} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                No online computers
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border/50 p-1">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+              onClick={() => {
+                setOpen(false);
+                setDownloadDialogOpen(true);
+              }}
+            >
+              <IconPlug
+                size={18}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              Connect my computer
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <ComputerUseDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
+        downloadUrl={computerUse.downloadUrl}
+      />
+    </>
+  );
+}
+
+function ComputerUseDownloadDialog({
+  open,
+  onOpenChange,
+  downloadUrl,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  downloadUrl: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={18} stroke={1.5} />
             </div>
-          ) : (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              No online computers
+            <div className="min-w-0 space-y-1 text-left">
+              <DialogTitle>Connect your computer</DialogTitle>
+              <DialogDescription>
+                Download Zero Computer Use for macOS, then open it to let Zero
+                use your desktop.
+              </DialogDescription>
             </div>
-          )}
-        </div>
-        <div className="border-t border-border/50 p-1">
+          </div>
+        </DialogHeader>
+        <Button asChild className="mt-2 w-full">
           <a
-            href={computerUse.downloadUrl}
+            href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              onOpenChange(false);
+            }}
           >
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Connect my computer
+            <IconDownload size={16} stroke={1.5} />
+            Download for macOS
           </a>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 }
 

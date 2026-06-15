@@ -486,14 +486,14 @@ jobs:
         run: pnpm vitest run --project=web --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: web
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: web
@@ -636,14 +636,14 @@ jobs:
         run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: cli
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: cli
@@ -668,14 +668,14 @@ jobs:
         run: pnpm vitest run --project=@vm0/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: app
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: app
@@ -720,14 +720,14 @@ jobs:
         run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: api
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: api
@@ -749,14 +749,14 @@ jobs:
         run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: core-ui
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: core-ui
@@ -910,16 +910,20 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      - name: Use Stripe CLI webhook secret for API preview
+      - name: Use Stripe CLI webhook secret for PR API preview
+        # Staging uses the standing Stripe Dashboard webhook endpoint at
+        # staging-www.vm6.ai; only PR previews should trust Stripe CLI webhooks.
         if: |
-          needs.prepare.outputs.web-changed == 'true' ||
-          needs.prepare.outputs.api-changed == 'true' ||
-          needs.prepare.outputs.cli-changed == 'true' ||
-          needs.prepare.outputs.platform-changed == 'true' ||
-          needs.prepare.outputs.crates-changed == 'true' ||
-          needs.prepare.outputs.ci-changed == 'true' ||
-          needs.prepare.outputs.e2e-changed == 'true' ||
-          needs.prepare.outputs.api-backend-needed == 'true'
+          needs.prepare.outputs.job-ref != 'staging' && (
+            needs.prepare.outputs.web-changed == 'true' ||
+            needs.prepare.outputs.api-changed == 'true' ||
+            needs.prepare.outputs.cli-changed == 'true' ||
+            needs.prepare.outputs.platform-changed == 'true' ||
+            needs.prepare.outputs.crates-changed == 'true' ||
+            needs.prepare.outputs.ci-changed == 'true' ||
+            needs.prepare.outputs.e2e-changed == 'true' ||
+            needs.prepare.outputs.api-backend-needed == 'true'
+          )
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$PATH"
@@ -1477,7 +1481,9 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install --with-deps chromium
       - name: Start Stripe webhook forwarding
-        if: github.event_name == 'push'
+        # Staging receives webhooks from the Dashboard endpoint; PR previews use
+        # the long-running listener from deploy-stripe-listener.
+        if: github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$PATH"
@@ -1521,13 +1527,13 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Print Stripe webhook forwarding log
-        if: always() && github.event_name == 'push'
+        if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
           if [[ -f /tmp/stripe-listen.log ]]; then
             tail -200 /tmp/stripe-listen.log | sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g'
           fi
       - name: Stop Stripe webhook forwarding
-        if: always() && github.event_name == 'push'
+        if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
           if [[ -f /tmp/stripe-listen.pid ]]; then
             kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
@@ -1725,7 +1731,7 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: e2e-serial
@@ -2189,7 +2195,7 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: e2e-runner

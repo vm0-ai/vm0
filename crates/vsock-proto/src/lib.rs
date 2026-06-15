@@ -63,6 +63,8 @@
 //! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
 //! saturate values that do not fit in `u32`.
 
+#![deny(missing_docs)]
+
 mod error;
 mod frame;
 mod payloads;

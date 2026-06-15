@@ -18,6 +18,7 @@ import {
 export interface RouteLike {
   readonly method?: unknown;
   readonly path?: unknown;
+  readonly summary?: unknown;
 }
 
 export interface RustRouteBinding {

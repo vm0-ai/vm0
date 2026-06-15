@@ -1,6 +1,8 @@
 import {
   fetchSpec,
   logStats,
+  renderCategories,
+  renderDefaultAllowed,
   renderPermissions,
   sanitizeAndSortRules,
   writeOutput,
@@ -61,6 +63,98 @@ const GOOGLE_CLOUD_PERMISSION_ROLE_PATHS = [
   "spanner",
   "storage",
 ] as const;
+
+// vm0-maintained display grouping derived from Google IAM permission prefixes.
+// Google documents permission names as SERVICE.RESOURCE.VERB, but does not
+// expose a structured per-permission category taxonomy like some providers do.
+const GOOGLE_CLOUD_PERMISSION_PREFIX_CATEGORIES: Record<string, string> = {
+  appengine: "App Engine",
+  artifactregistry: "Artifact Registry",
+  bigquery: "BigQuery",
+  billing: "Cloud Billing",
+  cloudbuild: "Cloud Build",
+  cloudfunctions: "Cloud Functions",
+  cloudsql: "Cloud SQL",
+  compute: "Compute Engine",
+  container: "Google Kubernetes Engine",
+  datastore: "Firestore / Datastore",
+  iam: "IAM",
+  logging: "Cloud Logging",
+  monitoring: "Cloud Monitoring",
+  pubsub: "Cloud Pub/Sub",
+  resourcemanager: "Resource Manager",
+  run: "Cloud Run",
+  secretmanager: "Secret Manager",
+  serviceusage: "Service Usage",
+  spanner: "Cloud Spanner",
+  storage: "Cloud Storage",
+};
+
+const GOOGLE_CLOUD_CATEGORY_ORDER = [
+  "Compute Engine",
+  "Cloud Storage",
+  "BigQuery",
+  "IAM",
+  "Cloud Run",
+  "Cloud Build",
+  "Artifact Registry",
+  "Google Kubernetes Engine",
+  "Secret Manager",
+  "Cloud Logging",
+  "Cloud Monitoring",
+  "Cloud Billing",
+  "Cloud Pub/Sub",
+  "Firestore / Datastore",
+  "Cloud Spanner",
+  "Resource Manager",
+  "Service Usage",
+  "App Engine",
+  "Cloud SQL",
+  "Cloud Functions",
+] as const;
+
+const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
+  "beginReadOnlyTransaction",
+  "get",
+  "getData",
+  "getDdl",
+  "getDiskShrinkConfig",
+  "getEffectiveFirewalls",
+  "getFromFamily",
+  "getIamPolicy",
+  "getMetadata",
+  "getRoutePolicy",
+  "getShieldedInstanceIdentity",
+  "list",
+  "listAvailableFeatures",
+  "listBgpRoutes",
+  "listEntraIdCertificates",
+  "listPeeringRoutes",
+  "listReferrers",
+  "listRevisions",
+  "listRoutePolicies",
+  "listRuntimes",
+  "listServerCas",
+  "listServerCertificates",
+  "partitionQuery",
+  "partitionRead",
+  "read",
+  "select",
+]);
+
+const GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS = new Set([
+  // Returns MACsec CAK/CKN pre-shared key material.
+  "compute.interconnects.getMacsecConfig",
+  // Read-shaped permissions that can expose sensitive VM runtime data.
+  "compute.instances.getGuestAttributes",
+  "compute.instances.getScreenshot",
+  "compute.instances.getSerialPortOutput",
+  "iam.serviceAccounts.signBlob",
+  "iam.serviceAccounts.signJwt",
+  "monitoring.notificationChannels.getVerificationCode",
+  "pubsub.subscriptions.consume",
+  "secretmanager.versions.access",
+]);
 
 export const GOOGLE_CLOUD_PERMISSION_DOC_URLS =
   GOOGLE_CLOUD_PERMISSION_ROLE_PATHS.map((path) => {
@@ -983,6 +1077,74 @@ function buildPermissionGroups(
     }));
 }
 
+function uniquePermissionNames(
+  apiPermissions: ReadonlyMap<string, readonly PermissionGroup[]>,
+): string[] {
+  const names = new Set<string>();
+  for (const permissions of apiPermissions.values()) {
+    for (const permission of permissions) {
+      names.add(permission.name);
+    }
+  }
+  return [...names].sort();
+}
+
+function permissionPrefix(permission: string): string {
+  return permission.split(".")[0] ?? "";
+}
+
+function permissionSuffix(permission: string): string {
+  const segments = permission.split(".");
+  return segments.at(-1) ?? "";
+}
+
+function googleCloudPermissionCategory(permission: string): string {
+  const prefix = permissionPrefix(permission);
+  const category = GOOGLE_CLOUD_PERMISSION_PREFIX_CATEGORIES[prefix];
+  if (category === undefined) {
+    throw new Error(
+      `Google Cloud permission ${permission} has uncategorized prefix "${prefix}"`,
+    );
+  }
+  return category;
+}
+
+function googleCloudCategories(
+  permissionNames: readonly string[],
+): Record<string, string> {
+  const categories: Record<string, string> = {};
+  for (const permission of permissionNames) {
+    categories[permission] = googleCloudPermissionCategory(permission);
+  }
+  return categories;
+}
+
+function googleCloudCategoryOrder(
+  categories: Record<string, string>,
+): string[] {
+  const usedCategories = new Set(Object.values(categories));
+  return GOOGLE_CLOUD_CATEGORY_ORDER.filter((category) => {
+    return usedCategories.has(category);
+  });
+}
+
+function isGoogleCloudDefaultAllowedPermission(permission: string): boolean {
+  if (GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS.has(permission)) {
+    return false;
+  }
+
+  const suffix = permissionSuffix(permission);
+  return GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES.has(suffix);
+}
+
+function googleCloudDefaultAllowedPermissions(
+  permissionNames: readonly string[],
+): string[] {
+  return permissionNames.filter((permission) => {
+    return isGoogleCloudDefaultAllowedPermission(permission);
+  });
+}
+
 async function loadOfficialPermissions(): Promise<Set<string>> {
   const officialPermissions = new Set<string>();
   for (const sourceUrl of GOOGLE_CLOUD_PERMISSION_DOC_URLS) {
@@ -1050,6 +1212,8 @@ function generateTypeScript(
   apiPermissions: Map<string, PermissionGroup[]>,
   stats: BuildStats,
 ): string {
+  const permissionNames = uniquePermissionNames(apiPermissions);
+  const categories = googleCloudCategories(permissionNames);
   const lines: string[] = [
     "// Auto-generated from Google Discovery documents and official Google Cloud IAM docs.",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-cloud",
@@ -1057,6 +1221,7 @@ function generateTypeScript(
     "// DO NOT EDIT THIS FILE MANUALLY.",
     "",
     'import type { FirewallConfig } from "../firewall-types";',
+    'import type { PermissionNamesOf } from "./index";',
     "",
     "export const googleCloudFirewall = {",
     '  name: "google-cloud",',
@@ -1088,6 +1253,19 @@ function generateTypeScript(
   lines.push("} as const satisfies FirewallConfig;");
   lines.push("");
   lines.push(...renderStats(stats));
+  lines.push(
+    ...renderCategories("googleCloudCategories", "googleCloudFirewall", {
+      categories,
+      displayOrder: googleCloudCategoryOrder(categories),
+    }),
+  );
+  lines.push(
+    ...renderDefaultAllowed(
+      "googleCloudDefaultAllowed",
+      "googleCloudFirewall",
+      googleCloudDefaultAllowedPermissions(permissionNames),
+    ),
+  );
 
   return lines.join("\n");
 }

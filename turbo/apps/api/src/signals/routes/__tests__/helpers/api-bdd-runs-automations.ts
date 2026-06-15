@@ -29,7 +29,6 @@ import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zer
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
-  cronCleanupSandboxesContract,
   cronExecuteAutomationsContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
@@ -1586,69 +1585,55 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    // The email-outbox drain and billing reconciliation crons are deliberately
-    // NOT part of this list: they sweep their work tables globally, so calling
-    // them from other test files would race the email chains
-    // (runs-schedules.bdd.test.ts) and BILL-01 chains (run-lifecycle.bdd.test.ts)
-    // on the shared database, hitting rows whose Resend/Stripe mocks live in
-    // another worker process.
-    async runSafeCronRoutes(validAuth: boolean) {
-      const headers = cronHeaders(validAuth);
-      context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
-        { data: [] },
-      );
+    // Valid cron coverage belongs in the file that owns each global sweep.
+    // This helper only checks auth rejection, so route handlers never scan the
+    // shared test database.
+    async requestSharedCronRoutesWithoutAuth() {
+      const headers = cronHeaders(false);
       const aggregateUsage = await accept(
         setupApp({ context })(cronAggregateUsageContract).aggregate({
           headers,
         }),
-        [200, 401],
+        [401],
       );
       const aggregateInsights = await accept(
         setupApp({ context })(cronAggregateInsightsContract).aggregate({
           headers,
         }),
-        [200, 401],
-      );
-      const cleanupSandboxes = await accept(
-        setupApp({ context })(cronCleanupSandboxesContract).cleanup({
-          headers,
-        }),
-        [200, 401],
+        [401],
       );
       const processUsageEvents = await accept(
         setupApp({ context })(cronProcessUsageEventsContract).process({
           headers,
         }),
-        [200, 401],
+        [401],
       );
       const summarizeMemory = await accept(
         setupApp({ context })(cronSummarizeMemoryContract).summarize({
           headers,
         }),
-        [200, 401],
+        [401],
       );
       const telegramCleanup = await accept(
         setupApp({ context })(cronTelegramCleanupContract).cleanup({
           headers,
         }),
-        [200, 401],
+        [401],
       );
 
       return {
         aggregateUsage,
         aggregateInsights,
-        cleanupSandboxes,
         processUsageEvents,
         summarizeMemory,
         telegramCleanup,
       };
     },
 
-    // Kept out of runSafeCronRoutes for the same shared-database reason as the
-    // email drain: the reconcile sweep retrieves the Stripe subscription of
-    // every org needing reconciliation, and stale orgs created by the BILL-01
-    // chains in run-lifecycle.bdd.test.ts must only be swept by that file's
-    // own Stripe mocks.
+    // Valid reconciliation coverage belongs in its owner file: the sweep
+    // retrieves every org needing reconciliation, and stale orgs created by the
+    // BILL-01 chains in run-lifecycle.bdd.test.ts must only be swept by that
+    // file's own Stripe mocks.
     async reconcileBillingCron(validAuth: boolean) {
       return await accept(
         setupApp({ context })(

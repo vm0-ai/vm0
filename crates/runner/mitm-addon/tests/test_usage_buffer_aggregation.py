@@ -72,6 +72,73 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
     assert enqueue.last_call.log_type == "model_usage_observation"
 
 
+def test_source_preserving_usage_buffer_keeps_source_idempotency_keys(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_source_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(source_key="source-1", quantity=10),
+            event(source_key="source-2", quantity=5),
+            event(source_key="source-1", quantity=100),
+        ],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload == {
+        "runId": "run-1",
+        "events": [
+            {
+                "idempotencyKey": "source-1",
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 10,
+            },
+            {
+                "idempotencyKey": "source-2",
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 5,
+            },
+        ],
+    }
+
+
+def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_source_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload == {
+        "runId": "run-1",
+        "events": [
+            {
+                "idempotencyKey": "source-1",
+                "model": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 10,
+            }
+        ],
+    }
+    assert enqueue.last_call.log_type == "model_usage_observation"
+
+
 def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)

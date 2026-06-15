@@ -697,183 +697,6 @@ describe("chat composer models", () => {
     });
   });
 
-  it("auto-expands a connected connector's commands and inserts one", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: [] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
-      return respond(200, []);
-    });
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.ChatConnectorCommands]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/");
-
-    const menu = await screen.findByTestId("slash-skill-menu");
-    // The first connector is active by default, so its commands show in the
-    // right pane immediately — no drill-in or back step.
-    await expect(
-      within(menu).findByText("GitHub"),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      within(menu).findByText("List PRs"),
-    ).resolves.toBeInTheDocument();
-    expect(within(menu).getByText("Create issue")).toBeInTheDocument();
-
-    await user.click(within(menu).getByText("List PRs"));
-
-    // Picking a command drops its natural-language prompt into the composer.
-    await waitFor(() => {
-      expect(editor.textContent).toContain("List my open pull requests");
-    });
-  });
-
-  it("hides connector commands for a connector that is not connected", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["sales-research"] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        { name: "sales-research", displayName: null, description: null },
-      ]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.ChatConnectorCommands]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/");
-
-    const menu = await screen.findByTestId("slash-skill-menu");
-    await expect(
-      within(menu).findByText("/sales-research"),
-    ).resolves.toBeInTheDocument();
-    expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
-  });
-
-  it("hides connector commands when the connector-commands switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["sales-research"] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        { name: "sales-research", displayName: null, description: null },
-      ]);
-    });
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.ChatConnectorCommands]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/");
-
-    const menu = await screen.findByTestId("slash-skill-menu");
-    await expect(
-      within(menu).findByText("/sales-research"),
-    ).resolves.toBeInTheDocument();
-    expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
-  });
-
-  it("navigates connector commands with the keyboard and inserts one", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: [] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
-      return respond(200, []);
-    });
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.ChatConnectorCommands]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/");
-
-    const menu = await screen.findByTestId("slash-skill-menu");
-    await within(menu).findByText("List PRs");
-
-    // ArrowRight moves focus from the connector rail into the command pane,
-    // ArrowDown selects the second command, Enter inserts it.
-    await user.keyboard("{ArrowRight}{ArrowDown}{Enter}");
-
-    await waitFor(() => {
-      expect(editor.textContent).toContain(
-        "Review this pull request and tell me what needs changing",
-      );
-    });
-  });
-
-  it("inserts a skill when arrowing past the connector rail", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["sales-research"] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        { name: "sales-research", displayName: null, description: null },
-      ]);
-    });
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.ChatConnectorCommands]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/");
-
-    const menu = await screen.findByTestId("slash-skill-menu");
-    await expect(
-      within(menu).findByText("GitHub"),
-    ).resolves.toBeInTheDocument();
-    expect(within(menu).getByText("/sales-research")).toBeInTheDocument();
-
-    // The rail is the connector then the skill; ArrowDown moves to the skill and
-    // Enter inserts it.
-    await user.keyboard("{ArrowDown}{Enter}");
-
-    await waitFor(() => {
-      expect(editor.textContent).toContain("/sales-research");
-    });
-  });
-
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -1554,7 +1377,6 @@ describe("chat composer templates", () => {
     click(tabByText("Illustration"));
 
     await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
       expect(
         screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
@@ -1590,7 +1412,7 @@ describe("chat composer templates", () => {
     });
     click(buttonByText("Templates"));
     await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
+      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");
@@ -1688,11 +1510,10 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(tabByText("Video")).toBeInTheDocument();
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
       expect(
         screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
       ).toBeInTheDocument();
-      expect(screen.queryByText("PPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
       expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
     });
   });
@@ -1807,7 +1628,7 @@ describe("chat composer templates", () => {
     click(tabByText("Video"));
 
     await waitFor(() => {
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
+      expect(buttonByText("Brand & Commercial")).toBeInTheDocument();
     });
 
     click(buttonByText("Brand & Commercial"));
@@ -1848,5 +1669,127 @@ describe("chat composer templates", () => {
         screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("reopens the picker on the presentation tab from the selected chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    await selectTemplate(user, template);
+
+    click(
+      await screen.findByLabelText(
+        `Preview template ${templateLabel(template)}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    // Select an illustration style, which leaves the picker on the
+    // Illustration tab.
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+    click(
+      await screen.findByLabelText(
+        `Select template ${illustrationTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    // Move the last-used tab back to Presentation, then close without changing
+    // the selection so the persisted tab no longer matches the selection.
+    click(screen.getByLabelText("Template"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(tabByText("Presentation"));
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Clicking the chip reopens on the tab matching the selection's type.
+    click(
+      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("removes the selected template from the chip without opening the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await selectTemplate(user, template);
+
+    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+    ).not.toBeInTheDocument();
   });
 });

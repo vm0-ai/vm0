@@ -150,9 +150,10 @@ outside the Mac App Store, validates the stapled ticket, uploads
 `Zero-darwin-arm64-X.Y.Z.zip` and `Zero-darwin-arm64-X.Y.Z.dmg` to the matching
 GitHub Release, and updates the Desktop update manifest.
 
-Use the DMG for manual installation. It opens with `Zero Computer Use.app` and
-an `/Applications` symlink for drag-to-install. The update manifest continues to
-point at the ZIP artifact because the auto-update feed consumes ZIP releases.
+Use the DMG for manual installation. It opens with a styled Finder background,
+`Zero Computer Use.app` on the left, and an `/Applications` symlink on the right
+for drag-to-install. The update manifest continues to point at the ZIP artifact
+because the auto-update feed consumes ZIP releases.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's

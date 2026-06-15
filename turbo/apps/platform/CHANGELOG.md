@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.452.0](https://github.com/vm0-ai/vm0/compare/app-v0.451.1...app-v0.452.0) (2026-06-15)
+
+
+### Features
+
+* add desktop dmg download dialog ([#17706](https://github.com/vm0-ai/vm0/issues/17706)) ([7586bbc](https://github.com/vm0-ai/vm0/commit/7586bbc2cf3c6272717639c05bdd49c88a294952))
+* make slash connector commands a two-pane auto-expand menu ([#17642](https://github.com/vm0-ai/vm0/issues/17642)) ([45cb651](https://github.com/vm0-ai/vm0/commit/45cb651aaf1b9863706a1ad1bd7306b56c4509f0))
+* reopen template picker on matching tab from selected chip ([#17707](https://github.com/vm0-ai/vm0/issues/17707)) ([9987b8a](https://github.com/vm0-ai/vm0/commit/9987b8a297dc3a67fd1902fd747ffe50aa306166))
+
+
+### Bug Fixes
+
+* align feedback composer chip spacing with attachment chips ([#17640](https://github.com/vm0-ai/vm0/issues/17640)) ([4e97c7d](https://github.com/vm0-ai/vm0/commit/4e97c7deb4b3a83e21cd3899f391fb63b322300c))
+* persist presentation editor draft state ([#17653](https://github.com/vm0-ai/vm0/issues/17653)) ([83049f2](https://github.com/vm0-ai/vm0/commit/83049f2be2358e301abd9ed84d9e3fb28ba55ccf))
+* remove VM0 template section headers from template picker ([#17679](https://github.com/vm0-ai/vm0/issues/17679)) ([8fbeacb](https://github.com/vm0-ai/vm0/commit/8fbeacb11a29a2ff86593778e4a374777c1c1dd2))
+* use Presentation instead of PPT in artifact template tab ([#17680](https://github.com/vm0-ai/vm0/issues/17680)) ([9f2fe50](https://github.com/vm0-ai/vm0/commit/9f2fe50d0cf62f605cb1128500a60fadc9e01320))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/connectors bumped to 1.76.0
+    * @vm0/core bumped to 8.338.0
+
 ## [0.451.1](https://github.com/vm0-ai/vm0/compare/app-v0.451.0...app-v0.451.1) (2026-06-14)
 
 

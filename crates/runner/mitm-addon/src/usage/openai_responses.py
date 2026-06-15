@@ -35,8 +35,10 @@ from .model_tokens import (
 )
 from .sse import SseUsageScanner
 
-# Terminal Responses events whose Response object may carry usage. Keep this
-# narrow so high-volume delta events stay on the SSE discard path.
+# Terminal Responses events whose Response object may carry usage. WebSocket
+# source eviction relies on these events being final for the logical response id;
+# protocols with mutable post-terminal usage snapshots need a source-upsert
+# contract instead of source-preserving append-only events.
 _RESPONSES_TERMINAL_USAGE_EVENTS = frozenset(
     ("response.completed", "response.done", "response.incomplete", "response.failed")
 )

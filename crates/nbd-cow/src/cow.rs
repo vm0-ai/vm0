@@ -238,26 +238,29 @@ impl CowLayer {
         self.check_bounds(offset, data.len() as u64)?;
 
         for span in BlockSpans::new(offset, data.len(), self.block_size) {
-            if !self.write_buffer.contains_key(&span.block_idx) {
-                let full_block = if span.is_full_block(self.block_size) {
-                    vec![0u8; self.block_size]
-                } else {
-                    self.read_full_block(span.block_idx)?
-                };
-                self.write_buffer.insert(span.block_idx, full_block);
-            }
-            let block_data = self
-                .write_buffer
-                .get_mut(&span.block_idx)
-                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("missing buffer entry")))?;
-
-            let dest_slice = block_data.get_mut(span.block_range()).ok_or_else(|| {
-                NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
-            })?;
             let src_slice = data.get(span.buffer_range()).ok_or_else(|| {
                 NbdCowError::Io(std::io::Error::other("data src slice out of bounds"))
             })?;
+
+            if let Some(block_data) = self.write_buffer.get_mut(&span.block_idx) {
+                let dest_slice = block_data.get_mut(span.block_range()).ok_or_else(|| {
+                    NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
+                })?;
+                dest_slice.copy_from_slice(src_slice);
+                continue;
+            }
+
+            if span.is_full_block(self.block_size) {
+                self.write_buffer.insert(span.block_idx, src_slice.to_vec());
+                continue;
+            }
+
+            let mut block_data = self.read_full_block(span.block_idx)?;
+            let dest_slice = block_data.get_mut(span.block_range()).ok_or_else(|| {
+                NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
+            })?;
             dest_slice.copy_from_slice(src_slice);
+            self.write_buffer.insert(span.block_idx, block_data);
         }
 
         // Recalculate buffer bytes
@@ -755,6 +758,40 @@ mod tests {
         cow.read(4090, &mut buf).unwrap();
         assert!(buf.iter().all(|&b| b == 0xEE));
         assert_eq!(cow.buffered_block_count(), 2);
+    }
+
+    #[test]
+    fn cross_block_write_preserves_partial_edges_around_full_middle_block() {
+        let mut base_data = vec![0x10; 4096];
+        base_data.extend_from_slice(&vec![0x20; 4096]);
+        base_data.extend_from_slice(&vec![0x30; 4096]);
+        let base = create_base_image(&base_data);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 3 * 4096, 1024 * 1024);
+
+        let first_partial_len = 128;
+        let middle_full_len = 4096;
+        let last_partial_len = 256;
+        let offset = 4096 - first_partial_len;
+        let write_data = vec![0xEE; first_partial_len + middle_full_len + last_partial_len];
+
+        cow.write(offset as u64, &write_data).unwrap();
+
+        let mut first_block = vec![0u8; 4096];
+        cow.read(0, &mut first_block).unwrap();
+        assert!(first_block[..offset].iter().all(|&b| b == 0x10));
+        assert!(first_block[offset..].iter().all(|&b| b == 0xEE));
+
+        let mut middle_block = vec![0u8; 4096];
+        cow.read(4096, &mut middle_block).unwrap();
+        assert!(middle_block.iter().all(|&b| b == 0xEE));
+
+        let mut last_block = vec![0u8; 4096];
+        cow.read(8192, &mut last_block).unwrap();
+        assert!(last_block[..last_partial_len].iter().all(|&b| b == 0xEE));
+        assert!(last_block[last_partial_len..].iter().all(|&b| b == 0x30));
+
+        assert_eq!(cow.buffered_block_count(), 3);
     }
 
     #[test]

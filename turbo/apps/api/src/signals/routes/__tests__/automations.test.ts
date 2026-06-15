@@ -14,10 +14,11 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -795,7 +796,7 @@ describe("Automations API", () => {
                 prompt: "Zombie task",
                 triggerType: "loop" as const,
                 intervalSeconds: 300,
-                enabled: true,
+                enabled: false,
                 nextRunAt: pastDue,
               };
             }),
@@ -816,15 +817,16 @@ describe("Automations API", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const db = store.set(writeDb$);
-    // Flip the first 12 automations off WITHOUT touching their trigger rows:
-    // exactly the historical zombie shape (trigger enabled=true,
-    // next_run_at in the past, automation enabled=false).
+    // Seed zombies disabled, then restore only their trigger state. That avoids
+    // a race window where another test worker's global cron can claim them
+    // before this test has built the historical zombie shape (trigger
+    // enabled=true, next_run_at in the past, automation enabled=false).
     const zombieIds = fixture.automationIds.slice(0, 12);
     const healthyId = fixture.automationIds[12]!;
     await db
-      .update(automations)
-      .set({ enabled: false })
-      .where(inArray(automations.id, [...zombieIds]));
+      .update(automationTriggers)
+      .set({ enabled: true, nextRunAt: pastDue })
+      .where(inArray(automationTriggers.automationId, [...zombieIds]));
 
     const response = await accept(
       cronApi().execute({
@@ -832,8 +834,9 @@ describe("Automations API", () => {
       }),
       [200],
     );
-    // The healthy trigger was claimed and run despite 12 starving zombies.
-    expect(response.body.executed).toBe(1);
+    // The route reports global counts, so assert the local side effect instead:
+    // the healthy trigger was claimed and run despite 12 starving zombies.
+    expect(response.body.success).toBeTruthy();
 
     const [healthyTrigger] = await findTriggerRows(healthyId);
     expect(healthyTrigger?.nextRunAt).toBeNull();
@@ -866,6 +869,80 @@ describe("Automations API", () => {
       .from(zeroRuns)
       .where(inArray(zeroRuns.automationId, [...zombieIds]));
     expect(zombieRuns).toHaveLength(0);
+  });
+
+  it("suspends due time automations whose owner is no longer an org member", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    context.mocks.s3.send.mockResolvedValue({});
+    setSecretKmsClientForTests(fakeKmsClient().client);
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
+    const pastDue = new Date(now() - 60_000);
+    const fixture = await trackAutomations(
+      store.set(
+        seedAutomationsScenario$,
+        {
+          automations: [
+            {
+              name: "orphaned-member",
+              prompt: "Should not run after membership removal",
+              triggerType: "cron",
+              cronExpression: "0 9 * * *",
+              enabled: true,
+              nextRunAt: pastDue,
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const db = store.set(writeDb$);
+    await db
+      .delete(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, fixture.orgId),
+          eq(orgMembersCache.userId, fixture.userId),
+        ),
+      );
+
+    const automationId = fixture.automationIds[0]!;
+    const response = await accept(
+      cronApi().execute({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(response.body.skipped).toBeGreaterThanOrEqual(1);
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, automationId));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+        lastRunId: automationTriggers.lastRunId,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, automationId));
+    expect(storedTrigger).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+      lastRunId: null,
+    });
+
+    const runs = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.automationId, automationId));
+    expect(runs).toHaveLength(0);
   });
 
   it("enables and disables a single trigger", async () => {

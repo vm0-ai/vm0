@@ -133,7 +133,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(outsiderRead.body);
     expect(outsiderRead.body.error.code).toBe("NOT_FOUND");
 
-    const peerList = await api.listThreads(peer);
+    const peerList = await api.listThreads(peer, {
+      agentId: compose.composeId,
+    });
     expect(
       [...peerList.pinned, ...peerList.threads].some((item) => {
         return item.id === thread.id;

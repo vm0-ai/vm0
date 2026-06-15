@@ -621,9 +621,9 @@ describe("bench side-effect-free GET API routes", () => {
   bench(
     "GET /api/zero/chat-threads",
     async () => {
-      await ensureSeeded();
+      const fixture = await ensureSeeded();
       const response = await chatThreadsClient.list({
-        query: { limit: 50 },
+        query: { agentId: fixture.composeId },
         headers: authHeaders,
       });
       if (response.status !== 200) {

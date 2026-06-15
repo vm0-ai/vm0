@@ -123,7 +123,9 @@ pub(super) struct ExecStartFrame {
     pub(super) msg: RawMessage,
     pub(super) command: String,
     pub(super) label: String,
+    pub(super) sudo: bool,
     pub(super) stdout: ExecOutputPolicy,
+    pub(super) stderr: ExecOutputPolicy,
     pub(super) expected_exit_codes: Vec<i32>,
 }
 
@@ -136,7 +138,7 @@ impl ExecStartFrame {
 pub(super) async fn expect_exec_start(guest: &mut UnixStream) -> ExecStartFrame {
     let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
-    let (command, label, stdout, expected_exit_codes) = {
+    let (command, label, sudo, stdout, stderr, expected_exit_codes) = {
         let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
         exec_start_frame_fields(decoded)
     };
@@ -144,18 +146,29 @@ pub(super) async fn expect_exec_start(guest: &mut UnixStream) -> ExecStartFrame 
         msg,
         command,
         label,
+        sudo,
         stdout,
+        stderr,
         expected_exit_codes,
     }
 }
 
 fn exec_start_frame_fields(
     decoded: DecodedExecStart<'_>,
-) -> (String, String, ExecOutputPolicy, Vec<i32>) {
+) -> (
+    String,
+    String,
+    bool,
+    ExecOutputPolicy,
+    ExecOutputPolicy,
+    Vec<i32>,
+) {
     (
         decoded.command.to_string(),
         decoded.label.to_string(),
+        decoded.sudo,
         decoded.stdout,
+        decoded.stderr,
         decoded.expected_exit_codes,
     )
 }
@@ -217,24 +230,4 @@ pub(super) async fn send_guest_error(guest: &mut UnixStream, seq: u32, message: 
         .write_all(&vsock_proto::encode(MSG_ERROR, seq, &payload).unwrap())
         .await
         .unwrap();
-}
-
-#[derive(Default)]
-pub(super) struct ChunkedWriteTempPath {
-    path: Option<String>,
-}
-
-impl ChunkedWriteTempPath {
-    pub(super) fn assert_next_chunk(&mut self, path: &str, target_path: &str) {
-        if let Some(temp_path) = &self.path {
-            assert_eq!(path, temp_path);
-        } else {
-            assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
-            self.path = Some(path.to_string());
-        }
-    }
-
-    pub(super) fn path(&self) -> &str {
-        self.path.as_deref().expect("temp path")
-    }
 }

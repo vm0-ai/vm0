@@ -20,7 +20,9 @@ from .models import (
     UsageFlushTrigger,
     _AggregateBucket,
     _AggregateKey,
+    _batch_priority,
     _BatchAdmissionResult,
+    _BufferedSourceEvent,
     _DeliveringFlush,
     _DeliveryCompletion,
     _destination_priority,
@@ -45,6 +47,7 @@ class _UsageBufferState:
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, _AggregateBucket]] = {}
+        self._source_events: dict[_DestinationKey, list[_BufferedSourceEvent]] = {}
         # Keep source keys across flushes so aggregate idempotency does not
         # turn response/error duplicates into distinct server-side rows.
         self._seen_source_keys: OrderedDict[str, None] = OrderedDict()
@@ -55,6 +58,7 @@ class _UsageBufferState:
 
     def clear(self) -> None:
         self._buckets = {}
+        self._source_events = {}
         self._seen_source_keys.clear()
         self._source_event_count = 0
         self._active_enqueue_count = 0
@@ -72,8 +76,10 @@ class _UsageBufferState:
         resource_field_name: ResourceFieldName,
         include_kind: bool,
         log_type: str,
+        preserve_source_idempotency: bool,
     ) -> int:
         buckets: dict[_AggregateKey, _AggregateBucket] | None = None
+        source_events: list[_BufferedSourceEvent] | None = None
         destination = _DestinationKey(
             url,
             sandbox_token,
@@ -87,18 +93,23 @@ class _UsageBufferState:
             source_key = event["idempotencyKey"]
             if source_key in self._seen_source_keys:
                 continue
-            if buckets is None:
-                buckets = self._buckets.setdefault(destination, {})
             self._seen_source_keys[source_key] = None
-            aggregate_key = _AggregateKey(
-                run_id=run_id,
-                kind=event["kind"],
-                provider=event["provider"],
-                category=event["category"],
-            )
-            bucket = buckets.setdefault(aggregate_key, _AggregateBucket())
-            bucket.quantity += event["quantity"]
-            bucket.source_event_count += 1
+            if preserve_source_idempotency:
+                if source_events is None:
+                    source_events = self._source_events.setdefault(destination, [])
+                source_events.append(_BufferedSourceEvent(run_id=run_id, event=_copy_event(event)))
+            else:
+                if buckets is None:
+                    buckets = self._buckets.setdefault(destination, {})
+                aggregate_key = _AggregateKey(
+                    run_id=run_id,
+                    kind=event["kind"],
+                    provider=event["provider"],
+                    category=event["category"],
+                )
+                bucket = buckets.setdefault(aggregate_key, _AggregateBucket())
+                bucket.quantity += event["quantity"]
+                bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
         self._evict_source_keys()
@@ -124,6 +135,16 @@ class _UsageBufferState:
             count += sum(
                 (event_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
                 for event_count in events_by_run.values()
+            )
+        for source_events in self._source_events.values():
+            source_events_by_run: dict[str, int] = {}
+            for source_event in source_events:
+                source_events_by_run[source_event.run_id] = (
+                    source_events_by_run.get(source_event.run_id, 0) + 1
+                )
+            count += sum(
+                (event_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
+                for event_count in source_events_by_run.values()
             )
         return count
 
@@ -166,21 +187,28 @@ class _UsageBufferState:
         return pending_flush
 
     def live_priority(self) -> int | None:
-        if not self._buckets:
+        destinations = (*self._buckets, *self._source_events)
+        if not destinations:
             return None
-        return min(_destination_priority(destination) for destination in self._buckets)
+        return min(_destination_priority(destination) for destination in destinations)
 
     def snapshot_live_flush(self) -> _PendingFlush | None:
-        if not self._buckets:
+        if not self._buckets and not self._source_events:
             self._source_event_count = 0
             return None
 
         self._flush_sequence += 1
         flush_sequence = self._flush_sequence
         buckets = self._buckets
+        source_events = self._source_events
         self._buckets = {}
+        self._source_events = {}
         self._source_event_count = 0
-        batches = self._build_flush_batches(buckets, flush_sequence)
+        batches = [
+            *self._build_flush_batches(buckets, flush_sequence),
+            *self._build_source_event_flush_batches(source_events),
+        ]
+        batches.sort(key=_flush_batch_sort_key)
         return _pending_flush_from_batches(flush_sequence, batches)
 
     def begin_delivery(
@@ -372,6 +400,52 @@ class _UsageBufferState:
                     )
         return batches
 
+    def _build_source_event_flush_batches(
+        self,
+        source_events_by_destination: dict[_DestinationKey, list[_BufferedSourceEvent]],
+    ) -> list[_FlushBatch]:
+        batches: list[_FlushBatch] = []
+        for destination in sorted(
+            source_events_by_destination,
+            key=lambda item: (
+                _destination_priority(item),
+                item.url,
+                item.sandbox_token,
+                item.proxy_log_path,
+                item.resource_field_name,
+                item.include_kind,
+                item.log_type,
+            ),
+        ):
+            events_by_run: dict[str, list[_FlushEvent]] = {}
+            for source_event in source_events_by_destination[destination]:
+                events_by_run.setdefault(source_event.run_id, []).append(
+                    _FlushEvent(
+                        payload=_source_event_payload(destination, source_event.event),
+                        source_event_count=1,
+                    )
+                )
+            for run_id in sorted(events_by_run):
+                events = events_by_run[run_id]
+                for start in range(0, len(events), USAGE_EVENT_BATCH_SIZE):
+                    batch_events = events[start : start + USAGE_EVENT_BATCH_SIZE]
+                    batches.append(
+                        _FlushBatch(
+                            url=destination.url,
+                            sandbox_token=destination.sandbox_token,
+                            payload={
+                                "runId": run_id,
+                                "events": [event.payload for event in batch_events],
+                            },
+                            proxy_log_path=destination.proxy_log_path,
+                            log_type=destination.log_type,
+                            source_event_count=sum(
+                                event.source_event_count for event in batch_events
+                            ),
+                        )
+                    )
+        return batches
+
     def _events_by_run(
         self,
         destination: _DestinationKey,
@@ -420,3 +494,37 @@ class _UsageBufferState:
                 aggregate_key.category,
             ),
         )
+
+
+def _copy_event(event: UsageEvent) -> UsageEvent:
+    return {
+        "idempotencyKey": event["idempotencyKey"],
+        "kind": event["kind"],
+        "provider": event["provider"],
+        "category": event["category"],
+        "quantity": event["quantity"],
+    }
+
+
+def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> dict:
+    payload = {
+        "idempotencyKey": event["idempotencyKey"],
+        destination.resource_field_name: event["provider"],
+        "category": event["category"],
+        "quantity": event["quantity"],
+    }
+    if destination.include_kind:
+        payload["kind"] = event["kind"]
+    return payload
+
+
+def _flush_batch_sort_key(batch: _FlushBatch) -> tuple[object, ...]:
+    run_id = batch.payload.get("runId")
+    return (
+        _batch_priority(batch),
+        batch.url,
+        batch.sandbox_token,
+        batch.proxy_log_path,
+        batch.log_type,
+        run_id if isinstance(run_id, str) else "",
+    )

@@ -28,6 +28,8 @@ from .anthropic_messages import (
 from .buffer import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     buffer_model_usage_observations,
+    buffer_source_model_usage_observations,
+    buffer_source_usage_events,
     buffer_usage_events,
     configure_usage_buffer,
     flush_usage_events,
@@ -54,11 +56,14 @@ from .providers.model_provider import (
     is_model_provider_usage_observable,
     report_model_provider_usage,
     report_model_provider_usage_observation,
+    report_model_provider_usage_source,
 )
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "buffer_model_usage_observations",
+    "buffer_source_model_usage_observations",
+    "buffer_source_usage_events",
     "buffer_usage_events",
     "configure_usage_buffer",
     "create_anthropic_messages_json_usage_extractor",
@@ -81,6 +86,7 @@ __all__ = [
     "report_connector_usage",
     "report_model_provider_usage",
     "report_model_provider_usage_observation",
+    "report_model_provider_usage_source",
     "reset_usage_buffer_for_tests",
     "set_pending_path",
     "webhook",

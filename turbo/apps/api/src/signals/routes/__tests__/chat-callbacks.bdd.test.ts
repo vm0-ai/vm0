@@ -452,7 +452,7 @@ describe("CHAT-02: completed chat callback", () => {
       "Most recent assistant reply:\nfinal answer",
     );
 
-    const threads = await chat.listThreads(actor);
+    const threads = await chat.listThreads(actor, { agentId });
     const orderedIds = [...threads.pinned, ...threads.threads].map((thread) => {
       return thread.id;
     });
@@ -848,7 +848,7 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
       `chatThreadMessageCreated:${first.threadId}`,
       null,
     );
-    const ordered = await chat.listThreads(actor);
+    const ordered = await chat.listThreads(actor, { agentId });
     const orderedIds = [...ordered.pinned, ...ordered.threads].map((thread) => {
       return thread.id;
     });

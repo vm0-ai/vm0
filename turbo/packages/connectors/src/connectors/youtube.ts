@@ -1,4 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const youtube = {
   youtube: {
@@ -7,31 +8,57 @@ export const youtube = {
     helpText:
       "Connect your YouTube account to search videos, get channel info, and fetch comments via the Data API",
     authMethods: {
-      "api-token": {
-        label: "API Key",
-        helpText:
-          "1. Go to [Google Cloud Console](https://console.cloud.google.com/)\n2. Enable **YouTube Data API v3**\n3. Go to **Credentials** → **Create Credentials** → **API Key**\n4. Copy the API key",
+      oauth: {
+        featureFlag: FeatureSwitchKey.YouTubeConnector,
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant YouTube Data API access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         storage: {
-          secrets: ["YOUTUBE_TOKEN"],
+          secrets: ["YOUTUBE_ACCESS_TOKEN", "YOUTUBE_REFRESH_TOKEN"],
           variables: [],
         },
         grant: {
-          kind: "manual",
-          fields: {
-            YOUTUBE_TOKEN: {
-              label: "API Key",
-              required: true,
-              placeholder: "AIzaSy...",
-            },
+          kind: "auth-code",
+          scopes: [
+            "https://www.googleapis.com/auth/youtube",
+            "https://www.googleapis.com/auth/youtube.force-ssl",
+            "https://www.googleapis.com/auth/youtube.readonly",
+            "https://www.googleapis.com/auth/youtube.upload",
+            "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
+            "https://www.googleapis.com/auth/youtubepartner",
+            "https://www.googleapis.com/auth/youtubepartner-channel-audit",
+            "https://www.googleapis.com/auth/userinfo.email",
+          ],
+          outputs: {
+            accessToken: "$secrets.YOUTUBE_ACCESS_TOKEN",
+            refreshToken: "$secrets.YOUTUBE_REFRESH_TOKEN",
           },
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          inputs: {
+            refreshToken: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.YOUTUBE_ACCESS_TOKEN",
+            refreshToken: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["YOUTUBE_ACCESS_TOKEN"],
           envBindings: {
-            YOUTUBE_TOKEN: "$secrets.YOUTUBE_TOKEN",
+            YOUTUBE_TOKEN: "$secrets.YOUTUBE_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "none" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            refreshToken: "$secrets.YOUTUBE_REFRESH_TOKEN",
+          },
+        },
       },
     },
   },
