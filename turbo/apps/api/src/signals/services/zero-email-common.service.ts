@@ -45,6 +45,8 @@ const OUTBOX_TTL_MS = 15 * 60 * 1000;
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const PRESIGNED_URL_EXPIRY = 3600;
 const R2_PATH_PREFIX = "email-attachments";
+export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
+  "Your credit balance is running low";
 
 export type HandlerResult =
   | { readonly ok: true }
@@ -119,11 +121,23 @@ interface DeveloperSupportTemplate {
   };
 }
 
-type EmailTemplate =
+interface CreditLowBalanceTemplate {
+  readonly template: "credit-low-balance";
+  readonly props: {
+    readonly orgName: string;
+    readonly remainingCredits: number;
+    readonly thresholdCredits: number;
+    readonly billingUrl: string;
+    readonly unsubscribeUrl?: string;
+  };
+}
+
+export type EmailTemplate =
   | AgentReplyTemplate
   | InboundErrorTemplate
   | DataExportReadyTemplate
-  | DeveloperSupportTemplate;
+  | DeveloperSupportTemplate
+  | CreditLowBalanceTemplate;
 
 interface SaveThreadSessionAction {
   readonly action: "save_thread_session";
@@ -437,6 +451,26 @@ function renderTemplate(template: EmailTemplate): string {
       )}">Download bundle</a></p><p>Expires ${escapeHtml(
         template.props.expiresAt,
       )}</p></main>`;
+    }
+    case "credit-low-balance": {
+      const remainingCredits =
+        template.props.remainingCredits.toLocaleString("en-US");
+      const thresholdCredits =
+        template.props.thresholdCredits.toLocaleString("en-US");
+      const unsubscribe = template.props.unsubscribeUrl
+        ? `<p><a href="${escapeHtml(
+            template.props.unsubscribeUrl,
+          )}">Unsubscribe</a></p>`
+        : "";
+      return `<main><h1>${CREDIT_LOW_BALANCE_EMAIL_SUBJECT}</h1><p>${escapeHtml(
+        template.props.orgName,
+      )} has ${escapeHtml(
+        remainingCredits,
+      )} credits remaining.</p><p>This alert is sent when an org reaches ${escapeHtml(
+        thresholdCredits,
+      )} credits or less.</p><p><a href="${escapeHtml(
+        template.props.billingUrl,
+      )}">Manage billing</a></p>${unsubscribe}</main>`;
     }
   }
 }
