@@ -162,8 +162,8 @@ function buildIllustrationGenerationTemplatePrompt(
     prompt: [
       "# Attached illustration style",
       "",
-      `The user attached the "${imageStyle.name}" illustration style (${imageStyle.id}) to this chat, and it stays attached across follow-up messages.`,
-      `When generating an image, apply it with \`zero generate image --style ${imageStyle.id}\`.`,
+      `"${imageStyle.name}" (${imageStyle.id}), attached to this chat and persisting across follow-up messages.`,
+      `Apply it with \`zero generate image --style ${imageStyle.id}\`.`,
     ].join("\n"),
   };
 }
