@@ -1,5 +1,5 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
 
@@ -51,36 +51,83 @@ async function signInThroughExternalOnboardingGate(
   page: Page,
   email: string,
 ): Promise<void> {
-  const continueToSignUp = page.getByRole("link", {
-    name: "Continue to sign up",
-  });
-  const visible = await continueToSignUp
-    .waitFor({ state: "visible", timeout: 10_000 })
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const continueToSignUp = page.getByRole("link", {
+      name: "Continue to sign up",
+    });
+    if (
+      await waitForVisible(continueToSignUp, attempt === 0 ? 10_000 : 2_000)
+    ) {
+      await continueToSignUp.click();
+      await waitForAuthUrl(page);
+      continue;
+    }
+
+    const url = new URL(page.url());
+    if (isAuthUrl(url)) {
+      const redirectUrl = redirectUrlFromAuthUrl(url);
+      await clerk.signIn({ page, emailAddress: email });
+      if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
+        await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
+      }
+      await waitForAuthOrOnboardingUrl(page);
+      continue;
+    }
+
+    if (isOnboardingOrChatUrl(url)) {
+      return;
+    }
+  }
+
+  throw new Error(
+    `Unable to complete external onboarding sign-in: ${page.url()}`,
+  );
+}
+
+async function waitForVisible(
+  locator: Locator,
+  timeout: number,
+): Promise<boolean> {
+  return await locator
+    .waitFor({ state: "visible", timeout })
     .then(() => true)
     .catch(() => false);
-  if (!visible) {
-    return;
-  }
+}
 
-  await continueToSignUp.click();
+async function waitForAuthOrOnboardingUrl(page: Page): Promise<void> {
   await page.waitForURL(
     (url) => {
-      return (
-        url.pathname.includes("/sign-up") || url.pathname.includes("/sign-in")
-      );
+      return isAuthUrl(url) || isOnboardingOrChatUrl(url);
     },
-    { timeout: 30_000, waitUntil: "domcontentloaded" },
+    { timeout: 60_000, waitUntil: "domcontentloaded" },
   );
+}
 
-  const redirectUrl = new URL(page.url()).searchParams.get("redirect_url");
-  await clerk.signIn({ page, emailAddress: email });
-  if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
-    await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
-  }
-  await page.waitForURL(isOnboardingOrChatUrl, {
-    timeout: 60_000,
+async function waitForAuthUrl(page: Page): Promise<void> {
+  await page.waitForURL(isAuthUrl, {
+    timeout: 30_000,
     waitUntil: "domcontentloaded",
   });
+}
+
+function isAuthUrl(url: URL): boolean {
+  return url.pathname.includes("/sign-up") || url.pathname.includes("/sign-in");
+}
+
+function redirectUrlFromAuthUrl(url: URL): string | null {
+  const searchRedirect = url.searchParams.get("redirect_url");
+  if (searchRedirect) {
+    return searchRedirect;
+  }
+
+  const hashQueryStart = url.hash.indexOf("?");
+  if (hashQueryStart === -1) {
+    return null;
+  }
+
+  return new URLSearchParams(url.hash.slice(hashQueryStart + 1)).get(
+    "redirect_url",
+  );
 }
 
 function isOnboardingOrChatUrl(url: URL): boolean {
