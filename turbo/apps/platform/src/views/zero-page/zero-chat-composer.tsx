@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconDownload,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -39,6 +40,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
@@ -144,6 +146,7 @@ import {
   composerSavingType$,
   setComposerSavingType$,
   clearComputerUsePopoverCloseSuppression$,
+  computerUseDownloadDialogOpen$,
   computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
@@ -164,6 +167,7 @@ import {
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
+  setComputerUseDownloadDialogOpen$,
   setTemplatePickerPreviewSlideIndex$,
   setComputerUsePopoverOpen$,
   templateCardHover$,
@@ -2743,6 +2747,8 @@ function ComputerUsePopoverButton({
   const active = computerUse.selectedHostId !== null;
   const open = useGet(computerUsePopoverOpen$);
   const setOpen = useSet(setComputerUsePopoverOpen$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const clearCloseSuppression = useSet(
     clearComputerUsePopoverCloseSuppression$,
   );
@@ -2761,108 +2767,165 @@ function ComputerUsePopoverButton({
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
-                  active && "text-primary",
-                )}
-                aria-label="Computer Use"
+    <>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <PopoverTrigger asChild>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                    active && "text-primary",
+                  )}
+                  aria-label="Computer Use"
+                >
+                  <IconDeviceDesktop size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+            </PopoverTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Computer
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-72 p-0 rounded-lg"
+        >
+          <div className="py-1">
+            {computerUse.loading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 2 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : computerUse.hosts.length > 0 ? (
+              <div
+                className="flex max-h-72 flex-col overflow-y-auto"
+                role="radiogroup"
+                aria-label="Computer Use host"
               >
-                <IconDeviceDesktop size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Computer
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
-        <div className="py-1">
-          {computerUse.loading ? (
-            <div className="flex flex-col animate-pulse">
-              {Array.from({ length: 2 }, (_, i) => {
-                return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2">
-                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
-                    <span className="h-3 w-6 rounded-full bg-muted/50" />
-                  </div>
-                );
-              })}
-            </div>
-          ) : computerUse.hosts.length > 0 ? (
-            <div
-              className="flex max-h-72 flex-col overflow-y-auto"
-              role="radiogroup"
-              aria-label="Computer Use host"
-            >
-              {computerUse.hosts.map((host) => {
-                const checked = computerUse.selectedHostId === host.id;
-                return (
-                  <button
-                    key={host.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => {
-                      computerUse.onChange(checked ? null : host.id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-                      checked ? "bg-primary/5" : "hover:bg-muted/50",
-                    )}
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                      <IconDeviceDesktop size={16} stroke={1.5} />
-                    </span>
-                    <span className="text-sm flex-1 truncate text-foreground">
-                      {host.hostName}
-                    </span>
-                    <span
+                {computerUse.hosts.map((host) => {
+                  const checked = computerUse.selectedHostId === host.id;
+                  return (
+                    <button
+                      key={host.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      onClick={() => {
+                        computerUse.onChange(checked ? null : host.id);
+                      }}
                       className={cn(
-                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                        checked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-transparent",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                        checked ? "bg-primary/5" : "hover:bg-muted/50",
                       )}
-                      aria-hidden="true"
                     >
-                      {checked && <IconCheck size={11} stroke={3} />}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                        <IconDeviceDesktop size={16} stroke={1.5} />
+                      </span>
+                      <span className="text-sm flex-1 truncate text-foreground">
+                        {host.hostName}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-transparent",
+                        )}
+                        aria-hidden="true"
+                      >
+                        {checked && <IconCheck size={11} stroke={3} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                No online computers
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border/50 p-1">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+              onClick={() => {
+                setOpen(false);
+                setDownloadDialogOpen(true);
+              }}
+            >
+              <IconPlug
+                size={18}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              Connect my computer
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <ComputerUseDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
+        downloadUrl={computerUse.downloadUrl}
+      />
+    </>
+  );
+}
+
+function ComputerUseDownloadDialog({
+  open,
+  onOpenChange,
+  downloadUrl,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  downloadUrl: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={18} stroke={1.5} />
             </div>
-          ) : (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              No online computers
+            <div className="min-w-0 space-y-1 text-left">
+              <DialogTitle>Connect your computer</DialogTitle>
+              <DialogDescription>
+                Download Zero Computer Use for macOS, then open it to let Zero
+                use your desktop.
+              </DialogDescription>
             </div>
-          )}
-        </div>
-        <div className="border-t border-border/50 p-1">
+          </div>
+        </DialogHeader>
+        <Button asChild className="mt-2 w-full">
           <a
-            href={computerUse.downloadUrl}
+            href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              onOpenChange(false);
+            }}
           >
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Connect my computer
+            <IconDownload size={16} stroke={1.5} />
+            Download for macOS
           </a>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 }
 

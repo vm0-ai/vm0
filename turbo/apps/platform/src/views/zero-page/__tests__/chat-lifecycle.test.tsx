@@ -720,6 +720,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function presentationTemplateLabel(
   item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
 ): string {
@@ -4270,6 +4280,38 @@ describe("chat lifecycle", () => {
         "false",
       );
     });
+  });
+
+  it("opens the Computer Use download dialog from the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-download";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Connect your computer")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Download Zero Computer Use for macOS, then open it to let Zero use your desktop.",
+      ),
+    ).toBeInTheDocument();
+    expect(linkByText("Download for macOS")).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
   });
 
   it("does not auto-select the only online Computer Use host", async () => {

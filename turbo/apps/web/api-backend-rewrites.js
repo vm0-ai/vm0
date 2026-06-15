@@ -21,6 +21,10 @@ const ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE =
   "/api/zero/desktop/updates/:channel/:platform/:arch/release";
 const ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE =
   /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/release$/;
+const ZERO_DESKTOP_UPDATE_DMG_REWRITE_SOURCE =
+  "/api/zero/desktop/updates/:channel/:platform/:arch/dmg";
+const ZERO_DESKTOP_UPDATE_DMG_PATH_RE =
+  /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/dmg$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -455,6 +459,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE,
     "/api/zero/desktop/updates/:channel/:platform/:arch/release",
     ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE,
+  ],
+  [
+    ZERO_DESKTOP_UPDATE_DMG_REWRITE_SOURCE,
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+    ZERO_DESKTOP_UPDATE_DMG_PATH_RE,
   ],
   [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
