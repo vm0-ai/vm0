@@ -19,8 +19,8 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * plus an unconditional model_usage_observation retention delete), so calling
  * it from any other test file would race this file's far-past observation
  * windows on the shared database — the same single-file-ownership rule as the
- * email drain / billing reconcile / screenshot cleanup crons (see
- * runSafeCronRoutes in helpers/api-bdd-runs-automations.ts).
+ * email drain / billing reconcile / screenshot cleanup crons (see the shared
+ * cron auth helper in helpers/api-bdd-runs-automations.ts).
  *
  * Shared-DB time design: the model-stats chain derives a random far-past UTC
  * day (2003-2009) per run and asserts rankings as baseline+delta, so leftovers
