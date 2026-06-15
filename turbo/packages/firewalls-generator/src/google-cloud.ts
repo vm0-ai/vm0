@@ -147,6 +147,9 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
 ]);
 
 const GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS = new Set([
+  "compute.instances.getGuestAttributes",
+  "compute.instances.getScreenshot",
+  "compute.instances.getSerialPortOutput",
   "iam.serviceAccounts.signBlob",
   "iam.serviceAccounts.signJwt",
   "monitoring.notificationChannels.getVerificationCode",

@@ -363,7 +363,7 @@ describe("google-cloud firewall", () => {
     );
   });
 
-  it("defaults Google Cloud read-like permissions to allow and sensitive writes to deny", () => {
+  it("defaults Google Cloud read-like permissions to allow and sensitive operations to deny", () => {
     const policy = getDefaultFirewallPolicies("google-cloud");
 
     expect(policy.policies["compute.instances.get"]).toBe("allow");
@@ -384,6 +384,17 @@ describe("google-cloud firewall", () => {
     expect(policy.policies["serviceusage.services.enable"]).toBe("deny");
     expect(policy.policies["storage.objects.create"]).toBe("deny");
     expect(policy.policies["run.services.create"]).toBe("deny");
+    expect(policy.policies["artifactregistry.files.download"]).toBe("deny");
+    expect(policy.policies["cloudfunctions.functions.sourceCodeGet"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["compute.instances.getGuestAttributes"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["compute.instances.getScreenshot"]).toBe("deny");
+    expect(policy.policies["compute.instances.getSerialPortOutput"]).toBe(
+      "deny",
+    );
     expect(policy.policies["secretmanager.versions.access"]).toBe("deny");
     expect(policy.policies["iam.serviceAccounts.signBlob"]).toBe("deny");
     expect(policy.policies["iam.serviceAccounts.signJwt"]).toBe("deny");
@@ -407,6 +418,21 @@ describe("google-cloud firewall", () => {
     expect(googleCloudDefaultAllowed).not.toContain("compute.instances.create");
     expect(googleCloudDefaultAllowed).not.toContain(
       "resourcemanager.projects.setIamPolicy",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "artifactregistry.files.download",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "cloudfunctions.functions.sourceCodeGet",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getGuestAttributes",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getScreenshot",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getSerialPortOutput",
     );
     expect(googleCloudDefaultAllowed).not.toContain(
       "secretmanager.versions.access",
