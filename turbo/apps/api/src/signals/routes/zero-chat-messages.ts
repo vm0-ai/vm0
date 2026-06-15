@@ -78,6 +78,7 @@ import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-mark
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -2089,11 +2090,13 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
-    const generationTemplatePrompt = buildGenerationTemplatePrompt(
-      args.body.generationTemplate,
-    );
-    if (generationTemplatePrompt.status === "invalid") {
-      return badRequestMessage(generationTemplatePrompt.message);
+    if (args.body.generationTemplate) {
+      const validation = buildGenerationTemplatePrompt(
+        args.body.generationTemplate,
+      );
+      if (validation.status === "invalid") {
+        return badRequestMessage(validation.message);
+      }
     }
 
     const thread = await resolveThread({
@@ -2117,6 +2120,13 @@ const prepareNormalSend$ = command(
       thread.isNewThread,
       thread.incompleteContext,
     );
+    signal.throwIfAborted();
+    const generationTemplatePrompt =
+      await resolveThreadGenerationTemplatePrompt({
+        db,
+        threadId: thread.threadId,
+        explicit: args.body.generationTemplate,
+      });
     signal.throwIfAborted();
     const persistedExplicitSelection =
       await maybePersistExplicitModelFirstSelection({
@@ -2143,7 +2153,7 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       priorContext,
-      generationTemplatePrompt: generationTemplatePrompt.prompt,
+      generationTemplatePrompt,
       computerUseHostId,
       persistedExplicitSelection,
     };
