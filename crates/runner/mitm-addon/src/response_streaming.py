@@ -340,9 +340,10 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             message_id,
             usage_target,
         )
-        # OpenAI Responses WebSocket usage extraction only returns terminal
-        # usage frames. Once the source is accepted into the source-preserving
-        # buffer, terminal end/error hooks do not need to retain it on the flow.
+        # The accepted OpenAI Responses WebSocket events are final for a logical
+        # response id. Once that source reaches the source-preserving buffer,
+        # later same-id frames are duplicates under source/category idempotency
+        # and terminal end/error hooks do not need to retain it on the flow.
         if release_source:
             usage_sources.pop(message_id, None)
         return

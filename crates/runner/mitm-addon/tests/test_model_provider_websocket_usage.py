@@ -185,6 +185,35 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 6,
         }
 
+    def test_model_websocket_late_same_id_frame_after_release_is_duplicate(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=20,
+                output_tokens=12,
+            ),
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=10,
+                output_tokens=7,
+            ),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+
     def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 
