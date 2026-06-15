@@ -76,6 +76,166 @@ async fn supervised_exec_cancel_and_wait_sends_cancel_and_waits_for_cancelled_re
 }
 
 #[tokio::test]
+async fn supervised_exec_cancel_and_wait_writer_lock_timeout_before_write_cleans_registration() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-lock-timeout"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    let writer_guard = host.shared.writer.lock().await;
+
+    let mut cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(1)).await });
+    let err = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
+        .await
+        .expect("cancel_and_wait should return before the test guard")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    drop(writer_guard);
+    tokio::task::yield_now().await;
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out cancel must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after cancel timeout: {err}"),
+    }
+}
+
+#[tokio::test]
+async fn supervised_exec_cancel_zero_timeout_cleans_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-timeout-zero"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let err = handle.cancel_and_wait(Duration::ZERO).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("zero-timeout cancel must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after zero-timeout cancel: {err}"),
+    }
+}
+
+#[tokio::test]
+async fn supervised_exec_cancel_oversized_timeout_cleans_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-timeout-overflow"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let err = handle.cancel_and_wait(Duration::MAX).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("oversized timeout must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after oversized timeout: {err}"),
+    }
+}
+
+#[tokio::test]
+async fn supervised_exec_cancel_and_wait_terminal_result_wins_while_cancel_write_is_blocked() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-result-race"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    let writer_guard = host.shared.writer.lock().await;
+
+    let mut cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+
+    let result = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
+        .await
+        .expect("terminal result should win before cancel write starts")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    tokio::task::yield_now().await;
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("completed operation must not receive stale cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after terminal race: {err}"),
+    }
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn supervised_exec_cancel_handle_sends_cancel_without_consuming_wait() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -257,7 +417,8 @@ async fn supervised_exec_cancel_terminal_before_cancel_write_returns_result() {
     let handle = task.await.unwrap().unwrap();
 
     let writer_guard = host.shared.writer.lock().await;
-    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
     tokio::task::yield_now().await;
 
     send_exec_result(
@@ -303,7 +464,8 @@ async fn supervised_exec_cancel_error_before_cancel_write_returns_error_without_
     let handle = task.await.unwrap().unwrap();
 
     let writer_guard = host.shared.writer.lock().await;
-    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
     tokio::task::yield_now().await;
 
     send_guest_error(&mut guest, start.seq, "guest rejected supervised exec").await;
@@ -362,4 +524,33 @@ async fn supervised_exec_cancel_non_cancelled_terminal_result_cleans_without_poi
     assert!(is_connected(&host));
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn supervised_exec_cancel_result_timeout_poisons_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-timeout"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(50)).await });
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+
+    let err = cancel_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
 }

@@ -34,8 +34,8 @@ function writeLine(message: string): void {
  *
  * API keys are read from environment variables per vendor:
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
- * OpenAI also falls back to OPENAI_API_KEY because local dev already uses it
- * for platform OpenAI features.
+ * Anthropic and OpenAI also fall back to their provider env names because
+ * CI and local dev already use them for real model smoke tests.
  * DeepSeek also falls back to DEEPSEEK_API_KEY to match the provider secret name.
  */
 
@@ -404,6 +404,9 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
 
 function getVendorApiKeyEnvVars(vendor: string): string[] {
   const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
+  if (vendor === "anthropic") {
+    return [envVar, "ANTHROPIC_API_KEY"];
+  }
   if (vendor === "openai") {
     return [envVar, "OPENAI_API_KEY"];
   }

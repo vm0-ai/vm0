@@ -32,24 +32,27 @@
 //! Dropping it removes only host-side registration and never sends
 //! `MSG_EXEC_CANCEL`; use [`ExecOperationHandle::wait`] to observe the
 //! terminal result or [`ExecOperationHandle::cancel_and_wait`] to send
-//! cancellation and wait for the cancelled terminal result. If terminal
-//! dispatch wins the race before cancellation reaches the write boundary,
-//! cancel-and-wait returns that original terminal result instead. A plain wait
-//! timeout does not cancel the guest. If terminal proof is abandoned after a
-//! request may have reached the guest, the connection can remain open while
-//! later normal operations become unavailable on that connection. A timeout
-//! after an explicit cancel was sent poisons the connection because the guest
-//! process state is no longer known.
+//! cancellation and wait for the cancelled terminal result. If the terminal
+//! result is already available or dispatch wins the race before cancellation
+//! reaches the write boundary, cancel-and-wait returns that original terminal
+//! result instead. The `cancel_and_wait` timeout bounds both the cancel-frame
+//! write and the terminal-result wait. A plain wait timeout does not cancel the
+//! guest. If terminal proof is abandoned after a request may have reached the
+//! guest, the connection can remain open while later normal operations become
+//! unavailable on that connection. A timeout after an explicit cancel was sent
+//! poisons the connection because the guest process state is no longer known.
 //!
 //! [`SupervisedExecHandle`] owns the terminal result for a supervised process.
 //! Dropping it does not cancel the guest and does not remove the lifecycle
 //! registration; the host keeps tracking the operation until terminal result
 //! dispatch, connection close, or an explicit wait timeout. Use
 //! [`SupervisedExecHandle::cancel_and_wait`] to send cancellation and consume
-//! the terminal result. If terminal dispatch wins the race before cancellation
-//! reaches the write boundary, cancel-and-wait returns that original terminal
-//! result instead. [`SupervisedExecCancelHandle::cancel`] sends only the cancel
-//! frame and leaves terminal result ownership with the paired
+//! the terminal result under one total timeout covering cancel-frame write and
+//! terminal-result wait. If the terminal result is already available or
+//! dispatch wins the race before cancellation reaches the write boundary,
+//! cancel-and-wait returns that original terminal result instead.
+//! [`SupervisedExecCancelHandle::cancel`] sends only the cancel frame and
+//! leaves terminal result ownership with the paired
 //! [`SupervisedExecHandle`].
 //!
 //! Streaming exec operations expose a bounded receiver through

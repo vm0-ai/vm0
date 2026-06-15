@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.455.0](https://github.com/vm0-ai/vm0/compare/app-v0.454.0...app-v0.455.0) (2026-06-15)
+
+
+### Features
+
+* add google maps oauth connector ([#17351](https://github.com/vm0-ai/vm0/issues/17351)) ([c89bd02](https://github.com/vm0-ai/vm0/commit/c89bd0254903898ce5cdc7df4859ba7497364cc7))
+* enable paid onboarding redirect ([#17752](https://github.com/vm0-ai/vm0/issues/17752)) ([ee814ba](https://github.com/vm0-ai/vm0/commit/ee814ba39b3a2da41e2f740cd3b1ba64ac47327a))
+
+
+### Bug Fixes
+
+* sync connector search with URL params ([#17772](https://github.com/vm0-ai/vm0/issues/17772)) ([cdfa9e7](https://github.com/vm0-ai/vm0/commit/cdfa9e778d467c732d42b4cc21054041fa3a0b65))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.0
+    * @vm0/connectors bumped to 1.79.0
+    * @vm0/core bumped to 8.341.0
+
 ## [0.454.0](https://github.com/vm0-ai/vm0/compare/app-v0.453.0...app-v0.454.0) (2026-06-15)
 
 

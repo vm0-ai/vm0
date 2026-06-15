@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.144.0](https://github.com/vm0-ai/vm0/compare/api-v1.143.0...api-v1.144.0) (2026-06-15)
+
+
+### Features
+
+* add google maps oauth connector ([#17351](https://github.com/vm0-ai/vm0/issues/17351)) ([c89bd02](https://github.com/vm0-ai/vm0/commit/c89bd0254903898ce5cdc7df4859ba7497364cc7))
+* default new orgs to kimi k2.7 ([#17712](https://github.com/vm0-ai/vm0/issues/17712)) ([2d0d56b](https://github.com/vm0-ai/vm0/commit/2d0d56b963d1ccd761b7b19434058a3a18af6ab2))
+* enable youtube connector by default ([#17754](https://github.com/vm0-ai/vm0/issues/17754)) ([d378cea](https://github.com/vm0-ai/vm0/commit/d378cea01569c5cbddceb978e88af294db9919a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.0
+    * @vm0/connectors bumped to 1.79.0
+    * @vm0/core bumped to 8.341.0
+    * @vm0/db bumped to 1.52.2
+
 ## [1.143.0](https://github.com/vm0-ai/vm0/compare/api-v1.142.0...api-v1.143.0) (2026-06-15)
 
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::Instant;
+use tokio::time::{self, Instant};
 use vsock_proto::{
     ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
 };
@@ -14,8 +14,8 @@ use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
     ExecCancelFrameWriteOutcome, clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame_for_wait, write_frame,
-    write_frame_with_pre_write,
+    mark_pending_exec_control_possible_guest_write,
+    send_exec_cancel_frame_for_wait_with_write_start, write_frame, write_frame_with_pre_write,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
@@ -52,6 +52,11 @@ pub(in crate::exec_operation) enum ExecWaitLifecycle {
 pub(in crate::exec_operation) struct ExecCancelWaitResult {
     pub(in crate::exec_operation) result: ExecOperationResult,
     pub(in crate::exec_operation) cancel_seq: Option<u32>,
+}
+
+enum ExecCancelWriteOutcome {
+    Terminal(ExecOperationResult),
+    CancelSent { seq: u32, remaining: Duration },
 }
 
 impl ExecWaitLifecycle {
@@ -166,6 +171,10 @@ pub(in crate::exec_operation) async fn send_exec_cancel_frame(
 }
 
 impl ExecWaitCore {
+    fn timeout_error(lifecycle: ExecWaitLifecycle) -> io::Error {
+        io::Error::new(io::ErrorKind::TimedOut, lifecycle.timeout_error_message())
+    }
+
     fn log_timeout(&self, seq: u32, poison_on_timeout: bool, lifecycle: ExecWaitLifecycle) {
         match lifecycle {
             ExecWaitLifecycle::OneShot => {
@@ -187,6 +196,43 @@ impl ExecWaitCore {
                 );
             }
         }
+    }
+
+    fn take_result_rx_or_closed(
+        &mut self,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<oneshot::Receiver<io::Result<ExecOperationResult>>> {
+        self.result_rx.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                lifecycle.operation_closed_message(),
+            )
+        })
+    }
+
+    fn complete_taken_result(
+        &mut self,
+        result: Result<io::Result<ExecOperationResult>, oneshot::error::RecvError>,
+    ) -> io::Result<ExecOperationResult> {
+        self.seq = None;
+        self.result_rx = None;
+        result.map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?
+    }
+
+    fn abandon_timed_out_operation(
+        &mut self,
+        seq: u32,
+        poison_on_timeout: bool,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Error {
+        self.shared.remove_operation(seq);
+        self.seq = None;
+        self.result_rx = None;
+        self.log_timeout(seq, poison_on_timeout, lifecycle);
+        if poison_on_timeout {
+            self.shared.poison_connection();
+        }
+        Self::timeout_error(lifecycle)
     }
 
     pub(in crate::exec_operation) fn new(
@@ -279,40 +325,93 @@ impl ExecWaitCore {
                 ))?
             }
             _ = tokio::time::sleep(timeout) => {
-                self.shared.remove_operation(seq);
-                self.seq = None;
-                self.result_rx = None;
-                self.log_timeout(seq, poison_on_timeout, lifecycle);
-                if poison_on_timeout {
-                    self.shared.poison_connection();
-                }
-                Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    lifecycle.timeout_error_message(),
-                ))
+                Err(self.abandon_timed_out_operation(seq, poison_on_timeout, lifecycle))
             }
         }
     }
 
-    pub(in crate::exec_operation) async fn wait_for_dispatched_terminal(
+    async fn send_cancel_before_terminal_with_deadline(
         &mut self,
+        timeout: Duration,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
-        // The state lock already proved dispatch removed the operation; only the
-        // terminal result delivery remains.
-        self.active_seq_or_closed(lifecycle.operation_closed_message())?;
-        let rx = self.result_rx.take().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                lifecycle.operation_closed_message(),
-            )
-        })?;
-        self.seq = None;
+    ) -> io::Result<ExecCancelWriteOutcome> {
+        if let Some(result) = self.try_take_ready_result()? {
+            return Ok(ExecCancelWriteOutcome::Terminal(result));
+        }
 
-        let result = rx
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"));
-        result?
+        let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
+        if timeout.is_zero() {
+            return Err(self.abandon_timed_out_operation(seq, false, lifecycle));
+        }
+        let Some(deadline) = Instant::now().checked_add(timeout) else {
+            self.shared.remove_operation(seq);
+            self.seq = None;
+            self.result_rx = None;
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "exec operation cancel timeout is too large",
+            ));
+        };
+        let mut result_rx = self.take_result_rx_or_closed(lifecycle)?;
+        let shared = Arc::clone(self.shared());
+        let diagnostic = self.diagnostic().clone();
+        let (write_started_tx, mut write_started_rx) = oneshot::channel();
+        let mut cancel_write = Box::pin(send_exec_cancel_frame_for_wait_with_write_start(
+            &shared,
+            seq,
+            &diagnostic,
+            Some(write_started_tx),
+        ));
+
+        let write_outcome = tokio::select! {
+            biased;
+            _ = &mut write_started_rx => {
+                time::timeout_at(deadline, &mut cancel_write)
+                    .await
+                    .unwrap_or_else(|_| {
+                        tracing::warn!(
+                            seq = seq,
+                            label = %diagnostic.label_log,
+                            elapsed_ms = diagnostic.elapsed_ms(),
+                            "{}",
+                            match lifecycle {
+                                ExecWaitLifecycle::OneShot => "exec operation cancel write timed out",
+                                ExecWaitLifecycle::Supervised => {
+                                    "supervised exec operation cancel write timed out"
+                                }
+                            }
+                        );
+                        Err(self.abandon_timed_out_operation(seq, true, lifecycle))
+                    })
+            }
+            result = &mut result_rx => {
+                return self
+                    .complete_taken_result(result)
+                    .map(ExecCancelWriteOutcome::Terminal);
+            }
+            _ = time::sleep_until(deadline) => {
+                return Err(self.abandon_timed_out_operation(seq, false, lifecycle));
+            }
+            result = &mut cancel_write => {
+                result
+            }
+        };
+
+        match write_outcome? {
+            ExecCancelFrameWriteOutcome::AlreadyTerminal => {
+                let result = result_rx.await;
+                self.complete_taken_result(result)
+                    .map(ExecCancelWriteOutcome::Terminal)
+            }
+            ExecCancelFrameWriteOutcome::Sent => {
+                self.result_rx = Some(result_rx);
+                lifecycle.log_cancel_sent(seq, &diagnostic);
+                Ok(ExecCancelWriteOutcome::CancelSent {
+                    seq,
+                    remaining: deadline.saturating_duration_since(Instant::now()),
+                })
+            }
+        }
     }
 }
 
@@ -336,10 +435,14 @@ impl ExecOperationHandle {
 
     /// Send an explicit cancel request and wait for a cancelled terminal result.
     ///
-    /// If terminal dispatch wins the race before cancel reaches the write
-    /// boundary, this returns that result without sending a stale cancel frame.
-    /// If cancel is sent but the terminal result does not arrive before
-    /// `timeout`, the connection is poisoned because guest process state is no
+    /// If the terminal result is already available or wins the race before
+    /// cancel reaches the write boundary, this returns that result without
+    /// sending a stale cancel frame. `timeout` bounds the full operation:
+    /// waiting to write cancel, writing cancel, and waiting for terminal proof.
+    /// If the timeout elapses before cancel frame writing starts, cancel did
+    /// not reach the guest and the connection is not poisoned. If cancel is
+    /// sent but the terminal result does not arrive before the remaining
+    /// timeout, the connection is poisoned because guest process state is no
     /// longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
@@ -366,43 +469,28 @@ impl ExecOperationHandle {
         mut self,
         timeout: Duration,
     ) -> io::Result<ExecCancelWaitResult> {
-        if let Some(result) = self.wait_core.try_take_ready_result()? {
-            return Ok(ExecCancelWaitResult {
-                result,
-                cancel_seq: None,
-            });
-        }
-
-        let seq = self
+        let (seq, remaining) = match self
             .wait_core
-            .active_seq_or_closed(ExecWaitLifecycle::OneShot.operation_closed_message())?;
-        let cancel_outcome = send_exec_cancel_frame_for_wait(
-            self.wait_core.shared(),
-            seq,
-            self.wait_core.diagnostic(),
-        )
-        .await?;
-        let cancel_seq = match cancel_outcome {
-            ExecCancelFrameWriteOutcome::Sent => {
-                ExecWaitLifecycle::OneShot.log_cancel_sent(seq, self.wait_core.diagnostic());
-                Some(seq)
+            .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::OneShot)
+            .await?
+        {
+            ExecCancelWriteOutcome::Terminal(result) => {
+                return Ok(ExecCancelWaitResult {
+                    result,
+                    cancel_seq: None,
+                });
             }
-            ExecCancelFrameWriteOutcome::AlreadyTerminal => None,
+            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
         };
 
-        let result = match cancel_seq {
-            Some(_) => {
-                self.wait_core
-                    .wait_with_timeout(timeout, true, ExecWaitLifecycle::OneShot)
-                    .await?
-            }
-            None => {
-                self.wait_core
-                    .wait_for_dispatched_terminal(ExecWaitLifecycle::OneShot)
-                    .await?
-            }
-        };
-        Ok(ExecCancelWaitResult { result, cancel_seq })
+        let result = self
+            .wait_core
+            .wait_with_timeout(remaining, true, ExecWaitLifecycle::OneShot)
+            .await?;
+        Ok(ExecCancelWaitResult {
+            result,
+            cancel_seq: Some(seq),
+        })
     }
 }
 
@@ -548,10 +636,14 @@ impl SupervisedExecHandle {
 
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
     ///
-    /// If terminal dispatch wins the race before cancel reaches the write
-    /// boundary, this returns that result without sending a stale cancel frame.
-    /// If cancel is sent but the terminal result does not arrive before
-    /// `timeout`, the connection is poisoned because guest process state is no
+    /// If the terminal result is already available or wins the race before
+    /// cancel reaches the write boundary, this returns that result without
+    /// sending a stale cancel frame. `timeout` bounds the full operation:
+    /// waiting to write cancel, writing cancel, and waiting for terminal proof.
+    /// If the timeout elapses before cancel frame writing starts, cancel did
+    /// not reach the guest and the connection is not poisoned. If cancel is
+    /// sent but the terminal result does not arrive before the remaining
+    /// timeout, the connection is poisoned because guest process state is no
     /// longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
@@ -569,46 +661,29 @@ impl SupervisedExecHandle {
         mut self,
         timeout: Duration,
     ) -> io::Result<ExecCancelWaitResult> {
-        if let Some(result) = self.wait_core.try_take_ready_result()? {
-            return Ok(ExecCancelWaitResult {
-                result,
-                cancel_seq: None,
-            });
-        }
-
-        let seq = self
+        let (seq, remaining) = match self
             .wait_core
-            .active_seq_or_closed(ExecWaitLifecycle::Supervised.operation_closed_message())?;
-        let cancel_outcome = send_exec_cancel_frame_for_wait(
-            self.wait_core.shared(),
-            seq,
-            self.wait_core.diagnostic(),
-        )
-        .await?;
-        let cancel_seq = match cancel_outcome {
-            ExecCancelFrameWriteOutcome::Sent => {
-                ExecWaitLifecycle::Supervised.log_cancel_sent(seq, self.wait_core.diagnostic());
-                Some(seq)
+            .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::Supervised)
+            .await?
+        {
+            ExecCancelWriteOutcome::Terminal(result) => {
+                return Ok(ExecCancelWaitResult {
+                    result,
+                    cancel_seq: None,
+                });
             }
-            ExecCancelFrameWriteOutcome::AlreadyTerminal => None,
+            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
         };
 
-        if cancel_seq.is_some() {
-            self.clear_unclaimed_stream_sender();
-        }
-        let result = match cancel_seq {
-            Some(_) => {
-                self.wait_core
-                    .wait_with_timeout(timeout, true, ExecWaitLifecycle::Supervised)
-                    .await?
-            }
-            None => {
-                self.wait_core
-                    .wait_for_dispatched_terminal(ExecWaitLifecycle::Supervised)
-                    .await?
-            }
-        };
-        Ok(ExecCancelWaitResult { result, cancel_seq })
+        self.clear_unclaimed_stream_sender();
+        let result = self
+            .wait_core
+            .wait_with_timeout(remaining, true, ExecWaitLifecycle::Supervised)
+            .await?;
+        Ok(ExecCancelWaitResult {
+            result,
+            cancel_seq: Some(seq),
+        })
     }
 }
 
