@@ -26,6 +26,11 @@ def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
     mitm_addon.wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout=timeout)
 
 
+def record_stranded_runner_usage_flush_signal() -> None:
+    with patch.object(mitm_addon, "_start_usage_flush_worker"):
+        mitm_addon._handle_runner_usage_flush_signal(0, None)
+
+
 @dataclass(frozen=True)
 class RunnerUsageFlushFiles:
     tmp_path: Path
@@ -551,7 +556,7 @@ class TestRunnerUsageFlushSignal:
             nonlocal flush_count
             flush_count += 1
 
-        mitm_addon._usage_flush_requested.set()
+        record_stranded_runner_usage_flush_signal()
         with (
             patch.object(
                 mitm_addon,
@@ -564,7 +569,7 @@ class TestRunnerUsageFlushSignal:
             assert flush_count == 1
 
     def test_reset_runner_usage_flush_state_clears_stranded_pending_signal(self):
-        mitm_addon._usage_flush_requested.set()
+        record_stranded_runner_usage_flush_signal()
 
         mitm_addon.reset_runner_usage_flush_state_for_tests()
 
