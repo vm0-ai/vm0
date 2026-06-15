@@ -2874,16 +2874,6 @@ function hasMissingResolvedSecrets(
   });
 }
 
-function hasBlankResolvedSecrets(
-  secrets: Record<string, string>,
-  referencedKeys: Set<string>,
-): boolean {
-  return [...referencedKeys].some((key) => {
-    const value = getOwnValue(secrets, key);
-    return value !== undefined && value.trim().length === 0;
-  });
-}
-
 function missingResolvedConnectorOwners(args: {
   readonly secrets: Record<string, string>;
   readonly referencedKeys: Set<string>;
@@ -2895,24 +2885,6 @@ function missingResolvedConnectorOwners(args: {
       continue;
     }
     owners.add(args.secretConnectorMap?.[key] ?? key);
-  }
-  return [...owners].sort();
-}
-
-function blankResolvedConnectorOwners(args: {
-  readonly secrets: Record<string, string>;
-  readonly referencedKeys: Set<string>;
-  readonly secretConnectorMap: Record<string, string> | undefined;
-}): readonly string[] {
-  const owners = new Set<string>();
-  for (const key of args.referencedKeys) {
-    const value = getOwnValue(args.secrets, key);
-    if (value === undefined) {
-      continue;
-    }
-    if (value.trim().length === 0) {
-      owners.add(args.secretConnectorMap?.[key] ?? key);
-    }
   }
   return [...owners].sort();
 }
@@ -3646,15 +3618,6 @@ export async function resolveFirewallAuth(
   });
   if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
     return connectorNotConfigured();
-  }
-  if (hasBlankResolvedSecrets(decryptedSecrets, referenced.secrets)) {
-    return tokenAccessResolutionFailed(
-      blankResolvedConnectorOwners({
-        secrets: decryptedSecrets,
-        referencedKeys: referenced.secrets,
-        secretConnectorMap: body.secretConnectorMap,
-      }),
-    );
   }
 
   return {

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { and, eq } from "drizzle-orm";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
@@ -16,6 +18,7 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { secrets } from "@vm0/db/schema/secret";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -24,6 +27,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { writeDb$ } from "../../external/db";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import {
   createBddApi,
@@ -36,6 +40,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 /**
@@ -49,6 +54,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
  */
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -56,6 +62,7 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const ORG_SENTINEL_USER_ID = "__org__";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
@@ -328,6 +335,25 @@ async function upsertOrgModelProvider(
     providerId: response.body.provider.id,
     created: response.body.created,
   };
+}
+
+async function overwriteOrgModelProviderSecret(
+  orgId: string,
+  name: string,
+  value: string,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .update(secrets)
+    .set({ encryptedValue: encryptSecretForTests(value) })
+    .where(
+      and(
+        eq(secrets.orgId, orgId),
+        eq(secrets.userId, ORG_SENTINEL_USER_ID),
+        eq(secrets.name, name),
+        eq(secrets.type, "model-provider"),
+      ),
+    );
 }
 
 async function updateFeatureSwitches(
@@ -1289,6 +1315,34 @@ describe("CHAT-02: explicit provider pins", () => {
 
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
+
+  it("rejects legacy blank OpenRouter provider secrets before runner claim", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
+    });
+    await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
+
+    const response = await requestSendMessageRaw(actor, {
+      agentId,
+      prompt: "run with a legacy blank openrouter provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-opus-4-7",
+      },
+    });
+
+    expect(response.status).toBe(503);
+    expectApiError(response.body);
+    expect(response.body.error.message).toContain(
+      "No model provider configured",
+    );
+  }, 60_000);
 });
 
 describe("CHAT-02: server-side model switches", () => {

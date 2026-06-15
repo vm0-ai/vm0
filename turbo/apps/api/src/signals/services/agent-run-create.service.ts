@@ -1049,6 +1049,10 @@ function modelProviderEnvironmentSecretValue(
     : secretValue;
 }
 
+function hasUsableModelProviderSecretValue(value: string): boolean {
+  return value.trim().length > 0;
+}
+
 function modelProviderEnvironment(
   id: string | null,
   type: ModelProviderType,
@@ -1429,14 +1433,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
+  const secretValue = await decryptStoredSecretValue(
+    row.encryptedValue,
+    args.featureSwitchContext,
+  );
+  if (!hasUsableModelProviderSecretValue(secretValue)) {
+    return null;
+  }
   return modelProviderEnvironment(
     row.id,
     row.type,
     config,
-    await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    ),
+    secretValue,
     args.selectedModelOverride ?? row.selectedModel,
   );
 }
