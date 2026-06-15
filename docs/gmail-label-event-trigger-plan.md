@@ -76,6 +76,12 @@ Required resources:
    - Name: `projects/vm0-web/topics/gmail-label-events`
    - IAM: grant `roles/pubsub.publisher` on the topic to:
      `serviceAccount:gmail-api-push@system.gserviceaccount.com`
+   - Organization policy note: Gmail push setup requires this Google-managed
+     service account. If `constraints/iam.allowedPolicyMemberDomains` blocks
+     the IAM binding, an organization policy administrator must adjust domain
+     restricted sharing for this project so the topic IAM policy can include
+     `serviceAccount:gmail-api-push@system.gserviceaccount.com` before
+     `users.watch` can work end to end.
 
 2. Push auth service account
 
@@ -104,11 +110,11 @@ Required resources:
    - Name: `projects/vm0-web/subscriptions/gmail-label-events-push`
    - Topic: `projects/vm0-web/topics/gmail-label-events`
    - Push endpoint:
-     `https://<api-origin>/api/internal/webhooks/gmail`
+     `https://<api-origin>/api/webhooks/gmail`
    - OIDC service account:
      `gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`
    - OIDC audience:
-     `https://<api-origin>/api/internal/webhooks/gmail`, or a stable explicit
+     `https://<api-origin>/api/webhooks/gmail`, or a stable explicit
      audience value stored in env.
 
 Do not create the push subscription until the API endpoint URL and expected
@@ -119,7 +125,7 @@ audience are finalized and deployed.
 Add explicit API env vars for the Gmail push integration:
 
 - `GMAIL_PUBSUB_TOPIC_NAME=projects/vm0-web/topics/gmail-label-events`
-- `GMAIL_PUBSUB_PUSH_AUDIENCE=<expected OIDC audience>`
+- `GMAIL_PUBSUB_PUSH_AUDIENCE=https://api.vm0.ai/api/webhooks/gmail`
 - `GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`
 
 The API does not need a GCP service account to receive Pub/Sub push messages or
@@ -245,7 +251,7 @@ New API endpoints must live in `apps/api`. Do not add Next.js
 Recommended new endpoint:
 
 ```text
-POST /api/internal/webhooks/gmail
+POST /api/webhooks/gmail
 ```
 
 If the Pub/Sub endpoint must be reachable on the web origin, add a rewrite in
@@ -303,7 +309,7 @@ sequenceDiagram
   Gmail-->>API: historyId and expiration
   API->>API: Store gmail_watch_state
   Gmail->>PubSub: Publish emailAddress and historyId
-  PubSub->>API: POST /api/internal/webhooks/gmail with OIDC JWT
+  PubSub->>API: POST /api/webhooks/gmail with OIDC JWT
   API->>API: Verify JWT audience and service account email
   API->>Gmail: users.history.list(startHistoryId)
   Gmail-->>API: Label/message changes
@@ -338,7 +344,7 @@ sequenceDiagram
 
 4. Pub/Sub push endpoint
 
-   - Add `POST /api/internal/webhooks/gmail` in `apps/api`.
+   - Add `POST /api/webhooks/gmail` in `apps/api`.
    - Verify Pub/Sub OIDC JWT.
    - Decode Pub/Sub message data.
    - Resolve watch state by `emailAddress`.

@@ -94,7 +94,7 @@ const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
   "/api/automations/webhooks/:token";
 const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
   /^\/api\/automations\/webhooks\/[^/]+$/;
-const INTERNAL_WEBHOOKS_GMAIL_REWRITE_SOURCE = "/api/internal/webhooks/gmail";
+const GMAIL_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/gmail";
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -539,6 +539,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-automations", "/api/cron/execute-automations"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
+  ["/api/cron/renew-gmail-watches", "/api/cron/renew-gmail-watches"],
   [
     "/api/cron/reconcile-billing-entitlements",
     "/api/cron/reconcile-billing-entitlements",
@@ -1202,7 +1203,7 @@ export const API_BACKEND_REWRITES = [
     "/api/automations/webhooks/:token",
     AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
   ],
-  [INTERNAL_WEBHOOKS_GMAIL_REWRITE_SOURCE, "/api/internal/webhooks/gmail"],
+  [GMAIL_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/gmail"],
   ["/api/automations", "/api/automations"],
   [
     AUTOMATIONS_ENABLE_REWRITE_SOURCE,

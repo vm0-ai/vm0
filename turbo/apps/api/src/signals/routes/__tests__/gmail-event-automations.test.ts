@@ -49,7 +49,7 @@ const mocks = createZeroRouteMocks(context);
 
 const SESSION_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const TOPIC_NAME = "projects/vm0-web/topics/gmail-label-events";
-const PUSH_AUDIENCE = "https://api.vm0.ai/api/internal/webhooks/gmail";
+const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-web.iam.gserviceaccount.com";
 const CRON_SECRET = "gmail-renew-cron-secret";
@@ -321,7 +321,7 @@ function pubSubPushBody(args: {
 
 async function postGmailPubSubPush(rawBody: string): Promise<Response> {
   const app = createApp({ signal: context.signal });
-  return await app.request("/api/internal/webhooks/gmail", {
+  return await app.request("/api/webhooks/gmail", {
     method: "POST",
     headers: {
       authorization: "Bearer pubsub-token",
@@ -524,7 +524,7 @@ describe("Gmail event automations", () => {
     await enableGmailEventTriggers(fixture);
 
     const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/internal/webhooks/gmail", {
+    const response = await app.request("/api/webhooks/gmail", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: pubSubPushBody({

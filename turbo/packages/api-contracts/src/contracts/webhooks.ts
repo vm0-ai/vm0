@@ -103,7 +103,7 @@ export const webhookAutomationInboundContract = c.router({
 export const webhookGmailPubSubContract = c.router({
   post: {
     method: "POST",
-    path: "/api/internal/webhooks/gmail",
+    path: "/api/webhooks/gmail",
     body: c.type<string>(),
     responses: {
       200: thirdPartyWebhookOkSchema,
