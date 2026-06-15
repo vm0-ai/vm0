@@ -17,30 +17,49 @@ pub(super) const EXEC_CAPTURED_OUTPUT_CAPTURED: u8 = 0x01;
 /// Exec terminal state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecTermination {
-    Exited { exit_code: i32 },
+    /// Process exited with an exit status.
+    Exited {
+        /// Signed process exit code reported by the guest.
+        exit_code: i32,
+    },
+    /// Operation timed out before completion.
     TimedOut,
+    /// Operation was cancelled before completion.
     Cancelled,
+    /// Guest failed to start the process.
     StartFailed,
+    /// Guest failed while waiting for the process to finish.
     WaitFailed,
 }
 
 /// Captured stdout/stderr in an exec result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecCapturedOutput<'a> {
+    /// This stream was not retained in the terminal result.
     Discarded,
-    Captured { bytes: &'a [u8], truncated: bool },
+    /// This stream was retained in the terminal result.
+    Captured {
+        /// Borrowed captured bytes from the decoded payload.
+        bytes: &'a [u8],
+        /// Whether retained bytes were marked as truncated.
+        truncated: bool,
+    },
 }
 
 /// Decoded exec_result payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedExecResult<'a> {
+    /// Terminal state reported by the guest.
     pub termination: ExecTermination,
     /// Exec operation wall-clock duration in milliseconds.
     ///
     /// This is encoded as `u32`, matching exec timeout width.
     pub duration_ms: u32,
+    /// Captured standard output state.
     pub stdout: ExecCapturedOutput<'a>,
+    /// Captured standard error state.
     pub stderr: ExecCapturedOutput<'a>,
+    /// UTF-8 diagnostic text borrowed from the decoded payload.
     pub diagnostic: &'a str,
 }
 
