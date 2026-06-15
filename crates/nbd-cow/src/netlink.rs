@@ -192,12 +192,14 @@ pub(crate) fn connect_device_with_state(
     size: u64,
     block_size: u64,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
+    let sockets_payload_len = validate_connect_socket_count(client_fds.len())?;
+    let sockets_nla = build_sockets_nla(client_fds, sockets_payload_len);
+
     let sock =
         socket::open_genl_socket().map_err(|source| ConnectDeviceError::NotSent { source })?;
     let family_id =
         resolve_nbd_family(&sock).map_err(|source| ConnectDeviceError::NotSent { source })?;
 
-    let sockets_nla = build_sockets_nla(client_fds);
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
@@ -352,9 +354,35 @@ fn parse_genl_completion(buf: &[u8], n: usize) -> Result<()> {
     }
 }
 
+fn validate_connect_socket_count(
+    socket_count: usize,
+) -> std::result::Result<usize, ConnectDeviceError> {
+    sockets_payload_len(socket_count).map_err(|source| ConnectDeviceError::NotSent { source })
+}
+
+fn sockets_payload_len(socket_count: usize) -> Result<usize> {
+    let Some(fd_nla_len) = wire::aligned_nla_len_for_payload(std::mem::size_of::<u32>()) else {
+        return Err(NbdCowError::Netlink(
+            "NBD socket fd attribute too large".into(),
+        ));
+    };
+    let Some(item_nla_len) = wire::aligned_nla_len_for_payload(fd_nla_len) else {
+        return Err(NbdCowError::Netlink(
+            "NBD socket item attribute too large".into(),
+        ));
+    };
+    let Some(payload_len) = item_nla_len.checked_mul(socket_count) else {
+        return Err(NbdCowError::Netlink("NBD socket list too large".into()));
+    };
+    if payload_len > wire::MAX_NLA_PAYLOAD_LEN {
+        return Err(NbdCowError::Netlink("NBD socket list too large".into()));
+    }
+    Ok(payload_len)
+}
+
 /// Build the nested NBD_ATTR_SOCKETS NLA from a list of client fds.
-fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
-    let mut sockets_payload = Vec::new();
+fn build_sockets_nla(client_fds: &[OwnedFd], sockets_payload_len: usize) -> Vec<u8> {
+    let mut sockets_payload = Vec::with_capacity(sockets_payload_len);
     for fd in client_fds {
         let raw_fd = fd.as_raw_fd() as u32;
         let fd_nla = wire::build_nla(NBD_SOCK_FD, &raw_fd.to_ne_bytes());
@@ -488,6 +516,32 @@ mod tests {
         assert!(
             matches!(result, Err(NbdCowError::Netlink(message)) if message == "unexpected ACK while resolving NBD family")
         );
+    }
+
+    #[test]
+    fn validate_connect_socket_count_accepts_max_nla_payload() {
+        let socket_item_len = sockets_payload_len(1).unwrap();
+        let max_socket_count = wire::MAX_NLA_PAYLOAD_LEN / socket_item_len;
+
+        assert_eq!(
+            validate_connect_socket_count(max_socket_count).unwrap(),
+            max_socket_count * socket_item_len
+        );
+    }
+
+    #[test]
+    fn validate_connect_socket_count_rejects_oversized_as_not_sent() {
+        let socket_item_len = sockets_payload_len(1).unwrap();
+        let max_socket_count = wire::MAX_NLA_PAYLOAD_LEN / socket_item_len;
+
+        let result = validate_connect_socket_count(max_socket_count + 1);
+
+        assert!(matches!(
+            result,
+            Err(ConnectDeviceError::NotSent {
+                source: NbdCowError::Netlink(message),
+            }) if message == "NBD socket list too large"
+        ));
     }
 
     #[test]
