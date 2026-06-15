@@ -9,7 +9,7 @@ describe("r2ImageTransformUrl", () => {
         height: 180,
       }),
     ).toBe(
-      "https://cdn.vm0.io/cdn-cgi/image/width=320,height=180,fit=scale-down/artifacts/user/id/image.png",
+      "https://cdn.vm0.io/cdn-cgi/image/width=320,height=180,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/id/image.png",
     );
   });
 
@@ -20,7 +20,7 @@ describe("r2ImageTransformUrl", () => {
         height: 96,
       }),
     ).toBe(
-      "https://cdn.vm7.io/cdn-cgi/image/width=96,height=96,fit=scale-down/artifacts/user/id/image.jpg",
+      "https://cdn.vm7.io/cdn-cgi/image/width=96,height=96,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/id/image.jpg",
     );
   });
 
@@ -31,7 +31,7 @@ describe("r2ImageTransformUrl", () => {
         { width: 800 },
       ),
     ).toBe(
-      "https://cdn.vm0.io/cdn-cgi/image/width=800,fit=scale-down/artifacts/user/id/image.png?token=abc#preview",
+      "https://cdn.vm0.io/cdn-cgi/image/width=800,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/id/image.png?token=abc#preview",
     );
   });
 
