@@ -91,6 +91,7 @@ import {
   cloudflareCategories,
   cloudflareCategoryOrder,
   cloudflareDefaultAllowed,
+  cloudflareDefaultUnknownPolicy,
   cloudflareFirewall,
 } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
@@ -830,7 +831,7 @@ const DEFAULT_ALLOWED: Partial<
 const DEFAULT_UNKNOWN_POLICY: Partial<
   Record<FirewallConnectorType, FirewallPolicyValue>
 > = {
-  cloudflare: "deny",
+  cloudflare: cloudflareDefaultUnknownPolicy,
 };
 
 /**
