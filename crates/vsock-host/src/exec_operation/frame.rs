@@ -1,8 +1,9 @@
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
+use tokio::sync::oneshot;
 use tokio::time::Instant;
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
@@ -84,12 +85,14 @@ fn mark_exec_operation_host_cancel_requested_for_wait(
     }
 }
 
-pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait(
+pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait_with_write_start(
     shared: &Arc<Shared>,
     seq: u32,
     diagnostic: &ExecOperationDiagnostic,
+    write_started_tx: Option<oneshot::Sender<()>>,
 ) -> io::Result<ExecCancelFrameWriteOutcome> {
     let payload = vsock_proto::encode_exec_cancel();
+    let mut write_started_tx = write_started_tx;
     let decision = write_frame_with_pre_write_decision(
         shared,
         MSG_EXEC_CANCEL,
@@ -97,7 +100,12 @@ pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait(
         &payload,
         Some(diagnostic.frame("cancel")),
         || match mark_exec_operation_host_cancel_requested_for_wait(shared, seq)? {
-            ExecCancelFrameWriteOutcome::Sent => Ok(FrameWriteDecision::Write),
+            ExecCancelFrameWriteOutcome::Sent => {
+                if let Some(write_started_tx) = write_started_tx.take() {
+                    let _ = write_started_tx.send(());
+                }
+                Ok(FrameWriteDecision::Write)
+            }
             ExecCancelFrameWriteOutcome::AlreadyTerminal => Ok(FrameWriteDecision::Skip),
         },
     )

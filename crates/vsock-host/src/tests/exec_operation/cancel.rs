@@ -221,6 +221,83 @@ async fn exec_cancel_sends_cancel_and_waits_for_cancelled_result() {
 }
 
 #[tokio::test]
+async fn exec_cancel_writer_lock_timeout_before_write_does_not_poison_or_send_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = start_capture_operation(&host, "cancel-lock-timeout").await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let writer_guard = host.shared.writer.lock().await;
+
+    let mut cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let err = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
+        .await
+        .expect("cancel_and_wait should return before the test guard")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    drop(writer_guard);
+    tokio::task::yield_now().await;
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out cancel must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after cancel timeout: {err}"),
+    }
+}
+
+#[tokio::test]
+async fn exec_cancel_terminal_result_wins_while_cancel_write_is_blocked() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = start_capture_operation(&host, "cancel-result-race").await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let writer_guard = host.shared.writer.lock().await;
+
+    let mut cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+
+    let result = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
+        .await
+        .expect("terminal result should win before cancel write starts")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    tokio::task::yield_now().await;
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("completed operation must not receive stale cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after terminal race: {err}"),
+    }
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn exec_cancel_after_terminal_result_returns_result_without_cancel_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -255,7 +332,8 @@ async fn exec_cancel_terminal_before_cancel_write_returns_result() {
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
     let writer_guard = host.shared.writer.lock().await;
-    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
     tokio::task::yield_now().await;
 
     send_exec_result(
@@ -289,7 +367,8 @@ async fn exec_cancel_error_before_cancel_write_returns_error_without_cancel_fram
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
     let writer_guard = host.shared.writer.lock().await;
-    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
     tokio::task::yield_now().await;
 
     let payload = vsock_proto::encode_error("guest rejected exec");
@@ -347,7 +426,8 @@ async fn exec_cancel_result_timeout_poisons_connection() {
     let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
-    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(50)).await });
     let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
