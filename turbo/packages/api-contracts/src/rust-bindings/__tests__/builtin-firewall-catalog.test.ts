@@ -53,6 +53,27 @@ function findGeneratedFile(
   return file;
 }
 
+function jsonPartFromModule(file: PythonBuiltinFirewallCatalogFile): string {
+  const prefix = "JSON_PART = ";
+  const line = file.content.split("\n").find((candidate) => {
+    return candidate.startsWith(prefix);
+  });
+  if (line === undefined) {
+    throw new Error(`missing JSON_PART assignment in ${file.path}`);
+  }
+
+  const literal = line.slice(prefix.length);
+  if (literal.startsWith('r"""') && literal.endsWith('"""')) {
+    return literal.slice(4, -3);
+  }
+
+  const value: unknown = JSON.parse(literal);
+  if (typeof value !== "string") {
+    throw new Error(`JSON_PART assignment in ${file.path} is not a string`);
+  }
+  return value;
+}
+
 describe("builtin firewall catalog", () => {
   it("includes connector and model-provider firewalls", () => {
     const catalog = buildBuiltinFirewallCatalog();
@@ -185,5 +206,23 @@ describe("builtin firewall catalog", () => {
     for (const file of partFiles) {
       expect(file.content).toContain("JSON_PART = ");
     }
+  });
+
+  it("renders chunk literals that preserve quote and unicode boundaries", () => {
+    const emoji = "\u{1f600}";
+    const firewall = testFirewall("chunky", [`GET /emoji-${emoji}`]);
+    const files = renderPythonBuiltinFirewallCatalogFiles({
+      catalog: testCatalog([firewall]),
+      maxJsonChunkLength: 1,
+    });
+    const partFiles = files.filter((file) => {
+      return file.path.startsWith("chunky_");
+    });
+    const renderedJson = partFiles.map(jsonPartFromModule).join("");
+
+    expect(partFiles.length).toBeGreaterThan(1);
+    expect(renderedJson).toContain("\\ud83d\\ude00");
+    expect(renderedJson).not.toContain(emoji);
+    expect(JSON.parse(renderedJson)).toStrictEqual(firewall);
   });
 });

@@ -100,8 +100,39 @@ function sortJson(value: unknown): JsonValue {
   return sorted;
 }
 
+function unicodeEscape(codePoint: number): string {
+  return `\\u${codePoint.toString(16).padStart(4, "0")}`;
+}
+
+function escapeNonAsciiJson(value: string): string {
+  let escaped = "";
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint === undefined) {
+      throw new Error("failed to read JSON code point");
+    }
+    if (codePoint <= 0x7f) {
+      escaped += char;
+      continue;
+    }
+    if (codePoint <= 0xffff) {
+      escaped += unicodeEscape(codePoint);
+      continue;
+    }
+
+    const shifted = codePoint - 0x10000;
+    escaped += unicodeEscape(0xd800 + (shifted >> 10));
+    escaped += unicodeEscape(0xdc00 + (shifted & 0x3ff));
+  }
+  return escaped;
+}
+
 function stableCompactJson(value: unknown): string {
-  return JSON.stringify(sortJson(value));
+  const json = JSON.stringify(sortJson(value));
+  if (json === undefined) {
+    throw new Error("failed to encode firewall catalog JSON");
+  }
+  return escapeNonAsciiJson(json);
 }
 
 function pythonEscapedStringLiteral(value: string): string {
@@ -124,7 +155,11 @@ function hasOddTrailingBackslashes(value: string): boolean {
 }
 
 function pythonJsonChunkLiteral(value: string): string {
-  if (!value.includes('"""') && !hasOddTrailingBackslashes(value)) {
+  if (
+    !value.includes('"""') &&
+    !value.endsWith('"') &&
+    !hasOddTrailingBackslashes(value)
+  ) {
     return `r"""${value}"""`;
   }
   return pythonEscapedStringLiteral(value);
