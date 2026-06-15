@@ -2476,6 +2476,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     });
     expect(campaignGrant?.amount).toBe(100_000);
 
+    const checkoutCreditExpiresAt = new Date(
+      Math.floor((now() + 45 * 86_400_000) / 1000) * 1000,
+    ).toISOString();
+    const invoiceCreditExpiresAt = Math.floor((now() + 90 * 86_400_000) / 1000);
+
     // Legacy custom credit checkouts without an invoice grant immediately.
     await api.postStripeEvent(
       stripeEvent({
@@ -2491,13 +2496,22 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "credit_purchase",
             orgId,
             creditsAmountMode: "amount_total",
+            creditsExpiresAt: checkoutCreditExpiresAt,
           },
         },
       }),
       [200],
     );
-    expect((await billing.readBillingStatus(actor)).credits).toBe(
-      baselineCredits + 200_000,
+    const afterLegacyCredit = await billing.readBillingStatus(actor);
+    expect(afterLegacyCredit.credits).toBe(baselineCredits + 200_000);
+    expect(afterLegacyCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "auto_recharge",
+          amount: 100_000,
+          expiresAt: checkoutCreditExpiresAt,
+        }),
+      ]),
     );
 
     // Invoice-backed custom credit checkouts defer to invoice.paid, which
@@ -2538,14 +2552,23 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "credit_purchase",
             orgId,
             creditsAmountMode: "amount_subtotal",
+            creditsExpiresAt: String(invoiceCreditExpiresAt),
           },
           parent: null,
         },
       }),
       [200],
     );
-    expect((await billing.readBillingStatus(actor)).credits).toBe(
-      baselineCredits + 300_000,
+    const afterInvoiceCredit = await billing.readBillingStatus(actor);
+    expect(afterInvoiceCredit.credits).toBe(baselineCredits + 300_000);
+    expect(afterInvoiceCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "auto_recharge",
+          amount: 100_000,
+          expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
+        }),
+      ]),
     );
   });
 

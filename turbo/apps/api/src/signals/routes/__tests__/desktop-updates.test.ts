@@ -75,6 +75,27 @@ describe("desktop update routes", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  it("redirects the dmg route to the current stable desktop dmg asset", async () => {
+    mockDesktopUpdateManifestForTest(
+      stableManifest("0.12.0", {
+        "0.12.0": darwinArm64Release(
+          "0.12.0",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-arm64-0.12.0.zip",
+        ),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-arm64-0.12.0.dmg",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("serves the current stable macOS arm64 update from the manifest", async () => {
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
@@ -161,5 +182,21 @@ describe("desktop update routes", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns not found when no dmg release is available", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.11.2/Zero-darwin-arm64-0.11.2.zip";
+    mockDesktopUpdateManifestForTest(
+      stableManifest("0.11.2", {
+        "0.11.2": darwinArm64Release("0.11.2", zipUrl),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+    );
+
+    expect(response.status).toBe(404);
   });
 });
