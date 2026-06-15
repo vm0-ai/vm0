@@ -32,7 +32,7 @@ export function isOAuthProviderHttpError(
  * Attempts to parse the body as JSON to extract standard OAuth error fields
  * (`error`, `error_description`) and provider-specific subtype details
  * (`error_subtype`). Falls back to raw text if not JSON.
- * Truncates long bodies to avoid noisy logs.
+ * Truncates long provider-controlled diagnostics to avoid noisy logs.
  */
 export async function throwOAuthError(
   provider: string,
@@ -63,7 +63,7 @@ export async function throwOAuthError(
         if (errorCode) {
           oauthError = errorCode;
           oauthErrorSubtype = errorSubtype ?? undefined;
-          detail = errorDesc ? ` ${errorCode} (${errorDesc})` : ` ${errorCode}`;
+          detail = oauthErrorDetail(errorCode, errorDesc);
         } else {
           detail = responseBodyDetail(raw);
         }
@@ -83,8 +83,22 @@ export async function throwOAuthError(
   );
 }
 
+function oauthErrorDetail(
+  errorCode: string,
+  errorDescription: string | null,
+): string {
+  const code = truncatedDiagnostic(errorCode);
+  return errorDescription
+    ? ` ${code} (${truncatedDiagnostic(errorDescription)})`
+    : ` ${code}`;
+}
+
 function responseBodyDetail(raw: string): string {
-  const truncated =
-    raw.length > MAX_BODY_LENGTH ? `${raw.slice(0, MAX_BODY_LENGTH)}...` : raw;
-  return ` ${truncated}`;
+  return ` ${truncatedDiagnostic(raw)}`;
+}
+
+function truncatedDiagnostic(value: string): string {
+  return value.length > MAX_BODY_LENGTH
+    ? `${value.slice(0, MAX_BODY_LENGTH)}...`
+    : value;
 }

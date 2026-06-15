@@ -134,6 +134,27 @@ describe("throwOAuthError", () => {
     expect(detail.length).toBeLessThanOrEqual(504); // 500 + "..."
   });
 
+  it("truncates long OAuth error descriptions", async () => {
+    const longDescription = "x".repeat(600);
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: longDescription,
+      }),
+    );
+
+    const error = await throwOAuthError("Notion", "refresh", response).catch(
+      (e: Error) => {
+        return e;
+      },
+    );
+
+    expect(error.message).toBe(
+      `Notion token refresh failed: 400 invalid_grant (${"x".repeat(500)}...)`,
+    );
+  });
+
   it("includes full JSON body when no standard error fields", async () => {
     const response = makeResponse(
       400,
