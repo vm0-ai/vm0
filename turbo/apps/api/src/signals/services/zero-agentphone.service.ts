@@ -57,6 +57,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
@@ -1745,6 +1746,7 @@ const runAgentForAgentPhone$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope,
         selectedModelOverride: args.modelRoute?.selectedModel,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
             internalKind: "agentphone",

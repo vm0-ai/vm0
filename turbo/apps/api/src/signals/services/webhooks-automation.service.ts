@@ -13,6 +13,7 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { postAutomationUserMessage } from "../routes/zero-chat-messages";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
@@ -252,6 +253,7 @@ export const dispatchAutomationWebhook$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );

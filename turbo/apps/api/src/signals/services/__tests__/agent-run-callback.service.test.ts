@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
@@ -42,6 +43,7 @@ import { createFixtureTracker } from "../../routes/__tests__/helpers/zero-route-
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
+  seedChatThread$,
   seedRun$,
   seedUsageInsightFixture$,
   type UsageInsightFixture,
@@ -69,13 +71,19 @@ const TELEGRAM_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/telegram";
 const AGENTPHONE_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/agentphone";
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
 interface AgentCallbackRunFixture extends UsageInsightFixture {
   readonly composeId: string;
+  readonly agentId: string;
   readonly runId: string;
+}
+
+interface ChatCallbackRunFixture extends AgentCallbackRunFixture {
+  readonly threadId: string;
 }
 
 interface Vm0ProviderKeyFixture {
@@ -129,7 +137,7 @@ async function seedAgentCallbackRun(
   const fixture = await trackFixture(
     store.set(seedUsageInsightFixture$, undefined, context.signal),
   );
-  const { composeId } = await store.set(
+  const { composeId, agentId } = await store.set(
     seedCompose$,
     { orgId: fixture.orgId, userId: fixture.userId },
     context.signal,
@@ -147,7 +155,45 @@ async function seedAgentCallbackRun(
     },
     context.signal,
   );
-  return { ...fixture, composeId, runId };
+  return { ...fixture, composeId, agentId, runId };
+}
+
+async function seedChatCallbackRun(
+  options: {
+    readonly status?: "running" | "completed" | "failed";
+    readonly prompt?: string;
+    readonly error?: string | null;
+  } = {},
+): Promise<ChatCallbackRunFixture> {
+  const fixture = await trackFixture(
+    store.set(seedUsageInsightFixture$, undefined, context.signal),
+  );
+  const { composeId, agentId } = await store.set(
+    seedCompose$,
+    { orgId: fixture.orgId, userId: fixture.userId },
+    context.signal,
+  );
+  const threadId = await store.set(
+    seedChatThread$,
+    { userId: fixture.userId, composeId },
+    context.signal,
+  );
+  const { runId } = await store.set(
+    seedRun$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      composeId,
+      triggerSource: "web",
+      chatThreadId: threadId,
+      status: options.status ?? "completed",
+      prompt: options.prompt ?? "Summarize the chat callback.",
+      error: options.error ?? null,
+      lastEventSequence: null,
+    },
+    context.signal,
+  );
+  return { ...fixture, composeId, agentId, runId, threadId };
 }
 
 function mockRunOutput(result: string): void {
@@ -161,6 +207,27 @@ function mockRunOutput(result: string): void {
   });
 }
 
+function mockChatOutput(result: string): void {
+  context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    const apl = typeof args[0] === "string" ? args[0] : "";
+    return Promise.resolve(
+      apl.includes("agent-run-events")
+        ? [
+            {
+              eventType: "assistant",
+              sequenceNumber: 0,
+              eventData: {
+                message: {
+                  content: [{ type: "text", text: result }],
+                },
+              },
+            },
+          ]
+        : [],
+    );
+  });
+}
+
 function captureOpenRouterRequests(summary: string): OpenRouterRequest[] {
   const requests: OpenRouterRequest[] = [];
   mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
@@ -169,6 +236,49 @@ function captureOpenRouterRequests(summary: string): OpenRouterRequest[] {
       requests.push((await request.json()) as OpenRouterRequest);
       return HttpResponse.json({
         choices: [{ message: { content: summary } }],
+      });
+    }),
+  );
+  return requests;
+}
+
+function mockChatOpenRouterCompletions(): OpenRouterRequest[] {
+  const requests: OpenRouterRequest[] = [];
+  mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+  server.use(
+    http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
+      const body = (await request.json()) as OpenRouterRequest;
+      requests.push(body);
+      const systemPrompt = body.messages[0]?.content ?? "";
+      if (
+        systemPrompt.includes("Summarize the result of this chat agent run")
+      ) {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Chat run summary" } }],
+        });
+      }
+      if (systemPrompt.includes("Generate a short, descriptive title")) {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Chat Callback Title" } }],
+        });
+      }
+      if (
+        systemPrompt.includes("Generate up to three concise follow-up prompts")
+      ) {
+        return HttpResponse.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify([
+                  { prompt: "Ask a follow-up", kind: "talk" },
+                ]),
+              },
+            },
+          ],
+        });
+      }
+      return HttpResponse.json({
+        choices: [{ message: { content: "Chat notification summary" } }],
       });
     }),
   );
@@ -233,6 +343,21 @@ async function readSummary(runId: string): Promise<string | null | undefined> {
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return row?.summary;
+}
+
+async function readChatCallbackMessages(runId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runLifecycleEvent: chatMessages.runLifecycleEvent,
+      sequenceNumber: chatMessages.sequenceNumber,
+      recommendedFollowups: chatMessages.recommendedFollowups,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.runId, runId))
+    .orderBy(chatMessages.createdAt, chatMessages.sequenceNumber);
 }
 
 async function readTrigger(triggerId: string) {
@@ -1623,6 +1748,141 @@ describe("dispatchRunCallbacks$ AgentPhone internal dispatch", () => {
     await expect(readCallback(callbackId)).resolves.toMatchObject({
       status: "delivered",
       attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ chat internal dispatch", () => {
+  it("dispatches typed chat callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedChatCallbackRun();
+    mockChatOutput("Typed chat callback finished.");
+    const openRouterRequests = mockChatOpenRouterCompletions();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(openRouterRequests.length).toBeGreaterThanOrEqual(3);
+    await expect(readSummary(fixture.runId)).resolves.toBe("Chat run summary");
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: "Typed chat callback finished.",
+          runLifecycleEvent: null,
+          sequenceNumber: 0,
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: null,
+          runLifecycleEvent: "completed",
+          recommendedFollowups: [{ prompt: "Ask a follow-up", kind: "talk" }],
+        }),
+      ]),
+    );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "chat",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+    expect((await readCallback(callbackId))?.deliveredAt).toBeInstanceOf(Date);
+  });
+
+  it("dispatches legacy chat callback URLs through the same ccstate path", async () => {
+    const fixture = await seedChatCallbackRun();
+    mockChatOutput("Legacy chat callback finished.");
+    mockChatOpenRouterCompletions();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: CHAT_CALLBACK_URL,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: "Legacy chat callback finished.",
+          runLifecycleEvent: null,
+          sequenceNumber: 0,
+        }),
+      ]),
+    );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: CHAT_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("keeps typed chat progress callbacks as no-ops without fetching the route", async () => {
+    const fixture = await seedChatCallbackRun({ status: "running" });
+    context.mocks.axiom.query.mockImplementation(() => {
+      throw new Error("chat progress callbacks should not query output");
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual([]);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "chat",
+      status: "pending",
+      attempts: 0,
       lastError: null,
     });
   });

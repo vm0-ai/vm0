@@ -55,8 +55,6 @@ const store = createStore();
 const writeDb = store.set(writeDb$);
 const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
 const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
-const CHAT_CALLBACK_PATH = "/api/internal/callbacks/chat";
-
 interface SeedEmailOutboxOptions {
   readonly subject: string;
   readonly to: string;
@@ -1522,8 +1520,6 @@ describe("HOOK-01: schedule reschedule callbacks through internal dispatch", () 
     const prompt = "Run the loop callback report.";
     const base = now();
     mockNow(base);
-    webhooks.captureInternalCallbackDeliveries(CHAT_CALLBACK_PATH);
-
     const deployed = await api.deployAutomation(actor, {
       name: uniqueAutomationName("bdd-loop-cb"),
       agentId,
@@ -1587,13 +1583,10 @@ describe("HOOK-01: schedule reschedule callbacks through internal dispatch", () 
   it("increments cron failures through direct trigger callbacks", async () => {
     const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
-    const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledScheduleActor();
     const prompt = "Run the cron failure report.";
     const base = now();
     mockNow(base);
-    webhooks.captureInternalCallbackDeliveries(CHAT_CALLBACK_PATH);
-
     const deployed = await api.deployAutomation(actor, {
       name: uniqueAutomationName("bdd-cron-cb"),
       agentId,

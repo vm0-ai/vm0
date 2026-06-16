@@ -13,7 +13,7 @@ import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
-import { visibleChatMessageCondition } from "./zero-chat-thread.service";
+import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =

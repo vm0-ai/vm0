@@ -431,7 +431,7 @@ async function requestSendMessageWithBearer(
 describe("CHAT-02: web chat send and client-id idempotency", () => {
   it("creates a web chat run and replays client ids idempotently", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
     const clientMessageId = randomUUID();
@@ -542,7 +542,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
 
   it("adds chat stream context only for opted-in web chat sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const disabled = await sendChatRun(actor, {
       agentId,
@@ -622,7 +622,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
 describe("CHAT-02: interrupting active chat runs", () => {
   it("interrupts an active run, guards interrupt ids, and feeds cancelled rounds into the next run", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -766,7 +766,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
 describe("CHAT-02: queueing and recalling messages", () => {
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -931,7 +931,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
 describe("CHAT-02: org queue markers", () => {
   it("marks queued chat runs and revokes the marker on dequeue", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
 
     const blocker = await chat.requestSendMessage(
@@ -1085,7 +1085,7 @@ describe("CHAT-02: org queue markers", () => {
 describe("CHAT-02: dispatch failure", () => {
   it("fails the run and delivers the terminal chat callback when dispatch cannot start", async () => {
     const { actor, agentId } = await entitledChatActor();
-    const deliveries = chatCallbacks.proxyChatCallbackToApp();
+    const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
 
     const sent = await chat.requestSendMessage(
@@ -1101,20 +1101,6 @@ describe("CHAT-02: dispatch failure", () => {
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
     expect(run.error).toContain("RUNNER_DEFAULT_GROUP");
-
-    // The terminal chat callback is dispatched after the response returns,
-    // so poll until the delivery has been captured before asserting on it.
-    await expect
-      .poll(() => {
-        return deliveries.length;
-      })
-      .toBe(1);
-    const delivery: unknown = JSON.parse(deliveries[0]?.body ?? "{}");
-    expect(delivery).toMatchObject({
-      runId: sent.body.runId,
-      status: "failed",
-      payload: { threadId: sent.body.threadId, agentId },
-    });
 
     const messages = await waitForThreadMessages(
       actor,
@@ -1140,6 +1126,7 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected a failed lifecycle marker");
     }
     expect(failedMarker.error).toStrictEqual(expect.any(String));
+    expect(routeRequests()).toBe(0);
   }, 60_000);
 });
 
@@ -1203,7 +1190,7 @@ describe("CHAT-02: admission without spendable credits", () => {
 describe("CHAT-02: explicit provider pins", () => {
   it("routes explicit provider pins into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
@@ -1465,7 +1452,7 @@ describe("CHAT-02: server-side model switches", () => {
   it("switches models server-side and starts a fresh session with prior web context", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-opus-4-6",
@@ -1561,7 +1548,7 @@ describe("CHAT-02: server-side model switches", () => {
   it("re-resolves the provider route from current policy on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -1696,9 +1683,7 @@ describe("CHAT-02: server-side model switches", () => {
 describe("CHAT-02: incomplete-round context", () => {
   it("injects incomplete rounds and truncates old content chronologically", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    // Callbacks are captured (not delivered), so the failed rounds carry no
-    // assistant rows and the context renders the no-response placeholder.
-    chatCallbacks.captureChatCallbackDeliveries();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -1739,7 +1724,7 @@ describe("CHAT-02: incomplete-round context", () => {
 describe("CHAT-02: prior rounds and thread titles", () => {
   it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
     let upstreamAuthorization: string | null = null;
     let titleRequests = 0;
@@ -1876,7 +1861,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 describe("CHAT-02: generation templates and attachments", () => {
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const template = PRESENTATION_TEMPLATE_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
@@ -1948,7 +1933,7 @@ describe("CHAT-02: generation templates and attachments", () => {
 
   it("keeps an attached illustration style sticky across follow-ups and clears it for new threads", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
       throw new Error("Expected a registered illustration style");
@@ -2112,7 +2097,7 @@ describe("CHAT-02: generation templates and attachments", () => {
 
   it("persists attachments and injects them into the run prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const fileId = randomUUID();
     const filename = "diagram final 100%.png";
 
@@ -2154,7 +2139,7 @@ describe("CHAT-02: generation templates and attachments", () => {
 describe("CHAT-02: queued attachments on auto-send", () => {
   it("carries queued attachments into the auto-sent follow-up run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -2225,7 +2210,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 describe("CHAT-02/FILE-03: computer-use host grants", () => {
   it("grants computer-use capability only for a selected host", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     await cu.enableComputerUse(actor);
     const { hostId, hostToken } = await cu.startComputerUseHost(actor);
 

@@ -68,6 +68,9 @@ export const dispatchProgressCallbacks$ = command(
     await Promise.allSettled(
       callbacks.map(async (callback) => {
         const internalKind = internalRunCallbackKindForRecord(callback);
+        if (internalKind === "chat") {
+          return;
+        }
         if (internalKind === "agentphone") {
           await set(
             handleAgentPhoneInternalCallback$,

@@ -6,8 +6,9 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
+import { computeHmacSignature } from "../../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../../lib/env";
-import { nowDate } from "../../../../lib/time";
+import { now, nowDate } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import {
   accept,
@@ -29,6 +30,15 @@ type OrgModelPolicies = z.infer<
 interface CapturedChatCallbackDelivery {
   readonly body: string;
   readonly headers: Record<string, string>;
+}
+
+interface ChatCallbackRequestBody {
+  readonly callbackId?: string;
+  readonly runId: string;
+  readonly status: "completed" | "failed" | "progress";
+  readonly result?: Record<string, unknown>;
+  readonly error?: string;
+  readonly payload: unknown;
 }
 
 const openRouterCompletionBodySchema = z.object({
@@ -114,52 +124,38 @@ export function createChatCallbacksApi(context: TestContext) {
   }
 
   return {
-    /**
-     * Forwards real dispatcher deliveries of the chat callback into the Hono
-     * app and records every delivery so chains can assert what the dispatcher
-     * actually sent (status, payload, signature headers).
-     */
-    proxyChatCallbackToApp(): readonly CapturedChatCallbackDelivery[] {
-      const deliveries: CapturedChatCallbackDelivery[] = [];
+    failIfChatCallbackRouteIsFetched(): () => number {
+      let requests = 0;
       server.use(
-        http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-          const body = await request.text();
-          deliveries.push({
-            body,
-            headers: Object.fromEntries(request.headers.entries()),
-          });
-          const app = createApp({ signal: context.signal });
-          return await app.request(CHAT_CALLBACK_PATH, {
-            method: "POST",
-            headers: request.headers,
-            body,
-          });
-        }),
-      );
-      return deliveries;
-    },
-
-    /**
-     * Records dispatcher deliveries without letting them reach the route
-     * (responds 500, marking the callback row failed). The captured raw body
-     * and headers form a legitimately signed request that tests replay into
-     * the app any number of times.
-     */
-    captureChatCallbackDeliveries(): readonly CapturedChatCallbackDelivery[] {
-      const deliveries: CapturedChatCallbackDelivery[] = [];
-      server.use(
-        http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-          deliveries.push({
-            body: await request.text(),
-            headers: Object.fromEntries(request.headers.entries()),
-          });
-          return HttpResponse.json(
-            { error: "captured for replay" },
-            { status: 500 },
+        http.post(CHAT_CALLBACK_URL, () => {
+          requests += 1;
+          return HttpResponse.text(
+            "chat callback route should not be fetched",
+            {
+              status: 500,
+            },
           );
         }),
       );
-      return deliveries;
+      return () => {
+        return requests;
+      };
+    },
+
+    signedChatCallbackDelivery(
+      body: ChatCallbackRequestBody,
+      secret: string,
+    ): CapturedChatCallbackDelivery {
+      const rawBody = JSON.stringify(body);
+      const timestamp = Math.floor(now() / 1000);
+      return {
+        body: rawBody,
+        headers: {
+          "content-type": "application/json",
+          "x-vm0-signature": computeHmacSignature(rawBody, secret, timestamp),
+          "x-vm0-timestamp": timestamp.toString(),
+        },
+      };
     },
 
     /**
