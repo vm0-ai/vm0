@@ -10,10 +10,6 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  slackOrgCallbackPayloadSchema,
-  type SlackOrgCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -45,6 +41,10 @@ import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
+import {
+  slackOrgCallbackPayloadSchema,
+  type SlackOrgCallbackPayload,
+} from "./slack-org-callback-payload";
 
 const L = logger("InternalCallbacksSlackOrg");
 const ORG_SENTINEL_USER_ID = "__org__";

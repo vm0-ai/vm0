@@ -188,12 +188,6 @@ export {
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
 export {
-  internalCallbacksSlackOrgContract,
-  slackOrgCallbackPayloadSchema,
-  type InternalCallbacksSlackOrgContract,
-  type SlackOrgCallbackPayload,
-} from "./internal-callbacks-slack-org";
-export {
   zeroEmailInboundContract,
   zeroEmailReplyCallbackContract,
   zeroEmailReplyCallbackPayloadSchema,
