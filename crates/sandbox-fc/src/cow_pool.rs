@@ -836,12 +836,10 @@ fn create_cow_file(
     match &config.golden_cow {
         Some(golden) => {
             sparse_copy(golden, cow_file)?;
-            // Also copy the bitmap sidecar if it exists (for snapshot restore).
+            // Snapshot restore requires the dirty bitmap sidecar to preserve COW reads.
             let golden_bitmap = nbd_cow::cow::bitmap_path_for(golden);
-            if golden_bitmap.exists() {
-                let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
-                sparse_copy(&golden_bitmap, &cow_bitmap)?;
-            }
+            let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
+            sparse_copy(&golden_bitmap, &cow_bitmap)?;
         }
         None => {
             let f = std::fs::File::create(cow_file)
@@ -1850,21 +1848,24 @@ mod tests {
     }
 
     #[test]
-    fn create_slot_with_golden_cow_without_bitmap_succeeds() {
+    fn create_slot_with_golden_cow_without_bitmap_fails() {
         let tmp = tempfile::tempdir().unwrap();
         let workspaces = tmp.path().join("workspaces");
         let golden = tmp.path().join("golden.img");
         std::fs::write(&golden, b"golden").unwrap();
 
         let config = CowPoolConfig {
-            workspaces_dir: workspaces,
+            workspaces_dir: workspaces.clone(),
             base_size: 64 * 1024 * 1024,
             golden_cow: Some(golden),
         };
-        let slot = create_slot(&config).unwrap();
-        assert!(slot.workspace().join("cow.img").exists());
-        assert!(!nbd_cow::cow::bitmap_path_for(&slot.cow_file()).exists());
-        destroy_slot_sync(slot);
+        let err = create_slot(&config).unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::CowFileCreation(_)),
+            "expected CowFileCreation, got {err}"
+        );
+        let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
+        assert_eq!(entries.len(), 0);
     }
 
     #[test]
