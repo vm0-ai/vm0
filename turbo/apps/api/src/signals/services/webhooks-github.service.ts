@@ -36,6 +36,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("WebhookGithub");
@@ -1130,6 +1131,7 @@ const runAgentForGitHub$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope,
         selectedModelOverride: args.modelRoute?.selectedModel,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
             internalKind: "github:issues",

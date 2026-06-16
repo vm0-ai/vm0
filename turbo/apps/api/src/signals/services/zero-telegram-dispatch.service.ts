@@ -26,6 +26,7 @@ import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 const L = logger("TelegramDispatch");
@@ -911,6 +912,7 @@ const runAgentForTelegram$ = command(
         appendSystemPrompt: args.appendSystemPrompt,
         triggerSource: "telegram",
         userInfoExtras: args.userInfoExtras,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
             internalKind: "telegram",

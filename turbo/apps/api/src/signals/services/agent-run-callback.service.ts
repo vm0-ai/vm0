@@ -274,6 +274,14 @@ export async function dispatchRunCallbacks(
   return results;
 }
 
+export async function dispatchFailedRunCallbacks(
+  db: Db,
+  runId: string,
+  error: string,
+): Promise<void> {
+  await dispatchRunCallbacks(db, runId, "failed", undefined, error);
+}
+
 export const dispatchRunCallbacks$ = command(
   async (
     { set },

@@ -17,6 +17,7 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "../zero-model-selection.service";
+import { dispatchFailedRunCallbacks } from "../agent-run-callback.service";
 import { createZeroRun$ } from "../zero-runs-create.service";
 import {
   automationRowToTimeAutomation,
@@ -396,6 +397,7 @@ const runTriggerNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );

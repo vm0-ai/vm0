@@ -80,6 +80,7 @@ import {
   userModelPreference,
 } from "./zero-user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { safeJsonParse, settle, tapError } from "../utils";
 
@@ -1187,6 +1188,7 @@ const runAgentForSlackOrg$ = command(
         modelProviderId: params.modelProviderId,
         modelProviderCredentialScope: params.modelProviderCredentialScope,
         selectedModelOverride: params.selectedModelOverride,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
             internalKind: "slack:org",

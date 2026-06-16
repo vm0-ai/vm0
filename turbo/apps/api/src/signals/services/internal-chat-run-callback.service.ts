@@ -58,6 +58,7 @@ import {
   generateChatThreadRecommendedFollowups,
   generateChatNotificationSummary,
 } from "./zero-chat-title.service";
+import { createZeroRun$ } from "./zero-runs-create.service";
 import { settle, tapError } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 
@@ -1764,13 +1765,12 @@ export const handleChatInternalCallback$ = command(
           return get(resolveAttachFileUrls(userId, fileIds));
         },
         createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
-          const { createZeroRun$ } = await import("./zero-runs-create.service");
           const runResult = await set(
             createZeroRun$,
             buildQueuedCreateZeroRunArgs(runInput, apiStartTime),
             inputSignal,
           );
-          if (runResult.status !== 201) {
+          if (runResult.status !== 201 || runResult.body.status === "failed") {
             log.warn("Auto-send failed to create run", {
               threadId: runInput.threadId,
               status: runResult.status,
