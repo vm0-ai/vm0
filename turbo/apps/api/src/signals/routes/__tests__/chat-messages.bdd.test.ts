@@ -2029,7 +2029,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Artifact Template Context");
-    expect(freshPrompt).not.toContain("zero generate");
+    // The base agent prompt always carries generic `zero generate` guidance, so
+    // assert the absence of the template-specific command, not the bare verb.
+    expect(freshPrompt).not.toContain(
+      "zero generate image --provider built-in --style",
+    );
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);
