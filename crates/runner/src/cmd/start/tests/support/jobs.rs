@@ -1,44 +1,12 @@
 use super::super::super::*;
 use super::env::MockRunEnv;
 use crate::provider::JobCandidate;
+use crate::test_fixtures::execution_context_for_test;
 
 pub(in super::super) const TEST_SESSION_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
 
 pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
-    crate::types::ExecutionContext {
-        run_id,
-        prompt: "test".into(),
-        append_system_prompt: None,
-        _agent_compose_version_id: None,
-        vars: None,
-        checkpoint_id: None,
-        sandbox_token: "tok".into(),
-        storage_manifest: None,
-        environment: None,
-        resume_session: None,
-        secret_values: None,
-        encrypted_secrets: None,
-        secret_connector_map: None,
-        secret_connector_metadata_map: None,
-        cli_agent_type: String::new(),
-        debug_no_mock_claude: None,
-        debug_no_mock_codex: None,
-        api_start_time: None,
-        user_timezone: None,
-        capture_network_bodies: None,
-        firewalls: None,
-        network_policies: None,
-        disallowed_tools: None,
-        tools: None,
-        settings: None,
-        experimental_profile: None,
-        feature_flags: None,
-        billable_firewalls: vec![],
-        model_usage_provider: None,
-        chat_stream_channel: None,
-        chat_stream_topic: None,
-        chat_stream_token: None,
-    }
+    execution_context_for_test(run_id)
 }
 
 /// Push a job to the mock provider and pre-configure its claim result.
