@@ -61,6 +61,85 @@ pub(crate) fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FirecrackerCandidateResolution {
+    StableKnownWorkspace {
+        pid: u32,
+        ppid: Option<u32>,
+        process_stat: ProcessStat,
+        sandbox_id: String,
+        base_dir: PathBuf,
+    },
+    StableUnknownWorkspace {
+        pid: u32,
+        ppid: Option<u32>,
+        process_stat: ProcessStat,
+    },
+    UnidentifiedLive {
+        pid: u32,
+        ppid: Option<u32>,
+    },
+    NotPresent,
+}
+
+impl FirecrackerCandidateResolution {
+    fn into_process_info(self) -> Option<FirecrackerProcessInfo> {
+        match self {
+            Self::StableKnownWorkspace {
+                pid,
+                ppid,
+                process_stat,
+                sandbox_id,
+                base_dir,
+            } => {
+                let identity = Some(FirecrackerProcessIdentity {
+                    pid,
+                    pgid: process_stat.pgid,
+                    starttime: process_stat.starttime,
+                    sandbox_id: sandbox_id.clone(),
+                    base_dir: Some(base_dir.clone()),
+                });
+                Some(FirecrackerProcessInfo {
+                    pid,
+                    ppid,
+                    sandbox_id,
+                    base_dir: Some(base_dir),
+                    identity,
+                })
+            }
+            Self::StableUnknownWorkspace {
+                pid,
+                ppid,
+                process_stat,
+            } => {
+                let sandbox_id = fallback_sandbox_id(pid);
+                let identity = Some(FirecrackerProcessIdentity {
+                    pid,
+                    pgid: process_stat.pgid,
+                    starttime: process_stat.starttime,
+                    sandbox_id: sandbox_id.clone(),
+                    base_dir: None,
+                });
+                Some(FirecrackerProcessInfo {
+                    pid,
+                    ppid,
+                    sandbox_id,
+                    base_dir: None,
+                    identity,
+                })
+            }
+            Self::UnidentifiedLive { pid, ppid } => {
+                Some(unidentified_firecracker_process(pid, ppid))
+            }
+            Self::NotPresent => None,
+        }
+    }
+}
+
+fn fallback_sandbox_id(pid: u32) -> String {
+    format!("pid-{pid}")
+}
+
 async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
     let before = read_process_stat(pid).await?;
     let argv = read_cmdline(pid).await?;
@@ -105,19 +184,68 @@ fn unidentified_firecracker_process(pid: u32, ppid: Option<u32>) -> FirecrackerP
     FirecrackerProcessInfo {
         pid,
         ppid,
-        sandbox_id: format!("pid-{pid}"),
+        sandbox_id: fallback_sandbox_id(pid),
         base_dir: None,
         identity: None,
     }
 }
 
-async fn unidentified_firecracker_if_present(pid: u32) -> Option<FirecrackerProcessInfo> {
-    let stat = read_process_stat(pid).await?;
+async fn unresolved_firecracker_resolution_if_present(pid: u32) -> FirecrackerCandidateResolution {
+    let Some(stat) = read_process_stat(pid).await else {
+        return FirecrackerCandidateResolution::NotPresent;
+    };
     let argv = read_cmdline(pid).await;
-    if !should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
-        return None;
+    if should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
+        FirecrackerCandidateResolution::UnidentifiedLive {
+            pid,
+            ppid: read_ppid(pid).await,
+        }
+    } else {
+        FirecrackerCandidateResolution::NotPresent
     }
-    Some(unidentified_firecracker_process(pid, read_ppid(pid).await))
+}
+
+fn stable_firecracker_resolution(
+    pid: u32,
+    ppid: Option<u32>,
+    cwd_info: Option<(String, PathBuf)>,
+    initial_stat: ProcessStat,
+    process_stat: ProcessStat,
+) -> FirecrackerCandidateResolution {
+    if !process_stat_is_live(&initial_stat) || !process_stat_is_live(&process_stat) {
+        return FirecrackerCandidateResolution::NotPresent;
+    }
+    if !process_stat_identity_matches(&initial_stat, &process_stat) {
+        return FirecrackerCandidateResolution::UnidentifiedLive { pid, ppid };
+    }
+    match cwd_info {
+        Some((sandbox_id, base_dir)) => FirecrackerCandidateResolution::StableKnownWorkspace {
+            pid,
+            ppid,
+            process_stat,
+            sandbox_id,
+            base_dir,
+        },
+        None => FirecrackerCandidateResolution::StableUnknownWorkspace {
+            pid,
+            ppid,
+            process_stat,
+        },
+    }
+}
+
+async fn resolve_firecracker_candidate(pid: u32) -> FirecrackerCandidateResolution {
+    let Some(initial_stat) = read_stable_firecracker_stat(pid).await else {
+        return unresolved_firecracker_resolution_if_present(pid).await;
+    };
+    let cwd_info = read_cwd(pid)
+        .await
+        .and_then(|cwd| parse_workspace_cwd(&cwd));
+    let ppid = read_ppid(pid).await;
+    let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
+        return unresolved_firecracker_resolution_if_present(pid).await;
+    };
+    stable_firecracker_resolution(pid, ppid, cwd_info, initial_stat, process_stat)
 }
 
 /// Scan `/proc` once for sandbox child process facts.
@@ -146,44 +274,9 @@ pub async fn discover_all() -> DiscoveredProcesses {
     // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
     let mut fc_infos = Vec::with_capacity(firecrackers.len());
     for pid in firecrackers {
-        let Some(initial_stat) = read_stable_firecracker_stat(pid).await else {
-            if let Some(info) = unidentified_firecracker_if_present(pid).await {
-                fc_infos.push(info);
-            }
-            continue;
-        };
-        let cwd_info = read_cwd(pid)
-            .await
-            .and_then(|cwd| parse_workspace_cwd(&cwd));
-        let ppid = read_ppid(pid).await;
-        let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
-            if let Some(info) = unidentified_firecracker_if_present(pid).await {
-                fc_infos.push(info);
-            }
-            continue;
-        };
-        if !process_stat_identity_matches(&initial_stat, &process_stat) {
-            fc_infos.push(unidentified_firecracker_process(pid, ppid));
-            continue;
+        if let Some(info) = resolve_firecracker_candidate(pid).await.into_process_info() {
+            fc_infos.push(info);
         }
-        let (sandbox_id, base_dir) = match cwd_info {
-            Some((id, bd)) => (id, Some(bd)),
-            None => (format!("pid-{pid}"), None),
-        };
-        let identity = Some(FirecrackerProcessIdentity {
-            pid,
-            pgid: process_stat.pgid,
-            starttime: process_stat.starttime,
-            sandbox_id: sandbox_id.clone(),
-            base_dir: base_dir.clone(),
-        });
-        fc_infos.push(FirecrackerProcessInfo {
-            pid,
-            ppid,
-            sandbox_id,
-            base_dir,
-            identity,
-        });
     }
 
     // Resolve ppid for mitmdump processes
@@ -216,6 +309,14 @@ mod tests {
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn stat(state: char, pgid: u32, starttime: u64) -> ProcessStat {
+        ProcessStat {
+            state,
+            pgid,
+            starttime,
+        }
     }
 
     #[test]
@@ -383,6 +484,125 @@ mod tests {
         assert!(process_stat_identity_matches(&sleeping, &running));
         assert!(!process_stat_identity_matches(&sleeping, &different_group));
         assert!(!process_stat_identity_matches(&sleeping, &different_start));
+    }
+
+    #[test]
+    fn firecracker_resolution_known_workspace_builds_identified_process() {
+        let process_stat = stat('R', 1100, 123456);
+        let base_dir = PathBuf::from("/data/runner-01");
+        let resolution = stable_firecracker_resolution(
+            42,
+            Some(7),
+            Some(("sandbox-a".to_string(), base_dir.clone())),
+            stat('S', 1100, 123456),
+            process_stat.clone(),
+        );
+
+        assert_eq!(
+            resolution,
+            FirecrackerCandidateResolution::StableKnownWorkspace {
+                pid: 42,
+                ppid: Some(7),
+                process_stat: process_stat.clone(),
+                sandbox_id: "sandbox-a".to_string(),
+                base_dir: base_dir.clone(),
+            }
+        );
+
+        let info = resolution.into_process_info().unwrap();
+        assert_eq!(info.pid, 42);
+        assert_eq!(info.ppid, Some(7));
+        assert_eq!(info.sandbox_id, "sandbox-a");
+        assert_eq!(info.base_dir, Some(base_dir.clone()));
+        assert_eq!(
+            info.identity,
+            Some(FirecrackerProcessIdentity {
+                pid: 42,
+                pgid: process_stat.pgid,
+                starttime: process_stat.starttime,
+                sandbox_id: "sandbox-a".to_string(),
+                base_dir: Some(base_dir),
+            })
+        );
+    }
+
+    #[test]
+    fn firecracker_resolution_unknown_workspace_keeps_stable_process_identity() {
+        let process_stat = stat('R', 1100, 123456);
+        let resolution = stable_firecracker_resolution(
+            42,
+            Some(7),
+            None,
+            stat('S', 1100, 123456),
+            process_stat.clone(),
+        );
+
+        assert_eq!(
+            resolution,
+            FirecrackerCandidateResolution::StableUnknownWorkspace {
+                pid: 42,
+                ppid: Some(7),
+                process_stat: process_stat.clone(),
+            }
+        );
+
+        let info = resolution.into_process_info().unwrap();
+        assert_eq!(info.pid, 42);
+        assert_eq!(info.ppid, Some(7));
+        assert_eq!(info.sandbox_id, "pid-42");
+        assert_eq!(info.base_dir, None);
+        assert_eq!(
+            info.identity,
+            Some(FirecrackerProcessIdentity {
+                pid: 42,
+                pgid: process_stat.pgid,
+                starttime: process_stat.starttime,
+                sandbox_id: "pid-42".to_string(),
+                base_dir: None,
+            })
+        );
+        assert!(info.workspace_identity_incomplete());
+    }
+
+    #[test]
+    fn firecracker_resolution_identity_drift_becomes_unidentified() {
+        let resolution = stable_firecracker_resolution(
+            42,
+            Some(7),
+            Some(("sandbox-a".to_string(), PathBuf::from("/data/runner-01"))),
+            stat('S', 1100, 123456),
+            stat('R', 2200, 123456),
+        );
+
+        assert_eq!(
+            resolution,
+            FirecrackerCandidateResolution::UnidentifiedLive {
+                pid: 42,
+                ppid: Some(7),
+            }
+        );
+
+        let info = resolution.into_process_info().unwrap();
+        assert_eq!(info.pid, 42);
+        assert_eq!(info.ppid, Some(7));
+        assert_eq!(info.sandbox_id, "pid-42");
+        assert_eq!(info.base_dir, None);
+        assert_eq!(info.identity, None);
+        assert!(info.workspace_identity_incomplete());
+    }
+
+    #[test]
+    fn firecracker_resolution_rejects_dead_process_states() {
+        let resolution = stable_firecracker_resolution(
+            42,
+            Some(7),
+            Some(("sandbox-a".to_string(), PathBuf::from("/data/runner-01"))),
+            stat('Z', 1100, 123456),
+            stat('R', 1100, 123456),
+        );
+
+        assert_eq!(resolution, FirecrackerCandidateResolution::NotPresent);
+        assert_eq!(resolution.into_process_info(), None);
     }
 
     #[test]
