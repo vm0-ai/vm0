@@ -134,6 +134,7 @@ import {
   requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -959,6 +960,30 @@ function GithubPrTrackingButton({
   );
 }
 
+// Second line shown under each automation in the legacy header dropdown: the
+// next upcoming run time, or a note that the automation is inactive when it has
+// been disabled.
+function automationMenuSubline(automation: HeaderAutomationEntry): string {
+  if (!automation.enabled) {
+    return "Automation inactive";
+  }
+  if (!automation.nextRunAt) {
+    return "No upcoming run";
+  }
+  const nextRun = new Date(automation.nextRunAt).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `Next run ${nextRun}`;
+}
+
+function featureSwitchEnabled(
+  features: Record<FeatureSwitchKey, boolean> | undefined,
+  key: FeatureSwitchKey,
+): boolean {
+  return features?.[key] ?? false;
+}
+
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
@@ -968,20 +993,76 @@ export function AutomationMenuButton({
   threadId: string;
   ariaLabel?: string;
 }) {
+  const navigate = useSet(detachedNavigateTo$);
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const features = useLastResolved(featureSwitch$);
+  const automationSidebarEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.ChatAutomationSidebar,
+  );
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
-  const open = openThreadId === threadId;
+  const open = automationSidebarEnabled && openThreadId === threadId;
 
   if (automations.length === 0) {
     return null;
+  }
+
+  if (!automationSidebarEnabled) {
+    return (
+      <DropdownMenu
+        onOpenChange={(dropdownOpen) => {
+          if (dropdownOpen) {
+            reloadAutomations();
+          }
+        }}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            aria-label={ariaLabel}
+          >
+            <IconClock size={18} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          {automations.map((automation) => {
+            return (
+              <DropdownMenuItem
+                key={automation.id}
+                onClick={() => {
+                  navigate("/automations/:automationId", {
+                    pathParams: { automationId: automation.id },
+                  });
+                }}
+                className="items-start gap-2"
+              >
+                <IconClock
+                  size={15}
+                  className="mt-0.5 shrink-0 text-muted-foreground"
+                />
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate">
+                    {automationDescription(automation)}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {automationMenuSubline(automation)}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
   }
 
   return (
@@ -2337,15 +2418,21 @@ export function ZeroChatThreadPage() {
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
   const features = useLastResolved(featureSwitch$);
-  const presentationHtmlEditorEnabled = Boolean(
-    features?.[FeatureSwitchKey.PresentationHtmlPptxDownload],
+  const presentationHtmlEditorEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.PresentationHtmlPptxDownload,
+  );
+  const automationSidebarEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.ChatAutomationSidebar,
   );
   const activePresentationEditorUrl = presentationHtmlEditorEnabled
     ? presentationEditorUrl
     : null;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen = automationPanelThreadId !== null;
+  const automationPanelOpen =
+    automationSidebarEnabled && automationPanelThreadId !== null;
   const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
@@ -2405,7 +2492,7 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {automationPanelThreadId ? (
+          {automationPanelOpen && automationPanelThreadId ? (
             <HeaderAutomationSidebar threadId={automationPanelThreadId} />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot

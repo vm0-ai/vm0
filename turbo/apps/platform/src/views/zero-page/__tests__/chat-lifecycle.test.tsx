@@ -3425,13 +3425,47 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows linked automations from the chat header", async () => {
+  it("keeps the linked automation dropdown when the sidebar switch is off", async () => {
+    mockAutomationThread();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Automations"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Launch review")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
+    expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
+    expect(screen.getByText("Automation inactive")).toBeInTheDocument();
+    expect(screen.queryByTestId("automation-sidebar")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Close automations"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("shows linked automations from the chat header sidebar", async () => {
     mockAutomationThread();
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, { runs: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
@@ -3479,7 +3513,11 @@ describe("chat lifecycle", () => {
   it("opens a linked automation detail from the chat header", async () => {
     mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
+    });
 
     click(await screen.findByLabelText("Automations"));
 
