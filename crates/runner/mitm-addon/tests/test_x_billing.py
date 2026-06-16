@@ -137,7 +137,7 @@ def _parse_x_firewall_catalog(raw: object) -> _XFirewallCatalog:
                 f"`base`, but entry {index} has {type(base).__name__}."
             )
 
-        raw_permissions = entry.get("permissions")
+        raw_permissions = entry.get("permissions", [])
         parsed_permissions = _parse_x_firewall_permissions(raw_permissions, base=base)
         api_entries.append(_FirewallApiEntry(base=base, permission_count=len(parsed_permissions)))
         permissions.extend(parsed_permissions)
