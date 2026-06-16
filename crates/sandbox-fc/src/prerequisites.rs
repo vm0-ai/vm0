@@ -1,3 +1,5 @@
+use std::fs::Metadata;
+use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -72,15 +74,7 @@ pub(crate) async fn check_prerequisites(
 ) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
 
-    check_file_exists(config.binary_path, "firecracker binary", &mut errors);
-    check_executable(config.binary_path, "firecracker binary", &mut errors);
-    check_file_exists(config.kernel_path, "kernel", &mut errors);
-    check_file_exists(config.rootfs_path, "rootfs", &mut errors);
-    if let Some(snapshot) = config.mode.snapshot() {
-        check_file_exists(&snapshot.snapshot_path, "snapshot state", &mut errors);
-        check_file_exists(&snapshot.memory_path, "snapshot memory", &mut errors);
-        check_file_exists(&snapshot.cow_path, "snapshot cow", &mut errors);
-    }
+    check_artifact_prerequisites(config, &mut errors);
     check_kvm(&mut errors);
     let commands = required_commands(config.mode);
     check_required_commands(&commands, &mut errors);
@@ -106,17 +100,73 @@ fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
     }
 }
 
-fn check_file_exists(path: &Path, label: &str, errors: &mut Vec<String>) {
-    if !path.exists() {
-        errors.push(format!("{label} not found: {}", path.display()));
+fn check_artifact_prerequisites(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
+    check_executable_file(config.binary_path, "firecracker binary", errors);
+    check_readable_file(config.kernel_path, "kernel", errors);
+    if let Some(metadata) = check_readable_file(config.rootfs_path, "rootfs", errors) {
+        check_rootfs_size(config.rootfs_path, metadata.len(), errors);
+    }
+
+    if let Some(snapshot) = config.mode.snapshot() {
+        check_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
+        check_readable_file(&snapshot.memory_path, "snapshot memory", errors);
+        check_readable_file(&snapshot.cow_path, "snapshot cow", errors);
+        let bitmap_path = nbd_cow::cow::bitmap_path_for(&snapshot.cow_path);
+        check_readable_file(&bitmap_path, "snapshot cow bitmap", errors);
     }
 }
 
-fn check_executable(path: &Path, label: &str, errors: &mut Vec<String>) {
-    if let Ok(meta) = path.metadata()
-        && meta.permissions().mode() & 0o111 == 0
-    {
+fn check_regular_file(path: &Path, label: &str, errors: &mut Vec<String>) -> Option<Metadata> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => Some(metadata),
+        Ok(_) => {
+            errors.push(format!("{label} is not a regular file: {}", path.display()));
+            None
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            errors.push(format!("{label} not found: {}", path.display()));
+            None
+        }
+        Err(e) => {
+            errors.push(format!("failed to stat {label}: {}: {e}", path.display()));
+            None
+        }
+    }
+}
+
+fn check_readable_file(path: &Path, label: &str, errors: &mut Vec<String>) -> Option<Metadata> {
+    let metadata = check_regular_file(path, label, errors)?;
+    if let Err(e) = std::fs::File::open(path) {
+        errors.push(format!("{label} is not readable: {}: {e}", path.display()));
+        return None;
+    }
+    Some(metadata)
+}
+
+fn check_executable_file(path: &Path, label: &str, errors: &mut Vec<String>) {
+    if let Some(metadata) = check_regular_file(path, label, errors) {
+        check_executable(path, label, &metadata, errors);
+    }
+}
+
+fn check_executable(path: &Path, label: &str, metadata: &Metadata, errors: &mut Vec<String>) {
+    if metadata.permissions().mode() & 0o111 == 0 {
         errors.push(format!("{label} is not executable: {}", path.display()));
+    }
+}
+
+fn check_rootfs_size(path: &Path, size: u64, errors: &mut Vec<String>) {
+    if size == 0 {
+        errors.push(format!("rootfs is empty: {}", path.display()));
+        return;
+    }
+
+    let block_size = nbd_cow::BLOCK_SIZE as u64;
+    if !size.is_multiple_of(block_size) {
+        errors.push(format!(
+            "rootfs size {size} is not a multiple of {block_size} bytes: {}",
+            path.display()
+        ));
     }
 }
 
@@ -166,9 +216,120 @@ fn ensure_runtime_dir(errors: &mut Vec<String>) {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::fs::File;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::path::{Path, PathBuf};
 
     use super::*;
+
+    struct ArtifactFixture {
+        _dir: tempfile::TempDir,
+        binary_path: PathBuf,
+        kernel_path: PathBuf,
+        rootfs_path: PathBuf,
+        snapshot: SnapshotConfig,
+    }
+
+    impl ArtifactFixture {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let binary_path = dir.path().join("firecracker");
+            let kernel_path = dir.path().join("vmlinux");
+            let rootfs_path = dir.path().join("rootfs.ext4");
+            let snapshot_path = dir.path().join("snapshot.bin");
+            let memory_path = dir.path().join("memory.bin");
+            let cow_path = dir.path().join("cow.img");
+            let bitmap_path = nbd_cow::cow::bitmap_path_for(&cow_path);
+
+            write_sized_file(&binary_path, 1);
+            std::fs::set_permissions(&binary_path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod binary");
+            write_sized_file(&kernel_path, 1);
+            write_sized_file(&rootfs_path, nbd_cow::BLOCK_SIZE as u64);
+            write_sized_file(&snapshot_path, 1);
+            write_sized_file(&memory_path, 1);
+            write_sized_file(&cow_path, nbd_cow::BLOCK_SIZE as u64);
+            write_sized_file(&bitmap_path, 8);
+
+            Self {
+                _dir: dir,
+                binary_path,
+                kernel_path,
+                rootfs_path,
+                snapshot: SnapshotConfig {
+                    snapshot_path,
+                    memory_path,
+                    cow_path,
+                    drive_bind_path: PathBuf::from("/tmp/cow-device-bind"),
+                    workspace_drive_bind_path: PathBuf::from("/tmp/workspace-device-bind"),
+                    vsock_bind_dir: PathBuf::from("/tmp/vsock"),
+                },
+            }
+        }
+
+        fn bitmap_path(&self) -> PathBuf {
+            nbd_cow::cow::bitmap_path_for(&self.snapshot.cow_path)
+        }
+
+        fn fresh_config(&self) -> PrerequisiteConfig<'_> {
+            PrerequisiteConfig {
+                binary_path: &self.binary_path,
+                kernel_path: &self.kernel_path,
+                rootfs_path: &self.rootfs_path,
+                mode: PrerequisiteMode::FactoryFresh,
+            }
+        }
+
+        fn snapshot_create_config(&self) -> PrerequisiteConfig<'_> {
+            PrerequisiteConfig {
+                binary_path: &self.binary_path,
+                kernel_path: &self.kernel_path,
+                rootfs_path: &self.rootfs_path,
+                mode: PrerequisiteMode::SnapshotCreate,
+            }
+        }
+
+        fn restore_config(&self) -> PrerequisiteConfig<'_> {
+            PrerequisiteConfig {
+                binary_path: &self.binary_path,
+                kernel_path: &self.kernel_path,
+                rootfs_path: &self.rootfs_path,
+                mode: PrerequisiteMode::FactorySnapshotRestore {
+                    snapshot: &self.snapshot,
+                },
+            }
+        }
+    }
+
+    fn write_sized_file(path: &Path, size: u64) {
+        let file = File::create(path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+        file.set_len(size)
+            .unwrap_or_else(|e| panic!("set size {}: {e}", path.display()));
+    }
+
+    fn replace_file_with_dir(path: &Path) {
+        std::fs::remove_file(path).unwrap_or_else(|e| panic!("remove {}: {e}", path.display()));
+        std::fs::create_dir(path).unwrap_or_else(|e| panic!("create dir {}: {e}", path.display()));
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|e| panic!("chmod dir {}: {e}", path.display()));
+    }
+
+    fn artifact_errors(config: PrerequisiteConfig<'_>) -> Vec<String> {
+        let mut errors = Vec::new();
+        check_artifact_prerequisites(&config, &mut errors);
+        errors
+    }
+
+    fn assert_no_errors(errors: &[String]) {
+        assert!(errors.is_empty(), "unexpected errors: {errors:#?}");
+    }
+
+    fn assert_error_contains(errors: &[String], expected: &str) {
+        assert!(
+            errors.iter().any(|error| error.contains(expected)),
+            "expected error containing {expected:?}, got {errors:#?}"
+        );
+    }
 
     fn snapshot_config() -> SnapshotConfig {
         SnapshotConfig {
@@ -286,5 +447,123 @@ mod tests {
         }
         .snapshot();
         assert!(matches!(restore_snapshot, Some(s) if std::ptr::eq(s, &snapshot)));
+    }
+
+    #[test]
+    fn valid_fresh_artifacts_pass() {
+        let fixture = ArtifactFixture::new();
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_no_errors(&errors);
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_directory_artifacts() {
+        let fixture = ArtifactFixture::new();
+        let bitmap_path = fixture.bitmap_path();
+        for path in [
+            &fixture.binary_path,
+            &fixture.kernel_path,
+            &fixture.rootfs_path,
+            &fixture.snapshot.snapshot_path,
+            &fixture.snapshot.memory_path,
+            &fixture.snapshot.cow_path,
+            &bitmap_path,
+        ] {
+            replace_file_with_dir(path);
+        }
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_error_contains(&errors, "firecracker binary is not a regular file");
+        assert_error_contains(&errors, "kernel is not a regular file");
+        assert_error_contains(&errors, "rootfs is not a regular file");
+        assert_error_contains(&errors, "snapshot state is not a regular file");
+        assert_error_contains(&errors, "snapshot memory is not a regular file");
+        assert_error_contains(&errors, "snapshot cow is not a regular file");
+        assert_error_contains(&errors, "snapshot cow bitmap is not a regular file");
+    }
+
+    #[test]
+    fn artifact_prerequisites_report_missing_paths() {
+        let fixture = ArtifactFixture::new();
+        std::fs::remove_file(&fixture.kernel_path).expect("remove kernel");
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "kernel not found");
+    }
+
+    #[test]
+    fn artifact_prerequisites_accept_symlink_to_file() {
+        let fixture = ArtifactFixture::new();
+        let kernel_target = fixture.kernel_path.with_file_name("linked-vmlinux");
+        write_sized_file(&kernel_target, 1);
+        std::fs::remove_file(&fixture.kernel_path).expect("remove kernel");
+        symlink(&kernel_target, &fixture.kernel_path).expect("symlink kernel");
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_no_errors(&errors);
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_symlink_to_directory() {
+        let fixture = ArtifactFixture::new();
+        let kernel_target = fixture.kernel_path.with_file_name("kernel-dir");
+        std::fs::create_dir(&kernel_target).expect("create kernel dir");
+        std::fs::remove_file(&fixture.kernel_path).expect("remove kernel");
+        symlink(&kernel_target, &fixture.kernel_path).expect("symlink kernel");
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "kernel is not a regular file");
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_non_executable_binary() {
+        let fixture = ArtifactFixture::new();
+        std::fs::set_permissions(&fixture.binary_path, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod binary");
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "firecracker binary is not executable");
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_empty_rootfs() {
+        let fixture = ArtifactFixture::new();
+        write_sized_file(&fixture.rootfs_path, 0);
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "rootfs is empty");
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_unaligned_rootfs() {
+        let fixture = ArtifactFixture::new();
+        write_sized_file(&fixture.rootfs_path, nbd_cow::BLOCK_SIZE as u64 + 1);
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "rootfs size");
+        assert_error_contains(&errors, "not a multiple");
+    }
+
+    #[test]
+    fn restore_mode_requires_snapshot_cow_bitmap() {
+        let fixture = ArtifactFixture::new();
+        std::fs::remove_file(fixture.bitmap_path()).expect("remove bitmap");
+
+        let fresh_errors = artifact_errors(fixture.fresh_config());
+        let snapshot_create_errors = artifact_errors(fixture.snapshot_create_config());
+        let restore_errors = artifact_errors(fixture.restore_config());
+
+        assert_no_errors(&fresh_errors);
+        assert_no_errors(&snapshot_create_errors);
+        assert_error_contains(&restore_errors, "snapshot cow bitmap not found");
     }
 }
