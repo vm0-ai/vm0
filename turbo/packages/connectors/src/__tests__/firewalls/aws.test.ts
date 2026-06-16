@@ -162,6 +162,12 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys?mode=import AWS sigv4=apigateway",
     );
+    expect(rulesFor(permissions, "apigateway:POST")).toContain(
+      "POST /apikeys AWS sigv4=apigateway",
+    );
+    expect(rulesFor(permissions, "apigateway:PATCH")).toContain(
+      "PATCH /restapis/{restapi_id} AWS sigv4=apigateway",
+    );
   });
 
   it("maps S3 operation selectors to the right IAM permissions", () => {
@@ -171,6 +177,12 @@ describe("aws firewall", () => {
     expect(rulesFor(standardPermissions, "s3:GetObjectTagging")).toContain(
       "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
     );
+    expect(
+      rulesFor(standardPermissions, "s3:GetLifecycleConfiguration"),
+    ).toContain("GET /{Bucket}?lifecycle AWS sigv4=s3");
+    expect(
+      rulesFor(standardPermissions, "s3:PutLifecycleConfiguration"),
+    ).toContain("PUT /{Bucket}?lifecycle AWS sigv4=s3");
     expect(rulesFor(standardPermissions, "s3:DeleteObject")).not.toContain(
       "POST /{Bucket}?delete AWS sigv4=s3",
     );

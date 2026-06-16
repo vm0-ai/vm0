@@ -150,9 +150,11 @@ const AWS_OPERATION_ACTION_OVERRIDES = new Map<string, string>([
   // users expect to control the generated endpoint rule.
   ["s3:CompleteMultipartUpload", "PutObject"],
   ["s3:CreateMultipartUpload", "PutObject"],
+  ["s3:GetBucketLifecycleConfiguration", "GetLifecycleConfiguration"],
   ["s3:HeadObject", "GetObject"],
   ["s3:ListObjects", "ListBucket"],
   ["s3:ListObjectsV2", "ListBucket"],
+  ["s3:PutBucketLifecycleConfiguration", "PutLifecycleConfiguration"],
   ["s3:UploadPart", "PutObject"],
 ]);
 
@@ -359,6 +361,7 @@ function selectPrimaryAction(
   service: AwsServiceSource,
   operation: AwsOperationReference,
   actionsByName: Map<string, AwsAction>,
+  operationHttpMethod: string | null,
 ): SelectedAction | null {
   const operationName = operation.Name;
   if (typeof operationName !== "string") {
@@ -386,15 +389,23 @@ function selectPrimaryAction(
   const overrideName = AWS_OPERATION_ACTION_OVERRIDES.get(
     `${service.servicePrefix}:${operationName}`,
   );
+  const methodActionName =
+    service.servicePrefix === "apigateway" && operationHttpMethod
+      ? sameServiceAuthorizedNames.find((name) => {
+          return name === operationHttpMethod;
+        })
+      : undefined;
   const selectedName = exactAuthorizedName
     ? exactAuthorizedName
     : overrideName && sameServiceAuthorizedNames.includes(overrideName)
       ? overrideName
-      : sameServiceAuthorizedNames.length === 1
-        ? sameServiceAuthorizedNames[0]!
-        : sameServiceAuthorizedNames.length > 1
-          ? null
-          : operationName;
+      : methodActionName
+        ? methodActionName
+        : sameServiceAuthorizedNames.length === 1
+          ? sameServiceAuthorizedNames[0]!
+          : sameServiceAuthorizedNames.length > 1
+            ? null
+            : operationName;
   if (selectedName === null) {
     return null;
   }
@@ -407,10 +418,26 @@ function selectActionForOperation(
   operationName: string,
   operationsByName: Map<string, AwsOperationReference>,
   actionsByName: Map<string, AwsAction>,
+  operationHttpMethod: string | null,
 ): SelectedAction | null {
   const operation = operationsByName.get(operationName);
   if (operation) {
-    return selectPrimaryAction(service, operation, actionsByName);
+    return selectPrimaryAction(
+      service,
+      operation,
+      actionsByName,
+      operationHttpMethod,
+    );
+  }
+
+  const overrideName = AWS_OPERATION_ACTION_OVERRIDES.get(
+    `${service.servicePrefix}:${operationName}`,
+  );
+  if (overrideName) {
+    const overrideAction = actionsByName.get(overrideName);
+    if (overrideAction) {
+      return { name: overrideName, action: overrideAction };
+    }
   }
 
   const action = actionsByName.get(operationName);
@@ -540,6 +567,18 @@ function rulesForOperation(
   throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
 }
 
+function operationHttpMethod(
+  model: BotocoreModel,
+  operationName: string,
+): string | null {
+  const rawOperation = loadBotocoreOperations(model)[operationName];
+  if (!isBotocoreOperation(rawOperation)) {
+    return null;
+  }
+  const method = rawOperation.http?.method;
+  return typeof method === "string" ? method : null;
+}
+
 async function loadJson<T>(url: string, label: string): Promise<T> {
   const response = await fetchSpec(url, label);
   return (await response.json()) as T;
@@ -641,6 +680,7 @@ async function buildAwsPermissions(): Promise<BuildResult> {
         operationName,
         operationsByName,
         actionsByName,
+        operationHttpMethod(model, operationName),
       );
       if (!selectedAction) {
         stats.unmappedOperations += 1;
