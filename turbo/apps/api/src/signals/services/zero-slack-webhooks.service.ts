@@ -13,7 +13,6 @@ import {
   type ModelProviderCredentialScope,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -23,7 +22,6 @@ import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-prefe
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, or } from "drizzle-orm";
-import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -83,6 +81,7 @@ import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { safeJsonParse, settle, tapError } from "../utils";
+import type { SlackOrgCallbackPayload } from "./slack-org-callback-payload";
 
 const L = logger("ZeroSlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
@@ -90,7 +89,7 @@ const MODEL_PICKER_MAX_OPTIONS = 100;
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 type SlackConnection = typeof slackOrgConnections.$inferSelect;
-type SlackCallbackPayload = z.infer<typeof slackOrgCallbackPayloadSchema>;
+type SlackCallbackPayload = SlackOrgCallbackPayload;
 
 interface SlackCommandPayload {
   readonly team_id: string;
