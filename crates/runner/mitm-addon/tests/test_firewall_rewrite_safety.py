@@ -1,5 +1,6 @@
 """auth.base rewrite safety and fail-closed handler tests."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
@@ -8,7 +9,9 @@ import pytest
 
 import auth
 import auth_base_forwarder as forwarder
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
+from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
 class TestAuthBaseUrlRewriteSafety:
@@ -90,6 +93,75 @@ class TestAuthBaseUrlRewriteSafety:
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
+
+    async def test_real_forwarder_destination_rejection_returns_502_without_leaking_url(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Handler maps real forwarder destination rejection to local failure."""
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["WEBHOOK", "API_KEY"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+
+        with (
+            fake_forwarder_upstream(addresses=("127.0.0.1",)) as upstream,
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
+        assert upstream.create_connection_calls == []
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        body = json.loads(flow.response.content)
+        assert body["error"] == "url_rewrite_forward_failed"
+        assert body["message"] == "Failed to forward request to upstream"
+        assert body["permission"] == allow.name
+        assert body["base"] == allow.api_entry["base"]
+        assert "connectors" not in body
+
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "auth_resolved_secrets" not in flow.metadata
+        assert "auth_refreshed_connectors" not in flow.metadata
+        assert "auth_refreshed_secrets" not in flow.metadata
+        assert "auth_cache_hit" not in flow.metadata
+
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert flow.request.path == "/hook?client=visible"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+        assert "super-secret-token" not in flow.response.text
+
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "URL rewrite forward failed" in log_text
+        assert "Firewall URL rewrite:" not in log_text
+        assert "super-secret-token" not in log_text
+        assert "real-token" not in log_text
 
     async def test_resolved_base_http_fails_closed_without_forwarding(
         self, headers, real_flow, mitm_ctx, tmp_path

@@ -1,261 +1,16 @@
 """Tests for auth.base HTTPS forwarding behavior."""
 
 import asyncio
-import contextlib
 import errno
-import io
 import ssl
 import threading
-from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 import auth_base_forwarder as forwarder
-
-
-def _addrinfo(address: str, port: int):
-    if ":" in address:
-        return (
-            forwarder.socket.AF_INET6,
-            forwarder.socket.SOCK_STREAM,
-            6,
-            "",
-            (address, port, 0, 0),
-        )
-    return (
-        forwarder.socket.AF_INET,
-        forwarder.socket.SOCK_STREAM,
-        6,
-        "",
-        (address, port),
-    )
-
-
-def _http_response(
-    *,
-    status: int = 200,
-    body: bytes = b"ok",
-    headers: list[tuple[str, str]] | None = None,
-) -> bytes:
-    reason = {
-        200: "OK",
-        302: "Found",
-        429: "Too Many Requests",
-    }.get(status, "OK")
-    header_bytes = b"".join(f"{name}: {value}\r\n".encode() for name, value in (headers or []))
-    return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
-
-
-class _FakeResponseFile(io.BytesIO):
-    def __init__(
-        self,
-        payload: bytes,
-        *,
-        read_side_effect: Exception | None = None,
-        on_action: Callable[[], None] | None = None,
-    ) -> None:
-        super().__init__(payload)
-        self._read_side_effect = read_side_effect
-        self._on_action = on_action
-        self.read_sizes: list[int] = []
-        self.close_count = 0
-
-    def read(self, size: int = -1) -> bytes:
-        if self._on_action is not None:
-            self._on_action()
-        self.read_sizes.append(size)
-        if self._read_side_effect is not None:
-            raise self._read_side_effect
-        return super().read(size)
-
-    def close(self) -> None:
-        self.close_count += 1
-        super().close()
-
-
-class _FakeSocket:
-    def __init__(
-        self,
-        response: bytes,
-        *,
-        read_side_effect: Exception | None = None,
-        send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
-        setsockopt_side_effect: Exception | None = None,
-        on_action: Callable[[], None] | None = None,
-    ) -> None:
-        self._response = response
-        self._read_side_effect = read_side_effect
-        self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
-        self._setsockopt_side_effect = setsockopt_side_effect
-        self._on_action = on_action
-        self.sent = bytearray()
-        self.response_file: _FakeResponseFile | None = None
-        self.closed = False
-        self.close_count = 0
-        self.setsockopt_calls: list[tuple[int, int, int]] = []
-
-    def _record_action(self) -> None:
-        if self._on_action is not None:
-            self._on_action()
-
-    def setsockopt(self, level: int, optname: int, value: int) -> None:
-        self._record_action()
-        self.setsockopt_calls.append((level, optname, value))
-        if self._setsockopt_side_effect is not None:
-            raise self._setsockopt_side_effect
-
-    def sendall(self, data: bytes) -> None:
-        self._record_action()
-        if self._send_side_effect is not None:
-            raise self._send_side_effect
-        self.sent.extend(data)
-
-    def makefile(self, *_args, **_kwargs) -> _FakeResponseFile:
-        self._record_action()
-        if self._makefile_side_effect is not None:
-            raise self._makefile_side_effect
-        self.response_file = _FakeResponseFile(
-            self._response,
-            read_side_effect=self._read_side_effect,
-            on_action=self._on_action,
-        )
-        return self.response_file
-
-    def close(self) -> None:
-        self._record_action()
-        self.closed = True
-        self.close_count += 1
-
-    def request_text(self) -> str:
-        return bytes(self.sent).decode("latin1")
-
-    def request_lines(self) -> list[str]:
-        return self.request_text().split("\r\n")
-
-    def request_header_values(self, name: str) -> list[str]:
-        prefix = f"{name.lower()}:"
-        values: list[str] = []
-        for line in self.request_lines()[1:]:
-            if not line:
-                break
-            if line.lower().startswith(prefix):
-                values.append(line.split(":", 1)[1].strip())
-        return values
-
-
-class _FakeTLSContext:
-    def __init__(
-        self,
-        *,
-        wrap_side_effect: Exception | None = None,
-        on_action: Callable[[], None] | None = None,
-    ) -> None:
-        self._wrap_side_effect = wrap_side_effect
-        self._on_action = on_action
-        self.alpn_protocols: list[str] = []
-        self.post_handshake_auth = False
-        self.server_hostnames: list[str] = []
-
-    def set_alpn_protocols(self, protocols: list[str]) -> None:
-        self.alpn_protocols = protocols
-
-    def wrap_socket(self, raw_sock: _FakeSocket, *, server_hostname: str):
-        if self._on_action is not None:
-            self._on_action()
-        self.server_hostnames.append(server_hostname)
-        if self._wrap_side_effect is not None:
-            raise self._wrap_side_effect
-        return raw_sock
-
-
-class _FakeForwarderUpstream:
-    def __init__(
-        self,
-        *,
-        status: int = 200,
-        body: bytes = b"ok",
-        headers: list[tuple[str, str]] | None = None,
-        addresses: tuple[str, ...] = ("93.184.216.34",),
-        read_side_effect: Exception | None = None,
-        send_side_effect: Exception | None = None,
-        makefile_side_effect: Exception | None = None,
-        setsockopt_side_effect: Exception | None = None,
-        wrap_side_effect: Exception | None = None,
-        on_action: Callable[[], None] | None = None,
-        create_connection: Callable[[tuple[str, int], object, object], _FakeSocket] | None = None,
-    ) -> None:
-        self._addresses = addresses
-        self._response = _http_response(status=status, body=body, headers=headers)
-        self._read_side_effect = read_side_effect
-        self._send_side_effect = send_side_effect
-        self._makefile_side_effect = makefile_side_effect
-        self._setsockopt_side_effect = setsockopt_side_effect
-        self._wrap_side_effect = wrap_side_effect
-        self._on_action = on_action
-        self._create_connection = create_connection
-        self.sockets: list[_FakeSocket] = []
-        self.contexts: list[_FakeTLSContext] = []
-        self.getaddrinfo_calls: list[tuple[str, int]] = []
-        self.create_connection_calls: list[tuple[tuple[str, int], object, object]] = []
-
-    def getaddrinfo(self, host: str, port: int, *_args, **_kwargs):
-        self.getaddrinfo_calls.append((host, port))
-        return [_addrinfo(address, port) for address in self._addresses]
-
-    def create_connection(self, address: tuple[str, int], timeout, source_address):
-        self.create_connection_calls.append((address, timeout, source_address))
-        if self._create_connection is not None:
-            sock = self._create_connection(address, timeout, source_address)
-        else:
-            sock = self.make_socket()
-        self.sockets.append(sock)
-        return sock
-
-    def make_socket(self) -> _FakeSocket:
-        return _FakeSocket(
-            self._response,
-            read_side_effect=self._read_side_effect,
-            send_side_effect=self._send_side_effect,
-            makefile_side_effect=self._makefile_side_effect,
-            setsockopt_side_effect=self._setsockopt_side_effect,
-            on_action=self._on_action,
-        )
-
-    def create_default_context(self) -> _FakeTLSContext:
-        context = _FakeTLSContext(
-            wrap_side_effect=self._wrap_side_effect,
-            on_action=self._on_action,
-        )
-        self.contexts.append(context)
-        return context
-
-    @property
-    def socket(self) -> _FakeSocket:
-        assert self.sockets
-        return self.sockets[-1]
-
-
-@contextlib.contextmanager
-def _fake_forwarder_upstream(**kwargs) -> Iterator[_FakeForwarderUpstream]:
-    upstream = _FakeForwarderUpstream(**kwargs)
-    with (
-        patch.object(forwarder.socket, "getaddrinfo", side_effect=upstream.getaddrinfo),
-        patch.object(
-            forwarder.socket,
-            "create_connection",
-            side_effect=upstream.create_connection,
-        ),
-        patch.object(
-            forwarder.ssl,
-            "create_default_context",
-            side_effect=upstream.create_default_context,
-        ),
-    ):
-        yield upstream
+from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream, http_response
 
 
 class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
@@ -338,7 +93,7 @@ class TestAuthBaseForwarderSecurity:
         resolved_address: str,
     ):
         with (
-            _fake_forwarder_upstream(addresses=(resolved_address,)) as upstream,
+            fake_forwarder_upstream(addresses=(resolved_address,)) as upstream,
             pytest.raises(
                 forwarder.UnsafeAuthBaseDestinationError,
                 match=r"Unsafe auth\.base upstream destination",
@@ -351,7 +106,7 @@ class TestAuthBaseForwarderSecurity:
 
     async def test_rejects_dns_private_destination_without_opening_connection(self):
         with (
-            _fake_forwarder_upstream(addresses=("10.0.0.1",)) as upstream,
+            fake_forwarder_upstream(addresses=("10.0.0.1",)) as upstream,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
@@ -361,7 +116,7 @@ class TestAuthBaseForwarderSecurity:
 
     async def test_rejects_mixed_dns_answers_without_opening_connection(self):
         with (
-            _fake_forwarder_upstream(addresses=("93.184.216.34", "127.0.0.1")) as upstream,
+            fake_forwarder_upstream(addresses=("93.184.216.34", "127.0.0.1")) as upstream,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
@@ -370,7 +125,7 @@ class TestAuthBaseForwarderSecurity:
         assert upstream.create_connection_calls == []
 
     async def test_allows_public_dns_destination_and_forwards_with_original_host(self):
-        with _fake_forwarder_upstream(
+        with fake_forwarder_upstream(
             addresses=("93.184.216.34", "2001:4860:4860::8888")
         ) as upstream:
             status, body, headers = await forwarder.forward_request(
@@ -557,7 +312,7 @@ class TestAuthBaseForwarderTransportSecurity:
 
 class TestAuthBaseForwarderRequestBehavior:
     async def test_returns_redirect_response_without_following(self):
-        with _fake_forwarder_upstream(
+        with fake_forwarder_upstream(
             status=302,
             body=b"",
             headers=[("Location", "https://evil.example.com")],
@@ -574,7 +329,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert headers["Location"] == "https://evil.example.com"
 
     async def test_repeated_request_headers_are_written_individually(self):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(
                 "https://example.com/path?x=1",
                 "GET",
@@ -588,7 +343,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert upstream.socket.request_header_values("Content-Length") == []
 
     async def test_absent_body_strips_stale_content_length(self):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(
                 "https://example.com/path",
                 "POST",
@@ -626,7 +381,7 @@ class TestAuthBaseForwarderRequestBehavior:
         ],
     )
     async def test_request_target_preserves_url_parts(self, url: str, expected_target: str):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(url, "GET", [], None)
 
         assert upstream.socket.request_lines()[0] == f"GET {expected_target} HTTP/1.1"
@@ -683,7 +438,7 @@ class TestAuthBaseForwarderRequestBehavior:
         expected_connection_port: int,
         expected_host_header: str,
     ):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(
                 url,
                 "GET",
@@ -698,7 +453,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert upstream.socket.request_header_values("Host") == [expected_host_header]
 
     async def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(
                 "https://example.com:444/path",
                 "PUT",
@@ -726,7 +481,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert upstream.socket.request_text().endswith("\r\n\r\nabc")
 
     async def test_explicit_empty_body_sets_zero_content_length(self):
-        with _fake_forwarder_upstream() as upstream:
+        with fake_forwarder_upstream() as upstream:
             await forwarder.forward_request(
                 "https://example.com/path",
                 "POST",
@@ -738,7 +493,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert upstream.socket.request_text().endswith("\r\n\r\n")
 
     async def test_preserves_duplicate_response_headers_and_filters_connection_names(self):
-        with _fake_forwarder_upstream(
+        with fake_forwarder_upstream(
             headers=[
                 ("Set-Cookie", "a=1"),
                 ("Set-Cookie", "b=2"),
@@ -762,7 +517,7 @@ class TestAuthBaseForwarderRequestBehavior:
         assert ("X-Keep", "ok") in pairs
 
     async def test_filters_hop_by_hop_response_headers(self):
-        with _fake_forwarder_upstream(
+        with fake_forwarder_upstream(
             body=b"2\r\nok\r\n0\r\n\r\n",
             headers=[
                 ("Content-Type", "application/json"),
@@ -791,7 +546,7 @@ class TestAuthBaseForwarderResponseBodyLimit:
     async def test_accepts_body_at_limit(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
-            _fake_forwarder_upstream(body=b"1234") as upstream,
+            fake_forwarder_upstream(body=b"1234") as upstream,
         ):
             status, body, _headers = await forwarder.forward_request(
                 "https://example.com",
@@ -808,7 +563,7 @@ class TestAuthBaseForwarderResponseBodyLimit:
     async def test_rejects_body_over_limit_and_closes_resources(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
-            _fake_forwarder_upstream(body=b"12345") as upstream,
+            fake_forwarder_upstream(body=b"12345") as upstream,
             pytest.raises(forwarder.ForwardedResponseTooLargeError),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -823,7 +578,7 @@ class TestAuthBaseForwarderRequestBodyLimit:
     async def test_accepts_body_at_limit(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            _fake_forwarder_upstream() as upstream,
+            fake_forwarder_upstream() as upstream,
         ):
             status, body, _headers = await forwarder.forward_request(
                 "https://example.com",
@@ -854,7 +609,7 @@ class TestAuthBaseForwarderRequestBodyLimit:
 
 class TestAuthBaseForwarderResourceCleanup:
     async def test_closes_response_and_connection_on_success(self):
-        with _fake_forwarder_upstream(headers=[("Content-Type", "application/json")]) as upstream:
+        with fake_forwarder_upstream(headers=[("Content-Type", "application/json")]) as upstream:
             status, body, _ = await forwarder.forward_request(
                 "https://example.com", "GET", [], None
             )
@@ -866,7 +621,7 @@ class TestAuthBaseForwarderResourceCleanup:
         assert upstream.socket.closed
 
     async def test_preserves_duplicate_headers_on_error_status(self):
-        with _fake_forwarder_upstream(
+        with fake_forwarder_upstream(
             status=429,
             body=b"rate limited",
             headers=[
@@ -889,7 +644,7 @@ class TestAuthBaseForwarderResourceCleanup:
 
     async def test_closes_response_when_read_raises(self):
         with (
-            _fake_forwarder_upstream(read_side_effect=OSError("socket closed")) as upstream,
+            fake_forwarder_upstream(read_side_effect=OSError("socket closed")) as upstream,
             pytest.raises(OSError, match="socket closed"),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -900,9 +655,7 @@ class TestAuthBaseForwarderResourceCleanup:
 
     async def test_closes_connection_when_request_raises(self):
         with (
-            _fake_forwarder_upstream(
-                send_side_effect=ConnectionError("connect failed")
-            ) as upstream,
+            fake_forwarder_upstream(send_side_effect=ConnectionError("connect failed")) as upstream,
             pytest.raises(ConnectionError, match="connect failed"),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -912,7 +665,7 @@ class TestAuthBaseForwarderResourceCleanup:
 
     async def test_closes_connection_when_getresponse_raises(self):
         with (
-            _fake_forwarder_upstream(
+            fake_forwarder_upstream(
                 makefile_side_effect=ConnectionError("response failed")
             ) as upstream,
             pytest.raises(ConnectionError, match="response failed"),
@@ -947,15 +700,15 @@ class TestForwardRequestAsyncWrapper:
 
             if first:
                 first = False
-                return _FakeSocket(
-                    _http_response(),
+                return FakeSocket(
+                    http_response(),
                     send_side_effect=ConnectionError("upstream unavailable"),
                 )
-            return _FakeSocket(_http_response())
+            return FakeSocket(http_response())
 
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            _fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(create_connection=create_connection),
         ):
             with pytest.raises(ConnectionError, match="upstream unavailable"):
                 await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -992,7 +745,7 @@ class TestForwardRequestAsyncWrapper:
             try:
                 if not release.wait(timeout=5):
                     raise TimeoutError("test did not release blocked forwards")
-                return _FakeSocket(_http_response())
+                return FakeSocket(http_response())
             finally:
                 with lock:
                     active -= 1
@@ -1000,7 +753,7 @@ class TestForwardRequestAsyncWrapper:
         task_count = cap + 2
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", cap),
-            _fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(create_connection=create_connection),
         ):
             tasks = [
                 asyncio.create_task(
@@ -1049,7 +802,7 @@ class TestForwardRequestAsyncWrapper:
             try:
                 if current == 1 and not release_first.wait(timeout=5):
                     raise TimeoutError("test did not release first forward")
-                return _FakeSocket(_http_response())
+                return FakeSocket(http_response())
             finally:
                 with lock:
                     active -= 1
@@ -1065,7 +818,7 @@ class TestForwardRequestAsyncWrapper:
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
-            _fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
@@ -1137,7 +890,7 @@ class TestForwardRequestAsyncWrapper:
             try:
                 if current == 1 and not release_first.wait(timeout=5):
                     raise TimeoutError("test did not release first forward")
-                return _FakeSocket(_http_response())
+                return FakeSocket(http_response())
             finally:
                 with lock:
                     active -= 1
@@ -1145,7 +898,7 @@ class TestForwardRequestAsyncWrapper:
         third_task = None
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            _fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
@@ -1206,11 +959,11 @@ class TestForwardRequestAsyncWrapper:
                     second_entered.set()
             if current == 1 and not release_first.wait(timeout=5):
                 raise TimeoutError("test did not release first forward")
-            return _FakeSocket(_http_response())
+            return FakeSocket(http_response())
 
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            _fake_forwarder_upstream(create_connection=create_connection),
+            fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
                 forwarder.forward_request("https://example.com", "GET", [], None)
@@ -1245,7 +998,7 @@ class TestForwardRequestAsyncWrapper:
         def record_forwarding_thread():
             forwarding_thread_ids.append(threading.get_ident())
 
-        with _fake_forwarder_upstream(on_action=record_forwarding_thread):
+        with fake_forwarder_upstream(on_action=record_forwarding_thread):
             status, body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
