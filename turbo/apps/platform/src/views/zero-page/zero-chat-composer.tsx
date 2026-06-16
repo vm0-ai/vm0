@@ -2272,7 +2272,7 @@ function SelectedTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
-  const label = formatPresentationTemplateKind(item.templateId);
+  const label = item.title;
   return (
     <div className="px-4 pt-3">
       <div className="flex">
