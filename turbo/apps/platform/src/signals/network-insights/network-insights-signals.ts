@@ -211,22 +211,6 @@ export const reloadInsights$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Active tab: daily diary vs. period-wide time-range view
-// ---------------------------------------------------------------------------
-
-export type InsightsTab = "daily" | "time-range";
-
-const internalActiveTab$ = state<InsightsTab>("daily");
-
-export const insightsActiveTab$ = computed((get) => {
-  return get(internalActiveTab$);
-});
-
-export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
-  set(internalActiveTab$, tab);
-});
-
-// ---------------------------------------------------------------------------
 // "Show all" toggle for per-day automations / chats cards (keyed by day date)
 // ---------------------------------------------------------------------------
 
