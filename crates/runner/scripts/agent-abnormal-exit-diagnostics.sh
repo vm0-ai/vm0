@@ -49,16 +49,24 @@ fi
 
 section rootfs-usage
 du_summary() {
-  path="$1"
-  if [ ! -e "$path" ]; then
-    echo "$path: missing"
+  target_path="$1"
+  if [ ! -e "$target_path" ]; then
+    echo "$target_path: missing"
     return
   fi
+  output=""
   if command -v timeout >/dev/null 2>&1; then
-    timeout 1s du -sxh -- "$path" 2>&1 || echo "$path: du timed out or failed"
+    output=$(timeout 1s du -sxh -- "$target_path" 2>/dev/null) || {
+      echo "$target_path: du timed out or failed"
+      return
+    }
   else
-    du -sxh -- "$path" 2>&1
+    output=$(du -sxh -- "$target_path" 2>/dev/null) || {
+      echo "$target_path: du failed"
+      return
+    }
   fi
+  printf '%s\n' "$output"
 }
 
 for path in \
