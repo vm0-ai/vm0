@@ -12,6 +12,10 @@ pub struct FailureDiagnostic {
     pub framework: AgentFramework,
     pub cli_exit_code: Option<i32>,
     pub claude_num_turns: Option<u64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_failure_detail_source"
+    )]
     pub failure_detail_source: Option<FailureDetailSource>,
     #[serde(default, deserialize_with = "deserialize_optional_failure_reason")]
     pub failure_reason: Option<FailureReason>,
@@ -149,6 +153,16 @@ fn deserialize_optional_failure_reason<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
+    deserialize_optional_wire_value(deserializer, FailureReason::from_wire_value)
+}
+
+fn deserialize_optional_wire_value<'de, D, T>(
+    deserializer: D,
+    from_wire_value: fn(&str) -> Option<T>,
+) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum WireValue {
@@ -158,7 +172,7 @@ where
 
     let value = Option::<WireValue>::deserialize(deserializer)?;
     Ok(match value {
-        Some(WireValue::String(value)) => FailureReason::from_wire_value(&value),
+        Some(WireValue::String(value)) => from_wire_value(&value),
         Some(WireValue::Other(_)) | None => None,
     })
 }
@@ -182,6 +196,26 @@ impl FailureDetailSource {
             Self::FallbackExitCode => "fallback_exit_code",
         }
     }
+
+    #[must_use]
+    pub fn from_wire_value(value: &str) -> Option<Self> {
+        match value {
+            "claude_result" => Some(Self::ClaudeResult),
+            "codex_jsonl" => Some(Self::CodexJsonl),
+            "stderr" => Some(Self::Stderr),
+            "fallback_exit_code" => Some(Self::FallbackExitCode),
+            _ => None,
+        }
+    }
+}
+
+fn deserialize_optional_failure_detail_source<'de, D>(
+    deserializer: D,
+) -> Result<Option<FailureDetailSource>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_optional_wire_value(deserializer, FailureDetailSource::from_wire_value)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -463,6 +497,7 @@ mod tests {
             "framework": "claude_code",
             "cliExitCode": 1,
             "claudeNumTurns": 1,
+            "failureDetailSource": "future_source",
             "failureReason": "future_reason",
             "sessionHistoryStatus": "present",
             "promptShape": "plain",
@@ -472,6 +507,7 @@ mod tests {
 
         let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
 
+        assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
     }
 
@@ -483,6 +519,7 @@ mod tests {
             "framework": "claude_code",
             "cliExitCode": 1,
             "claudeNumTurns": 1,
+            "failureDetailSource": {},
             "failureReason": 123,
             "sessionHistoryStatus": "present",
             "promptShape": "plain",
@@ -492,6 +529,7 @@ mod tests {
 
         let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
 
+        assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
     }
 }
