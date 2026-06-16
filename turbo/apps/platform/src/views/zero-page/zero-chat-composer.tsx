@@ -1432,12 +1432,16 @@ function PptCard({
       <TemplatePreview item={item} onPreview={onPreview} />
       <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
-          <p
-            className="truncate text-sm font-semibold text-foreground"
-            title={item.title}
-          >
-            {item.title}
-          </p>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="cursor-default truncate text-sm font-semibold text-foreground">
+                  {item.title}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{item.title}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {formatPresentationTemplateKind(item.templateId)}
           </p>
