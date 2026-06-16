@@ -10,6 +10,8 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
+import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
+import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
@@ -65,6 +67,9 @@ const SLACK_ORG_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/slack/org";
 const TELEGRAM_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/telegram";
+const AGENTPHONE_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/agentphone";
+const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
@@ -89,6 +94,14 @@ interface TelegramSendMessageBody {
   readonly text: string;
   readonly parse_mode?: string;
   readonly reply_parameters?: { readonly message_id: number };
+}
+
+interface AgentPhoneSendMessageBody {
+  readonly agent_id?: string;
+  readonly to_number?: string;
+  readonly conversation_id?: string;
+  readonly reply_to_message_id?: string;
+  readonly body?: string;
 }
 
 const trackSlackIntegration = createFixtureTracker<SlackIntegrationFixture>(
@@ -313,6 +326,24 @@ async function readTelegramThreadSession(args: {
   return row;
 }
 
+async function readAgentPhoneThreadSession(args: {
+  readonly userLinkId: string;
+  readonly rootMessageId: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(agentphoneThreadSessions)
+    .where(
+      and(
+        eq(agentphoneThreadSessions.agentphoneUserLinkId, args.userLinkId),
+        eq(agentphoneThreadSessions.rootMessageId, args.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
 async function seedSlackCallbackContext(
   fixture: AgentCallbackRunFixture,
 ): Promise<{
@@ -404,6 +435,51 @@ async function seedTelegramCallbackContext(
   };
 }
 
+async function seedAgentPhoneCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly messageId: string;
+  readonly conversationId: string;
+  readonly channel: "imessage";
+  readonly isGroup: false;
+  readonly rootMessageId: string;
+  readonly phoneHandle: string;
+  readonly fromNumber: string;
+  readonly toNumber: string;
+  readonly userLinkId: string;
+  readonly agentId: string;
+  readonly agentphoneAgentId: string;
+  readonly existingSessionId: null;
+}> {
+  const db = store.set(writeDb$);
+  const phoneHandle = `+1555${fixture.runId.replace(/\D/gu, "").slice(0, 7).padEnd(7, "0")}`;
+  const [userLink] = await db
+    .insert(agentphoneUserLinks)
+    .values({
+      phoneHandle,
+      vm0UserId: fixture.userId,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: agentphoneUserLinks.id });
+  if (!userLink) {
+    throw new Error("Failed to seed AgentPhone user link");
+  }
+  return {
+    messageId: `ap-msg-${fixture.runId}`,
+    conversationId: `ap-conv-${fixture.runId}`,
+    channel: "imessage",
+    isGroup: false,
+    rootMessageId: "dm",
+    phoneHandle,
+    fromNumber: phoneHandle,
+    toNumber: "+19039853128",
+    userLinkId: userLink.id,
+    agentId: fixture.composeId,
+    agentphoneAgentId: `ap-agent-${fixture.runId}`,
+    existingSessionId: null,
+  };
+}
+
 function mockSlackApi(): void {
   context.mocks.slack.chat.postMessage.mockResolvedValue({
     ok: true,
@@ -465,6 +541,45 @@ function mockTelegramApi(
   );
 
   return { chatActions, sentMessages };
+}
+
+function mockAgentPhoneApi(
+  options: { readonly sendMessageStatus?: number } = {},
+): {
+  readonly messages: AgentPhoneSendMessageBody[];
+  readonly typing: string[];
+} {
+  const messages: AgentPhoneSendMessageBody[] = [];
+  const typing: string[] = [];
+  mockOptionalEnv("AGENTPHONE_API_BASE_URL", AGENTPHONE_API_BASE_URL);
+  mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
+  server.use(
+    http.post(`${AGENTPHONE_API_BASE_URL}/v1/messages`, async ({ request }) => {
+      const body = (await request.json()) as AgentPhoneSendMessageBody;
+      messages.push(body);
+      if (options.sendMessageStatus !== undefined) {
+        return HttpResponse.text("agentphone send failed", {
+          status: options.sendMessageStatus,
+        });
+      }
+      return HttpResponse.json({
+        id: `apmsg-${messages.length}`,
+        status: "sent",
+        channel: "imessage",
+        from_number: "+19039853128",
+        to_number: body.to_number ?? null,
+        media_urls: [],
+      });
+    }),
+    http.post(
+      `${AGENTPHONE_API_BASE_URL}/v1/conversations/:id/typing`,
+      ({ params }) => {
+        typing.push(typeof params.id === "string" ? params.id : "");
+        return HttpResponse.json({ status: "sent" });
+      },
+    ),
+  );
+  return { messages, typing };
 }
 
 async function seedGithubInstallation(
@@ -1346,6 +1461,165 @@ describe("dispatchRunCallbacks$ Telegram internal dispatch", () => {
       chat_id: payload.chatId,
       text: "Non-ccstate Telegram output.",
     });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ AgentPhone internal dispatch", () => {
+  it("dispatches typed AgentPhone callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    mockRunOutput("AgentPhone callback finished.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.typing).toStrictEqual([]);
+    expect(agentPhoneApi.messages).toStrictEqual([
+      {
+        agent_id: payload.agentphoneAgentId,
+        to_number: payload.phoneHandle,
+        body: "AgentPhone callback finished.",
+      },
+    ]);
+    await expect(
+      readAgentPhoneThreadSession({
+        userLinkId: payload.userLinkId,
+        rootMessageId: payload.rootMessageId,
+      }),
+    ).resolves.toMatchObject({
+      conversationId: payload.conversationId,
+      agentSessionId: expect.any(String),
+      lastProcessedMessageId: payload.messageId,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "agentphone",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed AgentPhone progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.typing).toStrictEqual([payload.conversationId]);
+    expect(agentPhoneApi.messages).toStrictEqual([]);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "agentphone",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy AgentPhone callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi({ sendMessageStatus: 502 });
+    mockRunOutput("Undelivered AgentPhone output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: AGENTPHONE_CALLBACK_URL,
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "AgentPhone API error: agentphone send failed",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.messages).toHaveLength(1);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: AGENTPHONE_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "AgentPhone API error: agentphone send failed",
+    });
+  });
+
+  it("dispatches typed AgentPhone callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    mockRunOutput("Non-ccstate AgentPhone output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.messages).toStrictEqual([
+      {
+        agent_id: payload.agentphoneAgentId,
+        to_number: payload.phoneHandle,
+        body: "Non-ccstate AgentPhone output.",
+      },
+    ]);
     await expect(readCallback(callbackId)).resolves.toMatchObject({
       status: "delivered",
       attempts: 1,

@@ -14,6 +14,10 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
+  handleAgentPhoneInternalCallback$,
+  handleAgentPhoneInternalCallbackWithoutCcstate,
+} from "./internal-agentphone-run-callback.service";
+import {
   handleGithubIssuesInternalCallback$,
   handleGithubIssuesInternalCallbackWithoutCcstate,
 } from "./internal-github-issues-run-callback.service";
@@ -97,6 +101,13 @@ const dispatchInternalCallback$ = command(
       case "agent": {
         await set(handleAgentInternalCallback$, input.envelope, signal);
         return { success: true };
+      }
+      case "agentphone": {
+        return await set(
+          handleAgentPhoneInternalCallback$,
+          input.envelope,
+          signal,
+        );
       }
       case "github:issues": {
         return await set(
@@ -403,6 +414,12 @@ async function dispatchInternalCallbackWithoutCcstate(
   switch (kind) {
     case "agent": {
       return { success: true };
+    }
+    case "agentphone": {
+      return await handleAgentPhoneInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
     }
     case "github:issues": {
       return await handleGithubIssuesInternalCallbackWithoutCcstate(
