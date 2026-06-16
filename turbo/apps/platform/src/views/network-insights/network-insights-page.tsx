@@ -4,7 +4,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from "@tabler/icons-react";
-import emptyInsightsImg from "../zero-page/assets/empty-insights.webp";
+import { emptyInsightsImg } from "../zero-page/platform-assets.ts";
 import {
   Skeleton,
   Popover,

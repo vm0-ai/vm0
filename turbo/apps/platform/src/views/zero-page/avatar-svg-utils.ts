@@ -1,3 +1,5 @@
+import { avatarSvgAssetUrl } from "./platform-assets.ts";
+
 export const AVATAR_SVG_PREFIX = "svg:";
 
 export interface AvatarSvgConfig {
@@ -47,52 +49,20 @@ export function parseAvatarSvgConfig(
   };
 }
 
-const SVG_RAW_CHUNKS = Object.freeze(
-  import.meta.glob<string>("./assets/avatar-svg/*.svg", {
-    eager: false,
-    query: "?raw",
-    import: "default",
-  }),
-);
-
-function loadRawAsset(filename: string): Promise<string> {
-  const key = `./assets/avatar-svg/${filename}`;
-  const loader = SVG_RAW_CHUNKS[key];
-  if (!loader) {
-    throw new Error(`Missing avatar SVG asset: ${filename}`);
-  }
-  return loader();
-}
-
-/** Extract the inner content of an SVG string (everything between <svg> and </svg>). */
-function extractSvgInner(raw: string): string {
-  const open = raw.indexOf(">", raw.indexOf("<svg"));
-  const close = raw.lastIndexOf("</svg>");
-  if (open === -1 || close === -1) {
-    return "";
-  }
-  return raw.slice(open + 1, close);
-}
-
-/**
- * Load the 3 SVG layers for a config and return a data-URL of the combined SVG.
- */
-export async function loadCompositeAvatarSvg(
-  config: AvatarSvgConfig,
-): Promise<string> {
-  const [head, face, hair] = await Promise.all([
-    loadRawAsset(`head-r${config.rotation}-s${config.skin}.svg`),
-    loadRawAsset(
+export function avatarSvgLayerUrls(config: AvatarSvgConfig): {
+  head: string;
+  face: string;
+  hair: string;
+} {
+  return {
+    head: avatarSvgAssetUrl(`head-r${config.rotation}-s${config.skin}.svg`),
+    face: avatarSvgAssetUrl(
       `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
     ),
-    loadRawAsset(
+    hair: avatarSvgAssetUrl(
       `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
     ),
-  ]);
-  const inner =
-    extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
-  const svg = `<svg viewBox="0 0 480 480" fill="none" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  };
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
