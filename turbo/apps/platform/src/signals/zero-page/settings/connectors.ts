@@ -226,7 +226,7 @@ export function connectorExpiryCountdownText(
 
 const reconnectReasonTooltipText = {
   provider_session_expired:
-    "The provider requires sign-in again. Reconnect to continue.",
+    "The provider session expired. Reconnect to continue.",
   authorization_expired_or_revoked:
     "Authorization expired or was revoked. Reconnect to continue.",
   credential_expired: "The stored credential expired. Reconnect to continue.",
