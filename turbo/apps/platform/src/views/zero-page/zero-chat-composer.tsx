@@ -1174,6 +1174,7 @@ function TemplatePreview({
           <img
             src={previewImage}
             alt=""
+            data-testid={`${item.title} card preview slide 1`}
             className="absolute inset-0 h-full w-full object-cover"
             loading="lazy"
             onLoad={(event) => {
@@ -1195,6 +1196,9 @@ function TemplatePreview({
                   key={imageUrl}
                   src={imageUrl}
                   alt=""
+                  data-testid={`${item.title} card preview slide ${
+                    isHovering ? imageIndex + 1 : 1
+                  }`}
                   className={cn(
                     "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
                     active && "data-[loaded=true]:opacity-100",

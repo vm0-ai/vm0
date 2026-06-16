@@ -372,7 +372,7 @@ async function openTemplatePicker(
   });
 
   if (slideCount > 1) {
-    const previewImage = screen.getByTitle(
+    const previewImage = screen.getByTestId(
       `${template.title} card preview slide 1`,
     );
     const preview = previewImage.parentElement;
@@ -388,7 +388,9 @@ async function openTemplatePicker(
     fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
     await waitFor(() => {
       expect(
-        screen.getByTitle(`${template.title} card preview slide ${slideCount}`),
+        screen.getByTestId(
+          `${template.title} card preview slide ${slideCount}`,
+        ),
       ).toBeInTheDocument();
     });
     fireEvent.mouseLeave(preview);
