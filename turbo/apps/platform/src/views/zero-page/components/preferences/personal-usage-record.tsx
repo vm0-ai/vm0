@@ -108,8 +108,10 @@ const ROW_CLASS =
 
 // Dotted-underline link affordance for the title, mirroring the insights page
 // (network-insights-page.tsx): hover reveals a tooltip, click navigates.
+// leading-6 keeps the line box tall enough that the offset-4 underline isn't
+// clipped by `truncate`'s overflow-hidden.
 const TITLE_LINK_CLASS =
-  "min-w-0 flex-1 truncate text-sm font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground";
+  "min-w-0 flex-1 truncate text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
