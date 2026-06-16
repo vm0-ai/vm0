@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleAnalytics = {
   "google-analytics": {
@@ -18,7 +17,6 @@ export const googleAnalytics = {
       "Connect your Google account to access GA4 reports, properties, accounts, and audience data",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.GoogleAnalyticsConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Analytics access.",
         client: {
