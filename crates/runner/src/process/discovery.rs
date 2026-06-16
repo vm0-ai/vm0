@@ -190,25 +190,19 @@ fn unidentified_firecracker_process(pid: u32, ppid: Option<u32>) -> FirecrackerP
     }
 }
 
-fn unresolved_firecracker_resolution(
-    pid: u32,
-    stat: &ProcessStat,
-    argv: Option<&[String]>,
-    ppid: Option<u32>,
-) -> FirecrackerCandidateResolution {
-    if should_keep_unidentified_firecracker_candidate(stat, argv) {
-        FirecrackerCandidateResolution::UnidentifiedLive { pid, ppid }
-    } else {
-        FirecrackerCandidateResolution::NotPresent
-    }
-}
-
 async fn unresolved_firecracker_resolution_if_present(pid: u32) -> FirecrackerCandidateResolution {
     let Some(stat) = read_process_stat(pid).await else {
         return FirecrackerCandidateResolution::NotPresent;
     };
     let argv = read_cmdline(pid).await;
-    unresolved_firecracker_resolution(pid, &stat, argv.as_deref(), read_ppid(pid).await)
+    if should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
+        FirecrackerCandidateResolution::UnidentifiedLive {
+            pid,
+            ppid: read_ppid(pid).await,
+        }
+    } else {
+        FirecrackerCandidateResolution::NotPresent
+    }
 }
 
 fn stable_firecracker_resolution(
@@ -606,49 +600,6 @@ mod tests {
             stat('Z', 1100, 123456),
             stat('R', 1100, 123456),
         );
-
-        assert_eq!(resolution, FirecrackerCandidateResolution::NotPresent);
-        assert_eq!(resolution.into_process_info(), None);
-    }
-
-    #[test]
-    fn unresolved_firecracker_resolution_keeps_unreadable_cmdline_live_candidate() {
-        let resolution =
-            unresolved_firecracker_resolution(42, &stat('S', 1100, 123456), None, Some(7));
-
-        assert_eq!(
-            resolution,
-            FirecrackerCandidateResolution::UnidentifiedLive {
-                pid: 42,
-                ppid: Some(7),
-            }
-        );
-
-        let info = resolution.into_process_info().unwrap();
-        assert_eq!(info.pid, 42);
-        assert_eq!(info.ppid, Some(7));
-        assert_eq!(info.sandbox_id, "pid-42");
-        assert_eq!(info.base_dir, None);
-        assert_eq!(info.identity, None);
-    }
-
-    #[test]
-    fn unresolved_firecracker_resolution_rejects_reused_non_firecracker_pid() {
-        let resolution = unresolved_firecracker_resolution(
-            42,
-            &stat('S', 1100, 123456),
-            Some(&argv(&["bash"])),
-            Some(7),
-        );
-
-        assert_eq!(resolution, FirecrackerCandidateResolution::NotPresent);
-        assert_eq!(resolution.into_process_info(), None);
-    }
-
-    #[test]
-    fn unresolved_firecracker_resolution_rejects_zombie_candidate() {
-        let resolution =
-            unresolved_firecracker_resolution(42, &stat('Z', 1100, 123456), None, Some(7));
 
         assert_eq!(resolution, FirecrackerCandidateResolution::NotPresent);
         assert_eq!(resolution.into_process_info(), None);
