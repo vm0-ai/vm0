@@ -10,10 +10,8 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import {
-  visibleChatMessageCondition,
-  zeroChatThreadUnreads,
-} from "../services/zero-chat-thread.service";
+import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
+import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {

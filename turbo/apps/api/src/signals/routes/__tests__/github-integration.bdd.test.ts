@@ -13,7 +13,6 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -25,7 +24,6 @@ import {
   acceptGithubRunObjectStorage,
   buildLegacySignedState,
   buildUserConnectState,
-  captureChatCallbackDeliveries,
   captureGithubIssueApi,
   connectLinkQuery,
   createGithubBddApi,
@@ -1759,32 +1757,18 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     );
     expect(expired.body).toStrictEqual({ error: "Timestamp expired" });
 
-    // A chat run's delivery verifies per-callback but fails payload parsing.
-    const chatDeliveries = captureChatCallbackDeliveries();
-    const chat = createChatFilesBddApi(context);
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: harness.defaultAgentId,
-        prompt: "github bdd chat run",
-        modelProvider: "anthropic-api-key",
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected the entitled chat send to create a run");
-    }
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-    await waitForArrayLength(chatDeliveries, 1);
-    const chatDelivery = chatDeliveries[0];
-    if (!chatDelivery?.signature || !chatDelivery.timestamp) {
-      throw new Error("Expected a signed chat callback delivery");
-    }
+    // A legitimately signed callback with the wrong payload shape verifies
+    // per-callback but fails GitHub issue payload parsing.
+    const mismatchedDelivery = await signedLegacyGithubIssuesCallbackDelivery({
+      runId,
+      status: "completed",
+      payload: { threadId: randomUUID(), agentId: harness.defaultAgentId },
+    });
     const mismatched = await gh.requestGithubIssuesCallback(
-      chatDelivery.body,
+      mismatchedDelivery.body,
       {
-        "x-vm0-signature": chatDelivery.signature,
-        "x-vm0-timestamp": chatDelivery.timestamp,
+        "x-vm0-signature": mismatchedDelivery.signature,
+        "x-vm0-timestamp": mismatchedDelivery.timestamp,
       },
       [400],
     );

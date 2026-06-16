@@ -5,22 +5,25 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
-import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -36,10 +39,8 @@ import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
-import {
-  callbackDeliveryWithStatus,
-  createWebhookCallbackApi,
-} from "./helpers/api-bdd-webhooks";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -50,6 +51,12 @@ import {
  */
 
 const context = testContext();
+const store = createStore();
+
+interface SignedInternalCallbackDelivery {
+  readonly body: string;
+  readonly headers: Record<string, string>;
+}
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
@@ -130,37 +137,44 @@ async function waitForRunQueueLength(
   return await api.readRunQueue(actor);
 }
 
-async function waitForArrayLength<T>(
-  items: readonly T[],
-  length: number,
-): Promise<void> {
-  await expect
-    .poll(() => {
-      return items.length;
-    })
-    .toBe(length);
-}
-
-async function waitForCallbackDeliveryWithStatus(
-  deliveries: readonly ReturnType<typeof callbackDeliveryWithStatus>[],
-  status: "completed" | "failed" | "progress",
-): Promise<ReturnType<typeof callbackDeliveryWithStatus>> {
-  let delivery: ReturnType<typeof callbackDeliveryWithStatus> | undefined;
-  await expect
-    .poll(async () => {
-      const result = await settle(
-        Promise.resolve().then(() => {
-          return callbackDeliveryWithStatus(deliveries, status);
-        }),
-      );
-      delivery = result.ok ? result.value : undefined;
-      return delivery !== undefined;
-    })
-    .toBe(true);
-  if (!delivery) {
-    throw new Error(`Expected a captured ${status} callback delivery`);
+async function signedCallbackDeliveryForRun(args: {
+  readonly runId: string;
+  readonly status: "completed" | "failed" | "progress";
+  readonly payload: unknown;
+  readonly error?: string;
+}): Promise<SignedInternalCallbackDelivery> {
+  const secret = `signed-callback-${args.runId}`;
+  const db = store.set(writeDb$);
+  const [callback] = await db
+    .select({ id: agentRunCallbacks.id })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, args.runId))
+    .limit(1);
+  if (!callback) {
+    throw new Error("Expected a callback row");
   }
-  return delivery;
+
+  await db
+    .update(agentRunCallbacks)
+    .set({ encryptedSecret: encryptSecretForTests(secret) })
+    .where(eq(agentRunCallbacks.id, callback.id));
+
+  const body = JSON.stringify({
+    callbackId: callback.id,
+    runId: args.runId,
+    status: args.status,
+    ...(args.error === undefined ? {} : { error: args.error }),
+    payload: args.payload,
+  });
+  const timestamp = Math.floor(now() / 1000);
+  return {
+    body,
+    headers: {
+      "content-type": "application/json",
+      "x-vm0-signature": computeHmacSignature(body, secret, timestamp),
+      "x-vm0-timestamp": timestamp.toString(),
+    },
+  };
 }
 
 function base64UrlEncode(input: string): string {
@@ -228,14 +242,11 @@ async function entitledRunActor(): Promise<{
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 
-function proxyChatCallbackToApp(): void {
+function failIfChatCallbackRouteIsFetched(): void {
   server.use(
-    http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-      const app = createApp({ signal: context.signal });
-      return await app.request("/api/internal/callbacks/chat", {
-        method: "POST",
-        headers: request.headers,
-        body: await request.text(),
+    http.post(CHAT_CALLBACK_URL, () => {
+      return HttpResponse.text("chat callback route should not be fetched", {
+        status: 500,
       });
     }),
   );
@@ -830,7 +841,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const chat = createChatFilesBddApi(context);
     const misc = createMiscRoutesApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
-    proxyChatCallbackToApp();
+    failIfChatCallbackRouteIsFetched();
 
     const skillName = "bdd-codex-kit";
     await misc.createSkill(
@@ -2108,26 +2119,16 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 });
 
 describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
-  it("delivers, fails, and retries chat run callbacks through cancellation side effects", async () => {
+  it("delivers chat run callbacks through cancellation side effects without HTTP self-dispatch", async () => {
     const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId } = await entitledRunActor();
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "bdd-bypass");
 
-    const rejectedDeliveries: {
-      readonly body: string;
-      readonly signature: string | null;
-      readonly timestamp: string | null;
-      readonly bypass: string | null;
-    }[] = [];
+    let routeRequests = 0;
     server.use(
-      http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-        rejectedDeliveries.push({
-          body: await request.text(),
-          signature: request.headers.get("x-vm0-signature"),
-          timestamp: request.headers.get("x-vm0-timestamp"),
-          bypass: request.headers.get("x-vercel-protection-bypass"),
-        });
+      http.post(CHAT_CALLBACK_URL, () => {
+        routeRequests += 1;
         return HttpResponse.json({ error: "boom" }, { status: 500 });
       }),
     );
@@ -2140,31 +2141,19 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
 
     const firstCancelled = await api.readRun(actor, first.runId);
     expect(firstCancelled.status).toBe("cancelled");
-    await waitForArrayLength(rejectedDeliveries, 1);
-    expect(rejectedDeliveries).toHaveLength(1);
-    expect(rejectedDeliveries[0]).toMatchObject({
-      signature: expect.stringMatching(/.+/),
-      timestamp: expect.stringMatching(/^\d+$/),
-      bypass: "bdd-bypass",
-    });
-    const rejectedBody: unknown = JSON.parse(
-      rejectedDeliveries[0]?.body ?? "{}",
-    );
-    expect(rejectedBody).toMatchObject({
-      callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
-      runId: first.runId,
-      status: "failed",
-      error: "Run cancelled",
-      payload: { threadId: first.threadId, agentId },
-    });
-
-    let unreachableDispatches = 0;
-    server.use(
-      http.post(CHAT_CALLBACK_URL, () => {
-        unreachableDispatches += 1;
-        return HttpResponse.error();
-      }),
-    );
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        return messages.messages.some((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === first.runId &&
+            message.runLifecycleEvent === "cancelled"
+          );
+        });
+      })
+      .toBe(true);
+    expect(routeRequests).toBe(0);
 
     const second = await sendChatRunMessage(actor, {
       agentId,
@@ -2176,13 +2165,18 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     const secondCancelled = await api.readRun(actor, second.runId);
     expect(secondCancelled.status).toBe("cancelled");
     await expect
-      .poll(() => {
-        return unreachableDispatches;
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        return messages.messages.some((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === second.runId &&
+            message.runLifecycleEvent === "cancelled"
+          );
+        });
       })
-      .toBe(1);
-    expect(unreachableDispatches).toBe(1);
-
-    proxyChatCallbackToApp();
+      .toBe(true);
+    expect(routeRequests).toBe(0);
 
     const third = await sendChatRunMessage(actor, {
       agentId,
@@ -2213,6 +2207,7 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     }
     expect(cancelNote.runLifecycleEvent).toBe("cancelled");
     expect(cancelNote.content).toStrictEqual(expect.any(String));
+    expect(routeRequests).toBe(0);
   });
 });
 
@@ -2226,14 +2221,6 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    // The nested trigger-agent producer is not API-constructible (zero tokens
-    // exclude agent-run:write), so this chain captures the real dispatcher
-    // deliveries of a chat run and replays them into the agent path:
-    // callbackRoute resolves the row by the body's callbackId, never by path,
-    // so a legitimately signed delivery verifies on any callback route.
-    const deliveries = webhooks.captureInternalCallbackDeliveries(
-      "/api/internal/callbacks/chat",
-    );
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     const openRouterRequests: {
       readonly messages: readonly {
@@ -2260,13 +2247,14 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     const claim = await api.claimRunnerJob(runId);
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
-    // A sandbox heartbeat dispatches a progress delivery; replaying it hits
-    // the agent route's non-completed early return without touching Axiom.
+    // Replaying a progress callback hits the agent route's non-completed early
+    // return without touching Axiom.
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    const progressDelivery = await waitForCallbackDeliveryWithStatus(
-      deliveries,
-      "progress",
-    );
+    const progressDelivery = await signedCallbackDeliveryForRun({
+      runId,
+      status: "progress",
+      payload: { triggerAgentId: agentId },
+    });
     const queryCallsBeforeProgress =
       context.mocks.axiom.query.mock.calls.length;
     const progressReplay = await webhooks.replayInternalCallback(
@@ -2301,10 +2289,11 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     );
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
-    const completedDelivery = await waitForCallbackDeliveryWithStatus(
-      deliveries,
-      "completed",
-    );
+    const completedDelivery = await signedCallbackDeliveryForRun({
+      runId,
+      status: "completed",
+      payload: { triggerAgentId: agentId },
+    });
 
     // The agent route reads the run output back through the Axiom boundary.
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -2331,8 +2320,9 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     await expect(noKeyReplay.json()).resolves.toStrictEqual({ success: true });
     expect(openRouterRequests).toHaveLength(0);
 
-    // With a key the replay produces exactly one summarize completion call
-    // carrying the agent trigger source and the run output.
+    // With a key the replay produces exactly one agent summarize completion call
+    // carrying the agent trigger source and the run output. Chat callbacks in
+    // the same flow can also generate chat title/follow-up completions.
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const summaryReplay = await webhooks.replayInternalCallback(
       AGENT_CALLBACK_PATH,
@@ -2342,11 +2332,16 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     await expect(summaryReplay.json()).resolves.toStrictEqual({
       success: true,
     });
-    expect(openRouterRequests).toHaveLength(1);
-    expect(openRouterRequests[0]?.messages[0]?.content).toContain(
+    const agentSummaryRequests = openRouterRequests.filter((request) => {
+      return request.messages[0]?.content.includes(
+        "Summarize the result of this agent agent run",
+      );
+    });
+    expect(agentSummaryRequests).toHaveLength(1);
+    expect(agentSummaryRequests[0]?.messages[0]?.content).toContain(
       "Summarize the result of this agent agent run",
     );
-    expect(openRouterRequests[0]?.messages[1]?.content).toContain(
+    expect(agentSummaryRequests[0]?.messages[1]?.content).toContain(
       "Delegated task finished cleanly.",
     );
 
@@ -2413,7 +2408,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const webhooks = createWebhookCallbackApi(context);
     const chatCallbacks = createChatCallbacksApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const { runId, threadId } = await sendChatRunMessage(actor, {
       agentId,
@@ -2497,7 +2492,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    proxyChatCallbackToApp();
+    failIfChatCallbackRouteIsFetched();
 
     const { runId, threadId } = await sendChatRunMessage(actor, {
       agentId,

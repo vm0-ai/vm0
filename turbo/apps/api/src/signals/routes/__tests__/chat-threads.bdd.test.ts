@@ -510,7 +510,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",
     );
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -616,7 +616,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Thread delete cascade agent",
     );
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const peer = bdd.user({ orgId: actor.orgId });
 
     const unauthenticated = await chat.requestDeleteThread(
@@ -1785,7 +1785,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Artifacts drive status agent",
     );
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const peer = bdd.user({ orgId: actor.orgId });
 
@@ -1957,7 +1957,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Artifacts dedupe agent",
     );
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
 
     // Run 1 uploads its own file plus the shared one.
@@ -2281,7 +2281,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
   it("sends v1 chat messages with a personal access token", async () => {
     const { actor, agentId, runnerGroup } =
       await entitledChatActor("V1 send agent");
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     authOrg.mockClerkOrg(actor);
     const key = await authOrg.createApiKey(actor, {
       name: "bdd-v1-send",

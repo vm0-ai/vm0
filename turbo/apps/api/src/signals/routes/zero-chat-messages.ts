@@ -50,7 +50,6 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -72,7 +71,7 @@ import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
@@ -432,13 +431,6 @@ function hasAgentSessionId(
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
-}
-
-function chatCallbackUrl(): string {
-  return new URL(
-    "/api/internal/callbacks/chat",
-    internalApiBaseUrl(),
-  ).toString();
 }
 
 function buildWebChatPrompt(): string {
@@ -2502,7 +2494,7 @@ const createNormalChatRun$ = command(
         selectedModelOverride: modelPin.selectedModel ?? undefined,
         callbacks: [
           {
-            url: chatCallbackUrl(),
+            internalKind: "chat",
             secret: generateCallbackSecret(),
             payload: {
               threadId: prepared.thread.threadId,

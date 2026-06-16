@@ -18,6 +18,10 @@ import {
   handleAgentPhoneInternalCallbackWithoutCcstate,
 } from "./internal-agentphone-run-callback.service";
 import {
+  handleChatInternalCallback$,
+  handleChatInternalCallbackWithoutCcstate,
+} from "./internal-chat-run-callback.service";
+import {
   handleGithubIssuesInternalCallback$,
   handleGithubIssuesInternalCallbackWithoutCcstate,
 } from "./internal-github-issues-run-callback.service";
@@ -108,6 +112,9 @@ const dispatchInternalCallback$ = command(
           input.envelope,
           signal,
         );
+      }
+      case "chat": {
+        return await set(handleChatInternalCallback$, input.envelope, signal);
       }
       case "github:issues": {
         return await set(
@@ -417,6 +424,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "agentphone": {
       return await handleAgentPhoneInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "chat": {
+      return await handleChatInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );

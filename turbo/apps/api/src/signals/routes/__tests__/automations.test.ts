@@ -880,7 +880,7 @@ describe("Automations API", () => {
     );
     expect(
       callbacks.some((callback) => {
-        return callback.url?.endsWith("/api/internal/callbacks/chat");
+        return callback.url === null && callback.internalKind === "chat";
       }),
     ).toBeTruthy();
 
@@ -1311,13 +1311,17 @@ describe("Automations API", () => {
 
     // Only the chat callback: nothing was claimed, so there is no reschedule.
     const callbacks = await db
-      .select({ url: agentRunCallbacks.url })
+      .select({
+        url: agentRunCallbacks.url,
+        internalKind: agentRunCallbacks.internalKind,
+      })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, runId));
     expect(callbacks).toHaveLength(1);
-    expect(
-      callbacks[0]?.url?.endsWith("/api/internal/callbacks/chat"),
-    ).toBeTruthy();
+    expect(callbacks[0]).toStrictEqual({
+      url: null,
+      internalKind: "chat",
+    });
 
     // The prompt renders as a user chat message with the automation chip.
     const messages = await db
