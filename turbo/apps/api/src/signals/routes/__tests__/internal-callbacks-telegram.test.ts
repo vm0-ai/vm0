@@ -17,13 +17,11 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { handleTelegramInternalCallback$ } from "../../services/internal-telegram-run-callback.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -38,10 +36,10 @@ import {
 const context = testContext();
 const store = createStore();
 
-const PATH = "/api/internal/callbacks/telegram";
-const TEST_CALLBACK_SECRET = "test-callback-secret";
 const TEST_BOT_TOKEN = "test-bot-token";
 const OFFICIAL_BOT_TOKEN = "123456:official-test-token";
+
+type TelegramCallbackStatus = "completed" | "failed" | "progress";
 
 interface TelegramCallbackPayload {
   readonly installationId: string;
@@ -236,7 +234,7 @@ async function seedFixture(): Promise<TelegramFixture> {
     seedAgentRunCallback$,
     {
       runId,
-      url: `http://localhost${PATH}`,
+      internalKind: "telegram",
       payload: payload as unknown as Record<string, unknown>,
     },
     context.signal,
@@ -310,7 +308,7 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
     seedAgentRunCallback$,
     {
       runId,
-      url: `http://localhost${PATH}`,
+      internalKind: "telegram",
       payload: payload as unknown as Record<string, unknown>,
     },
     context.signal,
@@ -327,30 +325,14 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
   };
 }
 
-function signedHeaders(
-  rawBody: string,
-  secret = TEST_CALLBACK_SECRET,
-  timestamp = Math.floor(now() / 1000),
-) {
-  return {
-    "Content-Type": "application/json",
-    "X-VM0-Signature": computeHmacSignature(rawBody, secret, timestamp),
-    "X-VM0-Timestamp": String(timestamp),
-  };
-}
-
-async function postSignedCallback(
-  body: Record<string, unknown>,
-  secret?: string,
-  timestamp = Math.floor(now() / 1000),
-): Promise<Response> {
-  const rawBody = JSON.stringify(body);
-  const app = createApp({ signal: context.signal });
-  return await app.request(PATH, {
-    method: "POST",
-    headers: signedHeaders(rawBody, secret, timestamp),
-    body: rawBody,
-  });
+async function dispatchTelegramCallback(body: {
+  readonly callbackId?: string;
+  readonly runId: string;
+  readonly status: TelegramCallbackStatus;
+  readonly error?: string;
+  readonly payload: unknown;
+}) {
+  return await store.set(handleTelegramInternalCallback$, body, context.signal);
 }
 
 function completedOutput(text = "**Done** with `code`"): void {
@@ -396,103 +378,24 @@ afterEach(() => {
   clearMockedEnv();
 });
 
-describe("POST /api/internal/callbacks/telegram", () => {
+describe("handleTelegramInternalCallback$", () => {
   const track = createFixtureTracker<TelegramFixture>((fixture) => {
     return deleteFixture(fixture);
   });
 
-  it("rejects requests with invalid signatures", async () => {
+  it("rejects invalid payloads", async () => {
     const fixture = await track(seedFixture());
 
-    const response = await postSignedCallback(
-      {
-        callbackId: fixture.callbackId,
-        runId: fixture.runId,
-        status: "completed",
-        payload: fixture.payload,
-      },
-      "wrong-secret",
-    );
-
-    expect(response.status).toBe(401);
-  });
-
-  it("rejects requests with expired timestamps", async () => {
-    const fixture = await track(seedFixture());
-    const expiredTimestamp = Math.floor(now() / 1000) - 10 * 60;
-
-    const response = await postSignedCallback(
-      {
-        callbackId: fixture.callbackId,
-        runId: fixture.runId,
-        status: "completed",
-        payload: fixture.payload,
-      },
-      TEST_CALLBACK_SECRET,
-      expiredTimestamp,
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Timestamp expired",
-    });
-  });
-
-  it("returns 404 for callbacks without a matching callback record", async () => {
-    const response = await postSignedCallback({
-      runId: randomUUID(),
-      status: "completed",
-      payload: {
-        installationId: "missing-installation",
-        chatId: "12345",
-        messageId: "42",
-        rootMessageId: "100",
-        userLinkId: "missing-link",
-        agentId: "missing-agent",
-        existingSessionId: null,
-        isDM: false,
-      },
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Callback not found",
-    });
-  });
-
-  it("rejects callbacks with missing runId", async () => {
-    const response = await postSignedCallback({
-      status: "completed",
-      payload: {
-        installationId: "missing-installation",
-        chatId: "12345",
-        messageId: "42",
-        rootMessageId: "100",
-        userLinkId: "missing-link",
-        agentId: "missing-agent",
-        existingSessionId: null,
-        isDM: false,
-      },
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing runId",
-    });
-  });
-
-  it("rejects invalid payloads after callback verification", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: { installationId: fixture.installationId },
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(result).toStrictEqual({
+      success: false,
+      status: 400,
       error: "Invalid or missing payload",
     });
   });
@@ -501,15 +404,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks();
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "progress",
       payload: { ...fixture.payload, thinkingMessageId: "100" },
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.chatActions).toHaveLength(1);
     expect(telegram.deleteMessages).toHaveLength(0);
     expect(telegram.sentMessages).toHaveLength(0);
@@ -520,15 +422,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const telegram = telegramApiMocks();
     completedOutput();
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages).toHaveLength(1);
     expect(telegram.sentMessages[0]).toMatchObject({
       chat_id: fixture.payload.chatId,
@@ -558,14 +459,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
       "Please [connect Notion](https://example.com/connect?agentId=123)",
     );
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(telegram.sentMessages[0]?.parse_mode).toBe("HTML");
     expect(text).toContain(
@@ -608,14 +509,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
     );
     completedOutput("Mocked preview reply");
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     expect(calls).toHaveLength(1);
     const [call] = calls;
     if (!call) {
@@ -647,14 +548,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     completedOutput("Plain result");
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(text).toContain("📋 Audit");
     expect(text).toContain(`https://app.vm0.test/activities/${fixture.runId}`);
@@ -672,14 +573,14 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const telegram = telegramApiMocks();
     completedOutput("Responder result");
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(text).toContain("<i>Responded by Responder · Claude Opus 4.7</i>");
   });
@@ -688,7 +589,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks();
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "failed",
@@ -696,7 +597,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       payload: { ...fixture.payload, thinkingMessageId: "100" },
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.deleteMessages).toHaveLength(1);
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(text).not.toContain("Agent Execution Error");
@@ -710,7 +611,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks();
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "failed",
@@ -718,7 +619,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       payload: fixture.payload,
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(text).not.toContain("Agent Execution Error");
     expect(text).toContain("Cannot continue session from checkpoint");
@@ -755,7 +656,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const telegram = telegramApiMocks();
     completedOutput("DM result");
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
@@ -767,7 +668,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       },
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages[0]?.reply_parameters).toBeUndefined();
     const session = await findThreadSession({
       userLinkId: fixture.userLinkId,
@@ -798,7 +699,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const telegram = telegramApiMocks(OFFICIAL_BOT_TOKEN);
     completedOutput("Official result");
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
@@ -809,7 +710,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       },
     });
 
-    expect(response.status).toBe(200);
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages).toHaveLength(1);
     const [stored] = await db
       .select({
@@ -829,7 +730,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks();
 
-    const response = await postSignedCallback({
+    const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
       runId: fixture.runId,
       status: "completed",
@@ -839,8 +740,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       },
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages).toHaveLength(0);
   });
 });

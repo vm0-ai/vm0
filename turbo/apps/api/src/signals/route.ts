@@ -40,7 +40,6 @@ import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
-import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
@@ -206,7 +205,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...githubOauthRoutes,
   ...internalCallbacksGithubIssuesRoutes,
   ...internalCallbacksSlackOrgRoutes,
-  ...internalCallbacksTelegramRoutes,
   ...internalCallbacksTriggerRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,

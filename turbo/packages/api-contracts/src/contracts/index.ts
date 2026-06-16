@@ -184,12 +184,6 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
-  internalCallbacksTelegramContract,
-  telegramCallbackPayloadSchema,
-  type InternalCallbacksTelegramContract,
-  type TelegramCallbackPayload,
-} from "./internal-callbacks-telegram";
-export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
