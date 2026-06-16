@@ -1,13 +1,10 @@
 import { command } from "ccstate";
-import {
-  agentPhoneCallbackPayloadSchema,
-  type AgentPhoneCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-agentphone";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { logger } from "../../lib/log";
 import {
@@ -37,6 +34,27 @@ import {
 import { settle } from "../utils";
 
 const log = logger("api:callback:agentphone");
+
+const agentPhoneCallbackPayloadSchema = z
+  .object({
+    messageId: z.string(),
+    conversationId: z.string().nullable(),
+    channel: z.string().optional(),
+    isGroup: z.boolean().optional(),
+    rootMessageId: z.string().optional(),
+    phoneHandle: z.string(),
+    fromNumber: z.string(),
+    toNumber: z.string(),
+    userLinkId: z.string(),
+    agentId: z.string(),
+    agentphoneAgentId: z.string(),
+    existingSessionId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+type AgentPhoneCallbackPayload = z.infer<
+  typeof agentPhoneCallbackPayloadSchema
+>;
 
 interface RunContext {
   readonly userId: string;

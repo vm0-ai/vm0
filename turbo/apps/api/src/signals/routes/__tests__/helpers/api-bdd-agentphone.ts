@@ -33,8 +33,6 @@ import { createZeroRouteMocks } from "./zero-route-test";
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
-const AGENTPHONE_CALLBACK_URL =
-  "http://localhost:3000/api/internal/callbacks/agentphone";
 
 type OrgModelPolicyUpdateBody = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
@@ -252,19 +250,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
         ),
       );
       return { messages, typing };
-    },
-
-    proxyAgentPhoneCallbackToApp(): void {
-      server.use(
-        http.post(AGENTPHONE_CALLBACK_URL, async ({ request }) => {
-          const app = createApp({ signal: context.signal });
-          return await app.request("/api/internal/callbacks/agentphone", {
-            method: "POST",
-            headers: request.headers,
-            body: await request.text(),
-          });
-        }),
-      );
     },
 
     /**
