@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.456.2](https://github.com/vm0-ai/vm0/compare/app-v0.456.1...app-v0.456.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* anchor inline feedback note so the quote grows the composer upward ([#17748](https://github.com/vm0-ai/vm0/issues/17748)) ([54217e0](https://github.com/vm0-ai/vm0/commit/54217e04995730c500eff108311d946e086cf970))
+* prevent settings dialog auto-focusing Preference nav item ([#17777](https://github.com/vm0-ai/vm0/issues/17777)) ([5be826e](https://github.com/vm0-ai/vm0/commit/5be826e67c745a319b52b7bd72faa7ddf47b1856)), closes [#17776](https://github.com/vm0-ai/vm0/issues/17776)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.2
+    * @vm0/core bumped to 8.341.2
+
 ## [0.456.1](https://github.com/vm0-ai/vm0/compare/app-v0.456.0...app-v0.456.1) (2026-06-16)
 
 

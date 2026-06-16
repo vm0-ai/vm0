@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.145.1](https://github.com/vm0-ai/vm0/compare/api-v1.145.0...api-v1.145.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* rebalance generation template prompt context ([#17810](https://github.com/vm0-ai/vm0/issues/17810)) ([96c5c9a](https://github.com/vm0-ai/vm0/commit/96c5c9afa165729a570dfe39643d03ca8d73aa38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.95.2
+    * @vm0/core bumped to 8.341.2
+    * @vm0/db bumped to 1.52.4
+
 ## [1.145.0](https://github.com/vm0-ai/vm0/compare/api-v1.144.0...api-v1.145.0) (2026-06-15)
 
 
