@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 use std::io::ErrorKind;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant as StdInstant};
@@ -836,6 +837,7 @@ fn create_cow_file(
     match &config.golden_cow {
         Some(golden) => {
             sparse_copy(golden, cow_file)?;
+            ensure_owner_read_write(cow_file)?;
             // Snapshot restore requires the dirty bitmap sidecar to preserve COW reads.
             let golden_bitmap = nbd_cow::cow::bitmap_path_for(golden);
             let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
@@ -851,10 +853,25 @@ fn create_cow_file(
     Ok(())
 }
 
+fn ensure_owner_read_write(path: &Path) -> Result<(), CowPoolError> {
+    let metadata =
+        std::fs::metadata(path).map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+    let mut permissions = metadata.permissions();
+    let mode = permissions.mode();
+    let mode_with_owner_rw = mode | 0o600;
+    if mode_with_owner_rw != mode {
+        permissions.set_mode(mode_with_owner_rw);
+        std::fs::set_permissions(path, permissions)
+            .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// Synchronous sparse copy via `cp --sparse=always`.
 fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
     let output = std::process::Command::new("cp")
         .arg("--sparse=always")
+        .arg("--")
         .arg(src)
         .arg(dst)
         .output()
@@ -900,6 +917,7 @@ mod tests {
     use super::*;
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::Mutex;
 
     fn test_config(dir: &Path) -> CowPoolConfig {
@@ -1886,6 +1904,36 @@ mod tests {
         let slot = create_slot(&config).unwrap();
         let cow_bitmap = nbd_cow::cow::bitmap_path_for(&slot.cow_file());
         assert_eq!(std::fs::read(cow_bitmap).unwrap(), b"bitmap");
+        destroy_slot_sync(slot);
+    }
+
+    #[test]
+    fn create_slot_with_read_only_golden_cow_makes_workspace_cow_writable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let golden = tmp.path().join("golden.img");
+        let golden_bitmap = nbd_cow::cow::bitmap_path_for(&golden);
+        std::fs::write(&golden, b"golden").unwrap();
+        std::fs::write(&golden_bitmap, b"bitmap").unwrap();
+        std::fs::set_permissions(&golden, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces,
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(golden),
+        };
+        let slot = create_slot(&config).unwrap();
+        let cow_file = slot.cow_file();
+
+        assert_eq!(
+            std::fs::metadata(&cow_file).unwrap().permissions().mode() & 0o600,
+            0o600
+        );
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(cow_file)
+            .unwrap();
         destroy_slot_sync(slot);
     }
 

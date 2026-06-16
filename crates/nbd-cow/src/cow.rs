@@ -521,11 +521,63 @@ pub fn validate_bitmap(path: &Path, expected_blocks: usize) -> Result<()> {
     CowLayer::load_bitmap(path, expected_blocks).map(drop)
 }
 
+/// Validate that a dirty-bitmap sidecar does not reference COW data beyond the
+/// current COW file length.
+pub fn validate_bitmap_cow_coverage(
+    bitmap_path: &Path,
+    cow_file_len: u64,
+    block_size: usize,
+    expected_blocks: usize,
+) -> Result<()> {
+    if block_size == 0 {
+        return Err(NbdCowError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "block_size must be positive",
+        )));
+    }
+
+    let dirty = CowLayer::load_bitmap(bitmap_path, expected_blocks)?;
+    let Some(last_dirty_block) = dirty.last_one() else {
+        return Ok(());
+    };
+    let dirty_blocks = last_dirty_block.checked_add(1).ok_or_else(|| {
+        NbdCowError::Io(std::io::Error::other(
+            "dirty bitmap block index overflowed file length check",
+        ))
+    })?;
+    let required_len = u64::try_from(dirty_blocks)
+        .ok()
+        .and_then(|blocks| {
+            u64::try_from(block_size)
+                .ok()
+                .and_then(|size| blocks.checked_mul(size))
+        })
+        .ok_or_else(|| {
+            NbdCowError::Io(std::io::Error::other(
+                "dirty bitmap required COW length overflowed",
+            ))
+        })?;
+
+    if cow_file_len < required_len {
+        return Err(NbdCowError::Io(std::io::Error::other(format!(
+            "dirty bitmap references COW data requiring at least {required_len} bytes, but COW file is {cow_file_len} bytes"
+        ))));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write as IoWrite;
     use tempfile::NamedTempFile;
+
+    fn write_bitmap_file(path: &Path, blocks: u64, word: u64) {
+        let mut data = blocks.to_le_bytes().to_vec();
+        data.extend_from_slice(&word.to_le_bytes());
+        std::fs::write(path, data).unwrap();
+    }
 
     fn create_base_image(data: &[u8]) -> NamedTempFile {
         let mut f = NamedTempFile::new().unwrap();
@@ -864,6 +916,38 @@ mod tests {
         let loaded = CowLayer::load_bitmap(bitmap_file.path(), 1).unwrap();
 
         assert_eq!(loaded.count_ones(), 0);
+    }
+
+    #[test]
+    fn bitmap_cow_coverage_rejects_truncated_dirty_block() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+        write_bitmap_file(bitmap_file.path(), 2, 0b10);
+
+        let result = validate_bitmap_cow_coverage(bitmap_file.path(), 4096, 4096, 2);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("dirty bitmap references COW data")
+        );
+    }
+
+    #[test]
+    fn bitmap_cow_coverage_accepts_clean_bitmap_with_short_cow_file() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+        write_bitmap_file(bitmap_file.path(), 2, 0);
+
+        validate_bitmap_cow_coverage(bitmap_file.path(), 0, 4096, 2).unwrap();
+    }
+
+    #[test]
+    fn bitmap_cow_coverage_accepts_covering_cow_file() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+        write_bitmap_file(bitmap_file.path(), 2, 0b10);
+
+        validate_bitmap_cow_coverage(bitmap_file.path(), 8192, 4096, 2).unwrap();
     }
 
     #[test]

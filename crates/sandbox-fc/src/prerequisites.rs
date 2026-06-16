@@ -110,9 +110,16 @@ fn check_artifact_prerequisites(config: &PrerequisiteConfig<'_>, errors: &mut Ve
     if let Some(snapshot) = config.mode.snapshot() {
         check_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
         check_readable_file(&snapshot.memory_path, "snapshot memory", errors);
-        check_readable_file(&snapshot.cow_path, "snapshot cow", errors);
+        let snapshot_cow_len =
+            check_readable_file(&snapshot.cow_path, "snapshot cow", errors).map(|m| m.len());
         let bitmap_path = nbd_cow::cow::bitmap_path_for(&snapshot.cow_path);
-        check_bitmap_file(&bitmap_path, "snapshot cow bitmap", rootfs_blocks, errors);
+        check_bitmap_file(
+            &bitmap_path,
+            "snapshot cow bitmap",
+            rootfs_blocks,
+            snapshot_cow_len,
+            errors,
+        );
     }
 }
 
@@ -193,12 +200,27 @@ fn check_bitmap_file(
     path: &Path,
     label: &str,
     expected_blocks: Option<usize>,
+    cow_file_len: Option<u64>,
     errors: &mut Vec<String>,
 ) {
-    if check_readable_file(path, label, errors).is_some()
-        && let Some(expected_blocks) = expected_blocks
-        && let Err(e) = nbd_cow::cow::validate_bitmap(path, expected_blocks)
-    {
+    if check_readable_file(path, label, errors).is_none() {
+        return;
+    }
+
+    let Some(expected_blocks) = expected_blocks else {
+        return;
+    };
+
+    let result = match cow_file_len {
+        Some(cow_file_len) => nbd_cow::cow::validate_bitmap_cow_coverage(
+            path,
+            cow_file_len,
+            nbd_cow::BLOCK_SIZE,
+            expected_blocks,
+        ),
+        None => nbd_cow::cow::validate_bitmap(path, expected_blocks),
+    };
+    if let Err(e) = result {
         errors.push(format!("{label} is invalid: {}: {e}", path.display()));
     }
 }
@@ -651,5 +673,28 @@ mod tests {
 
         assert_error_contains(&errors, "snapshot cow bitmap is invalid");
         assert_error_contains(&errors, "bitmap data truncated");
+    }
+
+    #[test]
+    fn restore_mode_rejects_snapshot_cow_too_short_for_dirty_bitmap() {
+        let fixture = ArtifactFixture::new();
+        write_sized_file(&fixture.snapshot.cow_path, 0);
+        write_bitmap_file(&fixture.bitmap_path(), 1, 1);
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_error_contains(&errors, "snapshot cow bitmap is invalid");
+        assert_error_contains(&errors, "dirty bitmap references COW data");
+    }
+
+    #[test]
+    fn restore_mode_accepts_short_snapshot_cow_for_clean_bitmap() {
+        let fixture = ArtifactFixture::new();
+        write_sized_file(&fixture.snapshot.cow_path, 0);
+        write_bitmap_file(&fixture.bitmap_path(), 1, 0);
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_no_errors(&errors);
     }
 }
