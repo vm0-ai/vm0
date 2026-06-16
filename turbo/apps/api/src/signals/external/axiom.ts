@@ -119,7 +119,7 @@ export async function queryAxiomDirect<T = Record<string, unknown>>(
   const result = await client.query(apl, axiomOptions);
   return (
     result.matches?.map((m) => {
-      return { _time: m._time, ...m.data } as T;
+      return { ...m.data, _time: m._time } as T;
     }) ?? []
   );
 }
