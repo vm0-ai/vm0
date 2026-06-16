@@ -32,6 +32,7 @@ import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.ser
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
+import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
@@ -309,6 +310,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   ...zeroChatThreadsArtifactsSyncRoutes,
+  ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
   ...zeroChatThreadMarkReadRoutes,

@@ -3368,7 +3368,10 @@ function useChatThreadComposerSendState({
   };
 }
 
-function useChatThreadComputerUse(thread: ChatThreadSignals) {
+function useChatThreadComputerUse(
+  thread: ChatThreadSignals,
+  pageSignal: AbortSignal,
+) {
   const features = useLastResolved(featureSwitch$);
   const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
@@ -3397,6 +3400,9 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const computerUseHostIdForSend = computerUseHostIdExplicit
     ? selectedComputerUseHostId
     : undefined;
+  const handleComputerUseHostChange = (hostId: string | null) => {
+    detach(setComputerUseHostId(hostId, pageSignal), Reason.DomCallback);
+  };
 
   return {
     selectedComputerUseHostId: computerUseEnabled
@@ -3413,7 +3419,7 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
             computerUseHostsLoadable.state === "loading" &&
             computerUseHosts.length === 0,
           selectedHostId: selectedComputerUseHostId,
-          onChange: setComputerUseHostId,
+          onChange: handleComputerUseHostChange,
           downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
         }
       : undefined,
@@ -3516,7 +3522,7 @@ function ChatThreadComposer({
     computerUseHostIdForSend,
     clearComputerUseHostOverride,
     computerUse,
-  } = useChatThreadComputerUse(thread);
+  } = useChatThreadComputerUse(thread, pageSignal);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,

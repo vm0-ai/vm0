@@ -875,6 +875,7 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
+      computerUseHostId: thread.computerUseHostId,
       modelProviderId: null,
       modelProviderType: null,
       modelProviderCredentialScope: null,

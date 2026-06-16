@@ -10,6 +10,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -34,6 +35,7 @@ import {
   createChatFilesBddApi,
   hostedTextFile,
 } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
   mockGitHubConnectorOAuth,
@@ -68,6 +70,7 @@ const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
@@ -354,6 +357,21 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
+async function readThreadComputerUseHostId(
+  threadId: string,
+): Promise<string | null> {
+  const db = store.set(writeDb$);
+  const [thread] = await db
+    .select({ computerUseHostId: chatThreads.computerUseHostId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!thread) {
+    throw new Error("Expected chat thread to exist");
+  }
+  return thread.computerUseHostId;
+}
+
 const malformedChatThreadIdRequests = [
   { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
   { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
@@ -366,6 +384,11 @@ const malformedChatThreadIdRequests = [
   {
     method: "POST",
     path: "/api/zero/chat-threads/:id/model-selection",
+    paramName: "id",
+  },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
   { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
@@ -527,6 +550,67 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     detail = await chat.readThread(actor, run.threadId);
     expect(detail.activeRunIds).toStrictEqual([]);
   }, 90_000);
+
+  it("updates the Computer Use host binding on a chat thread", async () => {
+    const actor = bdd.user();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Computer-use thread agent",
+    });
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Computer Use",
+    });
+
+    const disabled = await chat.requestUpdateThreadComputerUseHost(
+      actor,
+      thread.id,
+      randomUUID(),
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe("Computer use is not enabled");
+
+    await cu.enableComputerUse(actor);
+    const host = await cu.startComputerUseHost(actor);
+    await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
+    await expect(readThreadComputerUseHostId(thread.id)).resolves.toBe(
+      host.hostId,
+    );
+    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      computerUseHostId: host.hostId,
+    });
+
+    const missingHost = await chat.requestUpdateThreadComputerUseHost(
+      actor,
+      thread.id,
+      randomUUID(),
+      [404],
+    );
+    expectApiError(missingHost.body);
+    expect(missingHost.body.error.message).toBe("Computer-use host not found");
+
+    const peer = bdd.user({ orgId: actor.orgId });
+    const peerUpdate = await chat.requestUpdateThreadComputerUseHost(
+      peer,
+      thread.id,
+      host.hostId,
+      [404],
+    );
+    expectApiError(peerUpdate.body);
+    expect(peerUpdate.body.error.message).toBe("Chat thread not found");
+
+    await chat.updateThreadComputerUseHost(actor, thread.id, null);
+    await expect(readThreadComputerUseHostId(thread.id)).resolves.toBeNull();
+
+    const missingThread = await chat.requestUpdateThreadComputerUseHost(
+      actor,
+      randomUUID(),
+      null,
+      [404],
+    );
+    expectApiError(missingThread.body);
+    expect(missingThread.body.error.message).toBe("Chat thread not found");
+  });
 
   it("cancels in-flight runs and cascades schedules when a thread is deleted", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(

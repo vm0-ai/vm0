@@ -7,7 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import { onRef, resetSignal, setLoop } from "../utils.ts";
+import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
@@ -466,7 +466,7 @@ export interface ChatThreadSignals {
   >;
   computerUseHostId$: Computed<Promise<string | null>>;
   computerUseHostIdExplicit$: Computed<boolean>;
-  setComputerUseHostId$: Command<void, [string | null]>;
+  setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
     Promise<void>,
@@ -634,10 +634,12 @@ function createModelSelection(
 // ---------------------------------------------------------------------------
 
 function createComputerUseHostSelection(
+  threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
+  dataSource: ChatThreadDataSource,
 ) {
   const internalUserOverride$ = state<
-    { kind: "unset" } | { kind: "set"; value: string | null }
+    { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
   >({ kind: "unset" });
 
   const computerUseHostId$ = computed(async (get): Promise<string | null> => {
@@ -650,17 +652,50 @@ function createComputerUseHostSelection(
   });
 
   const computerUseHostIdExplicit$ = computed((get): boolean => {
-    return get(internalUserOverride$).kind === "set";
+    const user = get(internalUserOverride$);
+    return user.kind === "set" && user.dirty;
   });
 
   const setComputerUseHostId$ = command(
-    ({ set }, computerUseHostId: string | null) => {
-      set(internalUserOverride$, { kind: "set", value: computerUseHostId });
+    async ({ set }, computerUseHostId: string | null, signal: AbortSignal) => {
+      set(internalUserOverride$, {
+        kind: "set",
+        value: computerUseHostId,
+        dirty: true,
+      });
+
+      await onRejection(
+        set(
+          dataSource.patchComputerUseHost$,
+          { threadId, computerUseHostId },
+          signal,
+        ),
+        () => {
+          if (!signal.aborted) {
+            set(internalUserOverride$, {
+              kind: "set",
+              value: computerUseHostId,
+              dirty: false,
+            });
+          }
+        },
+      );
+      signal.throwIfAborted();
+      set(internalUserOverride$, {
+        kind: "set",
+        value: computerUseHostId,
+        dirty: false,
+      });
+      set(dataSource.reloadThread$);
+      set(reloadChatThreads$);
     },
   );
 
-  const clearComputerUseHostIdOverride$ = command(({ set }) => {
-    set(internalUserOverride$, { kind: "unset" });
+  const clearComputerUseHostIdOverride$ = command(({ get, set }) => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set" && user.dirty) {
+      set(internalUserOverride$, { kind: "unset" });
+    }
   });
 
   return {
@@ -2572,7 +2607,11 @@ export function createChatThreadSignals(
     threadData$,
     dataSource,
   );
-  const computerUseHostSelection = createComputerUseHostSelection(threadData$);
+  const computerUseHostSelection = createComputerUseHostSelection(
+    threadId,
+    threadData$,
+    dataSource,
+  );
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
@@ -2643,7 +2682,7 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const { setInputRef$, focusInput$ } = createInputRef();
+  const inputRef = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, runTracking.allFinished$);
   const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
@@ -2669,8 +2708,7 @@ export function createChatThreadSignals(
     defaultModelSelection$,
     agentPinned$,
     ...threadUi,
-    setInputRef$,
-    focusInput$,
+    ...inputRef,
     queueDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,

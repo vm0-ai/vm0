@@ -5,6 +5,7 @@ import {
   chatSearchContract,
   chatThreadArtifactsContract,
   chatThreadByIdContract,
+  chatThreadComputerUseHostContract,
   chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadModelSelectionContract,
@@ -278,6 +279,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadModelSelectionClient() {
     return setupApp({ context })(chatThreadModelSelectionContract);
+  }
+
+  function threadComputerUseHostClient() {
+    return setupApp({ context })(chatThreadComputerUseHostContract);
   }
 
   function chatMessagesClient() {
@@ -719,6 +724,37 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: { modelSelection },
+        }),
+        statuses,
+      );
+    },
+
+    async updateThreadComputerUseHost(
+      actor: ApiTestUser,
+      threadId: string,
+      computerUseHostId: string | null,
+    ): Promise<void> {
+      await accept(
+        threadComputerUseHostClient().update({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+          body: { computerUseHostId },
+        }),
+        [204],
+      );
+    },
+
+    async requestUpdateThreadComputerUseHost(
+      actor: ApiTestUser | null,
+      threadId: string,
+      computerUseHostId: string | null,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadComputerUseHostClient().update({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+          body: { computerUseHostId },
         }),
         statuses,
       );

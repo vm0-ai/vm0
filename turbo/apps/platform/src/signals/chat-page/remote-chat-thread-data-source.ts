@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
@@ -25,6 +26,7 @@ import type {
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
+  PatchComputerUseHostArgs,
   PatchModelSelectionArgs,
   PatchDraftArgs,
   RecallMessageArgs,
@@ -64,6 +66,24 @@ const patchModelSelection$ = command(
       client.update({
         params: { id: threadId },
         body: { modelSelection },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+  },
+);
+
+const patchComputerUseHost$ = command(
+  async (
+    { get },
+    { threadId, computerUseHostId }: PatchComputerUseHostArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadComputerUseHostContract);
+    await accept(
+      client.update({
+        params: { id: threadId },
+        body: { computerUseHostId },
         fetchOptions: { signal },
       }),
       [204],
@@ -378,6 +398,7 @@ export function createRemoteChatThreadDataSource(
     initialPage$,
     patchDraft$,
     patchModelSelection$,
+    patchComputerUseHost$,
     appendQueuedMessage$,
     recallMessage$,
     listMessagesAfter$,
