@@ -477,6 +477,8 @@ mod tests {
 
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "hello world");
+        let job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, job_id).unwrap();
 
         let candidate = provider.discover().await.unwrap();
         assert_eq!(candidate.run_id(), job_id);
@@ -494,6 +496,10 @@ mod tests {
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.error.is_none());
+        assert!(
+            !job_path.exists(),
+            "complete() should remove the completed local job file"
+        );
     }
 
     #[tokio::test]

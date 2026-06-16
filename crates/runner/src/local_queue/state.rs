@@ -227,6 +227,7 @@ impl LocalQueue {
             }
             return;
         }
+        let _ = self.remove_job_file_if_present(run_id);
         // Best-effort cleanup of cancel file (may have been written after the
         // last discover() scan but before the job actually finished).
         let _ = std::fs::remove_file(super::cancel_path(&self.group_dir, run_id));
