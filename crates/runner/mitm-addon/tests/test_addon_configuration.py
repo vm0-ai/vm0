@@ -82,7 +82,7 @@ class TestAddonConfiguration:
         pending_path = tmp_path / "usage-pending"
 
         # OS signal registration is process-global boundary state. Handler
-        # behavior is covered by test_connection_hooks.py.
+        # behavior is covered by test_runner_usage_flush_signal.py.
         with (
             patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
             patch.object(mitm_addon.signal, "signal") as signal_handler,
