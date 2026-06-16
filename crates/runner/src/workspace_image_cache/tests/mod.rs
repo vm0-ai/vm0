@@ -2898,6 +2898,31 @@ async fn gc_removes_unusable_current_entry_without_metadata() {
 }
 
 #[tokio::test]
+async fn gc_removes_unusable_current_symlink_loop_without_aborting() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let key = session_workspace_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+        .await
+        .unwrap();
+    std::os::unix::fs::symlink(
+        "current.ext4",
+        paths.session_workspace_cache_current_image(&key),
+    )
+    .unwrap();
+
+    let freed = cache.gc(false).await.unwrap();
+
+    assert!(freed > 0);
+    assert!(
+        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        "symlink-loop current images are unusable and should not abort cache GC"
+    );
+}
+
+#[tokio::test]
 async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));

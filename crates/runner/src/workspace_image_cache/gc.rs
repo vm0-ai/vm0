@@ -319,12 +319,12 @@ impl SessionWorkspaceCache {
                 continue;
             }
             let current = self.session_workspace_cache_current_image(&cache_key);
-            match fs::try_exists(&current).await {
-                Ok(true) => {
+            match fs::symlink_metadata(&current).await {
+                Ok(_) => {
                     drop(lock);
                     continue;
                 }
-                Ok(false) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
                     drop(lock);
                     return Err(e.into());
