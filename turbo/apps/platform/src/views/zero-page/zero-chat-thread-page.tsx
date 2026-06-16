@@ -1496,11 +1496,8 @@ type ChatImagePreviewLinkProps = {
 const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
   "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
-// Images render at their natural aspect ratio so screenshots that are not 16:10
-// no longer letterbox against a muted fill (the gray edges). The hairline border
-// hugs the actual image; width and height are capped to keep the thread tidy.
 const CHAT_INLINE_IMAGE_PREVIEW_CLASS =
-  "max-h-[360px] max-w-[min(100%,400px)] rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+  "aspect-[10/9] w-[min(100%,400px)] rounded-lg border border-foreground/10 bg-muted/30 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
 function ChatImagePreviewLink({
   alt,
@@ -1543,7 +1540,7 @@ function ChatImagePreviewLink({
       href={imageUrl}
       onClick={openPreview}
       className={cn(
-        "group/image-preview relative inline-block self-start overflow-hidden",
+        "group/image-preview relative inline-flex self-start items-center justify-center overflow-hidden",
         linkClassName,
       )}
       aria-label={ariaLabel}
@@ -4290,12 +4287,12 @@ function BodyContentBlocks({
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              imageClassName="block h-full w-full object-contain"
               linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
+              placeholderClassName="h-full w-full"
               url={block.preview.url}
             />
           );
@@ -5529,12 +5526,12 @@ function UserMessageAttachments({
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              imageClassName="block h-full w-full object-contain"
               linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 onImageClick(a.url);
               }}
-              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
+              placeholderClassName="h-full w-full"
               url={a.url}
             />
           );

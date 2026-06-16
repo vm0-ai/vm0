@@ -3,7 +3,7 @@ import {
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -761,6 +761,41 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByText("Download failed")).toBeInTheDocument();
     });
+  });
+
+  it("keeps chat image preview dimensions stable while the image loads", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-stable-image-preview",
+          role: "assistant",
+          content: `Chart preview:\n\n${imageUrl}`,
+          runId: "run-stable-image-preview",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const preview = await screen.findByLabelText("Preview chart.png");
+    expect(preview).toHaveClass("aspect-[10/9]", "w-[min(100%,400px)]");
+    expect(
+      within(preview).getByTestId("chat-image-preview-loading"),
+    ).toHaveClass("h-full", "w-full");
+
+    const image = within(preview).getByAltText("chart.png");
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview).toHaveClass("aspect-[10/9]", "w-[min(100%,400px)]");
+    expect(image).toHaveClass("h-full", "w-full", "object-contain");
   });
 
   it("opens markdown and text previews, shares a document link, and reports download failures", async () => {
