@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.147.1](https://github.com/vm0-ai/vm0/compare/api-v1.147.0...api-v1.147.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* clean up runner e2e zero agents ([#17884](https://github.com/vm0-ai/vm0/issues/17884)) ([0631d03](https://github.com/vm0-ai/vm0/commit/0631d0386716fb3a32cca6f28135ca4f911a5640))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.1
+    * @vm0/connectors bumped to 1.81.1
+    * @vm0/core bumped to 8.344.1
+    * @vm0/db bumped to 1.53.1
+
 ## [1.147.0](https://github.com/vm0-ai/vm0/compare/api-v1.146.2...api-v1.147.0) (2026-06-16)
 
 

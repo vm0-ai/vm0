@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.5...guest-agent-v0.36.6) (2026-06-16)
+
+
+### Bug Fixes
+
+* guard guest metrics arithmetic overflow ([#17889](https://github.com/vm0-ai/vm0/issues/17889)) ([04d9256](https://github.com/vm0-ai/vm0/commit/04d9256f38804eb71f8f6d09c0b54a686d98acc3))
+
 ## [0.36.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.4...guest-agent-v0.36.5) (2026-06-16)
 
 ## [0.36.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.3...guest-agent-v0.36.4) (2026-06-16)
