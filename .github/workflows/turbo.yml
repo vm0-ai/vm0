@@ -2168,9 +2168,9 @@ jobs:
             print_failure_context
             fail "empty --env value was not visible to the guest CLI"
           }
-          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=3' "$STREAM_LOG" || {
+          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=missing' "$STREAM_LOG" || {
             print_failure_context
-            fail "guest-agent tuning env was not visible to the guest CLI"
+            fail "guest-agent tuning env leaked into the guest CLI environment"
           }
           sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" || {
             print_failure_context
