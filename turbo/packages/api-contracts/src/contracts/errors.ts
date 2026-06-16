@@ -173,6 +173,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Cannot continue session",
   "Invalid signature in thinking block",
   "Run cancelled",
+  "Selected model is at capacity. Please try a different model.",
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).
   // Codex: "You've hit your usage limit …"

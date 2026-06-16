@@ -116,6 +116,19 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(unrelatedRateLimit)).toBe(true);
   });
 
+  it("shows Codex model capacity errors verbatim", () => {
+    const modelCapacity =
+      "Selected model is at capacity. Please try a different model.";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: modelCapacity,
+      }),
+    ).toBe(modelCapacity);
+    expect(isActionableRunError(modelCapacity)).toBe(true);
+    expect(isGenericRunErrorForDisplay(modelCapacity)).toBe(false);
+  });
+
   it("shows Claude Code subscription reconnect guidance for upstream 401s", () => {
     expect(
       formatRunErrorForExternalSurface({
