@@ -64,7 +64,7 @@ jobs:
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
-      mitm-addon-turbo-changed: ${{ steps.detect.outputs.mitm-addon-turbo-changed }}
+      mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
       api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
@@ -182,16 +182,14 @@ jobs:
           rm -f "$changed_files"
           echo "api-contracts-rust-bindings-changed=$api_contracts_rust_bindings_changed" >> "$GITHUB_OUTPUT"
 
-          # mitm-addon tests include cross-language consistency checks that
-          # read turbo/ files (e.g. dev-seed.ts, generated firewall specs) as
-          # the source of truth. Any turbo/ change could drift the contract,
-          # so trigger mitm-addon-test on all turbo/ edits. Written AFTER the
-          # any-changed aggregation so a turbo-only edit doesn't force every
+          # test_x_billing.py checks X connector usage buckets against the
+          # API pricing seed. Keep this separate from any-changed so a
+          # turbo-only pricing edit runs mitm-addon-test without forcing every
           # crate job to re-run.
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/"; then
-            echo "mitm-addon-turbo-changed=true" >> "$GITHUB_OUTPUT"
+          if git diff --name-only "$BASE_REF" HEAD | grep -qx "turbo/apps/api/src/scripts/dev-seed.ts"; then
+            echo "mitm-addon-pricing-seed-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "mitm-addon-turbo-changed=false" >> "$GITHUB_OUTPUT"
+            echo "mitm-addon-pricing-seed-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Select runner test consumer
@@ -355,29 +353,13 @@ jobs:
     needs: [detect]
     if: |
       needs.detect.outputs.any-changed == 'true' ||
-      needs.detect.outputs.mitm-addon-turbo-changed == 'true'
+      needs.detect.outputs.mitm-addon-pricing-seed-changed == 'true'
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      # Needed for the classifier↔firewall consistency check in
-      # tests/test_x_billing.py: the check reads
-      # `turbo/packages/connectors/src/firewalls/x.generated.ts`, which is
-      # gitignored and materialized by the `postinstall` hook in
-      # `turbo/package.json` (runs `@vm0/firewalls-generator generate`).
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: turbo/pnpm-lock.yaml
-      - name: Install turbo deps (triggers firewalls-generator postinstall)
-        run: cd turbo && pnpm install --frozen-lockfile
 
       - name: Lint and format check
         run: |
