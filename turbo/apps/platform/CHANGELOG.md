@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.459.1](https://github.com/vm0-ai/vm0/compare/app-v0.459.0...app-v0.459.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* align composer template chip name with user message ([#17862](https://github.com/vm0-ai/vm0/issues/17862)) ([57fd7dc](https://github.com/vm0-ai/vm0/commit/57fd7dcfa3a59deb43005af103e3db8ab5260f01))
+* clarify provider session reconnect tooltip ([#17892](https://github.com/vm0-ai/vm0/issues/17892)) ([e30acde](https://github.com/vm0-ai/vm0/commit/e30acde259e383e24e047d500f0a7a8411e8f795))
+* remove ambiguous presentation template card subtitle ([#17896](https://github.com/vm0-ai/vm0/issues/17896)) ([7b24dbd](https://github.com/vm0-ai/vm0/commit/7b24dbdaf4bf9ad1eeddeb5e742d60a6dc21e67d)), closes [#17770](https://github.com/vm0-ai/vm0/issues/17770)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.1
+    * @vm0/connectors bumped to 1.81.1
+    * @vm0/core bumped to 8.344.1
+
 ## [0.459.0](https://github.com/vm0-ai/vm0/compare/app-v0.458.1...app-v0.459.0) (2026-06-16)
 
 

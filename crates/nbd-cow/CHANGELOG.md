@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.40](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.39...nbd-cow-v0.4.40) (2026-06-16)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** validate firecracker artifact prerequisites ([#17824](https://github.com/vm0-ai/vm0/issues/17824)) ([3b607ae](https://github.com/vm0-ai/vm0/commit/3b607aea95034e78b8d50577e371de83a5c9f9dd))
+
 ## [0.4.39](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.38...nbd-cow-v0.4.39) (2026-06-15)
 
 
