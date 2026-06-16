@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.193.7](https://github.com/vm0-ai/vm0/compare/cli-v9.193.6...cli-v9.193.7) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.96.2
+    * @vm0/core bumped to 8.343.1
+
 ## [9.193.6](https://github.com/vm0-ai/vm0/compare/cli-v9.193.5...cli-v9.193.6) (2026-06-16)
 
 

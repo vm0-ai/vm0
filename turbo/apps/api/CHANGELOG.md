@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.146.2](https://github.com/vm0-ai/vm0/compare/api-v1.146.1...api-v1.146.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+
+
+### Refactoring
+
+* dispatch agent callbacks through ccstate ([#17836](https://github.com/vm0-ai/vm0/issues/17836)) ([cb45a3d](https://github.com/vm0-ai/vm0/commit/cb45a3d154b37f43e4d8d3a4f15913745618d3ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.2
+    * @vm0/core bumped to 8.343.1
+    * @vm0/db bumped to 1.52.7
+
 ## [1.146.1](https://github.com/vm0-ai/vm0/compare/api-v1.146.0...api-v1.146.1) (2026-06-16)
 
 
