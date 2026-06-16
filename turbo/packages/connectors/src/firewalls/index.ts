@@ -61,6 +61,7 @@ import {
   awsCategories,
   awsCategoryOrder,
   awsDefaultAllowed,
+  awsDefaultUnknownPolicy,
   awsFirewall,
 } from "./aws.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
@@ -839,6 +840,7 @@ const DEFAULT_ALLOWED: Partial<
 const DEFAULT_UNKNOWN_POLICY: Partial<
   Record<FirewallConnectorType, FirewallPolicyValue>
 > = {
+  aws: awsDefaultUnknownPolicy,
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
 };

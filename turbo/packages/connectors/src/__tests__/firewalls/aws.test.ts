@@ -174,7 +174,7 @@ describe("aws firewall", () => {
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
 
     const defaults = getDefaultFirewallPolicies("aws");
-    expect(defaults.unknownPolicy).toBe("allow");
+    expect(defaults.unknownPolicy).toBe("deny");
     expect(defaults.policies["ec2:DescribeInstances"]).toBe("allow");
     expect(defaults.policies["ec2:RunInstances"]).toBe("deny");
     expect(defaults.policies["ec2:CreateTags"]).toBe("deny");
