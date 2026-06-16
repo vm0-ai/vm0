@@ -15,6 +15,7 @@ import {
   fetchSpec,
   logStats,
   renderCategories,
+  renderDefaultAllowed,
   renderDefaultUnknownPolicy,
   writeOutput,
   type PermissionGroup,
@@ -1016,19 +1017,6 @@ function renderApiEntry(
   lines.push("    },");
 }
 
-function renderAwsDefaultAllowed(
-  lines: string[],
-  defaultAllowed: string[],
-): void {
-  lines.push("");
-  lines.push("export const awsDefaultAllowed: ReadonlyArray<string> = [");
-  for (const name of defaultAllowed) {
-    lines.push(`  "${escapeString(name)}",`);
-  }
-  lines.push("];");
-  lines.push("");
-}
-
 function renderStats(stats: BuildStats): string[] {
   return [
     "",
@@ -1091,7 +1079,13 @@ function generateTypeScript(result: BuildResult): string {
       displayOrder: result.categoryOrder,
     }),
   );
-  renderAwsDefaultAllowed(lines, result.defaultAllowed);
+  lines.push(
+    ...renderDefaultAllowed(
+      "awsDefaultAllowed",
+      "awsFirewall",
+      result.defaultAllowed,
+    ),
+  );
   lines.push(...renderDefaultUnknownPolicy("awsDefaultUnknownPolicy", "deny"));
   lines.push(...renderStats(result.stats));
 
