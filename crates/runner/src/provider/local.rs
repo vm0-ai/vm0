@@ -248,7 +248,7 @@ impl JobProvider for LocalProvider {
                 warn!(run_id = %run_id, error = %error, "local: claimed job invariant violation");
                 let queue = self.queue.clone();
                 if let Err(e) = tokio::task::spawn_blocking(move || {
-                    queue.fail_claimed_job_sync(run_id, &job_file, error);
+                    queue.fail_claimed_job_sync(run_id, error);
                 })
                 .await
                 {
@@ -969,6 +969,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn complete_removes_duplicate_job_files_across_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        write_job_in_partition(
+            dir.path(),
+            crate::profile::DEFAULT_PROFILE,
+            run_id,
+            "default",
+            Some(crate::profile::DEFAULT_PROFILE),
+        );
+        write_job_in_partition(dir.path(), "vm0/large", run_id, "large", Some("vm0/large"));
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
+
+        assert!(
+            !default_job_path.exists(),
+            "complete() should remove the default profile duplicate"
+        );
+        assert!(
+            !large_job_path.exists(),
+            "complete() should remove the large profile duplicate"
+        );
+    }
+
+    #[tokio::test]
     async fn complete_result_failure_removes_job_before_claim() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
@@ -1000,6 +1033,52 @@ mod tests {
         assert!(
             !claim_path.exists(),
             "claim can be released after the job is no longer retryable"
+        );
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should not be stranded after terminal cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_result_failure_removes_duplicate_jobs_before_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        write_job_in_partition(
+            dir.path(),
+            crate::profile::DEFAULT_PROFILE,
+            run_id,
+            "default",
+            Some(crate::profile::DEFAULT_PROFILE),
+        );
+        write_job_in_partition(dir.path(), "vm0/large", run_id, "large", Some("vm0/large"));
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_dir = local_queue::results_dir(dir.path());
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_dir, b"not a directory").unwrap();
+
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
+
+        assert!(
+            !default_job_path.exists(),
+            "default duplicate must be removed"
+        );
+        assert!(!large_job_path.exists(), "large duplicate must be removed");
+        assert!(
+            !claim_path.exists(),
+            "claim can be released after all duplicate jobs are no longer retryable"
         );
         assert!(
             !cancel_path.exists(),
@@ -1147,6 +1226,47 @@ mod tests {
 
         // Next discover() scan must not re-surface the job.
         assert!(provider.find_unclaimed_job().is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_failure_removes_duplicate_job_files_across_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = provider_with_profiles(
+            dir.path(),
+            &[crate::profile::DEFAULT_PROFILE, "vm0/large"],
+            CancellationToken::new(),
+            empty_cancel_tokens(),
+        );
+
+        let run_id = RunId::new_v4();
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        std::fs::create_dir_all(default_job_path.parent().unwrap()).unwrap();
+        std::fs::write(&default_job_path, b"not json").unwrap();
+        write_job_in_partition(
+            dir.path(),
+            "vm0/large",
+            run_id,
+            "large duplicate",
+            Some("vm0/large"),
+        );
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+
+        let candidate = provider.discover().await.unwrap();
+        assert!(provider.claim(candidate).await.is_none());
+
+        assert!(
+            !default_job_path.exists(),
+            "claim failure should remove the poisoned job"
+        );
+        assert!(
+            !large_job_path.exists(),
+            "claim failure should remove duplicate jobs for the same run id"
+        );
+        assert!(
+            provider.find_unclaimed_job().is_none(),
+            "terminal result should stop duplicate rediscovery"
+        );
     }
 
     #[tokio::test]
