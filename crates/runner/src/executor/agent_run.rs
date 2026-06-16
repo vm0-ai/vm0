@@ -75,6 +75,7 @@ impl AgentExecutionResult {
         self
     }
 
+    #[must_use]
     pub(super) fn with_resource_failure_kind(mut self, kind: ResourceFailureKind) -> Self {
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(Some(

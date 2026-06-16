@@ -218,6 +218,9 @@ fn parse_available_kb(value: &str) -> Option<u64> {
     };
     let numeric = &value[..value.len() - suffix.len_utf8()];
     let amount: f64 = numeric.parse().ok()?;
+    if !amount.is_finite() || amount.is_sign_negative() {
+        return None;
+    }
     Some((amount * unit_multiplier as f64).round() as u64)
 }
 

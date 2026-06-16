@@ -188,6 +188,22 @@ Mem: not numeric
     assert_eq!(diagnostics, None);
 }
 
+#[test]
+fn abnormal_exit_resource_diagnostics_ignores_invalid_available_values() {
+    let diagnostics = parse_agent_abnormal_exit_resource_diagnostics(
+        r#"
+/dev/root       16G  4.0G   NaNK  25% /
+/dev/vdb        16G   24K    -1K   1% /home/user/workspace
+"#,
+    )
+    .expect("resource diagnostics should keep valid percentages");
+
+    assert_eq!(diagnostics.failure_kind, None);
+    assert_eq!(diagnostics.guest_root_fs_used_percent, Some(25));
+    assert_eq!(diagnostics.guest_root_fs_available_kb, None);
+    assert_eq!(diagnostics.guest_workspace_fs_used_percent, Some(1));
+}
+
 /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
 const PROD3_OOM_GREP: &str = "\
         [1718300.650867] fc_vcpu 0 invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0\n\
