@@ -43,6 +43,7 @@ export const computerUseCommandErrorCodeSchema = z.enum([
   "app_not_found",
   "app_open_failed",
   "element_action_unsupported",
+  "element_not_editable",
   "unsupported_command",
   "timeout",
 ]);
