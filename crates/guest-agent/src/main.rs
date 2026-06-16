@@ -401,8 +401,21 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
         let detail = &normalized[index + MARKER.len()..];
         let detail = detail
             .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'));
-        detail.starts_with("overloaded") || detail.contains("overloaded_error")
+        detail.starts_with("overloaded") || contains_overloaded_error_type(detail)
     })
+}
+
+fn contains_overloaded_error_type(detail: &str) -> bool {
+    const TOKEN: &str = "overloaded_error";
+    detail.match_indices(TOKEN).any(|(index, _)| {
+        let before = detail[..index].chars().next_back();
+        let after = detail[index + TOKEN.len()..].chars().next();
+        !before.is_some_and(is_error_type_char) && !after.is_some_and(is_error_type_char)
+    })
+}
+
+fn is_error_type_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '-')
 }
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
@@ -1296,6 +1309,16 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "API Error: 529 not overloaded",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_prefixed_claude_overloaded_error_type() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            r#"API Error: 529 {"type":"error","error":{"type":"not_overloaded_error"}}"#,
         );
 
         assert_eq!(reason, None);
