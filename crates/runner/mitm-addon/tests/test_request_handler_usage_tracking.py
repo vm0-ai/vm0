@@ -84,6 +84,30 @@ async def _await_request_task(request_task: asyncio.Task[None]) -> None:
         raise result
 
 
+async def _drain_request_task(
+    request_task: asyncio.Task[None],
+    *,
+    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+) -> None:
+    if not request_task.done():
+        await asyncio.wait((request_task,), timeout=timeout)
+    if request_task.done():
+        await asyncio.gather(request_task, return_exceptions=True)
+        return
+
+    request_task.cancel()
+    await asyncio.wait((request_task,), timeout=timeout)
+    if request_task.done():
+        await asyncio.gather(request_task, return_exceptions=True)
+        return
+
+    raise AssertionError(
+        "request task did not finish before cleanup timeout "
+        f"(timeout={timeout}, request_task_done={request_task.done()}, "
+        f"request_task_cancelled={request_task.cancelled()})"
+    )
+
+
 @pytest.fixture
 def usage_pending_path(tmp_path: Path) -> Iterator[Path]:
     pending_path = tmp_path / "usage-pending"
@@ -673,7 +697,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             await _await_request_task(request_task)
         finally:
             release_forward.set()
-            await asyncio.gather(request_task, return_exceptions=True)
+            await _drain_request_task(request_task)
 
         assert flow.response is not None
         assert flow.response.status_code == 200
@@ -790,7 +814,7 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
                     _FORWARD_START_TIMEOUT_SECONDS,
                 )
                 assert forward_finished
-            await asyncio.gather(request_task, return_exceptions=True)
+            await _drain_request_task(request_task)
 
     assert flow.response is None
     assert "auth_url_rewrite" not in flow.metadata
