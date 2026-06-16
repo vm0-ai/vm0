@@ -183,7 +183,7 @@ When user messages, assistant callback messages, integration messages, and event
 Then message GET/list responses expose visible text, attachments, status, pagination, and ordering.
 Then invalid signatures, malformed payloads, blank messages, missing threads, and cross-org attempts are rejected or ignored.
 
-Coverage: `zero-chat-messages`, `zero-chat-threads-messages`, `internal-callbacks-chat`, `internal-event-consumers`, `internal-event-consumers-telegram-typing`.
+Coverage: `zero-chat-messages`, `zero-chat-threads-messages`, `internal-chat-run-callback.service`, `agent-run-callback.service`, `internal-event-consumers`, `internal-event-consumers-telegram-typing`.
 
 ### CHAT-03: Artifacts and memory
 
@@ -315,12 +315,13 @@ Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insi
 
 ### HOOK-01: Signed internal callbacks
 
-Given signed internal callback requests are constructed for chat, schedule, Slack org, Telegram, and GitHub issue flows
+Given signed internal callback requests are constructed for schedule, Slack org, Telegram, and GitHub issue flows
 When valid callback payloads are posted
 Then response bodies and follow-up run/chat/integration/status APIs expose the side effect.
 Then invalid signatures, expired timestamps, malformed payloads, missing callbacks, missing installs, and provider failures return expected responses.
+Then chat callbacks are covered through typed internal dispatcher delivery rather than an HTTP callback route.
 
-Coverage: `callback-route`, `internal-callbacks-chat`, `internal-callbacks-trigger`, `internal-callbacks-slack-org`, `internal-callbacks-telegram`, `internal-callbacks-github-issues`.
+Coverage: `callback-route`, `agent-run-callback.service`, `internal-callbacks-trigger`, `internal-callbacks-slack-org`, `internal-callbacks-telegram`, `internal-callbacks-github-issues`.
 
 ### HOOK-02: External webhooks
 
@@ -521,7 +522,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `cron-process-usage-events.test.ts`                                                                                                                        | BILL-02 usage processing via `run-lifecycle.bdd.test.ts` and the SCHED-02 safe-cron chain                                            | same                                 |
 | `zero-schedules.test.ts`, `zero-schedules-enable.test.ts`, `zero-schedules-disable.test.ts`, `zero-schedules-run.test.ts`, `zero-schedules-delete.test.ts` | SCHED-01 lifecycle/run-now/chat-link/capability chains in `runs-schedules.bdd.test.ts`                                               | targeted BDD + CI follow-up          |
 
-| `internal-callbacks-chat.test.ts` | CHAT-02/HOOK-01 chains A-I in `chat-callbacks.bdd.test.ts` | same |
+| chat callback command/dispatcher coverage | CHAT-02 chains in `chat-callbacks.bdd.test.ts` plus typed and legacy URL dispatch in `agent-run-callback.service.test.ts` | same |
 | `connectors-type-callback.test.ts`, `test-oauth-provider-get.test.ts` | CONN-02 callback chains CB-A..CB-G and provider chains P1-P4 in `connectors.bdd.test.ts` | same |
 | `github-oauth.test.ts`, `integrations-github-{get,patch,delete,label-listeners}.test.ts`, `internal-callbacks-github-issues.test.ts` | INT-03/CONN-02/HOOK-01 chains G1-G6 in `github-integration.bdd.test.ts` | same |
 | `automations.test.ts`, `webhook-automations.test.ts`, `webhooks-automation.test.ts` | AUTOMATIONS-02/03 and HOOK-02 chains in `automations.bdd.test.ts` plus AUTOMATIONS-01 in `runs-schedules.bdd.test.ts`; current surface is unified `automations` | same |
@@ -582,8 +583,8 @@ coverage gap is acceptable once listed:
 - `zero-connector-data.service.ts` `validateExtraConnectorTokenSecrets` mapped-output / unsupported-name throws (lines ~1474-1488) and the required-extra-secret throw in `validateConnectorTokenOutputRequirements`: extra connector secret names are constructed statically by in-repo providers (e.g. slock's `SLOCK_SERVER_ID`); a violation requires a provider-code bug, not any request input. Legacy reached these only by monkey-patching provider modules.
 - `connector-external-code.service.ts` `resolveStoredExternalCodeMethod` 500 branch and `parseEncryptedProviderState` connector/method mismatch throw: require a stored session row whose authMethod or encrypted provider state disagrees with what `startConnectorExternalCodeSession$` wrote; every public write path produces them consistently and atomically.
 
-- `internal-callbacks-chat.ts:1545-1551` (payload schema parse failure, 400 "Invalid or missing payload"): the only writers of chat-callback rows persist schema-valid `{threadId, agentId}` payloads, and the dispatcher echoes the stored payload inside the HMAC-signed body, so a malformed payload requires a direct DB write or a forged signature.
-- `internal-callbacks-chat.ts:1532-1536` (payload/DB thread-mapping mismatch warn): `zero_runs.chatThreadId` is written once at run creation with the same threadId stored in the callback payload and only ever transitions to NULL (thread-delete FK `set null`), which returns through the missing-thread branch instead.
+- `internal-chat-run-callback.service.ts` payload schema parse failure (`success: false`, "Invalid or missing payload"): the only writers of chat-callback rows persist schema-valid `{threadId, agentId}` payloads, and the dispatcher passes the stored payload directly, so a malformed payload requires a direct DB write.
+- `internal-chat-run-callback.service.ts` payload/DB thread-mapping mismatch warn: `zero_runs.chatThreadId` is written once at run creation with the same threadId stored in the callback payload and only ever transitions to NULL (thread-delete FK `set null`), which returns through the missing-thread branch instead.
 - `connectors-type-callback.ts` `validateStoredAuthCodeMethod` failure arms and callers (lines 273, 295, 306, 318, 445, 547): `connector_oauth_states.authMethod` is written only after validating an auth-code grant method for the same connector type, and `claimConnectorOAuthState` filters rows by connector type — a stored state whose method is missing, non-auth-code, or unparseable can exist only across a deploy that removes or re-kinds the method.
 - `zero-connector-data.service.ts` missing-required-token-output throw (~1419) and unsupported-output-name throw (~1433): provider exchange results are zod-parsed before outputs are constructed, so a violation requires a provider-code bug; legacy reached these only by monkey-patching provider modules.
 - `internal-callbacks-slack-org.ts:587` (400 "Invalid or missing payload"): the only producer of callbacks targeting this URL writes the payload schema-valid, and the per-callback HMAC secret is generated server-side and never exposed.

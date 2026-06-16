@@ -728,7 +728,7 @@ async function latestSessionForThread(
     // chat-mode automation run (triggerSource "automation") never resumes a web
     // session and a later web turn never resumes an automation one. The 'web'
     // filter (before .limit) is mirrored in latestSessionForThreadFromDb
-    // (internal-callbacks-chat.ts) and latestSessionIdForThread
+    // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
     .where(

@@ -5,10 +5,8 @@ import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-sub
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { z } from "zod";
 
-import { createApp } from "../../../../app-factory";
-import { computeHmacSignature } from "../../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../../lib/env";
-import { now, nowDate } from "../../../../lib/time";
+import { nowDate } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import {
   accept,
@@ -18,28 +16,13 @@ import {
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-const CHAT_CALLBACK_PATH = "/api/internal/callbacks/chat";
-const CHAT_CALLBACK_URL = `http://localhost:3000${CHAT_CALLBACK_PATH}`;
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
 type OrgModelPolicies = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >["policies"];
-
-interface CapturedChatCallbackDelivery {
-  readonly body: string;
-  readonly headers: Record<string, string>;
-}
-
-interface ChatCallbackRequestBody {
-  readonly callbackId?: string;
-  readonly runId: string;
-  readonly status: "completed" | "failed" | "progress";
-  readonly result?: Record<string, unknown>;
-  readonly error?: string;
-  readonly payload: unknown;
-}
 
 const openRouterCompletionBodySchema = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
@@ -140,49 +123,6 @@ export function createChatCallbacksApi(context: TestContext) {
       return () => {
         return requests;
       };
-    },
-
-    signedChatCallbackDelivery(
-      body: ChatCallbackRequestBody,
-      secret: string,
-    ): CapturedChatCallbackDelivery {
-      const rawBody = JSON.stringify(body);
-      const timestamp = Math.floor(now() / 1000);
-      return {
-        body: rawBody,
-        headers: {
-          "content-type": "application/json",
-          "x-vm0-signature": computeHmacSignature(rawBody, secret, timestamp),
-          "x-vm0-timestamp": timestamp.toString(),
-        },
-      };
-    },
-
-    /**
-     * Re-POSTs a captured delivery into the app verbatim. Callers drain
-     * detached work themselves so parallel replays can race before draining.
-     */
-    async replayChatCallback(
-      delivery: CapturedChatCallbackDelivery,
-      overrides: { readonly signature?: string } = {},
-    ): Promise<Response> {
-      const headers: Record<string, string> = { ...delivery.headers };
-      if (overrides.signature !== undefined) {
-        headers["x-vm0-signature"] = overrides.signature;
-      }
-      const app = createApp({ signal: context.signal });
-      return await app.request(CHAT_CALLBACK_PATH, {
-        method: "POST",
-        headers,
-        body: delivery.body,
-      });
-    },
-
-    /** Captured signature with one flipped hex character. */
-    tamperedSignature(delivery: CapturedChatCallbackDelivery): string {
-      const signature = delivery.headers["x-vm0-signature"] ?? "";
-      const flipped = signature.startsWith("a") ? "b" : "a";
-      return `${flipped}${signature.slice(1)}`;
     },
 
     async registerPushSubscription(actor: ApiTestUser): Promise<string> {

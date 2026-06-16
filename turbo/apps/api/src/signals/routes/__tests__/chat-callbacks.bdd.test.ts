@@ -7,7 +7,6 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
@@ -17,7 +16,6 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -25,15 +23,13 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
  *
  * Terminal callbacks in this file originate from the real internal dispatcher
- * (sandbox complete/cancel webhooks and the sandbox heartbeat route). The
- * legacy HTTP wrapper coverage constructs signed callback envelopes explicitly
- * so normal app-internal dispatch does not depend on an HTTP self-call.
+ * (sandbox complete/cancel webhooks and the sandbox heartbeat route), so normal
+ * app-internal dispatch does not depend on an HTTP self-call.
  */
 
 const context = testContext();
@@ -240,45 +236,6 @@ async function waitForRunStatus(
       return run.status;
     })
     .toBe(status);
-}
-
-async function signedLegacyChatCallbackDelivery(args: {
-  readonly runId: string;
-  readonly threadId: string;
-  readonly agentId: string;
-  readonly status: "completed" | "failed";
-  readonly error?: string;
-}) {
-  const secret = `legacy-chat-callback-${args.runId}`;
-  const db = store.set(writeDb$);
-  const [callback] = await db
-    .select({ id: agentRunCallbacks.id })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, args.runId))
-    .limit(1);
-  if (!callback) {
-    throw new Error("Expected a chat callback row");
-  }
-
-  await db
-    .update(agentRunCallbacks)
-    .set({
-      url: "http://localhost:3000/api/internal/callbacks/chat",
-      internalKind: null,
-      encryptedSecret: encryptSecretForTests(secret),
-    })
-    .where(eq(agentRunCallbacks.id, callback.id));
-
-  return chatCallbacks.signedChatCallbackDelivery(
-    {
-      callbackId: callback.id,
-      runId: args.runId,
-      status: args.status,
-      ...(args.error === undefined ? {} : { error: args.error }),
-      payload: { threadId: args.threadId, agentId: args.agentId },
-    },
-    secret,
-  );
 }
 
 /**
@@ -832,204 +789,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toHaveLength(1);
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       beforeTitle,
-    );
-  }, 90_000);
-});
-
-describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
-  it("deduplicates concurrent and replayed deliveries and rejects tampered signatures", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-
-    const first = await startChatRun(actor, { agentId, prompt: "dedupe me" });
-    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "First event"),
-      assistantEvent(1, "Second event"),
-    ]);
-    await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 1,
-    });
-
-    let messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          eventBackedContents(threadMessages, first.runId).length === 2 &&
-          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
-            1
-        );
-      },
-    );
-    expect(
-      eventBackedContents(messages.messages, first.runId)
-        .map((message) => {
-          return message.content;
-        })
-        .sort(),
-    ).toStrictEqual(["First event", "Second event"]);
-    expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
-    ).toHaveLength(1);
-
-    const completedDelivery = await signedLegacyChatCallbackDelivery({
-      runId: first.runId,
-      threadId: first.threadId,
-      agentId,
-      status: "completed",
-    });
-    const completedBody: unknown = JSON.parse(completedDelivery.body);
-    expect(completedBody).toMatchObject({
-      callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
-      runId: first.runId,
-      status: "completed",
-      payload: { threadId: first.threadId, agentId },
-    });
-    expect(completedDelivery.headers["x-vm0-signature"]).toMatch(/.+/);
-    expect(completedDelivery.headers["x-vm0-timestamp"]).toMatch(/^\d+$/);
-
-    const sentinel = await chat.createThread(actor, {
-      agentId,
-      title: "Replay ordering sentinel",
-    });
-    context.mocks.ably.publish.mockClear();
-    const [replayA, replayB] = await Promise.all([
-      chatCallbacks.replayChatCallback(completedDelivery),
-      chatCallbacks.replayChatCallback(completedDelivery),
-    ]);
-    expect(replayA.status).toBe(200);
-    expect(replayB.status).toBe(200);
-    await flushWaitUntilForTest();
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          eventBackedContents(threadMessages, first.runId).length === 2 &&
-          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
-            1
-        );
-      },
-    );
-    expect(
-      eventBackedContents(messages.messages, first.runId)
-        .map((message) => {
-          return message.content;
-        })
-        .sort(),
-    ).toStrictEqual(["First event", "Second event"]);
-    expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
-    ).toHaveLength(1);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
-    );
-    const replayAgain =
-      await chatCallbacks.replayChatCallback(completedDelivery);
-    expect(replayAgain.status).toBe(200);
-    await flushWaitUntilForTest();
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
-          1
-        );
-      },
-    );
-    expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
-    ).toHaveLength(1);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
-    );
-    const ordered = await chat.listThreads(actor, { agentId });
-    const orderedIds = [...ordered.pinned, ...ordered.threads].map((thread) => {
-      return thread.id;
-    });
-    expect(orderedIds.indexOf(sentinel.id)).toBeGreaterThanOrEqual(0);
-    expect(orderedIds.indexOf(sentinel.id)).toBeLessThan(
-      orderedIds.indexOf(first.threadId),
-    );
-
-    const tampered = await chatCallbacks.replayChatCallback(completedDelivery, {
-      signature: chatCallbacks.tamperedSignature(completedDelivery),
-    });
-    expect(tampered.status).toBe(401);
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return eventBackedContents(threadMessages, first.runId).length === 2;
-      },
-    );
-    expect(eventBackedContents(messages.messages, first.runId)).toHaveLength(2);
-
-    const second = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "failed turn",
-    });
-    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await failChatRun(
-      second.runId,
-      secondHeaders,
-      "Cannot continue session from checkpoint",
-    );
-
-    await waitForThreadMessages(actor, first.threadId, (threadMessages) => {
-      return (
-        lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
-      );
-    });
-    const failedDelivery = await signedLegacyChatCallbackDelivery({
-      runId: second.runId,
-      threadId: first.threadId,
-      agentId,
-      status: "failed",
-      error: "Cannot continue session from checkpoint",
-    });
-    const failedBody: unknown = JSON.parse(failedDelivery.body);
-    expect(failedBody).toMatchObject({
-      runId: second.runId,
-      status: "failed",
-      error: "Cannot continue session from checkpoint",
-      payload: { threadId: first.threadId, agentId },
-    });
-
-    context.mocks.ably.publish.mockClear();
-    const firstFailedReplay =
-      await chatCallbacks.replayChatCallback(failedDelivery);
-    expect(firstFailedReplay.status).toBe(200);
-    await flushWaitUntilForTest();
-    const secondFailedReplay =
-      await chatCallbacks.replayChatCallback(failedDelivery);
-    expect(secondFailedReplay.status).toBe(200);
-    await flushWaitUntilForTest();
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
-        );
-      },
-    );
-    const failedMarkers = lifecycleMarkers(
-      messages.messages,
-      second.runId,
-      "failed",
-    );
-    expect(failedMarkers).toHaveLength(1);
-    expect(failedMarkers[0]?.error).toBe(
-      "Cannot continue session from checkpoint",
-    );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
     );
   }, 90_000);
 });
