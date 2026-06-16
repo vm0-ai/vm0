@@ -1,5 +1,6 @@
 import { state, computed, command } from "ccstate";
 import { writeToClipboard } from "./clipboard.ts";
+import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 // Assistant message bubbles carry this class in the chat thread. Text selected
 // inside one of them is what we offer feedback on.
@@ -186,9 +187,8 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   });
 });
 
-// "Provide feedback" on a passage: append it as a new fragment with an empty
-// note. The newest fragment is the one the user just picked, so the view
-// focuses its note input.
+// "Provide feedback" on a passage: append it as a new fragment. The newest
+// fragment is the one the user just picked, so the view focuses its note input.
 export const startFeedback$ = command(({ get, set }) => {
   const selection = get(feedbackSelection$);
   if (!selection) {
@@ -201,10 +201,24 @@ export const startFeedback$ = command(({ get, set }) => {
   const crossesThreads =
     activeThreadId !== null && activeThreadId !== selection.threadId;
   const existing = crossesThreads ? [] : get(feedbackItems$);
+  // When this is the first comment in a stack, carry any text already typed in
+  // the composer into its note — otherwise the textarea (and the text in it)
+  // vanishes the moment the feedback rows replace it, and the pending text is
+  // lost when the turn sends. Only non-blank text is moved, and it leaves the
+  // draft so it is not also re-sent. Later comments find the draft empty.
+  let note = "";
+  if (existing.length === 0 && selection.threadId !== null) {
+    const { draft } = set(ensureDraft$, selection.threadId);
+    const pending = get(draft.input$);
+    if (pending.trim().length > 0) {
+      note = pending;
+      set(draft.setInput$, "");
+    }
+  }
   const id = get(feedbackNextId$);
   set(feedbackNextId$, id + 1);
   set(feedbackThreadId$, selection.threadId);
-  set(feedbackItems$, [...existing, { id, quote: selection.text, note: "" }]);
+  set(feedbackItems$, [...existing, { id, quote: selection.text, note }]);
 
   // A fresh stack on a thread switch starts the highlights over too.
   const ranges = new Map<number, Range>(
