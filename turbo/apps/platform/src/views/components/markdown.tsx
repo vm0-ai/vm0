@@ -251,10 +251,13 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
       onClick={() => {
         openImageLightbox(src);
       }}
-      className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
+      className="relative my-1 inline-flex aspect-[10/9] w-[200px] max-w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >
       {showPlaceholder && (
-        <span className="flex h-32 w-48 max-w-full items-center justify-center bg-muted/70 text-muted-foreground">
+        <span
+          data-testid="markdown-image-preview-loading"
+          className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
+        >
           {imageStatus === "loading" ? (
             <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
           ) : (
@@ -275,7 +278,7 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
         onError={() => {
           setImageLoadStatus(imageLoadKey, "error");
         }}
-        className={`max-h-32 max-w-full object-contain ${
+        className={`h-full w-full object-contain ${
           showPlaceholder ? "absolute inset-0 opacity-0" : ""
         }`}
       />
