@@ -3,6 +3,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use nix::unistd::{AccessFlags, access};
 use sandbox::SandboxError;
 
 use crate::config::SnapshotConfig;
@@ -152,6 +153,13 @@ fn check_executable_file(path: &Path, label: &str, errors: &mut Vec<String>) {
 fn check_executable(path: &Path, label: &str, metadata: &Metadata, errors: &mut Vec<String>) {
     if metadata.permissions().mode() & 0o111 == 0 {
         errors.push(format!("{label} is not executable: {}", path.display()));
+        return;
+    }
+    if let Err(e) = access(path, AccessFlags::X_OK) {
+        errors.push(format!(
+            "{label} is not executable: {}: {e}",
+            path.display()
+        ));
     }
 }
 
@@ -525,6 +533,21 @@ mod tests {
     fn artifact_prerequisites_reject_non_executable_binary() {
         let fixture = ArtifactFixture::new();
         std::fs::set_permissions(&fixture.binary_path, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod binary");
+
+        let errors = artifact_errors(fixture.fresh_config());
+
+        assert_error_contains(&errors, "firecracker binary is not executable");
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_binary_without_current_user_execute_access() {
+        if nix::unistd::geteuid().as_raw() == 0 {
+            return;
+        }
+
+        let fixture = ArtifactFixture::new();
+        std::fs::set_permissions(&fixture.binary_path, std::fs::Permissions::from_mode(0o001))
             .expect("chmod binary");
 
         let errors = artifact_errors(fixture.fresh_config());
