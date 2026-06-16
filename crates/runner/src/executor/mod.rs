@@ -47,7 +47,7 @@ use api_contracts::generated::constants::runners::paths::{
     CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
 };
 
-/// Maximum wall-clock time for a single job (2 hours).
+/// Maximum guest-side runtime budget for a single agent process (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Exit code used when the runner's job timeout stops an agent process.
 const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
