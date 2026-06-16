@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.147.2](https://github.com/vm0-ai/vm0/compare/api-v1.147.1...api-v1.147.2) (2026-06-16)
+
+
+### Refactoring
+
+* dispatch trigger callbacks through ccstate ([#17906](https://github.com/vm0-ai/vm0/issues/17906)) ([f85b57b](https://github.com/vm0-ai/vm0/commit/f85b57bc5838fe8f06349c3b676ab06d253a6f41))
+
 ## [1.147.1](https://github.com/vm0-ai/vm0/compare/api-v1.147.0...api-v1.147.1) (2026-06-16)
 
 
