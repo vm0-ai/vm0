@@ -13,10 +13,10 @@ describe("internalApiBaseUrl", () => {
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
     expect(
       new URL(
-        "/api/internal/callbacks/telegram",
+        "/api/internal/callbacks/slack/org",
         internalApiBaseUrl(),
       ).toString(),
-    ).toBe("https://api.vm0.ai/api/internal/callbacks/telegram");
+    ).toBe("https://api.vm0.ai/api/internal/callbacks/slack/org");
   });
 
   it("defaults to the API backend origin in production when VM0_API_BACKEND_URL is unset", () => {

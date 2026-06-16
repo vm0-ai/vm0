@@ -2,15 +2,12 @@ import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import {
-  telegramCallbackPayloadSchema,
-  type TelegramCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-telegram";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
@@ -42,6 +39,22 @@ import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.serv
 import { settle } from "../utils";
 
 const L = logger("InternalCallbacksTelegram");
+
+const telegramCallbackPayloadSchema = z
+  .object({
+    installationId: z.string(),
+    chatId: z.string(),
+    messageId: z.string(),
+    rootMessageId: z.string().nullable().optional(),
+    userLinkId: z.string(),
+    agentId: z.string(),
+    existingSessionId: z.string().nullable().optional(),
+    isDM: z.boolean(),
+    thinkingMessageId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+type TelegramCallbackPayload = z.infer<typeof telegramCallbackPayloadSchema>;
 
 interface RunContext {
   readonly userId: string;
