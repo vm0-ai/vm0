@@ -46,7 +46,7 @@ async def _wait_for_forward_start(
             return_when=asyncio.FIRST_COMPLETED,
             timeout=timeout,
         )
-        if started_task in done and started_task.result():
+        if (started_task in done and started_task.result()) or started.is_set():
             return
 
         if request_task not in done and not request_task.done():
