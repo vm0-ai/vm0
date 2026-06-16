@@ -55,17 +55,23 @@ impl CpuTracker {
             None => return 0.0,
         };
 
-        let delta_idle = idle.saturating_sub(self.prev_idle);
-        let delta_total = total.saturating_sub(self.prev_total);
+        if idle < self.prev_idle || total < self.prev_total {
+            self.prev_idle = idle;
+            self.prev_total = total;
+            return 0.0;
+        }
+
+        let delta_idle = idle - self.prev_idle;
+        let delta_total = total - self.prev_total;
+
+        if delta_total == 0 || delta_idle > delta_total {
+            return 0.0;
+        }
 
         self.prev_idle = idle;
         self.prev_total = total;
 
-        if delta_total == 0 {
-            return 0.0;
-        }
         let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
-        let pct = pct.clamp(0.0, 100.0);
         (pct * 100.0).round() / 100.0
     }
 }
@@ -248,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn cpu_tracker_clamps_inconsistent_delta_to_valid_range() {
+    fn cpu_tracker_rejects_inconsistent_delta_without_updating_state() {
         let mut tracker = CpuTracker::new();
         assert_eq!(
             tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
@@ -259,6 +265,21 @@ mod tests {
             tracker.get_cpu_percent_from_stat_line("cpu 0 75 0 30 0"),
             0.0
         );
+        assert_eq!(tracker.prev_idle, 10);
+        assert_eq!(tracker.prev_total, 100);
+    }
+
+    #[test]
+    fn cpu_tracker_resets_state_when_counters_regress() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(tracker.get_cpu_percent_from_stat_line("cpu 0 5 0 5 0"), 0.0);
+        assert_eq!(tracker.prev_idle, 5);
+        assert_eq!(tracker.prev_total, 10);
     }
 
     #[test]
