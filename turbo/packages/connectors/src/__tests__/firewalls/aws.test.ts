@@ -166,6 +166,18 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "sts:GetCallerIdentity")).toContain(
       "POST / AWS sigv4=sts action=GetCallerIdentity",
     );
+    expect(rulesFor(permissions, "es:CreateDomain")).toContain(
+      "POST /2021-01-01/opensearch/domain AWS sigv4=es",
+    );
+    expect(rulesFor(permissions, "es:AcceptInboundConnection")).toContain(
+      "PUT /2021-01-01/opensearch/cc/inboundConnection/{ConnectionId}/accept AWS sigv4=es",
+    );
+    expect(rulesFor(permissions, "kafka-cluster:CreateTopic")).toContain(
+      "POST /v1/clusters/{clusterArn}/topics AWS sigv4=kafka",
+    );
+    expect(rulesFor(permissions, "iot:StartCommandExecution")).toContain(
+      "POST /command-executions AWS sigv4=iot-jobs-data",
+    );
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys?mode=import AWS sigv4=apigateway",
     );
@@ -246,7 +258,11 @@ describe("aws firewall", () => {
     expect(categories).not.toBeNull();
     expect(categories?.categories["apigateway:POST"]).toBe("apigateway");
     expect(categories?.categories["ec2:DescribeInstances"]).toBe("ec2");
+    expect(categories?.categories["es:CreateDomain"]).toBe("es");
     expect(categories?.categories["iam:CreateRole"]).toBe("iam");
+    expect(categories?.categories["kafka-cluster:CreateTopic"]).toBe(
+      "kafka-cluster",
+    );
     expect(categories?.categories["lambda:CreateFunction"]).toBe("lambda");
     expect(categories?.categories["s3:GetObject"]).toBe("s3");
     expect(categories?.categories["sts:GetCallerIdentity"]).toBe("sts");
@@ -262,16 +278,17 @@ describe("aws firewall", () => {
 
     expect(awsGenerationStats).toStrictEqual({
       sourceServices: 424,
-      generatedServices: 417,
+      generatedServices: 418,
       unsupportedProtocolServices: 3,
       totalOperations: 18505,
-      mappedOperations: 18128,
+      mappedOperations: 18216,
+      crossServiceAuthorizedActionMappings: 95,
       fallbackActionMappings: 0,
-      unmappedOperations: 377,
-      ambiguousOperations: 60,
+      unmappedOperations: 289,
+      ambiguousOperations: 62,
       unsupportedOperations: 0,
-      permissionCount: 17455,
-      ruleCount: 19635,
+      permissionCount: 17513,
+      ruleCount: 19723,
       s3VirtualHostedPermissionCount: 72,
       s3VirtualHostedRuleCount: 93,
     });
