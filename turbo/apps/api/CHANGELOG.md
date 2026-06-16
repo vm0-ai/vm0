@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.147.3](https://github.com/vm0-ai/vm0/compare/api-v1.147.2...api-v1.147.3) (2026-06-16)
+
+
+### Refactoring
+
+* dispatch slack org callbacks through ccstate ([#17932](https://github.com/vm0-ai/vm0/issues/17932)) ([e48ae30](https://github.com/vm0-ai/vm0/commit/e48ae30e342b268be340f15057b1136ddefd6eec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/connectors bumped to 1.82.0
+    * @vm0/core bumped to 8.345.0
+    * @vm0/db bumped to 1.53.2
+
 ## [1.147.2](https://github.com/vm0-ai/vm0/compare/api-v1.147.1...api-v1.147.2) (2026-06-16)
 
 
