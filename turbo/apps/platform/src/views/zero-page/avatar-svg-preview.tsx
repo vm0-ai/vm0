@@ -1,6 +1,7 @@
-import { useLastResolved } from "ccstate-react";
-import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
-import { compositeAvatarSvg$ } from "../../signals/zero-page/avatar-svg-cache.ts";
+import {
+  avatarSvgLayerUrls,
+  type AvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 
 interface AvatarSvgPreviewProps {
   config: AvatarSvgConfig;
@@ -11,8 +12,7 @@ interface AvatarSvgPreviewProps {
 }
 
 /**
- * Renders a composite avatar by lazily loading head, face, and hair SVG layers
- * and displaying the combined result as a single `<img>` with a data-URL src.
+ * Renders a composite avatar by layering head, face, and hair SVG images.
  */
 export function AvatarSvgPreview({
   config,
@@ -21,7 +21,8 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
-  const dataUrl = useLastResolved(compositeAvatarSvg$(config));
+  const urls = avatarSvgLayerUrls(config);
+  const layerClassName = "absolute inset-0 h-full w-full object-cover";
 
   return (
     <div
@@ -30,11 +31,11 @@ export function AvatarSvgPreview({
       {...(alt ? { role: "img", "aria-label": alt } : undefined)}
       data-testid={testId}
     >
-      {dataUrl !== undefined && (
-        <div className="absolute inset-0 scale-[1.25]">
-          <img alt="" src={dataUrl} className="h-full w-full object-cover" />
-        </div>
-      )}
+      <div className="absolute inset-0 scale-[1.25]">
+        <img alt="" src={urls.head} className={layerClassName} />
+        <img alt="" src={urls.face} className={layerClassName} />
+        <img alt="" src={urls.hair} className={layerClassName} />
+      </div>
     </div>
   );
 }

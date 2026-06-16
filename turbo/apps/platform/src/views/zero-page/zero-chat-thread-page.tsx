@@ -3,6 +3,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -49,6 +50,7 @@ import {
   cn,
   isEditableTarget,
   matchShortcut,
+  Button,
   Skeleton,
   DropdownMenu,
   DropdownMenuContent,
@@ -80,8 +82,7 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import emptyChatImg from "./assets/empty-chat.webp";
-import emptyArtifactImg from "./assets/empty-artifact.webp";
+import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
@@ -132,6 +133,7 @@ import {
   requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -179,10 +181,20 @@ import {
   automationsForThread,
   type HeaderAutomationEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
+import {
+  closeHeaderAutomationSidebar$,
+  currentHeaderAutomationThreadId$,
+  openHeaderAutomationSidebar$,
+} from "../../signals/chat-page/header-automation-sidebar.ts";
+import {
+  runAutomationNow$,
+  toggleOrgAutomationEnabled$,
+} from "../../signals/zero-page/zero-automations.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { Link } from "../router/link.tsx";
 
 import type {
   EnrichedChatMessage,
@@ -224,7 +236,6 @@ import {
   usePersonalOauthConfigurationAction,
 } from "./model-first-oauth-submit-blocker.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
-import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import {
   setActiveOrgManageTab$,
@@ -948,8 +959,9 @@ function GithubPrTrackingButton({
   );
 }
 
-// Second line shown under each automation in the header menu: the next upcoming
-// run time, or a note that the automation is inactive when it has been disabled.
+// Second line shown under each automation in the legacy header dropdown: the
+// next upcoming run time, or a note that the automation is inactive when it has
+// been disabled.
 function automationMenuSubline(automation: HeaderAutomationEntry): string {
   if (!automation.enabled) {
     return "Automation inactive";
@@ -964,6 +976,13 @@ function automationMenuSubline(automation: HeaderAutomationEntry): string {
   return `Next run ${nextRun}`;
 }
 
+function featureSwitchEnabled(
+  features: Record<FeatureSwitchKey, boolean> | undefined,
+  key: FeatureSwitchKey,
+): boolean {
+  return features?.[key] ?? false;
+}
+
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
@@ -975,62 +994,101 @@ export function AutomationMenuButton({
 }) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
+  const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const features = useLastResolved(featureSwitch$);
+  const automationSidebarEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.ChatAutomationSidebar,
+  );
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
+  const open = automationSidebarEnabled && openThreadId === threadId;
 
   if (automations.length === 0) {
     return null;
   }
 
+  if (!automationSidebarEnabled) {
+    return (
+      <DropdownMenu
+        onOpenChange={(dropdownOpen) => {
+          if (dropdownOpen) {
+            reloadAutomations();
+          }
+        }}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            aria-label={ariaLabel}
+          >
+            <IconClock size={18} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          {automations.map((automation) => {
+            return (
+              <DropdownMenuItem
+                key={automation.id}
+                onClick={() => {
+                  navigate("/automations/:automationId", {
+                    pathParams: { automationId: automation.id },
+                  });
+                }}
+                className="items-start gap-2"
+              >
+                <IconClock
+                  size={15}
+                  className="mt-0.5 shrink-0 text-muted-foreground"
+                />
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate">
+                    {automationDescription(automation)}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {automationMenuSubline(automation)}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (open) {
-          reloadAutomations();
-        }
-      }}
-    >
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          aria-label={ariaLabel}
-        >
-          <IconClock size={18} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        {automations.map((automation) => {
-          return (
-            <DropdownMenuItem
-              key={automation.id}
-              onClick={() => {
-                navigate("/automations/:automationId", {
-                  pathParams: { automationId: automation.id },
-                });
-              }}
-              className="items-start gap-2"
-            >
-              <IconClock
-                size={15}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate">{automation.title}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {automationMenuSubline(automation)}
-                </span>
-              </div>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label={ariaLabel}
+            aria-pressed={open}
+            onClick={() => {
+              reloadAutomations();
+              openAutomationSidebar(threadId);
+            }}
+          >
+            <IconClock size={18} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Open automations</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1964,6 +2022,196 @@ function ChatArtifactInboxSlot({
   return <ChatArtifactInboxList thread={thread} />;
 }
 
+function formatAutomationNextRun(automation: HeaderAutomationEntry): string {
+  if (!automation.enabled || !automation.nextRunAt) {
+    return "No upcoming run";
+  }
+
+  const date = new Date(automation.nextRunAt);
+  if (Number.isNaN(date.getTime())) {
+    return "No upcoming run";
+  }
+
+  return date.toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: automation.timezone,
+  });
+}
+
+function automationDescription(automation: HeaderAutomationEntry): string {
+  const description = automation.description?.trim();
+  return description && description.length > 0 ? description : "No description";
+}
+
+function HeaderAutomationSidebarCard({
+  automation,
+}: {
+  automation: HeaderAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const [runningLoadable, runAutomationNowTracked] =
+    useLoadableSet(runAutomationNow$);
+  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
+    toggleOrgAutomationEnabled$,
+  );
+  const running = runningLoadable.state === "loading";
+  const toggling = togglingLoadable.state === "loading";
+
+  const runNow = () => {
+    detach(
+      runAutomationNowTracked(automation.id, pageSignal),
+      Reason.DomCallback,
+      "run header automation now",
+    );
+  };
+
+  const toggleEnabled = (enabled: boolean) => {
+    detach(
+      (async () => {
+        await toggleEnabledTracked(
+          {
+            agentId: automation.agentId,
+            enabled,
+            name: automation.name,
+          },
+          pageSignal,
+        );
+        reloadAutomations();
+      })(),
+      Reason.DomCallback,
+      "toggle header automation enabled",
+    );
+  };
+
+  return (
+    <article
+      className={cn(
+        "rounded-lg border border-border bg-background p-3 transition-colors",
+        !automation.enabled && "opacity-75",
+      )}
+    >
+      <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+        {automationDescription(automation)}
+      </p>
+
+      <div className="mt-3 grid gap-1.5">
+        <div className="rounded-lg bg-muted/45 px-3 py-2">
+          <div className="text-xs text-muted-foreground">Next run</div>
+          <div className="mt-1 truncate text-xs font-medium text-foreground">
+            {formatAutomationNextRun(automation)}
+          </div>
+        </div>
+        <div className="rounded-lg bg-muted/45 px-3 py-2">
+          <div className="text-xs text-muted-foreground">Rule</div>
+          <div className="mt-1 truncate text-xs font-medium text-foreground">
+            {automation.rule}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
+            disabled={running}
+            onClick={runNow}
+          >
+            {running ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconPlayerPlay size={14} stroke={1.5} />
+            )}
+            {running ? "Starting…" : "Run now"}
+          </Button>
+          <Link
+            pathname="/automations/:automationId"
+            options={{ pathParams: { automationId: automation.id } }}
+            className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Edit
+          </Link>
+        </div>
+
+        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          Active
+          <LoadingSwitch
+            checked={automation.enabled}
+            loading={toggling}
+            onCheckedChange={toggleEnabled}
+            ariaLabel={`${automation.enabled ? "Disable" : "Enable"} automation`}
+          />
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
+  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
+  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const close = useSet(closeHeaderAutomationSidebar$);
+  const allAutomations =
+    automationsLoadable.state === "hasData"
+      ? automationsLoadable.data
+      : (lastResolvedAutomations ?? []);
+  const automations = automationsForThread(allAutomations, threadId);
+  const loading =
+    automationsLoadable.state === "loading" && automations.length === 0;
+
+  return (
+    <aside
+      aria-label="Automations"
+      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
+      data-testid="automation-sidebar"
+    >
+      <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-foreground">
+            Automations
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Close automations"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
+          <IconX size={16} />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {loading ? (
+          <div className="grid gap-3">
+            <Skeleton className="h-36 rounded-lg" />
+            <Skeleton className="h-36 rounded-lg" />
+          </div>
+        ) : automations.length === 0 ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            No automations yet.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {automations.map((automation) => {
+              return (
+                <HeaderAutomationSidebarCard
+                  key={automation.id}
+                  automation={automation}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
@@ -2097,55 +2345,31 @@ function ArtifactResizeHandle() {
   );
 }
 
-export function ZeroChatThreadPage() {
-  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
+function ChatThreadArea({
+  leftThread,
+  rightThread,
+  activePresentationEditorUrl,
+  artifactFullscreen,
+  presentationEditor,
+}: {
+  leftThread: ChatThreadSignals | null;
+  rightThread: ChatThreadSignals | null;
+  activePresentationEditorUrl: string | null;
+  artifactFullscreen: boolean;
+  presentationEditor: ReactNode;
+}) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
   const setMainThreadKeyboardFocusRef = useSet(
     setMainChatThreadKeyboardFocusRef$,
   );
-  const artifactRef = useGet(currentArtifactRef$);
-  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
-  const closePresentationEditor = useSet(closePresentationEditor$);
-  const artifactFullscreen = useGet(artifactFullscreen$);
-  const features = useLastResolved(featureSwitch$);
-  const presentationHtmlEditorEnabled = Boolean(
-    features?.[FeatureSwitchKey.PresentationHtmlPptxDownload],
-  );
-  const activePresentationEditorUrl = presentationHtmlEditorEnabled
-    ? presentationEditorUrl
-    : null;
-  const artifactPanelOpen = Boolean(artifactRef || artifactInboxThreadId);
-  const { style: artifactPanelStyle, transition: artifactTransition } =
-    artifactPanelLayout(
-      useGet(artifactPanelWidth$),
-      useGet(artifactPanelResizing$),
-    );
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
   // ChatThread whose useLastResolved has no cached value yet, leading to an
   // empty threads list and a silently dropped keypress.
   const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
-  const presentationEditor = activePresentationEditorUrl ? (
-    <div
-      className={cn(
-        "flex min-w-0 bg-background",
-        artifactFullscreen ? "fixed inset-0 z-[100] min-h-0" : "w-full flex-1",
-      )}
-    >
-      <PresentationHtmlEditor
-        url={activePresentationEditorUrl}
-        onClose={closePresentationEditor}
-      />
-    </div>
-  ) : null;
 
-  const threadArea = (
+  return (
     <div
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
@@ -2178,10 +2402,59 @@ export function ZeroChatThreadPage() {
       )}
     </div>
   );
+}
+
+export function ZeroChatThreadPage() {
+  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const artifactRef = useGet(currentArtifactRef$);
+  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const automationPanelThreadId = useGet(currentHeaderAutomationThreadId$);
+  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
+  const closePresentationEditor = useSet(closePresentationEditor$);
+  const artifactFullscreen = useGet(artifactFullscreen$);
+  const features = useLastResolved(featureSwitch$);
+  const presentationHtmlEditorEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.PresentationHtmlPptxDownload,
+  );
+  const automationSidebarEnabled = featureSwitchEnabled(
+    features,
+    FeatureSwitchKey.ChatAutomationSidebar,
+  );
+  const activePresentationEditorUrl = presentationHtmlEditorEnabled
+    ? presentationEditorUrl
+    : null;
+  const artifactPanelOpen =
+    artifactRef !== null || artifactInboxThreadId !== null;
+  const automationPanelOpen =
+    automationSidebarEnabled && automationPanelThreadId !== null;
+  const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
+  const { style: artifactPanelStyle, transition: artifactTransition } =
+    artifactPanelLayout(
+      useGet(artifactPanelWidth$),
+      useGet(artifactPanelResizing$),
+    );
+  const presentationEditor = activePresentationEditorUrl ? (
+    <div
+      className={cn(
+        "flex min-w-0 bg-background",
+        artifactFullscreen ? "fixed inset-0 z-[100] min-h-0" : "w-full flex-1",
+      )}
+    >
+      <PresentationHtmlEditor
+        url={activePresentationEditorUrl}
+        onClose={closePresentationEditor}
+      />
+    </div>
+  ) : null;
 
   return (
     <>
-      {/* Keep the wrapper structure stable across artifact open/close so the
+      {/* Keep the wrapper structure stable across right panel open/close so the
           thread area's React subtree (and its scroll/keyboard state) never
           unmounts when the sidebar appears. Only the wrapper className and
           the optional sidebar sibling change with state. Below xl: the
@@ -2196,29 +2469,37 @@ export function ZeroChatThreadPage() {
           className={cn(
             "min-w-0 min-h-0",
             artifactTransition,
-            artifactPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
+            rightPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
           )}
         >
-          {threadArea}
+          <ChatThreadArea
+            leftThread={leftThread}
+            rightThread={rightThread}
+            activePresentationEditorUrl={activePresentationEditorUrl}
+            artifactFullscreen={artifactFullscreen}
+            presentationEditor={presentationEditor}
+          />
         </div>
-        {artifactPanelOpen && <ArtifactResizeHandle />}
+        {rightPanelOpen && <ArtifactResizeHandle />}
         <div
           className={cn(
             "flex min-h-0 min-w-0 overflow-hidden",
             artifactTransition,
-            artifactPanelOpen
+            rightPanelOpen
               ? "flex-1 basis-0 xl:w-[var(--artifact-panel-width)] xl:flex-none xl:basis-[var(--artifact-panel-width)]"
               : "pointer-events-none w-0 flex-none basis-0",
           )}
-          aria-hidden={!artifactPanelOpen}
+          aria-hidden={!rightPanelOpen}
         >
-          {artifactPanelOpen && (
+          {automationPanelOpen && automationPanelThreadId ? (
+            <HeaderAutomationSidebar threadId={automationPanelThreadId} />
+          ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
               leftThread={leftThread}
               rightThread={rightThread}
             />
-          )}
+          ) : null}
         </div>
       </div>
       {lightboxUrl && <AttachmentLightbox />}

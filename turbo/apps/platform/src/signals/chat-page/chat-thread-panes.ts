@@ -14,6 +14,7 @@ import {
   ensureDraft$,
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
+import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
 import {
   clearMatchingOptimisticChatThread$,
@@ -205,11 +206,10 @@ export const loadLeftThread$ = command(
     }
 
     if (get(currentChatThreadId$) !== threadId) {
-      // Drop the artifact sidebar before switching threads — the open
-      // artifact is anchored to the previous thread's messages, so
-      // preserving `?artifact=` (which `pushPathSilently$` does by design)
-      // would carry over a stale preview.
+      // Drop right sidebar state before switching threads — open artifact
+      // and automation panels are anchored to the previous thread's messages.
       set(clearArtifactPreview$);
+      set(closeHeaderAutomationSidebar$);
       set(pushPathSilently$, "/chats/:threadId", { threadId });
     }
 
@@ -244,6 +244,7 @@ export const loadRightThread$ = command(
     }
 
     set(clearArtifactPreview$);
+    set(closeHeaderAutomationSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) !== threadId) {

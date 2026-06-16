@@ -146,11 +146,8 @@ EOF
 }
 
 @test "firewall: slack default write permission deny in zero run" {
-    local create_out
-    create_out=$($ZERO_CLI agent create --display-name "${AGENT_NAME}-slack-deny")
-    AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
-    [ -n "$AGENT_ID" ] || {
-        echo "# Failed to extract Agent ID from: $create_out" >&2
+    AGENT_ID=$(create_private_zero_agent "${AGENT_NAME}-slack-deny") || {
+        echo "# Failed to create private zero agent" >&2
         return 1
     }
 

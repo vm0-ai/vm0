@@ -655,6 +655,19 @@ describe("FW-4: test-oauth connector refresh", () => {
     expect(failed.body.error.failureReason).toBe("reconnect_required");
     expect(failed.body.error.connectors).toStrictEqual(["test-oauth"]);
 
+    const connectorsApi = createConnectorBddApi(context);
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    const failedConnector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(failedConnector.connectionStatus).toBe("reconnect-required");
+    expect(failedConnector.reconnectReason).toBe(
+      "authorization_expired_or_revoked",
+    );
+
     fw.mockTestOauthTokenRefresh(() => {
       return fw.oauthTokenResponse({
         accessToken: "recovered-access",
@@ -668,9 +681,81 @@ describe("FW-4: test-oauth connector refresh", () => {
     expect(recovered.body.headers.Authorization).toBe(
       "Bearer recovered-access",
     );
+    const recoveredConnector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(recoveredConnector.connectionStatus).toBe("connected");
+    expect(recoveredConnector.reconnectReason).toBeNull();
   });
 
-  it("logs OAuth refresh error subtype without changing reconnect behavior", async () => {
+  it("persists known OAuth refresh error subtypes as safe reconnect reasons", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    fw.mockTestOauthTokenRefresh(() => {
+      return HttpResponse.json(
+        {
+          error: "invalid_grant",
+          error_description: "Session control expired",
+          error_subtype: "invalid_rapt",
+        },
+        { status: 400 },
+      );
+    });
+
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({
+        TEST_OAUTH_TOKEN: "stale-access",
+      }),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+      },
+      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+    };
+
+    const failed = await fw.requestFirewallAuth(headers, body, [502]);
+    if (failed.status !== 502) {
+      throw new Error("Expected invalid_rapt to fail with 502");
+    }
+    expect(failed.body.error.failureReason).toBe("reconnect_required");
+
+    const connectorsApi = createConnectorBddApi(context);
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    const connector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(connector.connectionStatus).toBe("reconnect-required");
+    expect(connector.reconnectReason).toBe("provider_session_expired");
+
+    fw.mockTestOauthTokenRefresh(() => {
+      return HttpResponse.json(
+        { error: "temporarily_unavailable" },
+        { status: 400 },
+      );
+    });
+    const transientFailure = await fw.requestFirewallAuth(headers, body, [502]);
+    if (transientFailure.status !== 502) {
+      throw new Error("Expected temporary refresh failure to fail with 502");
+    }
+    expect(transientFailure.body.error.failureReason).toBe("upstream_provider");
+    const preservedConnector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(preservedConnector.reconnectReason).toBe("provider_session_expired");
+  });
+
+  it("logs unknown OAuth refresh error subtypes without exposing them", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     const longSubtype = `invalid_rapt:${"x".repeat(200)}`;
@@ -721,6 +806,17 @@ describe("FW-4: test-oauth connector refresh", () => {
         oauthStatus: 400,
       }),
     );
+
+    const connectorsApi = createConnectorBddApi(context);
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    const connector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(connector.connectionStatus).toBe("reconnect-required");
+    expect(connector.reconnectReason).toBeNull();
   });
 
   it("classifies transient OAuth refresh errors as upstream failures", async () => {

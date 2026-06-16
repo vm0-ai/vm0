@@ -63,12 +63,23 @@ function connectorCardByLabel(label: string): HTMLElement {
   return card;
 }
 
+function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((button) => {
+      return (
+        button.getAttribute("aria-label") === "Why this connection expired"
+      );
+    }) ?? null
+  );
+}
+
 function mockConnectors(
   connectors: {
     type: ConnectorType;
     authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
+    reconnectReason?: ConnectorResponse["reconnectReason"];
     oauthScopes?: string[];
     tokenExpiresAt?: string | null;
   }[],
@@ -84,6 +95,7 @@ function mockConnectors(
         externalEmail: null,
         oauthScopes: connector.oauthScopes ?? null,
         connectionStatus: connector.connectionStatus ?? "connected",
+        reconnectReason: connector.reconnectReason ?? null,
         tokenExpiresAt: connector.tokenExpiresAt ?? null,
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
@@ -223,6 +235,94 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("keeps reconnect reasons hidden when the feature switch is disabled", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByText("Connection expired"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      reconnectReasonHelpButton(connectorCardByLabel("GitHub")),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows reconnect reason tooltip help when the feature switch is enabled", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorReconnectReasons]: true,
+      },
+    });
+
+    let helpButton: HTMLElement | null = null;
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      expect(within(card).getByText("Connection expired")).toBeInTheDocument();
+      helpButton = reconnectReasonHelpButton(card);
+      expect(helpButton).toBeInTheDocument();
+    });
+    if (!helpButton) {
+      throw new Error("Reconnect reason help button not found");
+    }
+    fireEvent.focus(helpButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(
+          "Authorization expired or was revoked. Reconnect to continue.",
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("invalid_grant")).not.toBeInTheDocument();
+    fireEvent.blur(helpButton);
+  });
+
+  it("does not show reconnect reason help for unknown reconnect causes", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        connectionStatus: "reconnect-required",
+        reconnectReason: null,
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorReconnectReasons]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByText("Connection expired"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      reconnectReasonHelpButton(connectorCardByLabel("GitHub")),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates connector categories and opens a connector from the keyboard", async () => {

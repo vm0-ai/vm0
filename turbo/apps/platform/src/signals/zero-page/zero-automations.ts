@@ -53,7 +53,7 @@ export const setAutomationTabSaving$ = command(({ set }, value: boolean) => {
 // Convert the platform automation projection to a display trigger string
 // ---------------------------------------------------------------------------
 
-function automationToTimeString(
+export function automationToTimeString(
   s: PlatformAutomationView,
   displayTimezone?: string,
 ): string {

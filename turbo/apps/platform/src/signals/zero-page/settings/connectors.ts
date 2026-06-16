@@ -34,6 +34,7 @@ import {
 import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
+  ConnectorReconnectReason,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
@@ -221,6 +222,21 @@ export function connectorExpiryCountdownText(
     return "Expires in less than 1 hour";
   }
   return formatExpiryCountdown(Math.ceil(remainingMs / HOUR_MS), "hour");
+}
+
+const reconnectReasonTooltipText = {
+  provider_session_expired:
+    "The provider session expired. Reconnect to continue.",
+  authorization_expired_or_revoked:
+    "Authorization expired or was revoked. Reconnect to continue.",
+  credential_expired: "The stored credential expired. Reconnect to continue.",
+} satisfies Record<ConnectorReconnectReason, string>;
+
+export function connectorReconnectReasonTooltipText(
+  connector: ConnectorTypeWithStatus,
+): string | null {
+  const reason = connector.connector?.reconnectReason;
+  return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
 function buildConnectorTypeStatus(params: {

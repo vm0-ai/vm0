@@ -1,5 +1,44 @@
 # Changelog
 
+## [8.344.0](https://github.com/vm0-ai/vm0/compare/core-v8.343.1...core-v8.344.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+
+## [8.343.1](https://github.com/vm0-ai/vm0/compare/core-v8.343.0...core-v8.343.1) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.2
+
+## [8.343.0](https://github.com/vm0-ai/vm0/compare/core-v8.342.0...core-v8.343.0) (2026-06-16)
+
+
+### Features
+
+* add chat automation sidebar ([#17851](https://github.com/vm0-ai/vm0/issues/17851)) ([6e03396](https://github.com/vm0-ai/vm0/commit/6e03396f303243421317a4a7ebef3ddf7296beb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.1
+    * @vm0/connectors bumped to 1.80.0
+
 ## [8.342.0](https://github.com/vm0-ai/vm0/compare/core-v8.341.2...core-v8.342.0) (2026-06-16)
 
 

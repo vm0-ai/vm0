@@ -9,22 +9,24 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import zeroAnimatedSrc from "./assets/zero-animated.webp";
-import trialWorkflowSrc from "./assets/trial-workflow.webp";
-import webModernSrc from "./assets/web-modern.webp";
-import webCafeSrc from "./assets/web-cafe.webp";
-import webEnergeticSrc from "./assets/web-energetic.webp";
-import webFantasySrc from "./assets/web-fantasy.webp";
-import illFolkSrc from "./assets/ill-folk.webp";
-import illFlatfolkSrc from "./assets/ill-flatfolk.webp";
-import illBotanicalSrc from "./assets/ill-botanical.webp";
-import illPapernookSrc from "./assets/ill-papernook.webp";
-import illPosterSrc from "./assets/ill-poster.webp";
-import illOpedcoverSrc from "./assets/ill-opedcover.webp";
-import illMellowPopSrc from "./assets/ill-mellow-pop.webp";
-import illEndpaperSrc from "./assets/ill-endpaper.webp";
-import illIsoSceneSrc from "./assets/ill-iso-scene.webp";
-import illInkdabSrc from "./assets/ill-inkdab.webp";
+import {
+  illBotanicalSrc,
+  illEndpaperSrc,
+  illFlatfolkSrc,
+  illFolkSrc,
+  illInkdabSrc,
+  illIsoSceneSrc,
+  illMellowPopSrc,
+  illOpedcoverSrc,
+  illPapernookSrc,
+  illPosterSrc,
+  trialWorkflowSrc,
+  webCafeSrc,
+  webEnergeticSrc,
+  webFantasySrc,
+  webModernSrc,
+  zeroAnimatedSrc,
+} from "./platform-assets.ts";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 import imessageIconImg from "./components/settings/icons/imessage.svg";

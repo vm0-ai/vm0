@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../lib/static-assets";
 import { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
@@ -44,7 +45,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
       url: ogUrl,
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: "VM0 - Your Trustworthy AI Teammate",
@@ -53,7 +54,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
     },
   };
 }

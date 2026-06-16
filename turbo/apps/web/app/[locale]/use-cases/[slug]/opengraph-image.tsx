@@ -1,8 +1,7 @@
 import { ImageResponse } from "next/og";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { ConnectorRef } from "../data";
 import { getUseCaseBySlug } from "../data";
+import { webStaticAssetUrl } from "../../../lib/static-assets";
 import enMessages from "../../../../messages/en.json";
 import deMessages from "../../../../messages/de.json";
 import jaMessages from "../../../../messages/ja.json";
@@ -32,21 +31,46 @@ const ALL_MESSAGES: Record<string, MessagesShape> = {
   es: esMessages as MessagesShape,
 };
 
-const PUBLIC_DIR = path.join(process.cwd(), "public");
 const fontCache = new Map<string, ArrayBuffer>();
 
-function readPublicAsBase64(relPath: string, mime: string): string {
-  const cleaned = relPath.replace(/^\//, "");
-  const buf = readFileSync(path.join(PUBLIC_DIR, cleaned));
-  return `data:${mime};base64,${buf.toString("base64")}`;
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  return btoa(binary);
 }
 
-function readSvgDataUri(relPath: string): string {
-  return readPublicAsBase64(relPath, "image/svg+xml");
+function toStaticAssetUrl(pathOrUrl: string): string {
+  if (pathOrUrl.startsWith("https://")) {
+    return pathOrUrl;
+  }
+  return webStaticAssetUrl(pathOrUrl);
 }
 
-function readPngDataUri(relPath: string): string {
-  return readPublicAsBase64(relPath, "image/png");
+async function readStaticAssetAsBase64(
+  pathOrUrl: string,
+  mime: string,
+): Promise<string> {
+  const url = toStaticAssetUrl(pathOrUrl);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to load static asset ${url}: ${response.status}`);
+  }
+  const base64 = arrayBufferToBase64(await response.arrayBuffer());
+  return `data:${mime};base64,${base64}`;
+}
+
+function readSvgDataUri(pathOrUrl: string): Promise<string> {
+  return readStaticAssetAsBase64(pathOrUrl, "image/svg+xml");
+}
+
+function readPngDataUri(pathOrUrl: string): Promise<string> {
+  return readStaticAssetAsBase64(pathOrUrl, "image/png");
 }
 
 async function loadGoogleFont(
@@ -99,9 +123,9 @@ interface ConnectorTile {
   label: string;
 }
 
-function toConnectorTile(c: ConnectorRef): ConnectorTile {
+async function toConnectorTile(c: ConnectorRef): Promise<ConnectorTile> {
   return {
-    uri: readSvgDataUri(c.icon),
+    uri: await readSvgDataUri(c.icon),
     label: c.label,
   };
 }
@@ -126,9 +150,8 @@ function renderConnectorTile(c: ConnectorTile) {
   );
 }
 
-function renderZeroAvatar() {
+function renderZeroAvatar(uri: string) {
   const dim = 280;
-  const uri = readPngDataUri(ZERO_AVATAR_PATH);
   return (
     <img src={uri} width={dim} height={dim} style={{ flexShrink: 0 }} alt="" />
   );
@@ -149,13 +172,14 @@ export default async function OpengraphImage({ params }: Params) {
   const connectors = (useCase?.connectors ?? []).slice(0, 5);
 
   const family = fontFamilyForLocale(locale);
-  const [regular, bold] = await Promise.all([
-    loadGoogleFont(family, 400),
-    loadGoogleFont(family, 700),
-  ]);
-
-  const logoUri = readSvgDataUri("assets/vm0-logo-dark.svg");
-  const connectorTiles = connectors.map(toConnectorTile);
+  const [regular, bold, logoUri, zeroAvatarUri, connectorTiles] =
+    await Promise.all([
+      loadGoogleFont(family, 400),
+      loadGoogleFont(family, 700),
+      readSvgDataUri("assets/vm0-logo-dark.svg"),
+      readPngDataUri(ZERO_AVATAR_PATH),
+      Promise.all(connectors.map(toConnectorTile)),
+    ]);
 
   const baseTitleFontSize = locale === "ja" ? 44 : 58;
   const titleFontSize =
@@ -225,7 +249,7 @@ export default async function OpengraphImage({ params }: Params) {
             {description}
           </div>
         </div>
-        {renderZeroAvatar()}
+        {renderZeroAvatar(zeroAvatarUri)}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

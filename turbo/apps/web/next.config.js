@@ -46,6 +46,12 @@ function buildApiBackendDestination(path) {
 // the "us" prefix selects US Cloud.
 const POSTHOG_INGEST_HOST = "https://us.i.posthog.com";
 const POSTHOG_ASSETS_HOST = "https://us-assets.i.posthog.com";
+const STATIC_ASSETS_BASE_URL =
+  process.env.NEXT_PUBLIC_STATIC_ASSETS_BASE_URL ||
+  process.env.STATIC_ASSETS_BASE_URL ||
+  (process.env.VERCEL_ENV === "production"
+    ? "https://static.vm0.io"
+    : "https://static.vm7.io");
 
 const nextConfig = {
   async redirects() {
@@ -131,6 +137,9 @@ const nextConfig = {
     // Paid-onboarding origin (so.vm0.ai) allowed as a post-auth redirect target
     NEXT_PUBLIC_PAID_ONBOARDING_URL: process.env.PAID_ONBOARDING_URL,
 
+    // Public static assets CDN
+    NEXT_PUBLIC_STATIC_ASSETS_BASE_URL: STATIC_ASSETS_BASE_URL,
+
     // Blog configuration
     NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
     NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
@@ -168,6 +177,14 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "cdn.vm7.io",
+      },
+      {
+        protocol: "https",
+        hostname: "static.vm0.io",
+      },
+      {
+        protocol: "https",
+        hostname: "static.vm7.io",
       },
       {
         protocol: "https",

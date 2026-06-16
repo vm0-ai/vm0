@@ -1290,7 +1290,7 @@ describe("Automations API", () => {
       .where(eq(agentRunCallbacks.runId, runId));
     expect(callbacks).toHaveLength(1);
     expect(
-      callbacks[0]?.url.endsWith("/api/internal/callbacks/chat"),
+      callbacks[0]?.url?.endsWith("/api/internal/callbacks/chat"),
     ).toBeTruthy();
 
     // The prompt renders as a user chat message with the automation chip.

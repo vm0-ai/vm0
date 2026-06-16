@@ -110,11 +110,12 @@ pub(super) fn checked_deadline_from(start: Instant, duration: Duration) -> Optio
 }
 
 pub(super) fn idle_deadline(
+    last_inbound_activity_at: Instant,
     max_idle_interval: Option<Duration>,
     heartbeat_margin: Duration,
 ) -> Option<(Instant, Duration)> {
     let idle_timeout = max_idle_interval?.checked_add(heartbeat_margin)?;
-    let deadline = checked_deadline_after(idle_timeout)?;
+    let deadline = checked_deadline_from(last_inbound_activity_at, idle_timeout)?;
     Some((deadline, idle_timeout))
 }
 
@@ -423,7 +424,10 @@ mod tests {
 
     #[test]
     fn idle_deadline_is_disabled_without_max_idle_interval() {
-        assert_eq!(idle_deadline(None, Duration::from_secs(10)), None);
+        assert_eq!(
+            idle_deadline(Instant::now(), None, Duration::from_secs(10)),
+            None
+        );
     }
 
     #[test]
@@ -479,7 +483,11 @@ mod tests {
         };
 
         let state = ConnState::from_connected(&msg, token, &TimingConfig::default());
-        let _ = idle_deadline(state.max_idle_interval, Duration::from_secs(10));
+        let _ = idle_deadline(
+            Instant::now(),
+            state.max_idle_interval,
+            Duration::from_secs(10),
+        );
         let _ = checked_deadline_from(Instant::now(), state.connection_state_ttl);
         let _ = state.token_renewal_at;
     }

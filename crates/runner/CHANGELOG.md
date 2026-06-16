@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.118.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.5...runner-rs-v0.118.6) (2026-06-16)
+
+
+### Refactoring
+
+* split runner r2 cache module ([#17883](https://github.com/vm0-ai/vm0/issues/17883)) ([65f08eb](https://github.com/vm0-ai/vm0/commit/65f08eb0bc146ab6760ab7f1d4ce79acb3df53de))
+
+## [0.118.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.4...runner-rs-v0.118.5) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+
+## [0.118.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.3...runner-rs-v0.118.4) (2026-06-16)
+
+
+### Bug Fixes
+
+* classify runner rootfs exhaustion ([#17844](https://github.com/vm0-ai/vm0/issues/17844)) ([ff4698a](https://github.com/vm0-ai/vm0/commit/ff4698ac751934d9464be6f2ba21d83fa1b610c0))
+
 ## [0.118.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.2...runner-rs-v0.118.3) (2026-06-16)
 
 

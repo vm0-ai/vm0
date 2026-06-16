@@ -11,7 +11,7 @@ import {
 } from "../../../../signals/activity-page/activity-signals.ts";
 import { StatusBadge } from "./status-badge.tsx";
 import { Link } from "../../../router/link.tsx";
-import emptyActivityImg from "../../assets/empty-activity.webp";
+import { emptyActivityImg } from "../../platform-assets.ts";
 
 export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
   queued: "Queued",

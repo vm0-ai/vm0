@@ -1,3 +1,4 @@
+import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -26,7 +27,7 @@ import {
   setBb0WifiSsid$,
 } from "../../signals/device-bb0-page/bb0-device-onboarding.ts";
 
-const zeroSrc = "/zero.png";
+const zeroSrc = platformStaticAssetUrl("zero.png");
 
 function loadableErrorMessage(loadable: {
   readonly state: string;
@@ -146,7 +147,9 @@ function BleConnectStep() {
   return (
     <div className="px-6 py-5">
       <div className="flex items-center gap-4">
-        <StepIcon src="/onboarding-step1-connect-v3.png" />
+        <StepIcon
+          src={platformStaticAssetUrl("onboarding-step1-connect-v3.png")}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Connect BB0</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -213,7 +216,9 @@ function WifiStep() {
   return (
     <div className="px-6 py-5">
       <div className="flex items-center gap-4">
-        <StepIcon src="/onboarding-step2-wifi-v2.png" />
+        <StepIcon
+          src={platformStaticAssetUrl("onboarding-step2-wifi-v2.png")}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Share Wi-Fi</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -300,7 +305,9 @@ function DeviceCodeStep() {
   return (
     <div className="px-6 pt-5 pb-8">
       <div className="flex items-center gap-4">
-        <StepIcon src="/onboarding-step3-code-v2.png" />
+        <StepIcon
+          src={platformStaticAssetUrl("onboarding-step3-code-v2.png")}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">
             Confirm device code

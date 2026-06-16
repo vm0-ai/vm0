@@ -2,8 +2,7 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
-import planProImg from "./components/org-manage/assets/plan-pro.webp";
-import planTeamImg from "./components/org-manage/assets/plan-team.webp";
+import { planProImg, planTeamImg } from "./platform-assets.ts";
 import {
   setActiveOrgManageTab$,
   setBillingSubPage$,

@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import type { Metadata } from "next";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
@@ -32,7 +33,7 @@ export async function generateMetadata({
       type: "website",
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: "VM0 Report Gallery",
@@ -43,7 +44,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: "VM0 Report Gallery",
       description: "Report examples for remixing Zero generation.",
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },

@@ -5,6 +5,7 @@ import {
   modelProviderTypeSchema,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
   connectorRefreshMetadataHasRefreshableSecret,
@@ -737,6 +738,26 @@ function classifyRefreshFailure(
     errorCode: refreshErrorCodeFromError(error, refreshTimedOut),
     failureReason: refreshFailureReasonFromError(error, refreshTimedOut),
   };
+}
+
+function connectorReconnectReasonFromRefreshFailure(
+  error: unknown,
+  failureReason: FirewallAuthFailureReason | undefined,
+): ConnectorReconnectReason | null {
+  if (
+    failureReason !== "reconnect_required" ||
+    !isOAuthProviderHttpError(error) ||
+    error.oauthError !== "invalid_grant"
+  ) {
+    return null;
+  }
+  if (error.oauthErrorSubtype === "invalid_rapt") {
+    return "provider_session_expired";
+  }
+  if (!error.oauthErrorSubtype) {
+    return "authorization_expired_or_revoked";
+  }
+  return null;
 }
 
 function oauthRefreshFailureLogFields(error: unknown): {
@@ -1900,6 +1921,7 @@ async function markRefreshSuccess(
     .set({
       tokenExpiresAt: expiresAt,
       needsReconnect: false,
+      reconnectReason: null,
       updatedAt: sql`clock_timestamp()`,
     })
     .where(
@@ -1917,6 +1939,7 @@ async function markRefreshFailure(
   context: RefreshTokenContext,
   errorCode: string | null,
   failureReason: FirewallAuthFailureReason | undefined,
+  connectorReconnectReason: ConnectorReconnectReason | null,
 ): Promise<void> {
   if (args.sourceType === "model-provider") {
     await args.db
@@ -1947,6 +1970,7 @@ async function markRefreshFailure(
         ? { updatedAt: sql`clock_timestamp()` }
         : {
             needsReconnect: true,
+            reconnectReason: connectorReconnectReason,
             updatedAt: sql`clock_timestamp()`,
           },
     )
@@ -1963,7 +1987,7 @@ async function markRefreshTokenMissing(
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
 ): Promise<RefreshAccessTokenResult> {
-  await markRefreshFailure(args, context, null, "reconnect_required");
+  await markRefreshFailure(args, context, null, "reconnect_required", null);
   return refreshTokenMissingResult();
 }
 
@@ -1983,7 +2007,13 @@ async function markAndReturnRefreshFailure(
     failureReason,
     ...oauthRefreshFailureLogFields(error),
   });
-  await markRefreshFailure(args, context, errorCode, failureReason);
+  await markRefreshFailure(
+    args,
+    context,
+    errorCode,
+    failureReason,
+    connectorReconnectReasonFromRefreshFailure(error, failureReason),
+  );
   return refreshFailedResult(failureReason);
 }
 
@@ -2253,6 +2283,7 @@ async function refreshLockedAccessToken(args: {
       args.prepared.context,
       null,
       "upstream_provider",
+      null,
     );
     return refreshFailedResult("upstream_provider");
   }

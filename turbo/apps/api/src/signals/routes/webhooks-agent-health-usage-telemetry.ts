@@ -29,6 +29,7 @@ import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.serv
 import { settle } from "../utils";
 import {
   getSandboxAuthForRun,
+  resolveSandboxAuthForRun,
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
 import { usageUnderbillingFields } from "../usage-underbilling";
@@ -258,10 +259,14 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const body = bodyResult.data;
-  const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-  if (!auth) {
+  const authResult = resolveSandboxAuthForRun(body.runId, get(authorization$));
+  if (!authResult.ok) {
+    L.warn("Agent telemetry rejected sandbox auth", {
+      authFailureReason: authResult.reason,
+    });
     return unauthorizedRunMismatch;
   }
+  const { auth } = authResult;
 
   const db = get(db$);
   const [run] = await db

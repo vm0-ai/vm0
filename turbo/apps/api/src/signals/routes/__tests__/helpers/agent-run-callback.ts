@@ -2,11 +2,13 @@ import { command } from "ccstate";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 
 import { writeDb$ } from "../../../external/db";
+import type { InternalRunCallbackKind } from "../../../services/internal-run-callback";
 import { encryptSecretForTests } from "./encrypt-secret";
 
 interface SeedAgentRunCallbackOptions {
   readonly runId: string;
-  readonly url: string;
+  readonly url?: string;
+  readonly internalKind?: InternalRunCallbackKind;
   readonly payload: Record<string, unknown>;
   readonly secret?: string;
   readonly status?: "pending" | "delivered" | "failed";
@@ -23,7 +25,8 @@ export const seedAgentRunCallback$ = command(
       .insert(agentRunCallbacks)
       .values({
         runId: options.runId,
-        url: options.url,
+        url: options.url ?? null,
+        internalKind: options.internalKind ?? null,
         encryptedSecret: encryptSecretForTests(
           options.secret ?? "test-callback-secret",
         ),

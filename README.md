@@ -1,5 +1,5 @@
 <h2 align="center">
-  <a href="https://vm0.ai"><img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="500"></a>
+  <a href="https://vm0.ai"><img src="https://static.vm0.io/web/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="500"></a>
   <br><br>
   Zero, your trustworthy AI teammate for real work.
   <br><br>

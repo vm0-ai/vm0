@@ -295,11 +295,24 @@
         document.head.appendChild(l);
       })();
     </script>
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="%VITE_STATIC_ASSETS_BASE_URL%/platform/icon.svg"
+    />
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="%VITE_STATIC_ASSETS_BASE_URL%/platform/favicon.ico"
+    />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="%VITE_STATIC_ASSETS_BASE_URL%" crossorigin />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="%VITE_STATIC_ASSETS_BASE_URL%/platform/apple-touch-icon.png"
+    />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
@@ -318,7 +331,10 @@
       property="og:description"
       content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
     />
-    <meta property="og:image" content="https://www.vm0.ai/og-image.png" />
+    <meta
+      property="og:image"
+      content="%VITE_STATIC_ASSETS_BASE_URL%/web/og-image.png"
+    />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Zero — Your AI coworker from vm0" />
@@ -329,7 +345,10 @@
       name="twitter:description"
       content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
     />
-    <meta name="twitter:image" content="https://www.vm0.ai/og-image.png" />
+    <meta
+      name="twitter:image"
+      content="%VITE_STATIC_ASSETS_BASE_URL%/web/og-image.png"
+    />
     <meta name="google" content="notranslate" />
     <meta
       name="theme-color"
@@ -405,7 +424,7 @@
       <div class="browser-upgrade__center">
         <div class="browser-upgrade__panel">
           <div class="browser-upgrade__icon" aria-hidden="true">
-            <img src="/icon.svg" alt="" />
+            <img src="%VITE_STATIC_ASSETS_BASE_URL%/platform/icon.svg" alt="" />
           </div>
           <div class="browser-upgrade__copy">
             <h1 id="browser-upgrade-title">Update your browser to continue</h1>

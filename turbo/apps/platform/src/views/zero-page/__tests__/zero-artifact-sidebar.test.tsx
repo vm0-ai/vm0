@@ -157,6 +157,7 @@ function googleDriveConnector(): ConnectorResponse {
     externalEmail: "drive-user@example.com",
     oauthScopes: ["drive.file"],
     connectionStatus: "connected",
+    reconnectReason: null,
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",

@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { PricingPageClient } from "./PricingPageClient";
@@ -28,7 +29,7 @@ export async function generateMetadata({
       type: "website",
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: t("ogTitle"),
@@ -39,7 +40,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: t("ogTitle"),
       description: t("ogDescription"),
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },

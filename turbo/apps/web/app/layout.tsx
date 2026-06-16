@@ -1,7 +1,9 @@
 // Root layout for the web application (e2e-auth validated without Playwright)
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Script from "next/script";
 import { getLocale } from "next-intl/server";
+import { webStaticAssetUrl } from "./lib/static-assets";
 import {
   Noto_Sans,
   Fira_Code,
@@ -30,6 +32,10 @@ import "./illustration.css";
 
 const GOOGLE_ADS_ID = "AW-18144854014";
 const LINKEDIN_PARTNER_ID = "9378804";
+const staticAssetCssVariables = {
+  "--vm0-web-cta-ellipse": `url("${webStaticAssetUrl("assets/cta-ellipse.webp")}")`,
+  "--vm0-web-paper-bg": `url("${webStaticAssetUrl("images/paper-bg.png")}")`,
+} as CSSProperties;
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -110,7 +116,7 @@ export function generateMetadata(): Metadata {
       siteName: "VM0",
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: "VM0 - Your Trustworthy AI Teammate",
@@ -122,7 +128,7 @@ export function generateMetadata(): Metadata {
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
         "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },
@@ -162,7 +168,12 @@ export default async function RootLayout({
       localization={VM0_CLERK_LOCALIZATION}
     >
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
-      <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
+      <html
+        lang={htmlLang}
+        data-theme="dark"
+        style={staticAssetCssVariables}
+        suppressHydrationWarning
+      >
         <head>
           {shouldLoadMarketingScripts && (
             <>
@@ -261,7 +272,7 @@ export default async function RootLayout({
                 "@type": "Organization",
                 name: "VM0",
                 url: "https://www.vm0.ai",
-                logo: "https://www.vm0.ai/assets/vm0-logo.svg",
+                logo: webStaticAssetUrl("assets/vm0-logo.svg"),
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
                 email: "support@vm0.ai",
@@ -311,7 +322,7 @@ export default async function RootLayout({
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
                 url: "https://www.vm0.ai",
-                image: "https://www.vm0.ai/og-image.png",
+                image: webStaticAssetUrl("og-image.png"),
               }),
             }}
           />

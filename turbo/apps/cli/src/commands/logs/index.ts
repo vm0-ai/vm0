@@ -99,13 +99,44 @@ function formatConnectorDiagnosticInfo(entry: NetworkLogEntry): string {
   return ` ${chalk.red(`[connector diagnostic: ${tags.join("; ")}]`)}`;
 }
 
+function nonEmptyLogField(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatNetworkTarget(entry: NetworkLogEntry): string {
+  const url = nonEmptyLogField(entry.url);
+  if (url) {
+    return url;
+  }
+
+  const host = nonEmptyLogField(entry.host);
+  if (!host) {
+    return "unknown";
+  }
+
+  return entry.port !== undefined ? `${host}:${entry.port}` : host;
+}
+
 /**
  * Format a denied network request (filtered by permission rule)
  */
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
-  const url = entry.url || entry.host || "unknown";
+  const url = formatNetworkTarget(entry);
   return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${formatConnectorDiagnosticInfo(entry)}`;
+}
+
+/**
+ * Format a locally blocked network request (vm0/proxy/auth/precondition failure)
+ */
+function formatNetworkBlock(entry: NetworkLogEntry): string {
+  const method = entry.method || "???";
+  const target = formatNetworkTarget(entry);
+  const error = entry.firewall_error
+    ? ` ${chalk.red(entry.firewall_error)}`
+    : "";
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.yellow.bold("BLOCK")} ${chalk.dim(target)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
 }
 
 /**
@@ -161,7 +192,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
   const requestSize = entry.request_size || 0;
   const responseSize = entry.response_size || 0;
-  const url = entry.url || entry.host || "unknown";
+  const url = formatNetworkTarget(entry);
   const error = entry.firewall_error
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
@@ -244,6 +275,7 @@ function formatNetworkOther(entry: NetworkLogEntry): string {
  * Format a network log entry
  */
 function formatNetworkLog(entry: NetworkLogEntry): string {
+  if (entry.action === "BLOCK") return formatNetworkBlock(entry);
   if (entry.type === "tcp") return formatNetworkTcp(entry);
   if (entry.type && entry.type !== "http") return formatNetworkOther(entry);
   if (entry.action === "DENY") return formatNetworkDeny(entry);

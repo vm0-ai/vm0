@@ -139,7 +139,7 @@
 
 /* ===== LANDING PAGE BACKGROUNDS ===== */
 .paper-bg-layer {
-  background-image: url("/images/paper-bg.png");
+  background-image: var(--vm0-web-paper-bg);
   background-size: 300px;
   background-position: center;
   background-repeat: repeat;
@@ -150,7 +150,7 @@
 }
 
 .landing-cover-strip {
-  background-image: url("/images/paper-bg.png");
+  background-image: var(--vm0-web-paper-bg);
   background-size: 300px;
   background-repeat: repeat;
 }
