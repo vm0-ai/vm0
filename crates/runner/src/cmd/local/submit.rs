@@ -265,8 +265,8 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
-        let environment = Self::parse_env_entries("--env", &env)?;
-        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env)?;
+        let environment = Self::parse_env_entries("--env", &env, true)?;
+        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let group_dir = home.groups_dir().join(&group);
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
@@ -329,6 +329,7 @@ impl SubmitPlan {
     fn parse_env_entries(
         flag: &str,
         entries: &[String],
+        allow_guest_agent_tuning_keys: bool,
     ) -> RunnerResult<Option<HashMap<String, String>>> {
         if entries.is_empty() {
             return Ok(None);
@@ -359,9 +360,14 @@ impl SubmitPlan {
                     "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
                 )));
             }
-            if guest_contracts::env::is_runner_owned_env_key(key)
-                && !guest_contracts::env::is_guest_agent_tuning_env_key(key)
-            {
+            let is_guest_agent_tuning_key =
+                guest_contracts::env::is_guest_agent_tuning_env_key(key);
+            if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
+                )));
+            }
+            if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
                 return Err(RunnerError::Config(format!(
                     "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
                 )));
@@ -961,6 +967,11 @@ mod tests {
                 Vec::new(),
                 vec!["CLI_AGENT_TYPE=codex".to_string()],
                 "runner-owned environment variables",
+            ),
+            (
+                Vec::new(),
+                vec!["VM0_STUCK_TOOL_TIMEOUT_SECS=3".to_string()],
+                "must be passed with --env",
             ),
             (
                 vec!["FOO=1".to_string(), "FOO=2".to_string()],
