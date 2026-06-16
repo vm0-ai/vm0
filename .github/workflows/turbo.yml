@@ -2015,7 +2015,7 @@ jobs:
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -2073,13 +2073,15 @@ jobs:
             echo "::error::Failed to decode runner E2E token user id"
             exit 1
           fi
+          cleanup_tmp="$(mktemp -d)"
+          trap 'rm -rf "$cleanup_tmp"' EXIT
 
           headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
           if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
-          agents_file="$(mktemp)"
+          agents_file="$cleanup_tmp/agents.json"
           list_status="$(curl -sS -o "$agents_file" -w "%{http_code}" "${headers[@]}" "${VM0_API_URL}/api/zero/agents")"
           if [ "$list_status" != "200" ]; then
             echo "::error::Failed to list runner E2E zero agents: HTTP ${list_status}"
@@ -2097,7 +2099,7 @@ jobs:
 
           for agent_id in "${agent_ids[@]}"; do
             [ -n "$agent_id" ] || continue
-            body_file="$(mktemp)"
+            body_file="$(mktemp "$cleanup_tmp/delete.XXXXXX")"
             delete_status="$(curl -sS -o "$body_file" -w "%{http_code}" -X DELETE "${headers[@]}" "${VM0_API_URL}/api/zero/agents/${agent_id}" || true)"
             case "$delete_status" in
               204)

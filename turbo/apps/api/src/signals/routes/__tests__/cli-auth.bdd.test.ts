@@ -881,6 +881,19 @@ describe("CLI-TEST: test-enable-connector", () => {
       "slack",
     ]);
 
+    const publicAgent = await bdd.createAgent(actor, {
+      displayName: `Public test agent ${actor.userId.slice(-12)}`,
+      visibility: "public",
+    });
+    await authDevice.requestTestEnableConnector(
+      { email: actor.email },
+      { composeId: publicAgent.agentId, connectorTypes: ["github"] },
+      [200],
+    );
+    const updatedPublicAgent = await bdd.readAgent(actor, publicAgent.agentId);
+    expect(updatedPublicAgent.visibility).toBe("private");
+    expect(updatedPublicAgent.displayName).toBe(publicAgent.displayName);
+
     const customEmailCompose = await authDevice.createCompose(
       actor,
       composeContent(`cli-auth-bdd-custom-${actor.userId.slice(-12)}`),

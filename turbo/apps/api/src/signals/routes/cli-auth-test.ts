@@ -426,7 +426,13 @@ const enableTestConnectors$ = command(
         name: compose.name,
         visibility: "private",
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: zeroAgents.id,
+        set: {
+          visibility: "private",
+          updatedAt: nowDate(),
+        },
+      });
     signal.throwIfAborted();
 
     await writeDb.insert(userConnectors).values(
