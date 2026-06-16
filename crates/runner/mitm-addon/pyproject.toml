@@ -29,6 +29,9 @@ extend-exclude = [
     # exclude list drops ``build`` (keeps only ``_build`` / ``dist``), so avoid
     # linting generated package copies under build/lib/.
     "build",
+    # Built-in firewall catalog chunks are generated compact JSON string
+    # literals; formatting them can corrupt the Python literal boundaries.
+    "src/generated",
 ]
 
 [tool.ruff.lint]

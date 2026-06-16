@@ -119,19 +119,28 @@ describe("aws firewall", () => {
       expect(permissionNames(api.permissions)).toEqual(
         expect.arrayContaining([
           "apigateway:POST",
+          "cloudsearch:document",
+          "cloudsearch:search",
+          "cloudsearch:suggest",
           "ec2:DescribeInstances",
           "ec2:RunInstances",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:RestoreTableToPointInTime",
+          "execute-api:ManageConnections",
           "iam:CreateRole",
+          "iotfleetwise:UpdateVehicle",
           "lambda:CreateFunction",
+          "profile:PutProfileObject",
           "s3:GetObject",
           "s3:GetObjectAttributes",
           "s3:GetObjectTagging",
           "s3:PutBucketAcl",
           "sagemaker:InvokeEndpointWithResponseStream",
           "sts:GetCallerIdentity",
+          "verifiedpermissions:GetPolicy",
+          "verifiedpermissions:IsAuthorized",
+          "verifiedpermissions:IsAuthorizedWithToken",
         ]),
       );
     }
@@ -196,11 +205,44 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "cloudfront:UpdateDistribution")).toContain(
       "PUT /2020-05-31/distribution/{Id}/promote-staging-config AWS sigv4=cloudfront",
     );
+    expect(rulesFor(permissions, "cloudsearch:document")).toContain(
+      "POST /2013-01-01/documents/batch?format=sdk AWS sigv4=cloudsearch",
+    );
+    expect(rulesFor(permissions, "cloudsearch:search")).toContain(
+      "GET /2013-01-01/search?format=sdk&pretty=true AWS sigv4=cloudsearch",
+    );
+    expect(rulesFor(permissions, "cloudsearch:suggest")).toContain(
+      "GET /2013-01-01/suggest?format=sdk&pretty=true AWS sigv4=cloudsearch",
+    );
+    expect(rulesFor(permissions, "execute-api:ManageConnections")).toEqual(
+      expect.arrayContaining([
+        "DELETE /@connections/{connectionId} AWS sigv4=execute-api",
+        "GET /@connections/{connectionId} AWS sigv4=execute-api",
+        "POST /@connections/{connectionId} AWS sigv4=execute-api",
+      ]),
+    );
     expect(rulesFor(permissions, "iotfleetwise:CreateVehicle")).toContain(
       "POST / AWS sigv4=iotfleetwise target=IoTAutobahnControlPlane.BatchCreateVehicle",
     );
+    expect(rulesFor(permissions, "iotfleetwise:UpdateVehicle")).toContain(
+      "POST / AWS sigv4=iotfleetwise target=IoTAutobahnControlPlane.BatchUpdateVehicle",
+    );
     expect(rulesFor(permissions, "memorydb:CreateAcl")).toContain(
       "POST / AWS sigv4=memorydb target=AmazonMemoryDB.CreateACL",
+    );
+    expect(rulesFor(permissions, "profile:PutProfileObject")).toContain(
+      "PUT /domains/{DomainName}/profiles/objects/batch-put-profile-object AWS sigv4=profile",
+    );
+    expect(rulesFor(permissions, "verifiedpermissions:GetPolicy")).toContain(
+      "POST / AWS sigv4=verifiedpermissions target=VerifiedPermissions.BatchGetPolicy",
+    );
+    expect(rulesFor(permissions, "verifiedpermissions:IsAuthorized")).toContain(
+      "POST / AWS sigv4=verifiedpermissions target=VerifiedPermissions.BatchIsAuthorized",
+    );
+    expect(
+      rulesFor(permissions, "verifiedpermissions:IsAuthorizedWithToken"),
+    ).toContain(
+      "POST / AWS sigv4=verifiedpermissions target=VerifiedPermissions.BatchIsAuthorizedWithToken",
     );
     expect(
       rulesFor(permissions, "lex:CreateResourcePolicyStatement"),
@@ -333,17 +375,17 @@ describe("aws firewall", () => {
 
     expect(awsGenerationStats).toStrictEqual({
       sourceServices: 424,
-      generatedServices: 418,
+      generatedServices: 420,
       unsupportedProtocolServices: 3,
       totalOperations: 18505,
-      mappedOperations: 18251,
+      mappedOperations: 18262,
       crossServiceAuthorizedActionMappings: 95,
       fallbackActionMappings: 0,
-      unmappedOperations: 254,
+      unmappedOperations: 243,
       ambiguousOperations: 27,
       unsupportedOperations: 0,
-      permissionCount: 17520,
-      ruleCount: 19758,
+      permissionCount: 17524,
+      ruleCount: 19769,
       s3VirtualHostedPermissionCount: 73,
       s3VirtualHostedRuleCount: 94,
     });

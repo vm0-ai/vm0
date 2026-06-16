@@ -65,6 +65,14 @@ def test_aws_builtin_firewall_includes_same_name_override_rules():
     assert "GET /{Bucket}/{Key+}?attributes AWS sigv4=s3" in (
         _rules_for_builtin_permission(firewall, "s3:GetObjectAttributes")
     )
+    assert (
+        "POST /@connections/{connectionId} AWS sigv4=execute-api"
+        in _rules_for_builtin_permission(firewall, "execute-api:ManageConnections")
+    )
+    assert (
+        "GET /2013-01-01/search?format=sdk&pretty=true AWS sigv4=cloudsearch"
+        in _rules_for_builtin_permission(firewall, "cloudsearch:search")
+    )
 
 
 def test_builtin_firewalls_mapping_is_read_only():
