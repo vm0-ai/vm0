@@ -14,6 +14,7 @@ import {
   getPermissionCategories,
   isFirewallConnectorType,
 } from "../../firewalls/index";
+import { awsGenerationStats } from "../../firewalls/aws.generated";
 
 const FORBIDDEN_PLACEHOLDER_WORD_RE = /placeholder|fake|dummy|test|example/i;
 type FirewallPermission = NonNullable<FirewallApi["permissions"]>[number];
@@ -49,6 +50,12 @@ function rulesFor(
     throw new Error(`Missing AWS firewall permission ${name}`);
   }
   return permission.rules;
+}
+
+function countRules(permissions: readonly FirewallPermission[]): number {
+  return permissions.reduce((count, permission) => {
+    return count + permission.rules.length;
+  }, 0);
 }
 
 describe("aws firewall", () => {
@@ -162,10 +169,10 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys?mode=import AWS sigv4=apigateway",
     );
-    expect(rulesFor(permissions, "apigateway:POST")).toContain(
+    expect(rulesFor(permissions, "apigateway:POST")).not.toContain(
       "POST /apikeys AWS sigv4=apigateway",
     );
-    expect(rulesFor(permissions, "apigateway:PATCH")).toContain(
+    expect(rulesFor(permissions, "apigateway:PATCH")).not.toContain(
       "PATCH /restapis/{restapi_id} AWS sigv4=apigateway",
     );
   });
@@ -245,6 +252,36 @@ describe("aws firewall", () => {
     expect(categories?.categories["sts:GetCallerIdentity"]).toBe("sts");
     expect(categories?.displayOrder).toEqual(
       expect.arrayContaining(["apigateway", "ec2", "iam", "lambda", "s3"]),
+    );
+  });
+
+  it("reports generated AWS mapping coverage", () => {
+    const firewall = getConnectorFirewall("aws");
+    const standardPermissions = firewall.apis[0]!.permissions ?? [];
+    const s3VirtualHostedPermissions = firewall.apis[3]!.permissions ?? [];
+
+    expect(awsGenerationStats).toStrictEqual({
+      sourceServices: 424,
+      generatedServices: 417,
+      unsupportedProtocolServices: 3,
+      totalOperations: 18505,
+      mappedOperations: 18128,
+      fallbackActionMappings: 0,
+      unmappedOperations: 377,
+      ambiguousOperations: 60,
+      unsupportedOperations: 0,
+      permissionCount: 17455,
+      ruleCount: 19635,
+      s3VirtualHostedPermissionCount: 72,
+      s3VirtualHostedRuleCount: 93,
+    });
+    expect(awsGenerationStats.permissionCount).toBe(standardPermissions.length);
+    expect(awsGenerationStats.ruleCount).toBe(countRules(standardPermissions));
+    expect(awsGenerationStats.s3VirtualHostedPermissionCount).toBe(
+      s3VirtualHostedPermissions.length,
+    );
+    expect(awsGenerationStats.s3VirtualHostedRuleCount).toBe(
+      countRules(s3VirtualHostedPermissions),
     );
   });
 

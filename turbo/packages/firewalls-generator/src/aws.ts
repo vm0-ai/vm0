@@ -132,6 +132,11 @@ interface BuildStats {
   unsupportedProtocolServices: number;
   unsupportedOperations: number;
   unmappedOperations: number;
+  ambiguousOperations: number;
+  permissionCount: number;
+  ruleCount: number;
+  s3VirtualHostedPermissionCount: number;
+  s3VirtualHostedRuleCount: number;
 }
 
 interface PermissionAccumulator {
@@ -357,55 +362,61 @@ function botocoreSupportsSigv4(model: BotocoreModel): boolean {
   );
 }
 
+function sameServiceAuthorizedActionNames(
+  service: AwsServiceSource,
+  operation: AwsOperationReference,
+  actionsByName: Map<string, AwsAction>,
+): string[] {
+  const authorizedNames: string[] = [];
+  if (!Array.isArray(operation.AuthorizedActions)) {
+    return authorizedNames;
+  }
+
+  for (const rawAuthorizedAction of operation.AuthorizedActions) {
+    if (!isAwsAuthorizedAction(rawAuthorizedAction)) continue;
+    const authorizedName = rawAuthorizedAction.Name;
+    if (
+      rawAuthorizedAction.Service === service.servicePrefix &&
+      typeof authorizedName === "string" &&
+      actionsByName.has(authorizedName)
+    ) {
+      authorizedNames.push(authorizedName);
+    }
+  }
+
+  return authorizedNames;
+}
+
 function selectPrimaryAction(
   service: AwsServiceSource,
   operation: AwsOperationReference,
   actionsByName: Map<string, AwsAction>,
-  operationHttpMethod: string | null,
 ): SelectedAction | null {
   const operationName = operation.Name;
   if (typeof operationName !== "string") {
     throw new Error(`AWS operation for ${service.key} is missing a name`);
   }
 
-  const sameServiceAuthorizedNames: string[] = [];
-  if (Array.isArray(operation.AuthorizedActions)) {
-    for (const rawAuthorizedAction of operation.AuthorizedActions) {
-      if (!isAwsAuthorizedAction(rawAuthorizedAction)) continue;
-      const authorizedName = rawAuthorizedAction.Name;
-      if (
-        rawAuthorizedAction.Service === service.servicePrefix &&
-        typeof authorizedName === "string" &&
-        actionsByName.has(authorizedName)
-      ) {
-        sameServiceAuthorizedNames.push(authorizedName);
-      }
-    }
-  }
-
+  const sameServiceAuthorizedNames = sameServiceAuthorizedActionNames(
+    service,
+    operation,
+    actionsByName,
+  );
   const exactAuthorizedName = sameServiceAuthorizedNames.find((name) => {
     return name === operationName;
   });
   const overrideName = AWS_OPERATION_ACTION_OVERRIDES.get(
     `${service.servicePrefix}:${operationName}`,
   );
-  const methodActionName =
-    service.servicePrefix === "apigateway" && operationHttpMethod
-      ? sameServiceAuthorizedNames.find((name) => {
-          return name === operationHttpMethod;
-        })
-      : undefined;
   const selectedName = exactAuthorizedName
     ? exactAuthorizedName
-    : overrideName && sameServiceAuthorizedNames.includes(overrideName)
+    : overrideName && actionsByName.has(overrideName)
       ? overrideName
-      : methodActionName
-        ? methodActionName
-        : sameServiceAuthorizedNames.length === 1
-          ? sameServiceAuthorizedNames[0]!
-          : sameServiceAuthorizedNames.length > 1
-            ? null
-            : operationName;
+      : sameServiceAuthorizedNames.length === 1
+        ? sameServiceAuthorizedNames[0]!
+        : sameServiceAuthorizedNames.length > 1
+          ? null
+          : operationName;
   if (selectedName === null) {
     return null;
   }
@@ -418,16 +429,10 @@ function selectActionForOperation(
   operationName: string,
   operationsByName: Map<string, AwsOperationReference>,
   actionsByName: Map<string, AwsAction>,
-  operationHttpMethod: string | null,
 ): SelectedAction | null {
   const operation = operationsByName.get(operationName);
   if (operation) {
-    return selectPrimaryAction(
-      service,
-      operation,
-      actionsByName,
-      operationHttpMethod,
-    );
+    return selectPrimaryAction(service, operation, actionsByName);
   }
 
   const overrideName = AWS_OPERATION_ACTION_OVERRIDES.get(
@@ -567,18 +572,6 @@ function rulesForOperation(
   throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
 }
 
-function operationHttpMethod(
-  model: BotocoreModel,
-  operationName: string,
-): string | null {
-  const rawOperation = loadBotocoreOperations(model)[operationName];
-  if (!isBotocoreOperation(rawOperation)) {
-    return null;
-  }
-  const method = rawOperation.http?.method;
-  return typeof method === "string" ? method : null;
-}
-
 async function loadJson<T>(url: string, label: string): Promise<T> {
   const response = await fetchSpec(url, label);
   return (await response.json()) as T;
@@ -620,6 +613,12 @@ function materializePermissions(
     });
 }
 
+function countPermissionRules(permissions: PermissionGroup[]): number {
+  return permissions.reduce((count, permission) => {
+    return count + permission.rules.length;
+  }, 0);
+}
+
 async function buildAwsPermissions(): Promise<BuildResult> {
   const mapping = await loadJson<unknown>(
     AWS_SERVICE_REFERENCE_MAPPING_URL,
@@ -646,6 +645,11 @@ async function buildAwsPermissions(): Promise<BuildResult> {
     unsupportedProtocolServices: 0,
     unsupportedOperations: 0,
     unmappedOperations: 0,
+    ambiguousOperations: 0,
+    permissionCount: 0,
+    ruleCount: 0,
+    s3VirtualHostedPermissionCount: 0,
+    s3VirtualHostedRuleCount: 0,
   };
 
   for (const service of services) {
@@ -680,9 +684,15 @@ async function buildAwsPermissions(): Promise<BuildResult> {
         operationName,
         operationsByName,
         actionsByName,
-        operationHttpMethod(model, operationName),
       );
       if (!selectedAction) {
+        if (
+          operation &&
+          sameServiceAuthorizedActionNames(service, operation, actionsByName)
+            .length > 1
+        ) {
+          stats.ambiguousOperations += 1;
+        }
         stats.unmappedOperations += 1;
         continue;
       }
@@ -726,6 +736,12 @@ async function buildAwsPermissions(): Promise<BuildResult> {
   const permissions = materializePermissions(permissionsByName);
   const s3VirtualHostedPermissions = materializePermissions(
     s3VirtualHostedPermissionsByName,
+  );
+  stats.permissionCount = permissions.length;
+  stats.ruleCount = countPermissionRules(permissions);
+  stats.s3VirtualHostedPermissionCount = s3VirtualHostedPermissions.length;
+  stats.s3VirtualHostedRuleCount = countPermissionRules(
+    s3VirtualHostedPermissions,
   );
 
   return {
@@ -798,6 +814,28 @@ function renderAwsDefaultAllowed(
   lines.push("");
 }
 
+function renderStats(stats: BuildStats): string[] {
+  return [
+    "",
+    "export const awsGenerationStats = {",
+    `  sourceServices: ${stats.sourceServices},`,
+    `  generatedServices: ${stats.generatedServices},`,
+    `  unsupportedProtocolServices: ${stats.unsupportedProtocolServices},`,
+    `  totalOperations: ${stats.operations},`,
+    `  mappedOperations: ${stats.generatedOperations},`,
+    `  fallbackActionMappings: ${stats.fallbackActionMappings},`,
+    `  unmappedOperations: ${stats.unmappedOperations},`,
+    `  ambiguousOperations: ${stats.ambiguousOperations},`,
+    `  unsupportedOperations: ${stats.unsupportedOperations},`,
+    `  permissionCount: ${stats.permissionCount},`,
+    `  ruleCount: ${stats.ruleCount},`,
+    `  s3VirtualHostedPermissionCount: ${stats.s3VirtualHostedPermissionCount},`,
+    `  s3VirtualHostedRuleCount: ${stats.s3VirtualHostedRuleCount},`,
+    "} as const;",
+    "",
+  ];
+}
+
 function generateTypeScript(result: BuildResult): string {
   const lines: string[] = [
     "// Auto-generated from AWS Service Authorization Reference and Botocore models.",
@@ -831,6 +869,7 @@ function generateTypeScript(result: BuildResult): string {
 
   lines.push("  ],");
   lines.push("};");
+  lines.push(...renderStats(result.stats));
   lines.push(
     ...renderCategories("awsCategories", "awsFirewall", {
       categories: result.categories,
