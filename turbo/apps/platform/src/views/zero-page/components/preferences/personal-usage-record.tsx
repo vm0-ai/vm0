@@ -284,13 +284,11 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
     ? {
         pathname: "/chats/:threadId" as const,
         options: { pathParams: { threadId: row.threadId } },
-        openLabel: "Open this chat",
       }
     : row.runId
       ? {
           pathname: "/activities/:activityRunId" as const,
           options: { pathParams: { activityRunId: row.runId } },
-          openLabel: "Open this run",
         }
       : null;
 
@@ -298,24 +296,14 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
     // Wrapper reserves the flex space so date/credits stay right-aligned, while
     // the inner link only grows to the text width — keeping the hover fill tight.
     <span className="min-w-0 flex-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            pathname={titleLink.pathname}
-            options={titleLink.options}
-            className={TITLE_LINK_CLASS}
-            onClick={closeOnNavigate}
-          >
-            {title}
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4} className="max-w-xs">
-          <p className="whitespace-normal break-words text-xs">{title}</p>
-          <p className="mt-1.5 border-t border-white/15 pt-1.5 text-[11px] opacity-80">
-            {titleLink.openLabel} →
-          </p>
-        </TooltipContent>
-      </Tooltip>
+      <Link
+        pathname={titleLink.pathname}
+        options={titleLink.options}
+        className={TITLE_LINK_CLASS}
+        onClick={closeOnNavigate}
+      >
+        {title}
+      </Link>
     </span>
   ) : (
     <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
