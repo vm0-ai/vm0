@@ -62,7 +62,7 @@ function extractScopes(description: string): string[] {
 
 // ── Scope overrides ──────────────────────────────────────────────────────
 // Endpoints without documented scopes that should still be accessible.
-// We assign reasonable scope names based on their function.
+// Reuse scopes from matching documented operations for the same resource/action.
 
 const SCOPE_OVERRIDES: Record<string, string> = {
   // Lookups — read-only reference data

@@ -70,7 +70,7 @@ const deelUpdater: Updater = {
   fetch: async () => {
     const indexUrl = "https://developer.deel.com/openapi.json";
 
-    // 1. Fetch HTML index to discover spec IDs (not cached — ephemeral discovery)
+    // 1. Fetch HTML index to discover spec URLs (not cached — ephemeral discovery)
     const res = await fetchRemote(indexUrl, "Deel spec index");
     const html = await res.text();
     const specUrls = [
