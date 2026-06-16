@@ -396,12 +396,13 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
 }
 
 fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
-    let Some((_, detail)) = normalized.split_once("api error: 529") else {
-        return false;
-    };
-    detail
-        .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
-        .starts_with("overloaded")
+    const MARKER: &str = "api error: 529";
+    normalized.match_indices(MARKER).any(|(index, _)| {
+        let detail = &normalized[index + MARKER.len()..];
+        detail
+            .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
+            .starts_with("overloaded")
+    })
 }
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
@@ -1268,6 +1269,16 @@ mod tests {
         );
 
         assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_later_claude_provider_overloaded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 upstream failed. Background retry failed: API Error: 529 Overloaded.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
     }
 
     #[test]
