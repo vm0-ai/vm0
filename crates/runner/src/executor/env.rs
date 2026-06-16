@@ -76,6 +76,10 @@ pub(super) fn validate_model_provider_env_placeholders(
                 || protected_key
                     .placeholder
                     .is_some_and(|placeholder| value == placeholder)
+                || context
+                    .local_secret_env_keys
+                    .as_ref()
+                    .is_some_and(|keys| keys.contains(protected_key.name))
             {
                 None
             } else {

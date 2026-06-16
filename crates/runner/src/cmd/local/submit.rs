@@ -4,7 +4,7 @@
 //! for a group-wide `{job_id}.result` file written by the runner that claimed
 //! the job.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -44,6 +44,12 @@ pub struct SubmitArgs {
     /// Feature flags (repeatable, format: key=value, e.g. --feature-flag myFlag=true)
     #[arg(long = "feature-flag")]
     feature_flags: Vec<String>,
+    /// Ordinary environment variables to pass to the local job (KEY=VALUE)
+    #[arg(long = "env")]
+    env: Vec<String>,
+    /// Local-only secret environment variables to pass and register for masking (KEY=VALUE)
+    #[arg(long = "secret-env")]
+    secret_env: Vec<String>,
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
@@ -242,6 +248,8 @@ impl SubmitPlan {
             profile,
             session_id,
             feature_flags,
+            env,
+            secret_env,
             timeout,
         } = args;
 
@@ -256,6 +264,9 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
+        let environment = Self::parse_env_entries("--env", &env)?;
+        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env)?;
+        Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let group_dir = home.groups_dir().join(&group);
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
 
@@ -273,7 +284,8 @@ impl SubmitPlan {
             prompt,
             cli_agent_type,
             vars: None,
-            environment: None,
+            environment,
+            secret_environment,
             user_timezone: detect_system_timezone(),
             profile: Some(profile.clone()),
             session_id,
@@ -311,6 +323,62 @@ impl SubmitPlan {
             map.insert(key.to_string(), bool_val);
         }
         Ok(Some(map))
+    }
+
+    fn parse_env_entries(
+        flag: &str,
+        entries: &[String],
+    ) -> RunnerResult<Option<HashMap<String, String>>> {
+        if entries.is_empty() {
+            return Ok(None);
+        }
+
+        let mut map = HashMap::new();
+        for entry in entries {
+            if entry.contains(['\n', '\r', '\0']) {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: newline or NUL characters are not allowed"
+                )));
+            }
+            let Some(eq_pos) = entry.find('=') else {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: expected KEY=VALUE format"
+                )));
+            };
+            if eq_pos == 0 {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: expected KEY=VALUE format"
+                )));
+            }
+
+            let key = &entry[..eq_pos];
+            let value = &entry[eq_pos + 1..];
+            if map.insert(key.to_owned(), value.to_owned()).is_some() {
+                return Err(RunnerError::Config(format!("duplicate {flag} key '{key}'")));
+            }
+        }
+
+        Ok(Some(map))
+    }
+
+    fn validate_disjoint_env_keys(
+        environment: &Option<HashMap<String, String>>,
+        secret_environment: &Option<HashMap<String, String>>,
+    ) -> RunnerResult<()> {
+        let (Some(environment), Some(secret_environment)) = (environment, secret_environment)
+        else {
+            return Ok(());
+        };
+
+        let secret_keys: HashSet<&str> = secret_environment.keys().map(String::as_str).collect();
+        for key in environment.keys() {
+            if secret_keys.contains(key.as_str()) {
+                return Err(RunnerError::Config(format!(
+                    "duplicate env key '{key}' across --env and --secret-env"
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn write_job_file(&self) -> RunnerResult<()> {
@@ -642,6 +710,20 @@ mod tests {
         wait_for_job_and_write_result(group_dir, profile, 0, None).await
     }
 
+    fn submit_args_for_test() -> SubmitArgs {
+        SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            session_id: None,
+            feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
+            timeout: 1,
+        }
+    }
+
     #[tokio::test]
     async fn submit_defaults_profile_and_writes_default_partition() {
         let dir = tempfile::tempdir().unwrap();
@@ -661,6 +743,8 @@ mod tests {
                 profile: None,
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -698,6 +782,8 @@ mod tests {
                 profile: Some(profile.into()),
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -729,6 +815,8 @@ mod tests {
                 profile: None,
                 session_id: Some("sess-123".into()),
                 feature_flags: vec!["alpha=true".into(), "beta=false".into()],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -744,6 +832,92 @@ mod tests {
         assert_eq!(request.session_id.as_deref(), Some("sess-123"));
         assert_eq!(flags.get("alpha"), Some(&true));
         assert_eq!(flags.get("beta"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn submit_serializes_env_and_secret_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_job_and_write_success(
+            group_dir,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+        ));
+
+        let mut args = submit_args_for_test();
+        args.group = group.into();
+        args.timeout = 5;
+        args.env = vec![
+            "FOO=bar".into(),
+            "URL=https://example.test/path?a=1&b=2".into(),
+            "EMPTY=".into(),
+        ];
+        args.secret_env = vec!["ANTHROPIC_API_KEY=sk-ant-local-secret".into()];
+
+        let code = run_submit_with_home(args, home).await.unwrap();
+        let request = watcher.await.unwrap();
+        let environment = request.environment.as_ref().unwrap();
+        let secret_environment = request.secret_environment.as_ref().unwrap();
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(environment.get("FOO").map(String::as_str), Some("bar"));
+        assert_eq!(
+            environment.get("URL").map(String::as_str),
+            Some("https://example.test/path?a=1&b=2")
+        );
+        assert_eq!(environment.get("EMPTY").map(String::as_str), Some(""));
+        assert_eq!(
+            secret_environment
+                .get("ANTHROPIC_API_KEY")
+                .map(String::as_str),
+            Some("sk-ant-local-secret")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_env_entries_before_submit() {
+        let cases = vec![
+            (vec!["FOO".to_string()], Vec::new(), "expected KEY=VALUE"),
+            (vec!["=VALUE".to_string()], Vec::new(), "expected KEY=VALUE"),
+            (
+                vec!["KEY=line1\nline2".to_string()],
+                Vec::new(),
+                "newline or NUL",
+            ),
+            (
+                Vec::new(),
+                vec!["KEY=foo\rbar".to_string()],
+                "newline or NUL",
+            ),
+            (
+                Vec::new(),
+                vec!["KEY=with\0nul".to_string()],
+                "newline or NUL",
+            ),
+            (
+                vec!["FOO=1".to_string(), "FOO=2".to_string()],
+                Vec::new(),
+                "duplicate --env key 'FOO'",
+            ),
+            (
+                vec!["FOO=1".to_string()],
+                vec!["FOO=2".to_string()],
+                "across --env and --secret-env",
+            ),
+        ];
+
+        for (env, secret_env, expected) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().to_path_buf());
+            let mut args = submit_args_for_test();
+            args.env = env;
+            args.secret_env = secret_env;
+
+            let err = run_submit_with_home(args, home).await.unwrap_err();
+
+            assert!(err.to_string().contains(expected), "got: {err}");
+        }
     }
 
     #[test]
@@ -795,6 +969,8 @@ mod tests {
                 profile: None,
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -1142,6 +1318,8 @@ mod tests {
             profile: Some("bad-name".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1162,6 +1340,8 @@ mod tests {
             profile: Some("vm0/default".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
         // Should pass validation and fail later (HomePaths or timeout), not on profile.
@@ -1182,6 +1362,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec!["myFlag".into()],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1199,6 +1381,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec!["myFlag=yes".into()],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1221,6 +1405,8 @@ mod tests {
             profile: Some("vm0/large".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
 
@@ -1245,6 +1431,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
 

@@ -6,7 +6,7 @@
 //! The winning runner executes the job and writes a group-wide
 //! `{job_id}.result` file that `submit` polls for.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -191,6 +191,8 @@ impl JobProvider for LocalProvider {
             }
         };
 
+        let environment_merge = merge_local_environments(req.environment, req.secret_environment);
+
         let context = ExecutionContext {
             run_id,
             prompt: req.prompt,
@@ -200,7 +202,7 @@ impl JobProvider for LocalProvider {
             checkpoint_id: None,
             sandbox_token: String::new(),
             storage_manifest: None,
-            environment: req.environment,
+            environment: environment_merge.environment,
             resume_session: req
                 .session_id
                 .as_ref()
@@ -208,7 +210,8 @@ impl JobProvider for LocalProvider {
                     session_id: id.clone(),
                     session_history: String::new(),
                 }),
-            secret_values: None,
+            secret_values: environment_merge.secret_values,
+            local_secret_env_keys: environment_merge.local_secret_env_keys,
             encrypted_secrets: None,
             secret_connector_map: None,
             secret_connector_metadata_map: None,
@@ -280,6 +283,47 @@ impl JobProvider for LocalProvider {
 
     async fn shutdown(&self) {
         self.cancel_watcher.shutdown().await;
+    }
+}
+
+struct LocalEnvironmentMerge {
+    environment: Option<HashMap<String, String>>,
+    secret_values: Option<Vec<String>>,
+    local_secret_env_keys: Option<HashSet<String>>,
+}
+
+fn merge_local_environments(
+    environment: Option<HashMap<String, String>>,
+    secret_environment: Option<HashMap<String, String>>,
+) -> LocalEnvironmentMerge {
+    let Some(secret_environment) = secret_environment else {
+        return LocalEnvironmentMerge {
+            environment,
+            secret_values: None,
+            local_secret_env_keys: None,
+        };
+    };
+    if secret_environment.is_empty() {
+        return LocalEnvironmentMerge {
+            environment,
+            secret_values: None,
+            local_secret_env_keys: None,
+        };
+    }
+
+    let mut merged = environment.unwrap_or_default();
+    let mut secret_values = Vec::with_capacity(secret_environment.len());
+    let mut local_secret_env_keys = HashSet::with_capacity(secret_environment.len());
+    for (key, value) in secret_environment {
+        local_secret_env_keys.insert(key.clone());
+        secret_values.push(value.clone());
+        merged.insert(key, value);
+    }
+
+    LocalEnvironmentMerge {
+        environment: Some(merged),
+        secret_values: Some(secret_values),
+        local_secret_env_keys: Some(local_secret_env_keys),
     }
 }
 
@@ -374,6 +418,7 @@ mod tests {
             cli_agent_type: "claude-code".into(),
             vars: None,
             environment: None,
+            secret_environment: None,
             user_timezone: None,
             profile: json_profile.map(String::from),
             session_id: None,
@@ -384,6 +429,34 @@ mod tests {
         std::fs::create_dir_all(&job_dir).unwrap();
         std::fs::write(
             local_queue::job_path(dir, partition_profile, job_id).unwrap(),
+            &json,
+        )
+        .unwrap();
+    }
+
+    fn write_job_with_environments(
+        dir: &std::path::Path,
+        job_id: RunId,
+        environment: Option<std::collections::HashMap<String, String>>,
+        secret_environment: Option<std::collections::HashMap<String, String>>,
+    ) {
+        let req = JobRequest {
+            job_id,
+            prompt: "hello with env".into(),
+            cli_agent_type: "claude-code".into(),
+            vars: None,
+            environment,
+            secret_environment,
+            user_timezone: None,
+            profile: Some(crate::profile::DEFAULT_PROFILE.into()),
+            session_id: None,
+            feature_flags: None,
+        };
+        let json = serde_json::to_vec(&req).unwrap();
+        let job_dir = local_queue::profile_jobs_dir(dir, crate::profile::DEFAULT_PROFILE).unwrap();
+        std::fs::create_dir_all(&job_dir).unwrap();
+        std::fs::write(
+            local_queue::job_path(dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap(),
             &json,
         )
         .unwrap();
@@ -421,6 +494,45 @@ mod tests {
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_maps_secret_environment_into_context_and_masking() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let job_id = RunId::new_v4();
+        write_job_with_environments(
+            dir.path(),
+            job_id,
+            Some(std::collections::HashMap::from([(
+                "ANTHROPIC_MODEL".into(),
+                "claude-haiku-4-5".into(),
+            )])),
+            Some(std::collections::HashMap::from([(
+                "ANTHROPIC_API_KEY".into(),
+                "sk-ant-local-secret".into(),
+            )])),
+        );
+
+        let candidate = provider.discover().await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
+        let environment = ctx.environment.as_ref().unwrap();
+        let secret_values = ctx.secret_values.as_ref().unwrap();
+        let local_secret_env_keys = ctx.local_secret_env_keys.as_ref().unwrap();
+
+        assert_eq!(
+            environment.get("ANTHROPIC_MODEL").map(String::as_str),
+            Some("claude-haiku-4-5")
+        );
+        assert_eq!(
+            environment.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-ant-local-secret")
+        );
+        assert_eq!(secret_values, &["sk-ant-local-secret".to_string()]);
+        assert!(local_secret_env_keys.contains("ANTHROPIC_API_KEY"));
     }
 
     #[tokio::test]

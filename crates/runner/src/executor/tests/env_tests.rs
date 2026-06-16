@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::types::runners::storage::{
@@ -49,6 +49,33 @@ fn model_provider_env_placeholder_validation_rejects_real_anthropic_api_key() {
 
     assert!(error.contains("ANTHROPIC_API_KEY"));
     assert!(!error.contains(secret));
+}
+
+#[test]
+fn model_provider_env_placeholder_validation_accepts_local_secret_env_key() {
+    let secret = "sk-ant-api03-real-secret-value";
+    let mut ctx = context_with_env(HashMap::from([("ANTHROPIC_API_KEY".into(), secret.into())]));
+    ctx.local_secret_env_keys = Some(HashSet::from(["ANTHROPIC_API_KEY".into()]));
+
+    assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+}
+
+#[test]
+fn model_provider_env_placeholder_validation_rejects_unmarked_protected_key() {
+    let anthropic_secret = "sk-ant-api03-real-secret-value";
+    let openai_secret = "sk-proj-real-openai-secret";
+    let mut ctx = context_with_env(HashMap::from([
+        ("ANTHROPIC_API_KEY".into(), anthropic_secret.into()),
+        ("OPENAI_API_KEY".into(), openai_secret.into()),
+    ]));
+    ctx.local_secret_env_keys = Some(HashSet::from(["ANTHROPIC_API_KEY".into()]));
+
+    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+    assert!(error.contains("OPENAI_API_KEY"));
+    assert!(!error.contains("ANTHROPIC_API_KEY"));
+    assert!(!error.contains(anthropic_secret));
+    assert!(!error.contains(openai_secret));
 }
 
 #[test]
