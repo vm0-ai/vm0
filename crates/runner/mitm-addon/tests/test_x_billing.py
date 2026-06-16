@@ -41,16 +41,9 @@ class _FirewallApiEntry(NamedTuple):
     permission_count: int
 
 
-class _RuntimeFirewallApiEntry(NamedTuple):
-    base: str
-    auth: object
-    permissions: tuple[_FirewallPermission, ...]
-
-
 class _XFirewallCatalog(NamedTuple):
     name: str
     api_entries: tuple[_FirewallApiEntry, ...]
-    runtime_api_entries: tuple[_RuntimeFirewallApiEntry, ...]
     permissions: tuple[_FirewallPermission, ...]
 
 
@@ -86,7 +79,7 @@ def _parse_x_firewall_permissions(raw: object, *, base: str) -> tuple[_FirewallP
                 f"but entry {index} has {type(name).__name__}."
             )
 
-        rules = entry.get("rules")
+        rules = entry.get("rules", [])
         if not isinstance(rules, list):
             _fail_x_firewall_load(
                 "Expected generated Python X firewall permission "
@@ -129,7 +122,6 @@ def _parse_x_firewall_catalog(raw: object) -> _XFirewallCatalog:
         )
 
     api_entries: list[_FirewallApiEntry] = []
-    runtime_api_entries: list[_RuntimeFirewallApiEntry] = []
     permissions: list[_FirewallPermission] = []
     for index, entry in enumerate(raw_apis):
         if not isinstance(entry, dict):
@@ -148,28 +140,26 @@ def _parse_x_firewall_catalog(raw: object) -> _XFirewallCatalog:
         raw_permissions = entry.get("permissions", [])
         parsed_permissions = _parse_x_firewall_permissions(raw_permissions, base=base)
         api_entries.append(_FirewallApiEntry(base=base, permission_count=len(parsed_permissions)))
-        runtime_api_entries.append(
-            _RuntimeFirewallApiEntry(
-                base=base,
-                auth=entry.get("auth"),
-                permissions=parsed_permissions,
-            )
-        )
         permissions.extend(parsed_permissions)
 
     return _XFirewallCatalog(
         name=name,
         api_entries=tuple(api_entries),
-        runtime_api_entries=tuple(runtime_api_entries),
         permissions=tuple(permissions),
     )
 
 
 @functools.lru_cache(maxsize=1)
-def _load_x_firewall_catalog() -> _XFirewallCatalog:
+def _load_x_firewall_raw() -> object:
     raw = BUILTIN_FIREWALLS.get("x")
     if raw is None:
         _fail_x_firewall_load("Generated Python builtin firewall catalog does not contain X.")
+    return raw
+
+
+@functools.lru_cache(maxsize=1)
+def _load_x_firewall_catalog() -> _XFirewallCatalog:
+    raw = _load_x_firewall_raw()
     return _parse_x_firewall_catalog(raw)
 
 
@@ -183,25 +173,7 @@ def _compile_generated_x_firewall() -> matching.CompiledFirewallSet:
 
 @functools.lru_cache(maxsize=1)
 def _compile_generated_x_firewall_cached() -> matching.CompiledFirewallSet:
-    catalog = _load_x_firewall_catalog()
-    compiled = matching.compile_firewalls(
-        [
-            {
-                "name": catalog.name,
-                "apis": [
-                    {
-                        "base": entry.base,
-                        "auth": entry.auth,
-                        "permissions": [
-                            {"name": permission.name, "rules": list(permission.rules)}
-                            for permission in entry.permissions
-                        ],
-                    }
-                    for entry in catalog.runtime_api_entries
-                ],
-            }
-        ]
-    )
+    compiled = matching.compile_firewalls([_load_x_firewall_raw()])
     if compiled is None:
         pytest.fail("Generated Python X firewall failed to compile with the production matcher.")
     return compiled
