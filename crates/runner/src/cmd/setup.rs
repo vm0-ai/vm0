@@ -34,6 +34,12 @@ const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
 
+struct ProducedSetupArtifact {
+    path: PathBuf,
+    file: File,
+    sha256: String,
+}
+
 /// Run the host setup workflow for sandbox execution.
 ///
 /// Returns `RunnerError::Config` when the host configuration is unsupported or
@@ -451,54 +457,57 @@ fn secure_setup_temp_file(file: &File, path: &Path) -> RunnerResult<()> {
     Ok(())
 }
 
-fn install_temp_artifact(
-    tmp_path: &Path,
+fn install_produced_artifact(
+    artifact: ProducedSetupArtifact,
     target: &Path,
-    expected_sha: &str,
     mode: u32,
 ) -> RunnerResult<()> {
-    let mut options = File::options();
-    options
-        .read(true)
-        .write(true)
-        .custom_flags(setup_file_open_flags());
-    let mut file = options.open(tmp_path).map_err(|e| {
-        RunnerError::Internal(format!(
-            "open setup temp artifact {}: {e}",
-            tmp_path.display()
-        ))
-    })?;
-    let stat = setup_file_stat(&file, tmp_path, "setup temp artifact")?;
-    validate_trusted_regular_setup_file(&stat, tmp_path, "setup temp artifact")?;
-    if (stat.st_mode & GROUP_OR_OTHER_WRITE_BITS) != 0 {
+    let produced_stat = setup_file_stat(&artifact.file, &artifact.path, "produced setup artifact")?;
+    validate_trusted_regular_setup_file(&produced_stat, &artifact.path, "produced setup artifact")?;
+    if (produced_stat.st_mode & GROUP_OR_OTHER_WRITE_BITS) != 0 {
         return Err(RunnerError::Internal(format!(
             "{} is group/other writable",
-            tmp_path.display()
+            artifact.path.display()
         )));
     }
 
-    let sha = file_sha256_open(&mut file, tmp_path)?;
-    if sha != expected_sha {
+    let temp_path_file = open_setup_file_for_identity(&artifact.path, "produced setup artifact")?;
+    let temp_path_stat =
+        setup_file_stat(&temp_path_file, &artifact.path, "produced setup artifact")?;
+    validate_same_setup_file_identity(
+        &produced_stat,
+        &temp_path_stat,
+        &artifact.path,
+        "produced setup artifact",
+    )?;
+
+    chmod_fd(
+        &artifact.file,
+        &artifact.path,
+        mode,
+        "produced setup artifact",
+    )?;
+    let chmod_stat = setup_file_stat(&artifact.file, &artifact.path, "produced setup artifact")?;
+    if (chmod_stat.st_mode & 0o7777) != mode {
         return Err(RunnerError::Internal(format!(
-            "setup temp artifact SHA256 mismatch for {}: expected {expected_sha}, got {sha}",
-            tmp_path.display()
+            "{} mode is {:o} after chmod, expected {mode:o}",
+            artifact.path.display(),
+            chmod_stat.st_mode & 0o7777
         )));
     }
+    drop(temp_path_file);
 
-    chmod_fd(&file, tmp_path, mode, "setup temp artifact")?;
-    drop(file);
-
-    std::fs::rename(tmp_path, target)
+    std::fs::rename(&artifact.path, target)
         .map_err(|e| RunnerError::Internal(format!("rename to {}: {e}", target.display())))?;
 
-    if ensure_artifact_installed_blocking(target, expected_sha, mode)? {
-        Ok(())
-    } else {
-        Err(RunnerError::Internal(format!(
-            "installed setup artifact {} failed validation",
-            target.display()
-        )))
-    }
+    let target_file = open_setup_file_for_identity(target, "installed setup artifact")?;
+    let target_stat = setup_file_stat(&target_file, target, "installed setup artifact")?;
+    validate_same_setup_file_identity(
+        &chmod_stat,
+        &target_stat,
+        target,
+        "installed setup artifact",
+    )
 }
 
 fn ensure_artifact_installed_blocking(
@@ -562,6 +571,14 @@ fn open_existing_setup_artifact(path: &Path) -> RunnerResult<Option<File>> {
     }
 }
 
+fn open_setup_file_for_identity(path: &Path, context: &str) -> RunnerResult<File> {
+    let mut options = File::options();
+    options.read(true).custom_flags(setup_file_open_flags());
+    options
+        .open(path)
+        .map_err(|e| RunnerError::Internal(format!("open {context} {}: {e}", path.display())))
+}
+
 fn setup_artifact_path_is_regular(path: &Path) -> RunnerResult<bool> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => Ok(metadata.file_type().is_file()),
@@ -606,6 +623,26 @@ fn setup_file_stat<Fd: AsRawFd>(file: &Fd, path: &Path, context: &str) -> Runner
     }
     // SAFETY: successful `fstat` initialized the full struct.
     Ok(unsafe { stat.assume_init() })
+}
+
+fn validate_same_setup_file_identity(
+    expected: &libc::stat,
+    actual: &libc::stat,
+    path: &Path,
+    context: &str,
+) -> RunnerResult<()> {
+    if expected.st_dev == actual.st_dev && expected.st_ino == actual.st_ino {
+        return Ok(());
+    }
+
+    Err(RunnerError::Internal(format!(
+        "{context} {} resolved to device/inode {}:{}, expected {}:{}",
+        path.display(),
+        actual.st_dev,
+        actual.st_ino,
+        expected.st_dev,
+        expected.st_ino
+    )))
 }
 
 fn validate_trusted_regular_setup_file(
@@ -663,12 +700,12 @@ fn file_parent(path: &Path) -> &Path {
 // ---------------------------------------------------------------------------
 
 /// Stream an HTTP response to an opened temp file, computing SHA256 incrementally.
-/// Returns the hex-encoded digest.
+/// Returns the written file and hex-encoded digest.
 async fn stream_to_file(
     mut response: reqwest::Response,
     mut file: tokio::fs::File,
     path: &Path,
-) -> RunnerResult<String> {
+) -> RunnerResult<(File, String)> {
     let mut hasher = Sha256::new();
 
     while let Some(chunk) = response
@@ -686,16 +723,16 @@ async fn stream_to_file(
         .await
         .map_err(|e| RunnerError::Internal(format!("flush {}: {e}", path.display())))?;
 
-    Ok(hex::encode(hasher.finalize()))
+    Ok((file.into_std().await, hex::encode(hasher.finalize())))
 }
 
-/// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
+/// Download a URL to a temp file. Cleans up on failure.
 async fn download_to_temp(
     url: &str,
     target: &Path,
     kind: &str,
     label: &str,
-) -> RunnerResult<(PathBuf, String)> {
+) -> RunnerResult<ProducedSetupArtifact> {
     let (tmp_path, file) = create_setup_temp_file(target, kind)?;
     let result = async {
         let response = reqwest::get(url)
@@ -714,7 +751,11 @@ async fn download_to_temp(
     .await;
 
     match result {
-        Ok(sha) => Ok((tmp_path, sha)),
+        Ok((file, sha256)) => Ok(ProducedSetupArtifact {
+            path: tmp_path,
+            file,
+            sha256,
+        }),
         Err(error) => {
             let _ = tokio::fs::remove_file(&tmp_path).await;
             Err(error)
@@ -723,15 +764,19 @@ async fn download_to_temp(
 }
 
 /// Download a tarball, extract a named entry. Cleans up tarball after extraction.
-/// Returns hex SHA256 of the extracted entry. Cleans up tmp_path on failure.
 async fn download_and_extract(
     url: &str,
     label: &str,
     entry_name: &str,
     target: &Path,
-) -> RunnerResult<(PathBuf, String)> {
+) -> RunnerResult<ProducedSetupArtifact> {
     // Tarball SHA is intentionally discarded — we verify the extracted binary's SHA instead.
-    let (tarball_path, _) = download_to_temp(url, target, "tarball", label).await?;
+    let ProducedSetupArtifact {
+        path: tarball_path,
+        file: tarball_file,
+        sha256: _,
+    } = download_to_temp(url, target, "tarball", label).await?;
+    drop(tarball_file);
 
     let result = extract_tar_entry(&tarball_path, target, entry_name).await;
     let _ = tokio::fs::remove_file(&tarball_path).await;
@@ -739,12 +784,12 @@ async fn download_and_extract(
 }
 
 /// Extract a named entry from a gzipped tarball, writing to tmp_path.
-/// Matches by file_name (last path component). Returns the SHA256 hex digest.
+/// Matches by file_name (last path component).
 async fn extract_tar_entry(
     tarball_path: &Path,
     target: &Path,
     entry_name: &str,
-) -> RunnerResult<(PathBuf, String)> {
+) -> RunnerResult<ProducedSetupArtifact> {
     let tarball = tarball_path.to_owned();
     let target = target.to_owned();
     let entry_name = entry_name.to_owned();
@@ -795,7 +840,11 @@ async fn extract_tar_entry(
                 if result.is_err() {
                     let _ = std::fs::remove_file(&tmp);
                 }
-                return result.map(|sha| (tmp, sha));
+                return result.map(|sha256| ProducedSetupArtifact {
+                    path: tmp,
+                    file: out,
+                    sha256,
+                });
             }
         }
 
@@ -807,22 +856,21 @@ async fn extract_tar_entry(
     .map_err(|e| RunnerError::Internal(format!("extract task failed: {e}")))?
 }
 
-/// Verify SHA256, set permissions through the temp fd, and atomically rename to target.
+/// Verify SHA256, set permissions through the produced fd, and atomically rename to target.
 /// A failed rename only counts as a concurrent install if the target verifies.
 async fn verify_and_install(
-    sha_hex: &str,
+    artifact: ProducedSetupArtifact,
     expected_sha: &str,
     label: &str,
-    tmp_path: &Path,
     target: &Path,
     mode: u32,
 ) -> RunnerResult<()> {
-    if let Err(e) = verify_sha256(sha_hex, expected_sha, label) {
-        let _ = tokio::fs::remove_file(tmp_path).await;
+    if let Err(e) = verify_sha256(&artifact.sha256, expected_sha, label) {
+        let _ = tokio::fs::remove_file(&artifact.path).await;
         return Err(e);
     }
 
-    match atomic_rename(tmp_path, target, expected_sha, mode).await {
+    match atomic_install_produced(artifact, target, mode).await {
         Ok(()) => Ok(()),
         Err(e) => match ensure_artifact_installed(target, expected_sha, mode).await {
             Ok(true) => {
@@ -838,24 +886,21 @@ async fn verify_and_install(
     }
 }
 
-/// Prepare temp artifact through its fd, then atomically rename. Cleans up temp on failure.
-async fn atomic_rename(
-    tmp_path: &Path,
+/// Prepare a produced artifact through its fd, then atomically rename. Cleans up temp on failure.
+async fn atomic_install_produced(
+    artifact: ProducedSetupArtifact,
     target: &Path,
-    expected_sha: &str,
     mode: u32,
 ) -> RunnerResult<()> {
-    let tmp = tmp_path.to_owned();
+    let tmp_path = artifact.path.clone();
     let target = target.to_owned();
-    let expected_sha = expected_sha.to_owned();
-    let result = tokio::task::spawn_blocking(move || {
-        install_temp_artifact(&tmp, &target, &expected_sha, mode)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?;
+    let result =
+        tokio::task::spawn_blocking(move || install_produced_artifact(artifact, &target, mode))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?;
 
     if result.is_err() {
-        let _ = tokio::fs::remove_file(tmp_path).await;
+        let _ = tokio::fs::remove_file(&tmp_path).await;
     }
     result
 }
@@ -932,14 +977,12 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     tracing::info!("downloading firecracker from {url}");
 
     let fc_entry = firecracker_tar_entry(arch);
-    let (tmp_path, sha_hex) =
-        download_and_extract(&url, "firecracker", &fc_entry, &bin_path).await?;
+    let artifact = download_and_extract(&url, "firecracker", &fc_entry, &bin_path).await?;
 
     verify_and_install(
-        &sha_hex,
+        artifact,
         expected_sha,
         "firecracker",
-        &tmp_path,
         &bin_path,
         SETUP_EXECUTABLE_ARTIFACT_MODE,
     )
@@ -960,13 +1003,12 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let url = kernel_url(arch);
     tracing::info!("downloading kernel from {url}");
 
-    let (tmp_path, sha_hex) = download_to_temp(&url, &kernel_path, "download", "kernel").await?;
+    let artifact = download_to_temp(&url, &kernel_path, "download", "kernel").await?;
 
     verify_and_install(
-        &sha_hex,
+        artifact,
         expected_sha,
         "kernel",
-        &tmp_path,
         &kernel_path,
         SETUP_KERNEL_ARTIFACT_MODE,
     )
@@ -987,14 +1029,12 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let url = mitmdump_url(arch);
     tracing::info!("downloading mitmdump from {url}");
 
-    let (tmp_path, sha_hex) =
-        download_and_extract(&url, "mitmdump", MITMDUMP_TAR_ENTRY, &bin_path).await?;
+    let artifact = download_and_extract(&url, "mitmdump", MITMDUMP_TAR_ENTRY, &bin_path).await?;
 
     verify_and_install(
-        &sha_hex,
+        artifact,
         expected_sha,
         "mitmdump",
-        &tmp_path,
         &bin_path,
         SETUP_EXECUTABLE_ARTIFACT_MODE,
     )
@@ -1046,6 +1086,17 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn produced_artifact(path: &Path, content: &[u8]) -> ProducedSetupArtifact {
+        let mut file = create_setup_temp_file_at(path).unwrap();
+        std::io::Write::write_all(&mut file, content).unwrap();
+        std::io::Write::flush(&mut file).unwrap();
+        ProducedSetupArtifact {
+            path: path.to_owned(),
+            file,
+            sha256: hex::encode(Sha256::digest(content)),
+        }
     }
 
     #[test]
@@ -1369,21 +1420,113 @@ mod tests {
         );
     }
 
+    #[test]
+    fn validate_same_setup_file_identity_rejects_different_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_path = dir.path().join("first.bin");
+        let second_path = dir.path().join("second.bin");
+        std::fs::write(&first_path, b"first").unwrap();
+        std::fs::write(&second_path, b"second").unwrap();
+        let first = File::open(&first_path).unwrap();
+        let second = File::open(&second_path).unwrap();
+        let first_stat = setup_file_stat(&first, &first_path, "first").unwrap();
+        let second_stat = setup_file_stat(&second, &second_path, "second").unwrap();
+
+        let error = validate_same_setup_file_identity(
+            &first_stat,
+            &second_stat,
+            &second_path,
+            "test setup artifact",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("device/inode"));
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_installs_produced_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        let artifact = produced_artifact(&tmp_path, b"content");
+        let sha = artifact.sha256.clone();
+
+        verify_and_install(
+            artifact,
+            &sha,
+            "test",
+            &target,
+            SETUP_EXECUTABLE_ARTIFACT_MODE,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"content");
+        assert_eq!(mode(&target), SETUP_EXECUTABLE_ARTIFACT_MODE);
+        assert!(!tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_removes_produced_artifact_on_wrong_sha() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        let artifact = produced_artifact(&tmp_path, b"content");
+
+        let result = verify_and_install(
+            artifact,
+            "wrong_sha",
+            "test",
+            &target,
+            SETUP_EXECUTABLE_ARTIFACT_MODE,
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!tmp_path.exists(), "SHA mismatch should clean temp file");
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn verify_and_install_rejects_replaced_temp_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        let artifact = produced_artifact(&tmp_path, b"content");
+        let sha = artifact.sha256.clone();
+        std::fs::remove_file(&tmp_path).unwrap();
+        std::fs::write(&tmp_path, b"replacement").unwrap();
+
+        let result = verify_and_install(
+            artifact,
+            &sha,
+            "test",
+            &target,
+            SETUP_EXECUTABLE_ARTIFACT_MODE,
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!target.exists());
+        assert!(
+            !tmp_path.exists(),
+            "failed install should clean replacement temp path"
+        );
+    }
+
     #[tokio::test]
     async fn verify_and_install_errors_when_rename_fails_with_invalid_target() {
         let dir = tempfile::tempdir().unwrap();
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
-        std::fs::write(&tmp_path, b"content").unwrap();
-        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let artifact = produced_artifact(&tmp_path, b"content");
+        let sha = artifact.sha256.clone();
         std::fs::create_dir(&target).unwrap();
-        let sha = file_sha256(&tmp_path).await.unwrap();
 
         let result = verify_and_install(
-            &sha,
+            artifact,
             &sha,
             "test",
-            &tmp_path,
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
         )
@@ -1399,16 +1542,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
-        std::fs::write(&tmp_path, b"new content").unwrap();
-        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let artifact = produced_artifact(&tmp_path, b"new content");
+        let sha = artifact.sha256.clone();
         std::fs::write(&target, b"old content").unwrap();
-        let sha = file_sha256(&tmp_path).await.unwrap();
 
         verify_and_install(
-            &sha,
+            artifact,
             &sha,
             "test",
-            &tmp_path,
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
         )
@@ -1422,7 +1563,7 @@ mod tests {
     #[tokio::test]
     async fn verify_and_install_accepts_verified_target_after_install_failure() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp_path = dir.path().join("missing-tmp.bin");
+        let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         std::fs::write(&target, b"content").unwrap();
         std::fs::set_permissions(
@@ -1431,12 +1572,13 @@ mod tests {
         )
         .unwrap();
         let sha = file_sha256(&target).await.unwrap();
+        let artifact = produced_artifact(&tmp_path, b"content");
+        std::fs::remove_file(&tmp_path).unwrap();
 
         verify_and_install(
-            &sha,
+            artifact,
             &sha,
             "test",
-            &tmp_path,
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
         )
