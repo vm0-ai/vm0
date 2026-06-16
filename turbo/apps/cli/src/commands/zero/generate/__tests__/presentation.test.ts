@@ -158,6 +158,13 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "Selected template: template:html-ppt-playful-editorial (Playful Editorial Presentation)",
     );
+    expect(stdout).toContain("vm0-ai/vm0-skills@main");
+    expect(stdout).toContain('"id": "template:html-ppt-playful-editorial"');
+    expect(stdout).toContain('"path": "presentation-template/aplocoto"');
+    expect(stdout).toContain('"id": "design-system:playful-editorial"');
+    expect(stdout).toContain(
+      '"path": "presentation-design-system/playful-editorial"',
+    );
   });
 
   it("should reject a template that does not target presentation", async () => {
