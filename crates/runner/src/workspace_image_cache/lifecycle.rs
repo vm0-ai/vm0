@@ -33,19 +33,19 @@ use super::{
 };
 
 pub(crate) struct WorkspaceImageLease {
-    pub(super) cache: SessionWorkspaceCache,
+    cache: SessionWorkspaceCache,
     pub(super) cache_key: Option<String>,
-    pub(super) profile_name: String,
-    pub(super) session_id: Option<String>,
-    pub(super) working_dir: String,
-    pub(super) active_image: PathBuf,
+    profile_name: String,
+    session_id: Option<String>,
+    working_dir: String,
+    active_image: PathBuf,
     pub(super) source_image: Option<PathBuf>,
     pub(super) consumed_cache_hit: bool,
-    pub(super) image_size_bytes: u64,
-    pub(super) workspace_drive_enabled: bool,
-    pub(super) result: WorkspaceCacheCheckoutResult,
-    pub(super) previous_storage: Option<StorageFingerprints>,
-    pub(super) entry_lock: Option<Flock<std::fs::File>>,
+    image_size_bytes: u64,
+    workspace_drive_enabled: bool,
+    result: WorkspaceCacheCheckoutResult,
+    previous_storage: Option<StorageFingerprints>,
+    entry_lock: Option<Flock<std::fs::File>>,
 }
 
 pub(crate) struct WorkspaceImagePromotionContext {

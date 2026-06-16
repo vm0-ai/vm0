@@ -25,8 +25,8 @@ use super::{
 pub(super) struct GcCandidate {
     pub(super) cache_key: String,
     pub(super) allocated_bytes: u64,
-    pub(super) file_dev: u64,
-    pub(super) file_ino: u64,
+    file_dev: u64,
+    file_ino: u64,
     pub(super) last_used_at: String,
 }
 
