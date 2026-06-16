@@ -1151,7 +1151,7 @@ function TemplatePreview({
 
   return (
     <div
-      className="relative h-44 shrink-0 overflow-hidden bg-muted"
+      className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         preloadPresentationPreviewImages(slideImages);
         detach(
@@ -1175,7 +1175,7 @@ function TemplatePreview({
             src={previewImage}
             alt=""
             title={`${item.title} card preview slide 1`}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-contain"
             loading="lazy"
             onLoad={(event) => {
               event.currentTarget.parentElement
@@ -1200,7 +1200,7 @@ function TemplatePreview({
                     isHovering ? imageIndex + 1 : 1
                   }`}
                   className={cn(
-                    "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
+                    "absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-75",
                     active && "data-[loaded=true]:opacity-100",
                   )}
                   loading={isHovering ? "eager" : "lazy"}
@@ -1313,7 +1313,7 @@ function TemplatePreviewPage({
               src={selectedSlidePreviewImage}
               title={`${item.title} preview slide ${safeSlideIndex + 1}`}
               alt=""
-              className="aspect-[16/9] w-full object-cover"
+              className="aspect-[16/9] w-full object-contain"
               loading="lazy"
             />
             <button
@@ -1363,7 +1363,7 @@ function TemplatePreviewPage({
                   <img
                     src={thumbnailImage}
                     alt=""
-                    className="aspect-[16/9] w-full object-cover"
+                    className="aspect-[16/9] w-full object-contain"
                     loading="lazy"
                   />
                   <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
@@ -1429,7 +1429,7 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
