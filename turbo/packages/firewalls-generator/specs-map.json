@@ -529,7 +529,7 @@
     "https://openapi.vercel.sh/": "45a6cb8b14bb2bc8762e1881da017fc74504584e71ff01fd9607dd4f1816f181"
   },
   "x": {
-    "https://api.twitter.com/2/openapi.json": "1d8be10b9c4ab1b6c1f22af42124c5b1ef982d32d751e74f98a28354f04b17a6"
+    "https://api.twitter.com/2/openapi.json": "0cd6f08161cc778220e4ec08107b53af55e71c2def73d7a952b3a7636b74070a"
   },
   "xero": {
     "https://raw.githubusercontent.com/XeroAPI/Xero-OpenAPI/master/xero_accounting.yaml": "239590b277465854960912b2466ef2b61058ac07c98287cd5c72dea99685ecdc",

@@ -516,6 +516,7 @@ class TestFirewallConsistency:
             ("POST", "/2/activity/subscriptions"),
             ("GET", "/2/chat/conversations"),
             ("GET", "/2/chat/conversations/{id}"),
+            ("GET", "/2/chat/conversations/{id}/events"),
             ("GET", "/2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}"),
             ("GET", "/2/dm_conversations/with/{participant_id}/dm_events"),
             ("GET", "/2/dm_conversations/{id}/dm_events"),
@@ -582,6 +583,7 @@ class TestFirewallConsistency:
         "timeline.read": {("GET", "/2/users/reposts_of_me")},
         "tweet.moderate.write": {("PUT", "/2/tweets/{tweet_id}/hidden")},
         "tweet.read": {
+            ("GET", "/2/activity/subscriptions"),
             ("GET", "/2/tweets"),
             ("GET", "/2/tweets/search/recent"),
             ("GET", "/2/tweets/{id}"),
@@ -589,6 +591,8 @@ class TestFirewallConsistency:
             ("GET", "/2/tweets/{id}/retweets"),
         },
         "tweet.write": {
+            ("POST", "/2/articles/draft"),
+            ("POST", "/2/articles/{article_id}/publish"),
             ("POST", "/2/notes"),
             ("POST", "/2/tweets"),
         },
