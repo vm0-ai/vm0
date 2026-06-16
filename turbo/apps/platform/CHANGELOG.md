@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.456.1](https://github.com/vm0-ai/vm0/compare/app-v0.456.0...app-v0.456.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* preserve schedule timezone display ([#17786](https://github.com/vm0-ai/vm0/issues/17786)) ([3a94e67](https://github.com/vm0-ai/vm0/commit/3a94e67c0420a2b9570ac81a4a1c23f5be21fcfe))
+
 ## [0.456.0](https://github.com/vm0-ai/vm0/compare/app-v0.455.0...app-v0.456.0) (2026-06-15)
 
 
