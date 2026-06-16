@@ -57,7 +57,12 @@ import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
-import { awsDefaultAllowed, awsFirewall } from "./aws.generated";
+import {
+  awsCategories,
+  awsCategoryOrder,
+  awsDefaultAllowed,
+  awsFirewall,
+} from "./aws.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
 // mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
@@ -700,6 +705,7 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleCloudCategories,
     displayOrder: googleCloudCategoryOrder,
   },
+  aws: { categories: awsCategories, displayOrder: awsCategoryOrder },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },

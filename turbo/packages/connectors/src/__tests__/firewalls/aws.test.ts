@@ -8,6 +8,7 @@ import {
 import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
+  getPermissionCategories,
   isFirewallConnectorType,
 } from "../../firewalls/index";
 
@@ -185,6 +186,18 @@ describe("aws firewall", () => {
     expect(defaults.policies["s3:PutBucketAcl"]).toBe("deny");
     expect(defaults.policies["s3:PutObjectTagging"]).toBe("deny");
     expect(defaults.policies["sts:GetCallerIdentity"]).toBe("allow");
+
+    const categories = getPermissionCategories("aws");
+    expect(categories).not.toBeNull();
+    expect(categories?.categories["apigateway:POST"]).toBe("apigateway");
+    expect(categories?.categories["ec2:DescribeInstances"]).toBe("ec2");
+    expect(categories?.categories["iam:CreateRole"]).toBe("iam");
+    expect(categories?.categories["lambda:CreateFunction"]).toBe("lambda");
+    expect(categories?.categories["s3:GetObject"]).toBe("s3");
+    expect(categories?.categories["sts:GetCallerIdentity"]).toBe("sts");
+    expect(categories?.displayOrder).toEqual(
+      expect.arrayContaining(["apigateway", "ec2", "iam", "lambda", "s3"]),
+    );
   });
 
   it("does not treat AWS predicate rules as plain path rules in the TypeScript matcher", () => {

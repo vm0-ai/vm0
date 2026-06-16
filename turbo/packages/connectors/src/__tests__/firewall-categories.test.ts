@@ -6,6 +6,7 @@ import {
 } from "../firewalls/index";
 
 const CATEGORIZED_CONNECTORS = [
+  "aws",
   "clerk",
   "cloudflare",
   "google-cloud",
