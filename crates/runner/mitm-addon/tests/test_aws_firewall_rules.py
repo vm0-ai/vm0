@@ -327,6 +327,84 @@ def test_s3_rest_operation_query_parameters_match_base_operation():
     assert isinstance(response_override, matching.FirewallAllow)
     assert response_override.permission == "s3:GetObject"
 
+    sdk_operation_hint = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?x-id=GetObject",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(sdk_operation_hint, matching.FirewallAllow)
+    assert sdk_operation_hint.permission == "s3:GetObject"
+
+
+def test_s3_list_operation_query_parameters_match_base_operation():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:ListBucket",
+            "GET /{Bucket} AWS sigv4=s3",
+            "GET /{Bucket}?list-type=2 AWS sigv4=s3",
+        )
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    list_objects_v1 = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket?prefix=logs/&delimiter=/&max-keys=10",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(list_objects_v1, matching.FirewallAllow)
+    assert list_objects_v1.permission == "s3:ListBucket"
+
+    list_objects_v2 = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket?list-type=2&prefix=logs/&continuation-token=abc",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(list_objects_v2, matching.FirewallAllow)
+    assert list_objects_v2.permission == "s3:ListBucket"
+
+
+def test_s3_version_id_selects_object_version_permission():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:GetObjectVersion",
+            "GET /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+            "HEAD /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+        ),
+    )
+    policies = {"aws": network_policy(deny=["s3:GetObjectVersion"], unknown_policy="deny")}
+
+    get_version = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?versionId=v1&x-id=GetObject",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(get_version, matching.FirewallBlock)
+    assert get_version.reason == "permission_denied"
+    assert get_version.permissions == ("s3:GetObjectVersion",)
+
+    head_version = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?versionId=v1",
+        firewalls,
+        policies,
+        method="HEAD",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(head_version, matching.FirewallBlock)
+    assert head_version.reason == "permission_denied"
+    assert head_version.permissions == ("s3:GetObjectVersion",)
+
 
 def test_s3_required_query_value_selectors_distinguish_permissions():
     firewalls = _aws_firewall(

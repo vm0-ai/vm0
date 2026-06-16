@@ -220,6 +220,91 @@ const AWS_OPERATION_ACTION_OVERRIDES = new Map<string, string>([
   ["s3:UploadPart", "PutObject"],
 ]);
 
+interface S3SupplementalRule {
+  readonly actionName: string;
+  readonly rules: string[];
+  readonly s3VirtualHostedRules: string[];
+}
+
+const S3_VERSION_ID_SUPPLEMENTAL_RULES: S3SupplementalRule[] = [
+  {
+    actionName: "GetObjectVersion",
+    rules: [
+      "GET /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+      "HEAD /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+    ],
+    s3VirtualHostedRules: [
+      "GET /{Key+}?versionId=* AWS sigv4=s3",
+      "HEAD /{Key+}?versionId=* AWS sigv4=s3",
+    ],
+  },
+  {
+    actionName: "GetObjectVersionAcl",
+    rules: ["GET /{Bucket}/{Key+}?acl&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["GET /{Key+}?acl&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "GetObjectVersionAttributes",
+    rules: ["GET /{Bucket}/{Key+}?attributes&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["GET /{Key+}?attributes&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "GetObjectVersionTagging",
+    rules: ["GET /{Bucket}/{Key+}?tagging&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["GET /{Key+}?tagging&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "DeleteObjectVersion",
+    rules: ["DELETE /{Bucket}/{Key+}?versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["DELETE /{Key+}?versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "DeleteObjectVersionTagging",
+    rules: ["DELETE /{Bucket}/{Key+}?tagging&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["DELETE /{Key+}?tagging&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "GetObjectLegalHold",
+    rules: ["GET /{Bucket}/{Key+}?legal-hold&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["GET /{Key+}?legal-hold&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "GetObjectRetention",
+    rules: ["GET /{Bucket}/{Key+}?retention&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["GET /{Key+}?retention&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "PutObjectLegalHold",
+    rules: ["PUT /{Bucket}/{Key+}?legal-hold&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["PUT /{Key+}?legal-hold&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "PutObjectRetention",
+    rules: ["PUT /{Bucket}/{Key+}?retention&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["PUT /{Key+}?retention&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "PutObjectVersionAcl",
+    rules: ["PUT /{Bucket}/{Key+}?acl&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["PUT /{Key+}?acl&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "PutObjectVersionTagging",
+    rules: ["PUT /{Bucket}/{Key+}?tagging&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["PUT /{Key+}?tagging&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "RestoreObject",
+    rules: ["POST /{Bucket}/{Key+}?restore&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["POST /{Key+}?restore&versionId=* AWS sigv4=s3"],
+  },
+  {
+    actionName: "UpdateObjectEncryption",
+    rules: ["PUT /{Bucket}/{Key+}?encryption&versionId=* AWS sigv4=s3"],
+    s3VirtualHostedRules: ["PUT /{Key+}?encryption&versionId=* AWS sigv4=s3"],
+  },
+];
+
 function assertObject(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`Expected ${label} to be an object`);
@@ -947,6 +1032,33 @@ function countPermissionRules(permissions: PermissionGroup[]): number {
   }, 0);
 }
 
+function addS3SupplementalVersionRules(
+  service: LoadedAwsServiceSource,
+  permissionsByName: Map<string, PermissionAccumulator>,
+  s3VirtualHostedPermissionsByName: Map<string, PermissionAccumulator>,
+  categories: Map<string, string>,
+  defaultAllowed: Set<string>,
+): void {
+  for (const supplemental of S3_VERSION_ID_SUPPLEMENTAL_RULES) {
+    const action = service.actionsByName.get(supplemental.actionName);
+    if (!action) {
+      throw new Error(`S3 SAR is missing action ${supplemental.actionName}`);
+    }
+    const name = `${service.servicePrefix}:${supplemental.actionName}`;
+    addPermissionRules(permissionsByName, name, action, supplemental.rules);
+    addPermissionRules(
+      s3VirtualHostedPermissionsByName,
+      name,
+      action,
+      supplemental.s3VirtualHostedRules,
+    );
+    categories.set(name, service.servicePrefix);
+    if (isDefaultAllowed(action)) {
+      defaultAllowed.add(name);
+    }
+  }
+}
+
 async function buildAwsPermissions(): Promise<BuildResult> {
   const mapping = await loadJson<unknown>(
     AWS_SERVICE_REFERENCE_MAPPING_URL,
@@ -1084,6 +1196,15 @@ async function buildAwsPermissions(): Promise<BuildResult> {
 
     if (generatedServiceOperation) {
       stats.generatedServices += 1;
+    }
+    if (service.key === "s3") {
+      addS3SupplementalVersionRules(
+        service,
+        permissionsByName,
+        s3VirtualHostedPermissionsByName,
+        categories,
+        defaultAllowed,
+      );
     }
   }
 

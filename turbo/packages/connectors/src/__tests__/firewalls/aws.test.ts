@@ -293,6 +293,21 @@ describe("aws firewall", () => {
     expect(rulesFor(standardPermissions, "s3:GetObjectAttributes")).toContain(
       "GET /{Bucket}/{Key+}?attributes AWS sigv4=s3",
     );
+    expect(rulesFor(standardPermissions, "s3:GetObjectVersion")).toEqual(
+      expect.arrayContaining([
+        "GET /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+        "HEAD /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+      ]),
+    );
+    expect(rulesFor(standardPermissions, "s3:GetObjectVersionAcl")).toContain(
+      "GET /{Bucket}/{Key+}?acl&versionId=* AWS sigv4=s3",
+    );
+    expect(
+      rulesFor(standardPermissions, "s3:GetObjectVersionTagging"),
+    ).toContain("GET /{Bucket}/{Key+}?tagging&versionId=* AWS sigv4=s3");
+    expect(rulesFor(standardPermissions, "s3:GetObject")).not.toContain(
+      "GET /{Bucket}/{Key+}?versionId=* AWS sigv4=s3",
+    );
     expect(
       rulesFor(standardPermissions, "s3:GetLifecycleConfiguration"),
     ).toContain("GET /{Bucket}?lifecycle AWS sigv4=s3");
@@ -339,6 +354,9 @@ describe("aws firewall", () => {
     );
     expect(rulesFor(virtualHostedPermissions, "s3:GetObject")).toContain(
       "GET /{Key+} AWS sigv4=s3",
+    );
+    expect(rulesFor(virtualHostedPermissions, "s3:GetObjectVersion")).toContain(
+      "GET /{Key+}?versionId=* AWS sigv4=s3",
     );
     expect(rulesFor(virtualHostedPermissions, "s3:GetObjectTagging")).toContain(
       "GET /{Key+}?tagging AWS sigv4=s3",
@@ -399,10 +417,10 @@ describe("aws firewall", () => {
       unmappedOperations: 243,
       ambiguousOperations: 27,
       unsupportedOperations: 23,
-      permissionCount: 17501,
-      ruleCount: 19751,
-      s3VirtualHostedPermissionCount: 73,
-      s3VirtualHostedRuleCount: 99,
+      permissionCount: 17509,
+      ruleCount: 19766,
+      s3VirtualHostedPermissionCount: 81,
+      s3VirtualHostedRuleCount: 114,
     });
     expect(awsGenerationStats.permissionCount).toBe(standardPermissions.length);
     expect(awsGenerationStats.ruleCount).toBe(countRules(standardPermissions));

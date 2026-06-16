@@ -94,12 +94,28 @@ _AWS_IGNORED_QUERY_KEYS = frozenset(
     key.lower()
     for key in (
         "partNumber",
+        "bucket-region",
+        "continuation-token",
+        "delimiter",
+        "encoding-type",
+        "fetch-owner",
+        "key-marker",
+        "marker",
+        "max-buckets",
+        "max-directory-buckets",
+        "max-keys",
+        "max-parts",
+        "part-number-marker",
+        "prefix",
         "response-cache-control",
         "response-content-disposition",
         "response-content-encoding",
         "response-content-language",
         "response-content-type",
         "response-expires",
+        "start-after",
+        "upload-id-marker",
+        "version-id-marker",
         "X-Amz-Algorithm",
         "X-Amz-Credential",
         "X-Amz-Date",
@@ -107,6 +123,7 @@ _AWS_IGNORED_QUERY_KEYS = frozenset(
         "X-Amz-SignedHeaders",
         "X-Amz-Security-Token",
         "X-Amz-Signature",
+        "x-id",
     )
 )
 _AUTH_TEMPLATE_START = "${{"
