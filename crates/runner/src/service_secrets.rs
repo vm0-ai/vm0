@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use tokio::io::AsyncReadExt;
 
@@ -14,6 +15,8 @@ pub(crate) const VERCEL_AUTOMATION_BYPASS_SECRET_ENV: &str = "VERCEL_AUTOMATION_
 pub(crate) const SERVICE_SECRETS_FILE_NAME: &str = "service-secrets.env";
 
 const SERVICE_SECRETS_FILE_READ_MAX_BYTES: u64 = 64 * 1024;
+const SERVICE_SECRETS_SOURCE_FILE_PREFIX: &str = ".service-secrets.env.source.";
+const STALE_SERVICE_SECRETS_SOURCE_MIN_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const ALLOWED_SERVICE_SECRET_KEYS: [&str; 4] = [
     SENTRY_DSN_ENV,
     AXIOM_TOKEN_ENV,
@@ -157,7 +160,7 @@ pub(crate) async fn stage_service_secrets_file(
         ))
     })?;
     crate::private_fs::ensure_private_dir(parent).await?;
-    remove_stale_service_secrets_staging_files(parent).await?;
+    remove_stale_service_secrets_ephemeral_files(parent).await?;
     crate::private_fs::write_private_file(destination, secrets.to_file_contents().as_bytes()).await
 }
 
@@ -172,14 +175,14 @@ pub(crate) async fn remove_service_secrets_file(path: &Path) -> RunnerResult<()>
     };
 
     let cleanup_result = match path.parent() {
-        Some(parent) => remove_stale_service_secrets_staging_files(parent).await,
+        Some(parent) => remove_stale_service_secrets_ephemeral_files(parent).await,
         None => Ok(()),
     };
     remove_result?;
     cleanup_result
 }
 
-async fn remove_stale_service_secrets_staging_files(parent: &Path) -> RunnerResult<()> {
+async fn remove_stale_service_secrets_ephemeral_files(parent: &Path) -> RunnerResult<()> {
     let mut entries = match tokio::fs::read_dir(parent).await {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -197,7 +200,8 @@ async fn remove_stale_service_secrets_staging_files(parent: &Path) -> RunnerResu
             parent.display()
         ))
     })? {
-        if !is_service_secrets_staging_file_name(&entry.file_name()) {
+        let file_name = entry.file_name();
+        if !should_remove_service_secrets_ephemeral_file(&entry.path(), &file_name).await? {
             continue;
         }
         let path = entry.path();
@@ -218,6 +222,51 @@ async fn remove_stale_service_secrets_staging_files(parent: &Path) -> RunnerResu
 fn is_service_secrets_staging_file_name(name: &OsStr) -> bool {
     let name = name.to_string_lossy();
     name.starts_with(".service-secrets.env.") && name.ends_with(".tmp")
+}
+
+async fn should_remove_service_secrets_ephemeral_file(
+    path: &Path,
+    name: &OsStr,
+) -> RunnerResult<bool> {
+    if is_service_secrets_staging_file_name(name) {
+        return Ok(true);
+    }
+    if !is_service_secrets_source_file_name(name) {
+        return Ok(false);
+    }
+    is_file_older_than(path, STALE_SERVICE_SECRETS_SOURCE_MIN_AGE).await
+}
+
+fn is_service_secrets_source_file_name(name: &OsStr) -> bool {
+    name.to_string_lossy()
+        .starts_with(SERVICE_SECRETS_SOURCE_FILE_PREFIX)
+}
+
+async fn is_file_older_than(path: &Path, min_age: Duration) -> RunnerResult<bool> {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => {
+            return Err(RunnerError::Config(format!(
+                "stat service secrets ephemeral file {}: {e}",
+                path.display()
+            )));
+        }
+    };
+    let file_type = metadata.file_type();
+    if !metadata.is_file() && !file_type.is_symlink() {
+        return Ok(false);
+    }
+    let modified = metadata.modified().map_err(|e| {
+        RunnerError::Config(format!(
+            "stat service secrets ephemeral file mtime {}: {e}",
+            path.display()
+        ))
+    })?;
+    Ok(SystemTime::now()
+        .duration_since(modified)
+        .unwrap_or_default()
+        >= min_age)
 }
 
 async fn read_private_service_secrets(path: &Path) -> RunnerResult<ServiceSecrets> {
@@ -368,6 +417,18 @@ fn non_empty_env(key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn set_modified(path: &Path, modified: SystemTime) {
+        let file = std::fs::OpenOptions::new().read(true).open(path).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+    }
+
+    fn stale_source_mtime() -> SystemTime {
+        SystemTime::now()
+            .checked_sub(STALE_SERVICE_SECRETS_SOURCE_MIN_AGE + Duration::from_secs(1))
+            .unwrap()
+    }
 
     #[test]
     fn parse_service_secrets_accepts_allowed_keys() {
@@ -528,6 +589,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stage_service_secrets_file_removes_stale_source_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.env");
+        let destination = dir
+            .path()
+            .join("runners")
+            .join("v0.1.0")
+            .join(SERVICE_SECRETS_FILE_NAME);
+        let parent = destination.parent().unwrap();
+        tokio::fs::create_dir_all(parent).await.unwrap();
+        tokio::fs::write(&source, "SENTRY_DSN=sentry\n")
+            .await
+            .unwrap();
+        let stale_source = parent.join(".service-secrets.env.source.cancelled");
+        let fresh_source = parent.join(".service-secrets.env.source.current");
+        tokio::fs::write(&stale_source, "SENTRY_DSN=old-secret\n")
+            .await
+            .unwrap();
+        tokio::fs::write(&fresh_source, "SENTRY_DSN=new-secret\n")
+            .await
+            .unwrap();
+        set_modified(&stale_source, stale_source_mtime());
+
+        stage_service_secrets_file(&source, &destination)
+            .await
+            .unwrap();
+
+        assert!(!stale_source.exists());
+        assert!(fresh_source.exists());
+    }
+
+    #[tokio::test]
     async fn remove_service_secrets_file_removes_canonical_and_stale_staging_files() {
         let dir = tempfile::tempdir().unwrap();
         let destination = dir
@@ -545,6 +638,11 @@ mod tests {
         tokio::fs::write(&stale_tmp, "SENTRY_DSN=old-secret\n")
             .await
             .unwrap();
+        let stale_source = parent.join(".service-secrets.env.source.cancelled");
+        tokio::fs::write(&stale_source, "SENTRY_DSN=old-secret\n")
+            .await
+            .unwrap();
+        set_modified(&stale_source, stale_source_mtime());
         tokio::fs::write(&unrelated_tmp, "runner config")
             .await
             .unwrap();
@@ -553,6 +651,7 @@ mod tests {
 
         assert!(!destination.exists());
         assert!(!stale_tmp.exists());
+        assert!(!stale_source.exists());
         assert!(unrelated_tmp.exists());
     }
 
