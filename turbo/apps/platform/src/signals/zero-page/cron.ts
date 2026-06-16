@@ -130,14 +130,6 @@ export function getTimezoneLabel(iana: string): string {
   return `(${offset}) ${name}`;
 }
 
-export function cronUtcToLocalTime(
-  utcHour: number,
-  utcMinute: number,
-  timezone: string,
-): { hour: number; minute: number } {
-  return cronTimeInTimezone(utcHour, utcMinute, "UTC", timezone);
-}
-
 function datePart(parts: Intl.DateTimeFormatPart[], type: string): string {
   return (
     parts.find((p) => {
