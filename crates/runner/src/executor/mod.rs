@@ -51,6 +51,13 @@ use api_contracts::generated::constants::runners::paths::{
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Exit code used when the runner's job timeout stops an agent process.
 const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
+/// Extra time for the host to receive guest timeout terminal proof.
+///
+/// The guest process still receives `JOB_TIMEOUT` as its runtime budget. This
+/// grace covers vsock-guest's 5s stdout/stderr drain deadline after timeout
+/// process-tree kill, plus normal scheduling overhead before it sends the
+/// terminal `TimedOut` result.
+const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Maximum time to spend writing the guest cancel frame after a user cancel.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.
@@ -77,6 +84,9 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
     b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
+fn job_terminal_wait_timeout() -> Duration {
+    JOB_TIMEOUT + JOB_TERMINAL_GRACE_TIMEOUT
+}
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "BASH_ENV",
