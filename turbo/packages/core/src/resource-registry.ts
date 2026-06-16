@@ -766,7 +766,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["presentation"],
   },
   {
-    id: "template:html-ppt-aplocoto",
+    id: "template:html-ppt-playful-editorial",
     kind: "template",
     name: "Playful Editorial Presentation",
     description:

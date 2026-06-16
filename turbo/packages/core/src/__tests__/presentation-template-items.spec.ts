@@ -59,7 +59,7 @@ describe("presentation template items", () => {
 
     expect(item).toBeDefined();
     expect(item?.designSystemId).toBe("design-system:playful-editorial");
-    expect(item?.templateId).toBe("template:html-ppt-aplocoto");
+    expect(item?.templateId).toBe("template:html-ppt-playful-editorial");
     expect(item?.previewImages.length).toBe(15);
     expect(findDesignSystem(item?.designSystemId ?? "")).toBeDefined();
     expect(findTemplate(item?.templateId ?? "")?.targets).toContain(
