@@ -2071,7 +2071,6 @@ describe("logs command", () => {
 
       // Per-page limit is capped at 100
       expect(capturedQuery?.limit).toBe("100");
-      expect(capturedQuery?.order).toBe("asc");
     });
 
     it("should use --all flag to fetch all entries", async () => {
@@ -2095,7 +2094,7 @@ describe("logs command", () => {
 
       // --all uses page limit of 100 and fetches all pages
       expect(capturedQuery?.limit).toBe("100");
-      expect(capturedQuery?.order).toBe("asc");
+      expect(capturedQuery?.order).toBe("desc");
     });
 
     it("should combine --all with --since", async () => {

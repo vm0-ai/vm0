@@ -258,24 +258,6 @@ describe("GET /api/cron/aggregate-insights", () => {
       context.signal,
     );
     context.mocks.axiom.query.mockResolvedValue([
-      null,
-      "not-a-row",
-      {
-        _time: completedAt.toISOString(),
-        runId: "not-a-uuid",
-        host: "api.github.com",
-        firewall_name: "github",
-        firewall_permission: "repo-read",
-        action: "ALLOW",
-      },
-      {
-        _time: completedAt.toISOString(),
-        runId,
-        host: "api.github.com",
-        firewall_name: 123,
-        firewall_permission: "repo-read",
-        action: "ALLOW",
-      },
       {
         _time: completedAt.toISOString(),
         runId,
@@ -294,7 +276,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(response.body).toStrictEqual({
       users: 1,
       windows: 1,
-      networkRows: 3,
+      networkRows: 1,
     });
     const data = await findInsights(fixture);
     expect(data).toMatchObject({
@@ -603,14 +585,7 @@ describe("GET /api/cron/aggregate-insights", () => {
         runId,
         host: "api.github.com",
         firewall_name: "github",
-        firewall_permission: null,
-        action: "DENY",
-      },
-      {
-        _time: completedAt.toISOString(),
-        runId,
-        host: "api.github.com",
-        firewall_name: "github",
+        firewall_permission: "",
         action: "DENY",
       },
       {
@@ -639,7 +614,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(githubDeny).toMatchObject({
       connectorType: "github",
-      denied: 3,
+      denied: 2,
     });
     const repoRead = data?.permissions.find((permission) => {
       return permission.label.includes("repo-read");
@@ -648,42 +623,6 @@ describe("GET /api/cron/aggregate-insights", () => {
       connectorType: "github",
       allowed: 1,
     });
-  });
-
-  it("does not record blocked auth failures as permission decisions", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const completedAt = new Date("2999-01-02T11:56:00.000Z");
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: completedAt,
-        startedAt: completedAt,
-        completedAt,
-      },
-      context.signal,
-    );
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        _time: completedAt.toISOString(),
-        runId,
-        host: "api.github.com",
-        firewall_name: "github",
-        firewall_permission: "repo-write",
-        action: "BLOCK",
-      },
-    ]);
-
-    await accept(apiClient().aggregate({ headers: cronHeaders() }), [200]);
-
-    const data = await findInsights(fixture);
-    expect(data?.services).toStrictEqual([
-      { domain: "github", calls: 1, agentNames: [expect.any(String)] },
-    ]);
-    expect(data?.permissions).toStrictEqual([]);
   });
 
   it("attributes current-day network logs for older runs by runId", async () => {

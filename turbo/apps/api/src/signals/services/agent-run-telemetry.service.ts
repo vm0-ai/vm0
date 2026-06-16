@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type {
   AgentEventsResponse,
+  AxiomNetworkEvent,
   EventsResponse,
   MetricsResponse,
   NetworkLogsResponse,
@@ -24,7 +25,6 @@ import {
   waitForRunEventWatermarkVisible,
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
-import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 
 interface AgentComposeContent {
   readonly agent?: { readonly framework?: string };
@@ -155,6 +155,80 @@ function systemTelemetrySinceFilter(since: number | undefined): string {
   return since
     ? `| where _time > datetime("${new Date(since).toISOString()}")`
     : "";
+}
+
+function optionalAxiomField<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
+function optionalAxiomStringRecord(
+  value: Readonly<Record<string, unknown>> | null | undefined,
+): Record<string, string> | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => {
+      return typeof entry[1] === "string";
+    }),
+  );
+}
+
+function networkLogFromAxiom(event: AxiomNetworkEvent) {
+  return {
+    timestamp: event._time,
+    type: optionalAxiomField(event.type),
+    action: optionalAxiomField(event.action),
+    host: optionalAxiomField(event.host),
+    port: optionalAxiomField(event.port),
+    method: optionalAxiomField(event.method),
+    url: optionalAxiomField(event.url),
+    status: optionalAxiomField(event.status),
+    latency_ms: optionalAxiomField(event.latency_ms),
+    request_size: optionalAxiomField(event.request_size),
+    response_size: optionalAxiomField(event.response_size),
+    browser_user_agent: optionalAxiomField(event.browser_user_agent),
+    dns_event: optionalAxiomField(event.dns_event),
+    dns_query_type: optionalAxiomField(event.dns_query_type),
+    dns_result: optionalAxiomField(event.dns_result),
+    dns_serial: optionalAxiomField(event.dns_serial),
+    firewall_base: optionalAxiomField(event.firewall_base),
+    firewall_name: optionalAxiomField(event.firewall_name),
+    firewall_permission: optionalAxiomField(event.firewall_permission),
+    firewall_rule_match: optionalAxiomField(event.firewall_rule_match),
+    firewall_params: optionalAxiomStringRecord(event.firewall_params),
+    firewall_billable: optionalAxiomField(event.firewall_billable),
+    firewall_error: optionalAxiomField(event.firewall_error),
+    connector_diagnostic_type: optionalAxiomField(
+      event.connector_diagnostic_type,
+    ),
+    connector_diagnostic_reason: optionalAxiomField(
+      event.connector_diagnostic_reason,
+    ),
+    connector_diagnostic_env_names: optionalAxiomField(
+      event.connector_diagnostic_env_names,
+    ),
+    connector_diagnostic_base: optionalAxiomField(
+      event.connector_diagnostic_base,
+    ),
+    auth_resolved_secrets: optionalAxiomField(event.auth_resolved_secrets),
+    auth_refreshed_connectors: optionalAxiomField(
+      event.auth_refreshed_connectors,
+    ),
+    auth_refreshed_secrets: optionalAxiomField(event.auth_refreshed_secrets),
+    auth_cache_hit: optionalAxiomField(event.auth_cache_hit),
+    auth_url_rewrite: optionalAxiomField(event.auth_url_rewrite),
+    error: optionalAxiomField(event.error),
+    request_headers: optionalAxiomStringRecord(event.request_headers),
+    request_body: optionalAxiomField(event.request_body),
+    request_body_encoding: optionalAxiomField(event.request_body_encoding),
+    request_body_truncated: optionalAxiomField(event.request_body_truncated),
+    response_headers: optionalAxiomStringRecord(event.response_headers),
+    response_body: optionalAxiomField(event.response_body),
+    response_body_encoding: optionalAxiomField(event.response_body_encoding),
+    response_body_truncated: optionalAxiomField(event.response_body_truncated),
+  };
 }
 
 function verifyRunOwnership(
@@ -446,15 +520,14 @@ ${systemTelemetrySinceFilter(params.since)}
 | order by _time ${params.order}
 | limit ${params.limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))).slice();
-    const networkLogsWithCursor = sanitizeAxiomNetworkEvents(events);
-    const hasMore = networkLogsWithCursor.length > params.limit;
-    const networkLogs = hasMore
-      ? networkLogsWithCursor.slice(0, params.limit)
-      : networkLogsWithCursor;
+    const events = (
+      await get(queryAxiom(apl))
+    ).slice() as unknown as AxiomNetworkEvent[];
+    const hasMore = events.length > params.limit;
+    const records = hasMore ? events.slice(0, params.limit) : events;
 
     return {
-      networkLogs,
+      networkLogs: records.map(networkLogFromAxiom),
       hasMore,
     };
   });

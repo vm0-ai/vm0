@@ -1428,7 +1428,7 @@ describe("RUN-04: agent run telemetry families", () => {
             runId,
             userId: actor.userId,
             type: "tcp",
-            action: "MAYBE",
+            action: null,
             host: null,
             port: 0,
             method: null,
@@ -1437,24 +1437,9 @@ describe("RUN-04: agent run telemetry families", () => {
             latency_ms: 0,
             request_size: null,
             response_size: null,
-            request_body_encoding: "weird",
             firewall_params: null,
-            connector_diagnostic_env_names: ["FAL_TOKEN", 7],
             auth_resolved_secrets: null,
             error: null,
-          },
-          {
-            _time: "2026-06-10T10:32:00Z",
-            runId,
-            userId: actor.userId,
-            type: "http",
-            action: "BLOCK",
-            host: "blocked.example.com",
-            port: 443,
-            method: "POST",
-            url: "https://blocked.example.com/v1/connect",
-            status: 424,
-            firewall_error: "connector_not_configured",
           },
         ],
       },
@@ -1676,13 +1661,6 @@ describe("RUN-04: agent run telemetry families", () => {
       status: 0,
       latency_ms: 0,
     });
-    expect(networkPage.body.networkLogs[2]).toMatchObject({
-      timestamp: "2026-06-10T10:32:00Z",
-      type: "http",
-      action: "BLOCK",
-      host: "blocked.example.com",
-      firewall_error: "connector_not_configured",
-    });
 
     // Telemetry families hide other users' runs without leaking existence.
     const memberEvents = await reads.requestRunEvents(member, runId, {}, [404]);
@@ -1760,13 +1738,6 @@ describe("RUN-04: agent run telemetry families", () => {
           agentEvent(runId, 1, "zero two"),
         ],
         network: [
-          {
-            runId,
-            userId: actor.userId,
-            type: "http",
-            action: "ALLOW",
-            host: "missing-time.example.com",
-          },
           {
             _time: "2026-06-10T11:00:00Z",
             runId,
