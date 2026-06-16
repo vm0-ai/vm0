@@ -2,6 +2,11 @@ import { safeUrlParse } from "../utils";
 
 export const internalRunCallbackKinds = [
   "agent",
+  "agentphone",
+  "chat",
+  "github:issues",
+  "slack:org",
+  "telegram",
   "trigger:cron",
   "trigger:loop",
 ] as const;
@@ -33,6 +38,11 @@ function isInternalRunCallbackKind(
 ): value is InternalRunCallbackKind {
   switch (value) {
     case "agent":
+    case "agentphone":
+    case "chat":
+    case "github:issues":
+    case "slack:org":
+    case "telegram":
     case "trigger:cron":
     case "trigger:loop": {
       return true;
@@ -63,6 +73,21 @@ function legacyInternalRunCallbackKind(
   switch (path) {
     case "/api/internal/callbacks/agent": {
       return "agent";
+    }
+    case "/api/internal/callbacks/agentphone": {
+      return "agentphone";
+    }
+    case "/api/internal/callbacks/chat": {
+      return "chat";
+    }
+    case "/api/internal/callbacks/github/issues": {
+      return "github:issues";
+    }
+    case "/api/internal/callbacks/slack/org": {
+      return "slack:org";
+    }
+    case "/api/internal/callbacks/telegram": {
+      return "telegram";
     }
     case "/api/internal/callbacks/trigger/cron": {
       return "trigger:cron";

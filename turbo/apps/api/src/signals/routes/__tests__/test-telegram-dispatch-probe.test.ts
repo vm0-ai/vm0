@@ -244,14 +244,18 @@ async function latestTelegramRun(
   return run ?? null;
 }
 
-async function callbackPayload(runId: string): Promise<unknown> {
+async function callbackForRun(runId: string) {
   const db = store.set(writeDb$);
   const [callback] = await db
-    .select({ payload: agentRunCallbacks.payload })
+    .select({
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      payload: agentRunCallbacks.payload,
+    })
     .from(agentRunCallbacks)
     .where(eq(agentRunCallbacks.runId, runId))
     .limit(1);
-  return callback?.payload;
+  return callback;
 }
 
 describe("POST /api/test/telegram-dispatch-probe", () => {
@@ -319,12 +323,16 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     expect(run?.appendSystemPrompt).toContain("Root message ID: dm");
     expect(run?.appendSystemPrompt).toContain("Telegram username: @e2e-user");
 
-    await expect(callbackPayload(run!.id)).resolves.toMatchObject({
-      installationId: fixture.botId,
-      chatId: "900100200",
-      messageId: "501",
-      rootMessageId: "dm",
-      isDM: true,
+    await expect(callbackForRun(run!.id)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      payload: {
+        installationId: fixture.botId,
+        chatId: "900100200",
+        messageId: "501",
+        rootMessageId: "dm",
+        isDM: true,
+      },
     });
   });
 
@@ -357,12 +365,16 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     expect(run?.prompt).not.toContain("@probe_bot summarize this");
     expect(run?.prompt).toContain("[Telegram entities]");
     expect(run?.appendSystemPrompt).toContain("Chat type: group");
-    await expect(callbackPayload(run!.id)).resolves.toMatchObject({
-      installationId: fixture.botId,
-      chatId: "900100200",
-      messageId: "502",
-      rootMessageId: null,
-      isDM: false,
+    await expect(callbackForRun(run!.id)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      payload: {
+        installationId: fixture.botId,
+        chatId: "900100200",
+        messageId: "502",
+        rootMessageId: null,
+        isDM: false,
+      },
     });
   });
 });

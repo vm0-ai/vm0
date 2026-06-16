@@ -236,7 +236,7 @@ async fn firecracker_discovery_incomplete_for_current_runner(
     let current_runner_pid = std::process::id();
     for firecracker in firecrackers
         .iter()
-        .filter(|firecracker| firecracker.base_dir.is_none())
+        .filter(|firecracker| firecracker.workspace_identity_incomplete())
     {
         match process::process_has_ancestor(firecracker.pid, &[current_runner_pid]).await {
             Some(false) => {}

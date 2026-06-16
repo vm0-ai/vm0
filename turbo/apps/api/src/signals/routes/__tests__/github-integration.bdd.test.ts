@@ -1,13 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
+import { desc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
 
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -19,9 +24,7 @@ import {
   acceptGithubRunObjectStorage,
   buildLegacySignedState,
   buildUserConnectState,
-  captureChatCallbackDeliveries,
   captureGithubIssueApi,
-  captureGithubIssuesCallbackDeliveries,
   connectLinkQuery,
   createGithubBddApi,
   mockClerkMembership,
@@ -39,6 +42,7 @@ import {
   zeroCapabilityToken,
   type RawRouteResponse,
 } from "./helpers/api-bdd-github";
+import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 
 /**
  * CONN-02 / INT-03 / HOOK-01: GitHub App install + setup callback, GitHub
@@ -47,10 +51,14 @@ import {
  */
 
 const context = testContext();
+const store = createStore();
 
 const WEB_ORIGIN = "http://localhost:3001";
 const APP_ORIGIN = "http://localhost:3002";
 const SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
+const GITHUB_ISSUES_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/github/issues";
+const LEGACY_GITHUB_CALLBACK_SECRET = "bdd-github-callback-secret";
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -1286,6 +1294,108 @@ async function waitForArrayLength<T>(
     .toBe(length);
 }
 
+async function readGithubInstallationDbId(
+  remoteInstallationId: string,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [installation] = await db
+    .select({ id: githubInstallations.id })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, remoteInstallationId))
+    .limit(1);
+  if (!installation) {
+    throw new Error(
+      `Expected GitHub installation ${remoteInstallationId} to exist`,
+    );
+  }
+  return installation.id;
+}
+
+async function readRunCallbacks(runId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      runId: agentRunCallbacks.runId,
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId))
+    .orderBy(desc(agentRunCallbacks.createdAt));
+}
+
+function payloadInstallationId(payload: unknown): string | undefined {
+  return typeof payload === "object" &&
+    payload !== null &&
+    "installationId" in payload &&
+    typeof payload.installationId === "string"
+    ? payload.installationId
+    : undefined;
+}
+
+async function readLatestGithubCallbackForInstallation(installationId: string) {
+  const db = store.set(writeDb$);
+  const callbacks = await db
+    .select({
+      runId: agentRunCallbacks.runId,
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.internalKind, "github:issues"))
+    .orderBy(desc(agentRunCallbacks.createdAt))
+    .limit(20);
+  return callbacks.find((callback) => {
+    return payloadInstallationId(callback.payload) === installationId;
+  });
+}
+
+async function signedLegacyGithubIssuesCallbackDelivery(args: {
+  readonly runId: string;
+  readonly status: "completed" | "failed" | "progress";
+  readonly error?: string;
+  readonly payload: Record<string, unknown>;
+}): Promise<{
+  readonly body: string;
+  readonly signature: string;
+  readonly timestamp: string;
+}> {
+  const { callbackId } = await store.set(
+    seedAgentRunCallback$,
+    {
+      runId: args.runId,
+      url: GITHUB_ISSUES_CALLBACK_URL,
+      payload: args.payload,
+      secret: LEGACY_GITHUB_CALLBACK_SECRET,
+      status: "delivered",
+    },
+    context.signal,
+  );
+  const body = JSON.stringify({
+    callbackId,
+    runId: args.runId,
+    status: args.status,
+    error: args.error,
+    payload: args.payload,
+  });
+  const timestamp = Math.floor(now() / 1000);
+  return {
+    body,
+    signature: computeHmacSignature(
+      body,
+      LEGACY_GITHUB_CALLBACK_SECRET,
+      timestamp,
+    ),
+    timestamp: timestamp.toString(),
+  };
+}
+
 async function waitForRunnerJob(
   api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
@@ -1496,9 +1606,26 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const runId = runIdFromAuditComment(startedComment.body);
     const pending = await api.readRun(actor, runId);
     expect(pending.status).toBe("pending");
+    const installationDbId = await readGithubInstallationDbId(
+      harness.remoteInstallationId,
+    );
+    await expect(readRunCallbacks(runId)).resolves.toStrictEqual([
+      expect.objectContaining({
+        runId,
+        url: null,
+        internalKind: "github:issues",
+        status: "pending",
+        lastError: null,
+        payload: expect.objectContaining({
+          installationId: installationDbId,
+          repo,
+          issueNumber: 42,
+          agentId: harness.secondAgentId,
+        }),
+      }),
+    ]);
 
     // Progress callbacks deliver without posting comments or reading output.
-    proxyGithubIssuesCallbackToApp(context);
     const job = await waitForRunnerJob(api, runnerGroup);
     expect(job.runId).toBe(runId);
     const claim = await api.claimRunnerJob(runId);
@@ -1514,16 +1641,19 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       queriesBeforeProgress,
     );
 
-    // A sandbox heartbeat dispatches the pending callback as a signed
-    // progress delivery; replaying it into the route returns the early
-    // success without posting any comment.
-    const deliveries = captureGithubIssuesCallbackDeliveries(context);
+    // The route remains compatible with already-pending legacy callback rows.
+    const legacyPayload = {
+      installationId: installationDbId,
+      repo,
+      issueNumber: 42,
+      agentId: harness.secondAgentId,
+    };
+    const progressDelivery = await signedLegacyGithubIssuesCallbackDelivery({
+      runId,
+      status: "progress",
+      payload: legacyPayload,
+    });
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    await waitForArrayLength(deliveries, 1);
-    const progressDelivery = deliveries[0];
-    if (!progressDelivery?.signature || !progressDelivery.timestamp) {
-      throw new Error("Expected a signed progress callback delivery");
-    }
     expect(
       JSON.parse(progressDelivery.body) as Record<string, unknown>,
     ).toMatchObject({ runId, status: "progress" });
@@ -1560,11 +1690,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
 
-    await waitForArrayLength(deliveries, 2);
-    const delivery = deliveries[1];
-    if (!delivery?.signature || !delivery.timestamp) {
-      throw new Error("Expected a signed GitHub issues callback delivery");
-    }
     await waitForCommentCount(issueApi, 2);
     context.mocks.axiom.query.mockResolvedValue([]);
     const completionComment = issueApi.comments[1];
@@ -1578,8 +1703,24 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     expect(completionComment.body).toContain(`/activities/${runId}`);
     expect(completionComment.body).toContain("Responded by GitHub Agent");
     expect(completionComment.body).toContain("Claude");
+    await expect(readRunCallbacks(runId)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId,
+          url: null,
+          internalKind: "github:issues",
+          status: "delivered",
+          lastError: null,
+        }),
+      ]),
+    );
 
     // Replay without GitHub App credentials: 500 after verification.
+    const delivery = await signedLegacyGithubIssuesCallbackDelivery({
+      runId,
+      status: "completed",
+      payload: legacyPayload,
+    });
     const replayHeaders = {
       "x-vm0-signature": delivery.signature,
       "x-vm0-timestamp": delivery.timestamp,
@@ -1616,32 +1757,18 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     );
     expect(expired.body).toStrictEqual({ error: "Timestamp expired" });
 
-    // A chat run's delivery verifies per-callback but fails payload parsing.
-    const chatDeliveries = captureChatCallbackDeliveries();
-    const chat = createChatFilesBddApi(context);
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: harness.defaultAgentId,
-        prompt: "github bdd chat run",
-        modelProvider: "anthropic-api-key",
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected the entitled chat send to create a run");
-    }
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-    await waitForArrayLength(chatDeliveries, 1);
-    const chatDelivery = chatDeliveries[0];
-    if (!chatDelivery?.signature || !chatDelivery.timestamp) {
-      throw new Error("Expected a signed chat callback delivery");
-    }
+    // A legitimately signed callback with the wrong payload shape verifies
+    // per-callback but fails GitHub issue payload parsing.
+    const mismatchedDelivery = await signedLegacyGithubIssuesCallbackDelivery({
+      runId,
+      status: "completed",
+      payload: { threadId: randomUUID(), agentId: harness.defaultAgentId },
+    });
     const mismatched = await gh.requestGithubIssuesCallback(
-      chatDelivery.body,
+      mismatchedDelivery.body,
       {
-        "x-vm0-signature": chatDelivery.signature,
-        "x-vm0-timestamp": chatDelivery.timestamp,
+        "x-vm0-signature": mismatchedDelivery.signature,
+        "x-vm0-timestamp": mismatchedDelivery.timestamp,
       },
       [400],
     );
@@ -2213,11 +2340,13 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
         },
       },
     );
+    const entitledInstallationDbId = await readGithubInstallationDbId(
+      entitledInstall.remoteInstallationId,
+    );
     webhooks.configureGithubWebhookSecret();
     const entitledIssueApi = captureGithubIssueApi(
       entitledInstall.remoteInstallationId,
     );
-    const deliveries = captureGithubIssuesCallbackDeliveries(context);
     await gh.createLabelListener(
       entitled,
       {
@@ -2249,17 +2378,23 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       "issues",
     );
 
-    await waitForArrayLength(deliveries, 1);
-    const delivery = JSON.parse(deliveries[0]?.body ?? "{}") as Record<
-      string,
-      unknown
-    >;
-    expect(delivery).toMatchObject({
-      status: "failed",
-      error: "No executor configured: set RUNNER_DEFAULT_GROUP",
+    let failedCallback:
+      | Awaited<ReturnType<typeof readLatestGithubCallbackForInstallation>>
+      | undefined;
+    await expect
+      .poll(async () => {
+        failedCallback = await readLatestGithubCallbackForInstallation(
+          entitledInstallationDbId,
+        );
+        return failedCallback?.status ?? null;
+      })
+      .toBe("failed");
+    expect(failedCallback).toMatchObject({
+      url: null,
+      internalKind: "github:issues",
+      lastError: "GitHub App not configured",
     });
-    const failedRunId =
-      typeof delivery.runId === "string" ? delivery.runId : "";
+    const failedRunId = failedCallback?.runId ?? "";
     const failedRun = await api.readRun(entitled, failedRunId);
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe(

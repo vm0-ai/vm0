@@ -142,7 +142,6 @@ import {
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import {
@@ -362,6 +361,12 @@ type CreateRunErrorResult = Exclude<
   { readonly status: 201 }
 >;
 
+export type DispatchFailedRunCallbacks = (
+  db: Db,
+  runId: string,
+  error: string,
+) => Promise<void>;
+
 interface CreateAgentRunArgs {
   readonly userId: string;
   readonly orgId: string;
@@ -387,6 +392,7 @@ interface CreateAgentRunArgs {
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
+  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
 }
 
 interface ConnectorRuntimeContext {
@@ -3387,6 +3393,7 @@ async function markRunFailed(
   db: Db,
   runId: string,
   error: unknown,
+  dispatchFailedCallbacks: DispatchFailedRunCallbacks | undefined,
 ): Promise<boolean> {
   const message = error instanceof Error ? error.message : "Run failed";
   const [updated] = await db
@@ -3417,12 +3424,11 @@ async function markRunFailed(
   await publishRunChangedForUserSafely(updated.userId, runId, {
     status: "failed",
   });
-  await tapError(
-    dispatchRunCallbacks(db, runId, "failed", undefined, message),
-    (error) => {
+  if (dispatchFailedCallbacks) {
+    await tapError(dispatchFailedCallbacks(db, runId, message), (error) => {
       L.error("Failed to dispatch failed-run callbacks", { runId, error });
-    },
-  );
+    });
+  }
   return true;
 }
 
@@ -4143,7 +4149,12 @@ function completeQueuedRun(input: {
       );
       input.signal.throwIfAborted();
       if (!enqueueResult.ok) {
-        await markRunFailed(input.db, input.run.id, enqueueResult.error);
+        await markRunFailed(
+          input.db,
+          input.run.id,
+          enqueueResult.error,
+          input.args.dispatchFailedCallbacks,
+        );
         input.signal.throwIfAborted();
         return failedRunResponse(input.run, enqueueResult.error);
       }
@@ -4198,6 +4209,7 @@ function completePendingRun(input: {
         input.db,
         input.run.id,
         dispatchResult.error,
+        input.args.dispatchFailedCallbacks,
       );
       input.signal.throwIfAborted();
       if (transitioned) {

@@ -32,7 +32,6 @@ import {
   escapeHtml,
 } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -66,6 +65,7 @@ import {
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
@@ -1751,9 +1751,10 @@ const runAgentForTelegram$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope,
         selectedModelOverride: args.modelRoute?.selectedModel,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/telegram`,
+            internalKind: "telegram",
             secret: generateCallbackSecret(),
             payload: args.callbackPayload,
           },

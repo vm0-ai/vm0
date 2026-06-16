@@ -14,6 +14,26 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
+  handleAgentPhoneInternalCallback$,
+  handleAgentPhoneInternalCallbackWithoutCcstate,
+} from "./internal-agentphone-run-callback.service";
+import {
+  handleChatInternalCallback$,
+  handleChatInternalCallbackWithoutCcstate,
+} from "./internal-chat-run-callback.service";
+import {
+  handleGithubIssuesInternalCallback$,
+  handleGithubIssuesInternalCallbackWithoutCcstate,
+} from "./internal-github-issues-run-callback.service";
+import {
+  handleSlackOrgInternalCallback$,
+  handleSlackOrgInternalCallbackWithoutCcstate,
+} from "./internal-slack-org-run-callback.service";
+import {
+  handleTelegramInternalCallback$,
+  handleTelegramInternalCallbackWithoutCcstate,
+} from "./internal-telegram-run-callback.service";
+import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
   type InternalRunCallbackEnvelope,
@@ -85,6 +105,37 @@ const dispatchInternalCallback$ = command(
       case "agent": {
         await set(handleAgentInternalCallback$, input.envelope, signal);
         return { success: true };
+      }
+      case "agentphone": {
+        return await set(
+          handleAgentPhoneInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "chat": {
+        return await set(handleChatInternalCallback$, input.envelope, signal);
+      }
+      case "github:issues": {
+        return await set(
+          handleGithubIssuesInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "slack:org": {
+        return await set(
+          handleSlackOrgInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "telegram": {
+        return await set(
+          handleTelegramInternalCallback$,
+          input.envelope,
+          signal,
+        );
       }
       case "trigger:cron":
       case "trigger:loop": {
@@ -221,6 +272,14 @@ export async function dispatchRunCallbacks(
     results.push(dispatchResult);
   }
   return results;
+}
+
+export async function dispatchFailedRunCallbacks(
+  db: Db,
+  runId: string,
+  error: string,
+): Promise<void> {
+  await dispatchRunCallbacks(db, runId, "failed", undefined, error);
 }
 
 export const dispatchRunCallbacks$ = command(
@@ -370,6 +429,36 @@ async function dispatchInternalCallbackWithoutCcstate(
   switch (kind) {
     case "agent": {
       return { success: true };
+    }
+    case "agentphone": {
+      return await handleAgentPhoneInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "chat": {
+      return await handleChatInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "github:issues": {
+      return await handleGithubIssuesInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "slack:org": {
+      return await handleSlackOrgInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "telegram": {
+      return await handleTelegramInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
     }
     case "trigger:cron":
     case "trigger:loop": {

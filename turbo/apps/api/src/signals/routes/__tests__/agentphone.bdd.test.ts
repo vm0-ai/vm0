@@ -1,17 +1,21 @@
 // INT-03 deep AgentPhone flows: linking through the webhook connect prompt,
 // real run dispatch through runner poll/claim, and completion replies through
-// the internal-callback MSW proxy. All state is constructed through public
+// typed internal callback dispatch. All state is constructed through public
 // APIs; the only mocked surfaces are the AgentPhone provider, Stripe, Clerk,
 // S3, and Axiom boundaries.
 
 import { createHash } from "node:crypto";
 
+import { createStore } from "ccstate";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -32,6 +36,7 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
+const store = createStore();
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -70,7 +75,6 @@ async function entitledLinkedActor(): Promise<LinkedAgentPhoneActor> {
   integrations.configureAgentPhoneProvider();
   integrations.configureAgentPhoneWebhook();
   const sends = ap.captureAgentPhoneSends();
-  ap.proxyAgentPhoneCallbackToApp();
 
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
@@ -210,6 +214,22 @@ async function waitForSendMatching(
   return matched;
 }
 
+async function readRunCallbackIdentities(runId: string): Promise<
+  {
+    readonly url: string | null;
+    readonly internalKind: string | null;
+  }[]
+> {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+}
+
 async function waitForRunSessionId(
   actor: ApiTestUser,
   runId: string,
@@ -292,6 +312,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await waitForTyping(sends, [conversationId]);
 
     const run1 = await claimDispatchedRun(runnerGroup);
+    await expect(readRunCallbackIdentities(run1.runId)).resolves.toStrictEqual([
+      { url: null, internalKind: "agentphone" },
+    ]);
     expect(run1.prompt).toBe("summarize my inbox");
     expect(run1.appendSystemPrompt).toContain(
       "# Current Integration\nYou are currently running inside: AgentPhone",

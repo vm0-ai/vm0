@@ -1273,9 +1273,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run!.id))
       .limit(1);
-    expect(callback?.url).toBe(
-      "http://localhost:3000/api/internal/callbacks/telegram",
-    );
+    expect(callback).toMatchObject({
+      url: null,
+      internalKind: "telegram",
+    });
     const [job] = await db
       .select()
       .from(runnerJobQueue)
@@ -1284,7 +1285,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(job).toBeDefined();
   });
 
-  it("stores the internal callback url on VM0_API_BACKEND_URL when set", async () => {
+  it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
     mockEnv("VM0_API_URL", "https://www.vm0.ai");
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
@@ -1324,9 +1325,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run!.id))
       .limit(1);
-    expect(callback?.url).toBe(
-      "https://api.vm0.ai/api/internal/callbacks/telegram",
-    );
+    expect(callback).toMatchObject({
+      url: null,
+      internalKind: "telegram",
+    });
   });
 
   it("formats generic failed callback errors for Telegram replies", async () => {

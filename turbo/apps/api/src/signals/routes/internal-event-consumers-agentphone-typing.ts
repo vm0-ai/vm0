@@ -12,6 +12,7 @@ import { optionalEnv } from "../../lib/env";
 import { waitUntil } from "../context/wait-until";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route";
+import { internalRunCallbackKindForRecord } from "../services/internal-run-callback";
 import { tapError } from "../utils";
 
 const L = logger("event-consumer:agentphone-typing");
@@ -76,6 +77,7 @@ const refreshAgentPhoneTypingForRun$ = command(
     const callbacks = await db
       .select({
         url: agentRunCallbacks.url,
+        internalKind: agentRunCallbacks.internalKind,
         payload: agentRunCallbacks.payload,
       })
       .from(agentRunCallbacks)
@@ -89,7 +91,7 @@ const refreshAgentPhoneTypingForRun$ = command(
 
     const targets = new Map<string, AgentPhoneTypingTarget>();
     for (const callback of callbacks) {
-      if (!callback.url?.endsWith("/api/internal/callbacks/agentphone")) {
+      if (internalRunCallbackKindForRecord(callback) !== "agentphone") {
         continue;
       }
 

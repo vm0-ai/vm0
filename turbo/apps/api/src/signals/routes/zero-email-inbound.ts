@@ -15,6 +15,7 @@ import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route";
 import { formatIntegrationRunError$ } from "../services/integration-run-errors.service";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
   apiUrl,
@@ -481,6 +482,7 @@ const handleInboundEmailReply$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: "email",
         appendSystemPrompt: buildIntegrationPrompt(),
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: replyCallbacks({
           emailThreadSessionId: session.id,
           inboundEmailId: args.event.data.email_id,
@@ -611,6 +613,7 @@ const handleInboundEmailTrigger$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: "email",
         appendSystemPrompt: buildIntegrationPrompt(),
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: triggerCallbacks({
           senderEmail: args.event.data.from,
           agentId,

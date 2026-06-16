@@ -40,6 +40,12 @@ pub struct FirecrackerProcessInfo {
     pub identity: Option<FirecrackerProcessIdentity>,
 }
 
+impl FirecrackerProcessInfo {
+    pub(crate) fn workspace_identity_incomplete(&self) -> bool {
+        self.base_dir.is_none()
+    }
+}
+
 /// Info extracted from a mitmdump process cmdline.
 pub struct MitmproxyProcessInfo {
     pub pid: u32,

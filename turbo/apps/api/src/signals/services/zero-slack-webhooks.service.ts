@@ -26,7 +26,6 @@ import { and, desc, eq, or } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import {
   getSlackSignatureHeaders,
@@ -81,6 +80,7 @@ import {
   userModelPreference,
 } from "./zero-user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { safeJsonParse, settle, tapError } from "../utils";
 
@@ -1188,9 +1188,10 @@ const runAgentForSlackOrg$ = command(
         modelProviderId: params.modelProviderId,
         modelProviderCredentialScope: params.modelProviderCredentialScope,
         selectedModelOverride: params.selectedModelOverride,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/slack/org`,
+            internalKind: "slack:org",
             secret: generateCallbackSecret(),
             payload: params.callbackContext,
           },

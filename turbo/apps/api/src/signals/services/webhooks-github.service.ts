@@ -17,7 +17,6 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -37,6 +36,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("WebhookGithub");
@@ -1131,9 +1131,10 @@ const runAgentForGitHub$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope,
         selectedModelOverride: args.modelRoute?.selectedModel,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/github/issues`,
+            internalKind: "github:issues",
             secret: generateCallbackSecret(),
             payload: args.callbackPayload,
           },

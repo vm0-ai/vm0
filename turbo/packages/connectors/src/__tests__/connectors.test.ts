@@ -2587,14 +2587,9 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Google Analytics OAuth only when its switch is enabled", () => {
+  it("exposes Google Analytics OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-analytics", {}),
-    ).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("google-analytics", {
-        [FeatureSwitchKey.GoogleAnalyticsConnector]: true,
-      }),
     ).toStrictEqual(["oauth"]);
   });
 
@@ -3720,13 +3715,23 @@ describe("getConnectorEnvBindingEntries", () => {
 
   it("declares generated Google Maps firewall bearer auth header", () => {
     const firewall = getConnectorFirewall("google-maps");
-    expect(firewall.apis).toHaveLength(1);
-    expect(firewall.apis[0]?.base).toBe("https://maps.googleapis.com");
-    expect(firewall.apis[0]?.auth).toStrictEqual({
-      headers: {
-        Authorization: "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}",
-      },
-    });
+    expect(
+      firewall.apis.map((api) => {
+        return api.base;
+      }),
+    ).toStrictEqual([
+      "https://maps.googleapis.com",
+      "https://geocode.googleapis.com",
+      "https://places.googleapis.com",
+      "https://routes.googleapis.com",
+    ]);
+    for (const api of firewall.apis) {
+      expect(api.auth).toStrictEqual({
+        headers: {
+          Authorization: "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}",
+        },
+      });
+    }
   });
 
   it("OAuth auth-code auth methods keep the documented secret naming convention", () => {

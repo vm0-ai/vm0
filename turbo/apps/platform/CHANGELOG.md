@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.460.1](https://github.com/vm0-ai/vm0/compare/app-v0.460.0...app-v0.460.1) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/connectors bumped to 1.82.0
+    * @vm0/core bumped to 8.345.0
+
+## [0.460.0](https://github.com/vm0-ai/vm0/compare/app-v0.459.1...app-v0.460.0) (2026-06-16)
+
+
+### Features
+
+* drop time range tab and rename insights title ([#17781](https://github.com/vm0-ai/vm0/issues/17781)) ([1b2455b](https://github.com/vm0-ai/vm0/commit/1b2455b02fd8bb7132e276a30d34cf96dba34443))
+
+
+### Bug Fixes
+
+* preserve full presentation template thumbnails instead of cropping ([#17908](https://github.com/vm0-ai/vm0/issues/17908)) ([83ac319](https://github.com/vm0-ai/vm0/commit/83ac319de3c982f2ad7e3f6993b942e2c29c8353))
+* unify templates modal category pills with standard pill style ([#17826](https://github.com/vm0-ai/vm0/issues/17826)) ([04e59d4](https://github.com/vm0-ai/vm0/commit/04e59d4b745ec9fa062fe180a3a31a0aa342215b))
+
+
+### Refactoring
+
+* remove time range tab from insights & usage page ([#17780](https://github.com/vm0-ai/vm0/issues/17780)) ([55a3f42](https://github.com/vm0-ai/vm0/commit/55a3f42d1170615fd8134d965bca7e868bf975da))
+
 ## [0.459.1](https://github.com/vm0-ai/vm0/compare/app-v0.459.0...app-v0.459.1) (2026-06-16)
 
 

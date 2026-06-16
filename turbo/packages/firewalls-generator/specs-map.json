@@ -449,7 +449,7 @@
     "https://docs.stripe.com/api/balance.md": "d168c536b4467c1c2d141c7c66d3e86456d8a0d880bc5d5a5015a6bdbe8f96df",
     "https://docs.stripe.com/api/billing/meter-event.md": "c8ac28d6fdbaf2c384060472cdce2da6e0273abfb8c04d67b89416e0a909e341",
     "https://docs.stripe.com/api/billing/meter.md": "6fab851aed63484c61b8826530848134dbf08437c35567a45d07c069064bbe26",
-    "https://docs.stripe.com/api/capital/connect_financing_object.md": "c53c72afa425671df6f02dbb7df836341102c20865799658e8d3147909d28559",
+    "https://docs.stripe.com/api/capital/connect_financing_object.md": "eb5949860e101390de7a1538128b0dd68c12466184292abce6b0a6ed8653787d",
     "https://docs.stripe.com/api/capital/financing_summary.md": "fecb5c8f5b5f1e0dc20869e38a023207a5936c3f9539237b524809767e753786",
     "https://docs.stripe.com/api/cards.md": "0ce4284af17c3c83be4cb6bf844db21d73aad78b5e62bb7bf86be041c8e1f4b9",
     "https://docs.stripe.com/api/charges.md": "93c73d1f174bb0d9a68446a1cc642283ae7a34172ab6db166baf5cc2d5e3115a",
@@ -508,7 +508,7 @@
     "https://docs.stripe.com/api/v2/core/account-tokens.md": "99b3a07f90625fae77bfb86c657df294bf3da30e25e74ad2ac6beac025bd9db4",
     "https://docs.stripe.com/api/v2/core/account-tokens/object.md": "797a9ead1b93a040571497fb52a3fd6608a98a18326ac8566a88eb5f50b824d4",
     "https://docs.stripe.com/api/v2/core/accounts.md": "cab3ff18804be0d230e9da30474f7d30d725d522e30fa55cf6a19ab61168a17f",
-    "https://docs.stripe.com/api/v2/core/accounts/object.md": "6004c6dea8377094cb16d9fe8d5a0d430dd756c19f03152b4560b47934208b36",
+    "https://docs.stripe.com/api/v2/core/accounts/object.md": "4fa75e77972c43979f40ecdd4b3750b5aee19c69266f861fd8ea12bd75fc2d03",
     "https://docs.stripe.com/api/v2/core/event-destinations.md": "87cbf2c8fac0a0cce8b40bb8fd0aa26cc8904ed56e091f95f599ef28814e48da",
     "https://docs.stripe.com/api/v2/core/event-destinations/object.md": "4cd3f16d4a16d67713c6a4192d10f3b955743d3b656a8ef856f45d8ce34cac6f",
     "https://docs.stripe.com/api/v2/core/events.md": "7b4fe5bbe25344de1f2145d421d1d407b62e25796cf93b56fe0308c22ef626ea",
@@ -520,13 +520,13 @@
     "https://docs.stripe.com/api/v2/meter-event-streams/meter-event-sessions/object.md": "de25732d6127b2b4aef5c7c83e9ecd2eda4611941a3ac30a3b1dbfb387313dff",
     "https://docs.stripe.com/api/v2/meter-events.md": "5f5471cd57563c4cc734bf40ea085450e15c5c19cc403ebbf1477f6764fbed67",
     "https://docs.stripe.com/api/webhook_endpoints.md": "af8a3e0b82ae69e4485e401f55363bc33322fde80a7668dcec71e0583a18cbbe",
-    "https://docs.stripe.com/keys/restricted-api-keys.md": "ded013234bedaecaeb1fa90eb50d78ccd2218237fa82c8522f14d4fbd30c3b4a",
-    "https://docs.stripe.com/payments/vault-and-forward.md": "fc57998f2188b4d3ada7750fbe0e0534db24d396db9eaea5f8cb9e9a2c3b7a1b",
-    "https://docs.stripe.com/stripe-apps/reference/permissions.md": "7079059fbd5e65f617ad3b2da1644779dd4b028fe680078fbc07740f3a17cd53",
+    "https://docs.stripe.com/keys/restricted-api-keys.md": "531c2f71a90a51c3b2623d350f4e9ede475dfda9e40b0cd994beb3ba684b13dc",
+    "https://docs.stripe.com/payments/vault-and-forward.md": "111dd26a51314e180aab0b5ebca6671df19f28d2b8a260db9d7f41511e34c998",
+    "https://docs.stripe.com/stripe-apps/reference/permissions.md": "08635ec062fa98caeb554cbe0319692ba7bd0a8794d97d7138f961f42fd2f039",
     "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json": "f00242857c84b56ec6cfab86cbb487b7a84611bc447bc2cbd56e1dac7f86fabe"
   },
   "vercel": {
-    "https://openapi.vercel.sh/": "5b3f7e764fac6e87a1092c7e599841a316613b3bc63edef2ccd286d9e3a4b8cc"
+    "https://openapi.vercel.sh/": "45a6cb8b14bb2bc8762e1881da017fc74504584e71ff01fd9607dd4f1816f181"
   },
   "x": {
     "https://api.twitter.com/2/openapi.json": "1d8be10b9c4ab1b6c1f22af42124c5b1ef982d32d751e74f98a28354f04b17a6"

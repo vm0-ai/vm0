@@ -14,19 +14,6 @@ import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
 } from "@vm0/api-contracts/contracts/zero-host";
-import {
-  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
-  formatRunErrorForExternalSurface,
-  isActionableRunError,
-  isClaudeCodeAuthenticationCredentialsError,
-  isGenericRunErrorForDisplay,
-} from "@vm0/api-contracts/contracts/errors";
-import {
-  modelProviderCredentialScopeSchema,
-  modelProviderTypeSchema,
-  type ModelProviderCredentialScope,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
@@ -60,55 +47,18 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
-import { env } from "../../lib/env";
-import {
-  buildArtifactPrefix,
-  buildFileUrl,
-  buildFileUrlFromKey,
-} from "../../lib/file-url";
 import { type Db, db$, writeDb$ } from "../external/db";
-import {
-  publishThreadListChanged,
-  publishUserSignal,
-} from "../external/realtime";
-import { listS3Objects } from "../external/s3";
 import { safeJsonParse } from "../utils";
-import { assistantMessageIdForRunEvent } from "./assistant-message-id";
-import { getMemberRoleAndUpdateCache$ } from "./auth.service";
+import {
+  inferMimetype,
+  insertAssistantEventMessages$,
+  resolveAttachFileMetadataUrls,
+  resolveAttachFileUrls,
+  visibleChatMessageCondition,
+} from "./zero-chat-message-shared.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 
-const REPORT_ERROR_STREAK_THRESHOLD = 2;
-
-const CHAT_RUN_REPORTABLE_ERROR_MESSAGE = "An unexpected error occurred.";
-
-const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  avif: "image/avif",
-  svg: "image/svg+xml",
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  aac: "audio/aac",
-  flac: "audio/flac",
-  m4a: "audio/mp4",
-  mp3: "audio/mpeg",
-  mpga: "audio/mpeg",
-  oga: "audio/ogg",
-  ogg: "audio/ogg",
-  opus: "audio/opus",
-  wav: "audio/wav",
-  pdf: "application/pdf",
-  txt: "text/plain",
-  csv: "text/csv",
-  md: "text/markdown",
-  html: "text/html",
-  htm: "text/html",
-  json: "application/json",
-};
+export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 
@@ -171,67 +121,8 @@ type ChatThreadModelPin = {
   readonly selectedModel: string | null;
 };
 
-interface RunErrorProviderContext {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly modelProviderType: ModelProviderType | null;
-  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
-}
-
-interface FormatRunErrorLikeWebMessageParams {
-  readonly chatThreadId?: string | null;
-  readonly runId: string;
-  readonly errorMessage: string;
-  readonly modelProviderType?: ModelProviderType | null;
-  readonly modelProviderCredentialScope?: ModelProviderCredentialScope | null;
-  readonly canManageOrgModelProviders?: boolean;
-}
-
 function effectiveChatMessageRunId() {
   return chatMessages.runId;
-}
-
-/**
- * Advances chat_threads.last_message_at to NOW(), but only forward — GREATEST
- * guards against an out-of-order write rewinding the column and silently
- * pulling a thread back down the sidebar.
- *
- * The sidebar orders threads by this column, and we deliberately bump it only
- * for terminal runs that produce visible assistant text (including failure
- * text), not on user sends, usage rows, pure lifecycle markers, or mid-stream
- * assistant events. So a thread surfaces to the top when there is new text for
- * the user to read, not the moment they hit send.
- */
-export async function touchChatThreadLastMessageAt(
-  tx: Pick<Db, "update">,
-  threadId: string,
-): Promise<void> {
-  await tx
-    .update(chatThreads)
-    .set({
-      lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, NOW())`,
-    })
-    .where(eq(chatThreads.id, threadId));
-}
-
-export function visibleChatMessageCondition() {
-  return sql<boolean>`NOT EXISTS (
-      SELECT 1
-      FROM ${chatMessages} AS revoker
-      WHERE revoker.revokes_message_id = ${chatMessages.id}
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.revokesMessageId} IS NOT NULL
-      AND ${chatMessages.content} IS NULL
-      AND ${chatMessages.error} IS NULL
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.interruptsRunId} IS NOT NULL
-    )`;
 }
 
 const messageColumns = {
@@ -273,13 +164,6 @@ function escapeLikePattern(value: string): string {
     .replace(/_/g, String.raw`\_`);
 }
 
-function inferMimetype(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  return ext
-    ? (EXT_MIMETYPE_MAP[ext] ?? "application/octet-stream")
-    : "application/octet-stream";
-}
-
 function parseHostedArtifactKind(
   value: unknown,
 ): HostedArtifactKind | undefined {
@@ -294,56 +178,6 @@ function parseHostedArtifactKindFromMetadata(
     return undefined;
   }
   return parseHostedArtifactKind(metadata.artifactKind);
-}
-
-function buildReportableErrorMessage(runId: string): string {
-  return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
-}
-
-function buildModelProvidersUrl(): string {
-  const appUrl = env("APP_URL").replace(/\/$/u, "");
-  return `${appUrl}/?settings=providers`;
-}
-
-function buildPersonalModelProvidersUrl(): string {
-  const appUrl = env("APP_URL").replace(/\/$/u, "");
-  return `${appUrl}/?settings=model`;
-}
-
-function buildClaudeCodeCredentialRecoveryUrl(params: {
-  readonly modelProviderType: ModelProviderType | null | undefined;
-  readonly modelProviderCredentialScope:
-    | ModelProviderCredentialScope
-    | null
-    | undefined;
-}): string {
-  if (
-    params.modelProviderType === "claude-code-oauth-token" &&
-    params.modelProviderCredentialScope === "member"
-  ) {
-    return buildPersonalModelProvidersUrl();
-  }
-  return buildModelProvidersUrl();
-}
-
-function formatLatestSessionProviderType(
-  value: string | null,
-): ModelProviderType | null {
-  if (value === null) {
-    return null;
-  }
-  const parsed = modelProviderTypeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function formatRunModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null) {
-    return null;
-  }
-  const parsed = modelProviderCredentialScopeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
 }
 
 function ownedChatThread(
@@ -454,52 +288,6 @@ function effectiveModelFirstThreadPin(params: {
   });
 }
 
-export function resolveAttachFileUrls(
-  userId: string,
-  fileIds: readonly string[],
-): Computed<Promise<readonly ResolvedAttachFile[]>> {
-  return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    const resolved = await Promise.all(
-      fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const prefix = buildArtifactPrefix(userId, fileId);
-        const objects = await get(listS3Objects(bucket, prefix));
-        const object = objects[0];
-        if (!object) {
-          return null;
-        }
-
-        const filename = object.key.split("/").pop() ?? fileId;
-        return {
-          id: fileId,
-          filename,
-          contentType: inferMimetype(filename),
-          size: object.size,
-          url: buildFileUrl(userId, fileId, filename),
-        };
-      }),
-    );
-
-    return resolved.filter((file): file is ResolvedAttachFile => {
-      return file !== null;
-    });
-  });
-}
-
-export function resolveAttachFileMetadataUrls(
-  metadata: readonly ChatMessageAttachFileMetadata[],
-): readonly ResolvedAttachFile[] {
-  return metadata.map((file) => {
-    return {
-      id: file.id,
-      filename: file.filename,
-      contentType: file.contentType,
-      size: file.size,
-      url: buildFileUrlFromKey(file.objectKey),
-    };
-  });
-}
-
 function chatMessageAttachFiles(
   userId: string,
   row: ChatMessageRow,
@@ -514,168 +302,6 @@ function chatMessageAttachFiles(
     return undefined;
   });
 }
-
-function genericErrorStreakForRun(params: {
-  readonly chatThreadId: string;
-  readonly runId: string;
-  readonly currentErrorMessage: string;
-}): Computed<Promise<number>> {
-  return computed(async (get): Promise<number> => {
-    const rows = await get(db$)
-      .select({
-        runId: zeroRuns.id,
-        error: agentRuns.error,
-      })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(zeroRuns.chatThreadId, params.chatThreadId))
-      .orderBy(asc(agentRuns.createdAt), asc(agentRuns.id));
-
-    let streak = 0;
-    for (const row of rows) {
-      const errorMessage =
-        row.runId === params.runId ? params.currentErrorMessage : row.error;
-      if (!errorMessage?.trim() || isActionableRunError(errorMessage)) {
-        streak = 0;
-      } else {
-        streak += 1;
-      }
-
-      if (row.runId === params.runId) {
-        return streak;
-      }
-    }
-
-    return 1;
-  });
-}
-
-function runErrorProviderContext(
-  runId: string,
-): Computed<Promise<RunErrorProviderContext | undefined>> {
-  return computed(async (get): Promise<RunErrorProviderContext | undefined> => {
-    const [run] = await get(db$)
-      .select({
-        userId: agentRuns.userId,
-        orgId: agentRuns.orgId,
-        modelProviderType: zeroRuns.modelProvider,
-        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      })
-      .from(agentRuns)
-      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(agentRuns.id, runId))
-      .limit(1);
-
-    if (!run) {
-      return undefined;
-    }
-
-    return {
-      userId: run.userId,
-      orgId: run.orgId,
-      modelProviderType: formatLatestSessionProviderType(run.modelProviderType),
-      modelProviderCredentialScope: formatRunModelProviderCredentialScope(
-        run.modelProviderCredentialScope,
-      ),
-    };
-  });
-}
-
-function formatRunErrorLikeWebMessage(
-  params: FormatRunErrorLikeWebMessageParams,
-): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const errorMessage = params.errorMessage.trim() || "Run failed";
-    const providerContext =
-      params.modelProviderType !== undefined &&
-      params.modelProviderCredentialScope !== undefined
-        ? undefined
-        : await get(runErrorProviderContext(params.runId));
-    const modelProviderType =
-      params.modelProviderType !== undefined
-        ? params.modelProviderType
-        : providerContext?.modelProviderType;
-    const modelProviderCredentialScope =
-      params.modelProviderCredentialScope !== undefined
-        ? params.modelProviderCredentialScope
-        : providerContext?.modelProviderCredentialScope;
-    const displayErrorMessage = formatRunErrorForExternalSurface({
-      code: "INTERNAL_SERVER_ERROR",
-      message: errorMessage,
-      claudeCodeCredentialRecovery: {
-        modelProviderType,
-        modelProviderCredentialScope,
-        canManageOrgModelProviders: params.canManageOrgModelProviders ?? false,
-        modelProvidersUrl: buildClaudeCodeCredentialRecoveryUrl({
-          modelProviderType,
-          modelProviderCredentialScope,
-        }),
-      },
-    });
-    if (
-      !isGenericRunErrorForDisplay(errorMessage) ||
-      displayErrorMessage !== CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-    ) {
-      return displayErrorMessage;
-    }
-    if (!params.chatThreadId) {
-      return displayErrorMessage;
-    }
-
-    const streak = await get(
-      genericErrorStreakForRun({
-        chatThreadId: params.chatThreadId,
-        runId: params.runId,
-        currentErrorMessage: errorMessage,
-      }),
-    );
-
-    return streak >= REPORT_ERROR_STREAK_THRESHOLD
-      ? buildReportableErrorMessage(params.runId)
-      : displayErrorMessage;
-  });
-}
-
-export const formatRunErrorForRunOwner$ = command(
-  async (
-    { get, set },
-    params: Omit<
-      FormatRunErrorLikeWebMessageParams,
-      "modelProviderType" | "modelProviderCredentialScope"
-    >,
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const providerContext = await get(runErrorProviderContext(params.runId));
-    signal.throwIfAborted();
-
-    let canManageOrgModelProviders = params.canManageOrgModelProviders ?? false;
-    if (
-      params.canManageOrgModelProviders === undefined &&
-      providerContext?.modelProviderType === "anthropic-api-key" &&
-      providerContext.modelProviderCredentialScope === "org" &&
-      isClaudeCodeAuthenticationCredentialsError(params.errorMessage)
-    ) {
-      const membership = await set(
-        getMemberRoleAndUpdateCache$,
-        providerContext.orgId,
-        providerContext.userId,
-        signal,
-      );
-      signal.throwIfAborted();
-      canManageOrgModelProviders = membership?.role === "admin";
-    }
-
-    return await get(
-      formatRunErrorLikeWebMessage({
-        ...params,
-        modelProviderType: providerContext?.modelProviderType ?? null,
-        modelProviderCredentialScope:
-          providerContext?.modelProviderCredentialScope ?? null,
-        canManageOrgModelProviders,
-      }),
-    );
-  },
-);
 
 function lifecycleEventOrUndefined(
   value: string | null,
@@ -1538,106 +1164,6 @@ export function chatThreadForRun(
     return { chatThreadId: row.chatThreadId, userId: row.userId };
   });
 }
-
-export const insertAssistantEventMessages$ = command(
-  async (
-    { set },
-    args: {
-      readonly runId: string;
-      readonly threadId: string;
-      readonly userId: string;
-      readonly items: readonly {
-        readonly sequenceNumber: number;
-        readonly content: string;
-        readonly runEventId?: string;
-      }[];
-    },
-    signal: AbortSignal,
-  ): Promise<number> => {
-    if (args.items.length === 0) {
-      return 0;
-    }
-
-    const writeDb = set(writeDb$);
-    const itemsWithRunEventId = args.items.filter(
-      (
-        item,
-      ): item is {
-        readonly sequenceNumber: number;
-        readonly content: string;
-        readonly runEventId: string;
-      } => {
-        return item.runEventId !== undefined;
-      },
-    );
-    const legacyItems = args.items.filter((item) => {
-      return item.runEventId === undefined;
-    });
-
-    const deterministicRows =
-      itemsWithRunEventId.length === 0
-        ? []
-        : await writeDb
-            .insert(chatMessages)
-            .values(
-              itemsWithRunEventId.map((item) => {
-                return {
-                  id: assistantMessageIdForRunEvent(
-                    args.runId,
-                    item.runEventId,
-                  ),
-                  chatThreadId: args.threadId,
-                  runId: args.runId,
-                  role: "assistant",
-                  content: item.content,
-                  sequenceNumber: item.sequenceNumber,
-                  runEventId: item.runEventId,
-                };
-              }),
-            )
-            .onConflictDoNothing()
-            .returning({ id: chatMessages.id });
-    signal.throwIfAborted();
-
-    const legacyRows =
-      legacyItems.length === 0
-        ? []
-        : await writeDb
-            .insert(chatMessages)
-            .values(
-              legacyItems.map((item) => {
-                return {
-                  chatThreadId: args.threadId,
-                  runId: args.runId,
-                  role: "assistant",
-                  content: item.content,
-                  sequenceNumber: item.sequenceNumber,
-                  runEventId: null,
-                };
-              }),
-            )
-            .onConflictDoNothing({
-              target: [chatMessages.runId, chatMessages.sequenceNumber],
-            })
-            .returning({ id: chatMessages.id });
-    signal.throwIfAborted();
-
-    const insertedRowCount = deterministicRows.length + legacyRows.length;
-
-    if (insertedRowCount > 0) {
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadMessageCreated:${args.threadId}`,
-      );
-      signal.throwIfAborted();
-
-      await publishThreadListChanged(args.userId);
-      signal.throwIfAborted();
-    }
-
-    return insertedRowCount;
-  },
-);
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 

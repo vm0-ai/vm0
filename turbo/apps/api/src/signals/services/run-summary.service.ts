@@ -4,7 +4,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 
 const log = logger("run-summary");
@@ -112,6 +112,50 @@ function generateRunSummary(
   );
 }
 
+export async function saveRunSummary(
+  db: Db,
+  args: {
+    readonly runId: string;
+    readonly triggerSource: string;
+    readonly prompt: string;
+    readonly resultText: string;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const result = await settle(
+    (async () => {
+      const summary = await generateRunSummary(
+        args.triggerSource,
+        args.prompt,
+        args.resultText,
+      );
+      signal?.throwIfAborted();
+
+      if (!summary) {
+        log.warn("Run summary generation returned null (API key missing?)", {
+          runId: args.runId,
+          triggerSource: args.triggerSource,
+        });
+        return;
+      }
+
+      await db
+        .update(zeroRuns)
+        .set({ summary })
+        .where(eq(zeroRuns.id, args.runId));
+      signal?.throwIfAborted();
+    })(),
+  );
+  signal?.throwIfAborted();
+
+  if (!result.ok) {
+    log.warn("Failed to generate run summary", {
+      runId: args.runId,
+      error: result.error,
+    });
+  }
+}
+
 export const saveRunSummary$ = command(
   async (
     { set },
@@ -123,38 +167,6 @@ export const saveRunSummary$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const result = await settle(
-      (async () => {
-        const summary = await generateRunSummary(
-          args.triggerSource,
-          args.prompt,
-          args.resultText,
-        );
-        signal.throwIfAborted();
-
-        if (!summary) {
-          log.warn("Run summary generation returned null (API key missing?)", {
-            runId: args.runId,
-            triggerSource: args.triggerSource,
-          });
-          return;
-        }
-
-        const writeDb = set(writeDb$);
-        await writeDb
-          .update(zeroRuns)
-          .set({ summary })
-          .where(eq(zeroRuns.id, args.runId));
-        signal.throwIfAborted();
-      })(),
-    );
-    signal.throwIfAborted();
-
-    if (!result.ok) {
-      log.warn("Failed to generate run summary", {
-        runId: args.runId,
-        error: result.error,
-      });
-    }
+    await saveRunSummary(set(writeDb$), args, signal);
   },
 );

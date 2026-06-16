@@ -5,7 +5,6 @@ import type {
   TriggerLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 
-import { internalApiBaseUrl } from "../../../lib/internal-api-url";
 import type { InternalRunCallbackKind } from "../internal-run-callback";
 
 /**
@@ -39,19 +38,13 @@ interface Automation {
   readonly timezone: string;
 }
 
-interface HttpRunCallback {
-  readonly url: string;
-  readonly secret: string;
-  readonly payload: unknown;
-}
-
 interface InternalRunCallback {
   readonly internalKind: InternalRunCallbackKind;
   readonly secret: string;
   readonly payload: unknown;
 }
 
-type RunCallback = HttpRunCallback | InternalRunCallback;
+type RunCallback = InternalRunCallback;
 
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
@@ -284,7 +277,7 @@ function generateCallbackSecret(): string {
  */
 function buildChatCallback(automation: Automation): RunCallback {
   return {
-    url: `${internalApiBaseUrl()}/api/internal/callbacks/chat`,
+    internalKind: "chat",
     secret: generateCallbackSecret(),
     payload: {
       threadId: automation.chatThreadId,
