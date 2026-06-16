@@ -109,7 +109,7 @@ const ROW_CLASS =
 // Dotted-underline link affordance for the title, mirroring the insights page
 // (network-insights-page.tsx): hover reveals a tooltip, click navigates.
 const TITLE_LINK_CLASS =
-  "min-w-0 flex-1 truncate text-sm font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2 transition-colors hover:decoration-foreground";
+  "min-w-0 flex-1 truncate text-sm font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -314,11 +314,11 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
 
   return (
     <div className={ROW_CLASS}>
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-stretch gap-3">
         <span
           title={label}
           aria-label={label}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+          className="flex w-8 shrink-0 items-center justify-center self-stretch rounded-lg bg-muted/50 text-muted-foreground"
         >
           <Icon size={17} stroke={1.5} />
         </span>
