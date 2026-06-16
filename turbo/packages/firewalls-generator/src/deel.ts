@@ -82,6 +82,15 @@ const SCOPE_OVERRIDES: Record<string, string> = {
   "GET /rest/v2/immigration/workers/{worker_id}/required-documents":
     "workers:read",
   "POST /rest/v2/immigration/workers/documents": "workers:write",
+  // HRIS organization structures / positions (duplicate parameter-name variants
+  // missing scopes in split specs)
+  "DELETE /rest/v2/hris/organization_structures/{hrisOrgStr_id}":
+    "organizations:write",
+  "GET /rest/v2/hris/organization_structures/{hrisOrgStr_id}":
+    "organizations:read",
+  "PATCH /rest/v2/hris/organization_structures/{hrisOrgStr_id}":
+    "organizations:write",
+  "GET /rest/v2/hris/positions/profile/{hrisProfileId}": "profile:read",
 };
 
 // ── Scopeless endpoints ──────────────────────────────────────────────────
