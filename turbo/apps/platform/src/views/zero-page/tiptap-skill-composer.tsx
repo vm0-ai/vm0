@@ -167,6 +167,84 @@ function isIOS(): boolean {
   );
 }
 
+function isMacKeyboard(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+}
+
+function serializeTextblockSegment(
+  node: ProseMirrorNode,
+  from: number,
+  to: number,
+): string {
+  return node.textBetween(from, to, "\n", (leafNode) => {
+    return leafNode.type.name === "hardBreak" ? "\n" : "";
+  });
+}
+
+function resolveMacControlLineNavigation(
+  editor: Editor,
+  event: KeyboardEvent,
+): number | null {
+  if (
+    !isMacKeyboard() ||
+    !event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    event.shiftKey
+  ) {
+    return null;
+  }
+
+  const key = event.key.toLowerCase();
+  if (key !== "a" && key !== "e") {
+    return null;
+  }
+
+  const { $head } = editor.state.selection;
+  const { parent, parentOffset } = $head;
+  if (!parent.isTextblock) {
+    return null;
+  }
+
+  const beforeCaret = serializeTextblockSegment(parent, 0, parentOffset);
+  if (key === "a") {
+    const previousBreak = beforeCaret.lastIndexOf("\n");
+    return $head.start() + previousBreak + 1;
+  }
+
+  const afterCaret = serializeTextblockSegment(
+    parent,
+    parentOffset,
+    parent.content.size,
+  );
+  const nextBreak = afterCaret.indexOf("\n");
+  return (
+    $head.start() +
+    (nextBreak === -1 ? parent.content.size : parentOffset + nextBreak)
+  );
+}
+
+function insertPlainTextLineBreak(
+  editor: Editor,
+  event: KeyboardEvent,
+): boolean {
+  if (
+    event.key !== "Enter" ||
+    !event.shiftKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+
+  event.preventDefault();
+  return editor.commands.splitBlock();
+}
+
 // Replace the active `/query` text with the chosen token (reusing the space that
 // already follows the query, or appending one). The caret is moved past that
 // space so the inserted `/skill` reads as a finished token: typing the next word
@@ -462,6 +540,20 @@ export function TiptapSkillComposer({
   }
 
   function handleEditorKeyDown(event: KeyboardEvent): boolean {
+    // In the chat composer, Enter can be send, so Shift+Enter is the user's
+    // plain-text newline. Keep it as a normal paragraph split rather than a
+    // ProseMirror hardBreak so line navigation stays textarea-like.
+    if (insertPlainTextLineBreak(editor, event)) {
+      return true;
+    }
+
+    const lineNavigationPos = resolveMacControlLineNavigation(editor, event);
+    if (lineNavigationPos !== null) {
+      event.preventDefault();
+      editor.commands.setTextSelection(lineNavigationPos);
+      return true;
+    }
+
     if (
       showSlashSkillMenu &&
       handleSlashMenuKey(event, {
