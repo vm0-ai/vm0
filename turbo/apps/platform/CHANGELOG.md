@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.458.1](https://github.com/vm0-ai/vm0/compare/app-v0.458.0...app-v0.458.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+* keep selected illustration thumbnail in view and add hero click navigation ([#17863](https://github.com/vm0-ai/vm0/issues/17863)) ([3f06b52](https://github.com/vm0-ai/vm0/commit/3f06b526eb831bdf4f19cb5bf34c81f6fb68932b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.2
+    * @vm0/core bumped to 8.343.1
+
 ## [0.458.0](https://github.com/vm0-ai/vm0/compare/app-v0.457.0...app-v0.458.0) (2026-06-16)
 
 
