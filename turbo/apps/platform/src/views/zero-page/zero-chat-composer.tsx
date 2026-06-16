@@ -684,11 +684,6 @@ function toPresentationGenerationTemplate(
   };
 }
 
-const ALL_PRESENTATION_TEMPLATE_ITEMS = [
-  ...PRESENTATION_TEMPLATE_ITEMS,
-  ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
-];
-
 function presentationTemplatePickerItems(
   useNewPresentationTemplates: boolean,
 ): readonly PresentationTemplateItem[] {
@@ -715,9 +710,14 @@ function selectedPresentationTemplateItem(
   if (value?.type !== "presentation") {
     return undefined;
   }
-  return ALL_PRESENTATION_TEMPLATE_ITEMS.find((item) => {
-    return isSelectedPresentationTemplate(item, value);
-  });
+  return (
+    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    })
+  );
 }
 
 function isSelectedIllustrationTemplate(

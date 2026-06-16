@@ -5636,11 +5636,6 @@ function formatTemplateIdLabel(templateId: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-const ALL_PRESENTATION_TEMPLATE_ITEMS = [
-  ...PRESENTATION_TEMPLATE_ITEMS,
-  ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
-];
-
 function generationTemplateLabel(
   value: GenerationTemplateRequest | undefined,
 ): string | null {
@@ -5663,12 +5658,19 @@ function generationTemplateLabel(
       item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
     );
   }
-  const item = ALL_PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-    return (
-      candidate.designSystemId === value.selection.designSystemId &&
-      candidate.templateId === value.selection.templateId
-    );
-  });
+  const item =
+    PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    });
   return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
 }
 

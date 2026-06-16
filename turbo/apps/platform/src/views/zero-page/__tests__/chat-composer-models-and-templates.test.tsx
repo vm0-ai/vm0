@@ -1775,7 +1775,7 @@ describe("chat composer templates", () => {
 
   it("queues a selected template during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
     mockActiveTemplateThread();
 
     detachedSetupPage({
@@ -1813,7 +1813,7 @@ describe("chat composer templates", () => {
 
   it("keeps newer template selections visible after a queued template is sent", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
     const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockActiveTemplateThread();
 
@@ -1928,7 +1928,7 @@ describe("chat composer templates", () => {
 
   it("reopens the picker on the presentation tab from the selected chip", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2019,7 +2019,7 @@ describe("chat composer templates", () => {
 
   it("removes the selected template from the chip without opening the picker", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({

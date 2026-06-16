@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
@@ -3970,7 +3971,7 @@ describe("chat lifecycle", () => {
 
   it("sends inline feedback with selected template and draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
     const templateChipLabel = template.title;
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];
