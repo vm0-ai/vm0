@@ -102,14 +102,20 @@ fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
 }
 
 fn check_artifact_prerequisites(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
-    check_executable_file(config.binary_path, "firecracker binary", errors);
-    check_readable_file(config.kernel_path, "kernel", errors);
+    let binary_metadata = check_executable_file(config.binary_path, "firecracker binary", errors);
+    check_non_empty_file_size(
+        config.binary_path,
+        "firecracker binary",
+        binary_metadata,
+        errors,
+    );
+    check_non_empty_readable_file(config.kernel_path, "kernel", errors);
     let rootfs_blocks = check_readable_file(config.rootfs_path, "rootfs", errors)
         .and_then(|metadata| check_rootfs_size(config.rootfs_path, metadata.len(), errors));
 
     if let Some(snapshot) = config.mode.snapshot() {
-        check_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
-        check_readable_file(&snapshot.memory_path, "snapshot memory", errors);
+        check_non_empty_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
+        check_non_empty_readable_file(&snapshot.memory_path, "snapshot memory", errors);
         let snapshot_cow_len =
             check_readable_file(&snapshot.cow_path, "snapshot cow", errors).map(|m| m.len());
         let bitmap_path = nbd_cow::cow::bitmap_path_for(&snapshot.cow_path);
@@ -150,10 +156,33 @@ fn check_readable_file(path: &Path, label: &str, errors: &mut Vec<String>) -> Op
     Some(metadata)
 }
 
-fn check_executable_file(path: &Path, label: &str, errors: &mut Vec<String>) {
-    if let Some(metadata) = check_regular_file(path, label, errors) {
-        check_executable(path, label, &metadata, errors);
+fn check_non_empty_readable_file(
+    path: &Path,
+    label: &str,
+    errors: &mut Vec<String>,
+) -> Option<Metadata> {
+    let metadata = check_readable_file(path, label, errors);
+    check_non_empty_file_size(path, label, metadata, errors)
+}
+
+fn check_non_empty_file_size(
+    path: &Path,
+    label: &str,
+    metadata: Option<Metadata>,
+    errors: &mut Vec<String>,
+) -> Option<Metadata> {
+    let metadata = metadata?;
+    if metadata.len() == 0 {
+        errors.push(format!("{label} is empty: {}", path.display()));
+        return None;
     }
+    Some(metadata)
+}
+
+fn check_executable_file(path: &Path, label: &str, errors: &mut Vec<String>) -> Option<Metadata> {
+    let metadata = check_regular_file(path, label, errors)?;
+    check_executable(path, label, &metadata, errors);
+    Some(metadata)
 }
 
 fn check_executable(path: &Path, label: &str, metadata: &Metadata, errors: &mut Vec<String>) {
@@ -626,6 +655,22 @@ mod tests {
         let errors = artifact_errors(fixture.fresh_config());
 
         assert_error_contains(&errors, "rootfs is empty");
+    }
+
+    #[test]
+    fn artifact_prerequisites_reject_empty_boot_and_snapshot_artifacts() {
+        let fixture = ArtifactFixture::new();
+        write_sized_file(&fixture.binary_path, 0);
+        write_sized_file(&fixture.kernel_path, 0);
+        write_sized_file(&fixture.snapshot.snapshot_path, 0);
+        write_sized_file(&fixture.snapshot.memory_path, 0);
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_error_contains(&errors, "firecracker binary is empty");
+        assert_error_contains(&errors, "kernel is empty");
+        assert_error_contains(&errors, "snapshot state is empty");
+        assert_error_contains(&errors, "snapshot memory is empty");
     }
 
     #[test]
