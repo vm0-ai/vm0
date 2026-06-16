@@ -41,11 +41,24 @@ interface NotionOperation {
 // Tags to skip (OAuth endpoints are not behind capabilities).
 const SKIP_TAGS = new Set(["OAuth"]);
 
+const CONTENT_TAGS = new Set([
+  "Blocks",
+  "Custom emojis",
+  "Data sources",
+  "Databases",
+  "File uploads",
+  "Meeting notes",
+  "Pages",
+  "Views",
+]);
+
 // Explicit overrides where the default tag+method heuristic is wrong.
 // These match Notion's documented capability requirements.
 const PATH_OVERRIDES: Record<string, Record<string, string>> = {
   // Querying a data source is reading, not inserting
   "/v1/data_sources/{data_source_id}/query": { post: "read_content" },
+  // Querying meeting notes is reading, not inserting
+  "/v1/blocks/meeting_notes/query": { post: "read_content" },
   // Moving a page is updating, not inserting
   "/v1/pages/{page_id}/move": { post: "update_content" },
   // Appending children to a block is inserting content
@@ -56,11 +69,11 @@ const PATH_OVERRIDES: Record<string, Record<string, string>> = {
  * Map (tag, HTTP method, path) → capability name.
  *
  * This matches Notion's documented capability requirements:
- * - Comments: GET → read_comments, POST → insert_comments
+ * - Comments: GET → read_comments, write methods → insert_comments
  * - Users: all → read_users
  * - Search: POST → read_content (search reads, despite being POST)
  * - Explicit overrides for edge cases (see PATH_OVERRIDES)
- * - Everything else: GET → read_content, POST → insert_content,
+ * - Known content tags: GET → read_content, POST → insert_content,
  *   PATCH/DELETE → update_content
  */
 function getCapability(
@@ -78,7 +91,8 @@ function getCapability(
 
   if (tag === "Comments") {
     if (m === "get") return "read_comments";
-    if (m === "post") return "insert_comments";
+    if (m === "post" || m === "patch" || m === "delete")
+      return "insert_comments";
   }
 
   if (tag === "Users") {
@@ -87,6 +101,10 @@ function getCapability(
 
   if (tag === "Search") {
     return "read_content";
+  }
+
+  if (!CONTENT_TAGS.has(tag)) {
+    throw new Error(`Unhandled Notion OpenAPI tag: ${tag}`);
   }
 
   // Default mapping for content tags (Pages, Databases, Blocks, etc.)
@@ -100,7 +118,7 @@ function getCapability(
 // ── Capability descriptions ──────────────────────────────────────────────
 
 const CAPABILITY_DESCRIPTIONS: Record<string, string> = {
-  insert_comments: "Create comments",
+  insert_comments: "Create, update, and delete comments",
   insert_content:
     "Create pages, databases, blocks, data sources, and upload files",
   read_comments: "Read comments",
