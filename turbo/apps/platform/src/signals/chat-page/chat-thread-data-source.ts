@@ -32,6 +32,11 @@ export interface PatchModelSelectionArgs {
   modelSelection: ModelSelectionRequest | null;
 }
 
+export interface PatchComputerUseHostArgs {
+  threadId: string;
+  computerUseHostId: string | null;
+}
+
 export interface AppendQueuedMessageArgs {
   threadId: string;
   agentId: string;
@@ -90,6 +95,10 @@ export interface ChatThreadDataSource {
   patchModelSelection$: Command<
     Promise<void>,
     [PatchModelSelectionArgs, AbortSignal]
+  >;
+  patchComputerUseHost$: Command<
+    Promise<void>,
+    [PatchComputerUseHostArgs, AbortSignal]
   >;
   appendQueuedMessage$: Command<
     Promise<PagedChatMessage>,

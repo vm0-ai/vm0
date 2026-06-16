@@ -6,6 +6,7 @@ import type {
   AppendQueuedMessageArgs,
   CancelRunsArgs,
   ChatThreadDataSource,
+  PatchComputerUseHostArgs,
   PatchModelSelectionArgs,
   RecallMessageArgs,
 } from "./chat-thread-data-source.ts";
@@ -18,6 +19,16 @@ const localPatchModelSelection$ = command(
   (
     _visitor,
     _args: PatchModelSelectionArgs,
+    _signal: AbortSignal,
+  ): Promise<void> => {
+    return Promise.resolve();
+  },
+);
+
+const localPatchComputerUseHost$ = command(
+  (
+    _visitor,
+    _args: PatchComputerUseHostArgs,
     _signal: AbortSignal,
   ): Promise<void> => {
     return Promise.resolve();
@@ -108,6 +119,7 @@ export function createLocalChatThreadDataSource(input: {
     initialPage$,
     patchDraft$: localPatchDraft$,
     patchModelSelection$: localPatchModelSelection$,
+    patchComputerUseHost$: localPatchComputerUseHost$,
     appendQueuedMessage$: localAppendQueuedMessage$,
     recallMessage$: localRecallMessage$,
     listMessagesAfter$: localListMessagesAfter$,

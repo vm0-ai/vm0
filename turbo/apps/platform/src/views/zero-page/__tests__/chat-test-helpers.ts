@@ -8,6 +8,7 @@ import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadComputerUseHostContract,
   chatThreadMessagesContract,
   chatMessagesContract,
   type GenerationTemplateRequest,
@@ -335,6 +336,9 @@ export function mockChatLifecycle(
       interruptsRunId: string;
       clientMessageId: string;
     }) => void;
+    onComputerUseHostUpdate?: (body: {
+      computerUseHostId: string | null;
+    }) => void;
     /**
      * Promise the append handler awaits before responding. Lets a test observe
      * the optimistic queued row before the server round-trip completes.
@@ -376,6 +380,7 @@ export function mockChatLifecycle(
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
+  let computerUseHostId: string | null = options?.computerUseHostId ?? null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
@@ -661,9 +666,19 @@ export function mockChatLifecycle(
       draftContent: null,
       draftAttachments: null,
       selectedModel: options?.selectedModel ?? null,
-      computerUseHostId: options?.computerUseHostId ?? null,
+      computerUseHostId,
     });
   });
+  context.mocks.api(
+    chatThreadComputerUseHostContract.update,
+    ({ body, respond }) => {
+      computerUseHostId = body.computerUseHostId;
+      options?.onComputerUseHostUpdate?.({
+        computerUseHostId: body.computerUseHostId,
+      });
+      return respond(204);
+    },
+  );
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, splitChatThreadListResponse(threadList));
   });

@@ -15,6 +15,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
@@ -190,6 +191,11 @@ export const apiAgentsHandlers = [
 
   // POST /api/zero/chat-threads/:id/model-selection
   mockApi(chatThreadModelSelectionContract.update, ({ respond }) => {
+    return respond(204);
+  }),
+
+  // POST /api/zero/chat-threads/:id/computer-use-host
+  mockApi(chatThreadComputerUseHostContract.update, ({ respond }) => {
     return respond(204);
   }),
 

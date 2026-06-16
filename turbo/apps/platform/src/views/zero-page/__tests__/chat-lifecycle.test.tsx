@@ -78,6 +78,7 @@ interface RunCreateCapture {
   hasTextContent?: boolean;
   generationTemplate?: GenerationTemplateRequest;
   modelSelection?: ModelSelectionRequest | null;
+  computerUseHostId?: string | null;
   clientMessageId?: string;
 }
 
@@ -4525,21 +4526,38 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("sends the selected Computer Use host with the chat request", async () => {
+  it("persists the selected Computer Use host before sending", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-send";
+    const hostId = "33333333-3333-4333-8333-333333333333";
+    let sendCount = 0;
     let sentComputerUseHostId: string | null | undefined;
-    mockChatLifecycle(context, {
+    let updatedComputerUseHostId: string | null | undefined;
+    const lifecycle = mockChatLifecycle(context, {
       threadId,
+      onComputerUseHostUpdate: (body) => {
+        updatedComputerUseHostId = body.computerUseHostId;
+      },
       onRunCreate: (body) => {
+        sendCount += 1;
         sentComputerUseHostId = body.computerUseHostId;
       },
     });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
-            id: "host-online",
+            id: hostId,
             displayName: "Studio Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
@@ -4563,17 +4581,26 @@ describe("chat lifecycle", () => {
     await user.click(
       await screen.findByRole("switch", { name: "Connect Studio Mac" }),
     );
+    await waitFor(() => {
+      expect(updatedComputerUseHostId).toBe(hostId);
+    });
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
     )) as HTMLTextAreaElement;
-    await sendMessageInUI(user, textarea, "Open the app on my computer");
+    await fill(textarea, "Open the app on my computer");
+    const sendButton = screen.getByLabelText("Send");
+    await waitFor(() => {
+      expect(sendButton).toBeEnabled();
+    });
+    await user.click(sendButton);
 
     await waitFor(() => {
+      expect(sendCount).toBe(1);
       expect(
         screen.getByText("Open the app on my computer"),
       ).toBeInTheDocument();
-      expect(sentComputerUseHostId).toBe("host-online");
+      expect(sentComputerUseHostId).toBeUndefined();
     });
   });
 
@@ -4582,14 +4609,28 @@ describe("chat lifecycle", () => {
     const threadId = "computer-use-saved-selection";
     const hostId = "11111111-1111-4111-8111-111111111111";
     let sentComputerUseHostId: string | null | undefined;
-    mockChatLifecycle(context, {
+    let updatedComputerUseHostId: string | null | undefined;
+    const lifecycle = mockChatLifecycle(context, {
       threadId,
       threadTitle: "Computer Use",
       computerUseHostId: hostId,
+      onComputerUseHostUpdate: (body) => {
+        updatedComputerUseHostId = body.computerUseHostId;
+      },
       onRunCreate: (body) => {
         sentComputerUseHostId = body.computerUseHostId;
       },
     });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Computer Use",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
@@ -4621,6 +4662,9 @@ describe("chat lifecycle", () => {
     });
     expect(selectedComputer).toHaveAttribute("aria-checked", "true");
     await user.click(selectedComputer);
+    await waitFor(() => {
+      expect(updatedComputerUseHostId).toBeNull();
+    });
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -4629,7 +4673,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Do not use my computer")).toBeInTheDocument();
-      expect(sentComputerUseHostId).toBeNull();
+      expect(sentComputerUseHostId).toBeUndefined();
     });
   });
 

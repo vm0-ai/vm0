@@ -199,6 +199,7 @@ export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadComputerUseHostContract,
   chatMessagesContract,
   chatThreadMessagesContract,
   chatSearchContract,
