@@ -109,10 +109,12 @@ const ROW_CLASS =
 // Dotted-underline link affordance for the title, mirroring the insights page
 // (network-insights-page.tsx): hover reveals a tooltip, click navigates.
 // leading-6 keeps the line box tall enough that the offset-4 underline isn't
-// clipped by `truncate`'s overflow-hidden; py-1 + a hover fill give the dotted
-// title a comfortable, forgiving hover target.
+// clipped by `truncate`'s overflow-hidden. inline-block + max-w-full keeps the
+// hover fill hugging the title text (not the whole row), truncating long titles;
+// the -mx-1.5/px-1.5 pair adds chip padding while keeping the text aligned with
+// the breakdown bar below.
 const TITLE_LINK_CLASS =
-  "min-w-0 flex-1 truncate rounded-md py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
+  "inline-block max-w-full -mx-1.5 truncate rounded-md px-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -293,24 +295,28 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
       : null;
 
   const titleNode = titleLink ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          pathname={titleLink.pathname}
-          options={titleLink.options}
-          className={TITLE_LINK_CLASS}
-          onClick={closeOnNavigate}
-        >
-          {title}
-        </Link>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={4} className="max-w-xs">
-        <p className="whitespace-normal break-words text-xs">{title}</p>
-        <p className="mt-1.5 border-t border-white/15 pt-1.5 text-[11px] opacity-80">
-          {titleLink.openLabel} →
-        </p>
-      </TooltipContent>
-    </Tooltip>
+    // Wrapper reserves the flex space so date/credits stay right-aligned, while
+    // the inner link only grows to the text width — keeping the hover fill tight.
+    <span className="min-w-0 flex-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            pathname={titleLink.pathname}
+            options={titleLink.options}
+            className={TITLE_LINK_CLASS}
+            onClick={closeOnNavigate}
+          >
+            {title}
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={4} className="max-w-xs">
+          <p className="whitespace-normal break-words text-xs">{title}</p>
+          <p className="mt-1.5 border-t border-white/15 pt-1.5 text-[11px] opacity-80">
+            {titleLink.openLabel} →
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </span>
   ) : (
     <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
       {title}
@@ -323,9 +329,9 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
         <span
           title={label}
           aria-label={label}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
         >
-          <Icon size={18} stroke={1.5} />
+          <Icon size={20} stroke={1.5} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-h-8 min-w-0 items-center gap-3">
