@@ -720,7 +720,7 @@ function DeleteChatThreadDialog() {
                     key={automation.id}
                     className="break-words text-sm text-muted-foreground"
                   >
-                    {automation.title}
+                    {automation.description?.trim() || "No description"}
                   </li>
                 );
               })}
