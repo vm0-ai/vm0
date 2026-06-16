@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
@@ -9,7 +9,7 @@ import {
   rustStringConstantRootDoc,
   rustStringConstantBindings,
 } from "./constants";
-import { renderPythonBuiltinFirewallCatalog } from "./builtin-firewall-catalog";
+import { renderPythonBuiltinFirewallCatalogFiles } from "./builtin-firewall-catalog";
 import { type RustRouteBinding, rustRouteBindings } from "./routes";
 import {
   type RustTypeModuleDoc,
@@ -43,7 +43,13 @@ const generatedModPath = fileURLToPath(
     import.meta.url,
   ),
 );
-const generatedBuiltinFirewallCatalogPath = fileURLToPath(
+const generatedBuiltinFirewallCatalogPackagePath = fileURLToPath(
+  new URL(
+    "../../../../../crates/runner/mitm-addon/src/generated/builtin_firewalls",
+    import.meta.url,
+  ),
+);
+const legacyGeneratedBuiltinFirewallCatalogPath = fileURLToPath(
   new URL(
     "../../../../../crates/runner/mitm-addon/src/generated/builtin_firewalls.py",
     import.meta.url,
@@ -406,10 +412,18 @@ export async function generateRustConstantsFile(
 }
 
 export async function generatePythonBuiltinFirewallCatalogFile(
-  outputPath = generatedBuiltinFirewallCatalogPath,
+  outputPath = generatedBuiltinFirewallCatalogPackagePath,
+  legacyOutputPath = legacyGeneratedBuiltinFirewallCatalogPath,
 ): Promise<void> {
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, renderPythonBuiltinFirewallCatalog());
+  await rm(outputPath, { recursive: true, force: true });
+  await rm(legacyOutputPath, { force: true });
+  await mkdir(outputPath, { recursive: true });
+
+  for (const file of renderPythonBuiltinFirewallCatalogFiles()) {
+    const filePath = join(outputPath, file.path);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, file.content);
+  }
 }
 
 export function renderGeneratedMod(): string {
