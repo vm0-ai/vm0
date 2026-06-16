@@ -298,8 +298,8 @@ const CATEGORY_ORDER = ["Read", "Write", "Send", "Admin", "Misc"];
 // ── Data loading ─────────────────────────────────────────────────────────
 
 interface SlackMethodData {
-  scope?: Record<string, unknown>;
-  http_method?: string;
+  scope?: unknown;
+  http_method?: unknown;
 }
 
 function loadMethods(): Map<string, SlackMethodData> {
@@ -322,6 +322,10 @@ function loadMethods(): Map<string, SlackMethodData> {
 }
 
 // ── Grouping ─────────────────────────────────────────────────────────────
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function collectScopes(
   methodName: string,
@@ -354,15 +358,20 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
 
   for (const [methodName, data] of methods) {
     const scope = data.scope;
-    if (typeof scope !== "object" || scope === null) continue;
-
-    const allScopes = collectScopes(methodName, scope);
-
     const httpMethod = data.http_method;
-    if (!httpMethod) {
+    if (typeof httpMethod !== "string" || httpMethod.length === 0) {
       throw new Error(`Method "${methodName}" missing http_method`);
     }
     const rule = `${httpMethod.toUpperCase()} /${methodName}`;
+
+    let allScopes: Set<string>;
+    if (scope === "none") {
+      allScopes = new Set();
+    } else if (isRecord(scope)) {
+      allScopes = collectScopes(methodName, scope);
+    } else {
+      throw new Error(`Method "${methodName}" has invalid scope`);
+    }
 
     if (allScopes.size === 0) {
       let ruleSet = groups.get("no_scopes_required");
