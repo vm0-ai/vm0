@@ -159,14 +159,21 @@ impl CowLayer {
         let base_fd = File::open(base_path)?;
         let num_blocks = (size as usize).div_ceil(block_size);
 
-        // Auto-detect restore mode: load bitmap if sidecar file exists.
+        // Auto-detect restore mode: load bitmap if a sidecar directory entry exists.
         let bitmap_path = bitmap_path_for(cow_path);
-        let dirty = if bitmap_path.exists() {
-            let bv = Self::load_bitmap(&bitmap_path, num_blocks)?;
-            tracing::info!(dirty_blocks = bv.count_ones(), "restored dirty bitmap");
-            bv
-        } else {
-            bitvec![0; num_blocks]
+        let dirty = match std::fs::symlink_metadata(&bitmap_path) {
+            Ok(_) => {
+                let bv = Self::load_bitmap(&bitmap_path, num_blocks)?;
+                tracing::info!(dirty_blocks = bv.count_ones(), "restored dirty bitmap");
+                bv
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => bitvec![0; num_blocks],
+            Err(e) => {
+                return Err(NbdCowError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("stat dirty bitmap sidecar {}: {e}", bitmap_path.display()),
+                )));
+            }
         };
 
         // If bitmap has dirty bits, COW file must already exist — open it eagerly.
@@ -1056,6 +1063,25 @@ mod tests {
         let mut buf = vec![0u8; 4096];
         cow.read(0, &mut buf).unwrap();
         assert!(buf.iter().all(|&b| b == 0xAA));
+    }
+
+    #[test]
+    fn create_with_broken_bitmap_symlink_errors() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let tmp = tempfile::tempdir().unwrap();
+        let cow_path = tmp.path().join("cow.img");
+        let bitmap_path = bitmap_path_for(&cow_path);
+        std::os::unix::fs::symlink(tmp.path().join("missing-bitmap"), &bitmap_path).unwrap();
+
+        let err = match CowLayer::new(base.path(), &cow_path, 4096, 4096, 1024 * 1024) {
+            Ok(_) => panic!("expected broken bitmap symlink to fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            matches!(&err, NbdCowError::Io(e) if e.kind() == std::io::ErrorKind::NotFound),
+            "expected missing broken bitmap target error, got {err:?}"
+        );
     }
 
     // ---------- flush_buffered recovery tests ----------
