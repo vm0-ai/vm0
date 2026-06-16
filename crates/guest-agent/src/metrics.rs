@@ -276,6 +276,12 @@ mod tests {
     }
 
     #[test]
+    fn memory_info_from_content_returns_zero_when_available_overflows() {
+        let content = format!("MemTotal: 1 kB\nMemAvailable: {} kB\n", u64::MAX);
+        assert_eq!(memory_info_from_content(&content), (0, 0));
+    }
+
+    #[test]
     fn memory_usage_from_kb_rejects_available_overflow() {
         assert_eq!(memory_usage_from_kb(1, u64::MAX / 1024 + 1), None);
     }
