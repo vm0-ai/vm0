@@ -353,12 +353,28 @@ impl SubmitPlan {
 
             let key = &entry[..eq_pos];
             let value = &entry[eq_pos + 1..];
+            if !Self::is_valid_env_key(key) {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
+                )));
+            }
             if map.insert(key.to_owned(), value.to_owned()).is_some() {
                 return Err(RunnerError::Config(format!("duplicate {flag} key '{key}'")));
             }
         }
 
         Ok(Some(map))
+    }
+
+    fn is_valid_env_key(key: &str) -> bool {
+        let mut chars = key.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        if !(first == '_' || first.is_ascii_alphabetic()) {
+            return false;
+        }
+        chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
     }
 
     fn validate_disjoint_env_keys(
@@ -884,6 +900,26 @@ mod tests {
                 vec!["KEY=line1\nline2".to_string()],
                 Vec::new(),
                 "newline or NUL",
+            ),
+            (
+                vec!["BAD-KEY=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                vec!["1KEY=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                vec!["KEY SPACE=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                Vec::new(),
+                vec!["ÅKEY=value".to_string()],
+                "expected [_A-Za-z][_A-Za-z0-9]*",
             ),
             (
                 Vec::new(),
