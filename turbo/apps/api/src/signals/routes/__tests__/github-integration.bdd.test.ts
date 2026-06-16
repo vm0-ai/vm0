@@ -6,9 +6,7 @@ import { describe, expect, it } from "vitest";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
@@ -37,17 +35,15 @@ import {
   mockGithubUserOauthEnv,
   newGithubUserId,
   newRemoteInstallationId,
-  proxyGithubIssuesCallbackToApp,
   signedConnectLink,
   zeroCapabilityToken,
   type RawRouteResponse,
 } from "./helpers/api-bdd-github";
-import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 
 /**
  * CONN-02 / INT-03 / HOOK-01: GitHub App install + setup callback, GitHub
- * user OAuth linking, installation management, label listeners, and signed
- * internal issue callbacks produced by real webhook-created runs.
+ * user OAuth linking, installation management, label listeners, and internal
+ * issue callbacks produced by real webhook-created runs.
  */
 
 const context = testContext();
@@ -56,10 +52,6 @@ const store = createStore();
 const WEB_ORIGIN = "http://localhost:3001";
 const APP_ORIGIN = "http://localhost:3002";
 const SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
-const GITHUB_ISSUES_CALLBACK_URL =
-  "http://localhost:3000/api/internal/callbacks/github/issues";
-const LEGACY_GITHUB_CALLBACK_SECRET = "bdd-github-callback-secret";
-
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -1356,46 +1348,6 @@ async function readLatestGithubCallbackForInstallation(installationId: string) {
   });
 }
 
-async function signedLegacyGithubIssuesCallbackDelivery(args: {
-  readonly runId: string;
-  readonly status: "completed" | "failed" | "progress";
-  readonly error?: string;
-  readonly payload: Record<string, unknown>;
-}): Promise<{
-  readonly body: string;
-  readonly signature: string;
-  readonly timestamp: string;
-}> {
-  const { callbackId } = await store.set(
-    seedAgentRunCallback$,
-    {
-      runId: args.runId,
-      url: GITHUB_ISSUES_CALLBACK_URL,
-      payload: args.payload,
-      secret: LEGACY_GITHUB_CALLBACK_SECRET,
-      status: "delivered",
-    },
-    context.signal,
-  );
-  const body = JSON.stringify({
-    callbackId,
-    runId: args.runId,
-    status: args.status,
-    error: args.error,
-    payload: args.payload,
-  });
-  const timestamp = Math.floor(now() / 1000);
-  return {
-    body,
-    signature: computeHmacSignature(
-      body,
-      LEGACY_GITHUB_CALLBACK_SECRET,
-      timestamp,
-    ),
-    timestamp: timestamp.toString(),
-  };
-}
-
 async function waitForRunnerJob(
   api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
@@ -1563,7 +1515,7 @@ async function completeGithubRun(args: {
   context.mocks.axiom.query.mockResolvedValue([]);
 }
 
-describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", () => {
+describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () => {
   it("dispatches label-listener runs and replays signed callback deliveries", async () => {
     const senderGithubUserId = newGithubUserId();
     const harness = await githubRunActor(senderGithubUserId);
@@ -1641,34 +1593,10 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       queriesBeforeProgress,
     );
 
-    // The route remains compatible with already-pending legacy callback rows.
-    const legacyPayload = {
-      installationId: installationDbId,
-      repo,
-      issueNumber: 42,
-      agentId: harness.secondAgentId,
-    };
-    const progressDelivery = await signedLegacyGithubIssuesCallbackDelivery({
-      runId,
-      status: "progress",
-      payload: legacyPayload,
-    });
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    expect(
-      JSON.parse(progressDelivery.body) as Record<string, unknown>,
-    ).toMatchObject({ runId, status: "progress" });
-    const progressReplay = await gh.requestGithubIssuesCallback(
-      progressDelivery.body,
-      {
-        "x-vm0-signature": progressDelivery.signature,
-        "x-vm0-timestamp": progressDelivery.timestamp,
-      },
-      [200],
-    );
-    expect(progressReplay.body).toStrictEqual({ success: true });
     await waitForCommentCount(issueApi, 1);
 
-    // Completion posts the audited comment through the captured delivery.
+    // Completion posts the audited comment through typed internal dispatch.
     await gh.enableAuditLink(actor);
     await checkpointGithubRun({
       webhooks,
@@ -1715,67 +1643,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       ]),
     );
 
-    // Replay without GitHub App credentials: 500 after verification.
-    const delivery = await signedLegacyGithubIssuesCallbackDelivery({
-      runId,
-      status: "completed",
-      payload: legacyPayload,
-    });
-    const replayHeaders = {
-      "x-vm0-signature": delivery.signature,
-      "x-vm0-timestamp": delivery.timestamp,
-    };
-    mockOptionalEnv("GITHUB_APP_ID", undefined);
-    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
-    const unconfigured = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      replayHeaders,
-      [500],
-    );
-    expect(unconfigured.body).toStrictEqual({
-      error: "GitHub App not configured",
-    });
-    mockGithubAppEnv();
-
-    // Forged signatures and expired timestamps are rejected.
-    const forged = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      {
-        "x-vm0-signature": "deadbeef",
-        "x-vm0-timestamp": String(Math.floor(now() / 1000)),
-      },
-      [401],
-    );
-    expect(forged.body).toStrictEqual({ error: "Invalid signature" });
-    const expired = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      {
-        "x-vm0-signature": delivery.signature,
-        "x-vm0-timestamp": String(Math.floor((now() - 10 * 60_000) / 1000)),
-      },
-      [401],
-    );
-    expect(expired.body).toStrictEqual({ error: "Timestamp expired" });
-
-    // A legitimately signed callback with the wrong payload shape verifies
-    // per-callback but fails GitHub issue payload parsing.
-    const mismatchedDelivery = await signedLegacyGithubIssuesCallbackDelivery({
-      runId,
-      status: "completed",
-      payload: { threadId: randomUUID(), agentId: harness.defaultAgentId },
-    });
-    const mismatched = await gh.requestGithubIssuesCallback(
-      mismatchedDelivery.body,
-      {
-        "x-vm0-signature": mismatchedDelivery.signature,
-        "x-vm0-timestamp": mismatchedDelivery.timestamp,
-      },
-      [400],
-    );
-    expect(mismatched.body).toStrictEqual({
-      error: "Invalid or missing payload",
-    });
-
     // Cancelling a second labeled run posts the formatted failure comment.
     await postGithubWebhook(
       webhooks,
@@ -1807,19 +1674,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     expect(context.mocks.axiom.query.mock.calls).toHaveLength(
       queriesBeforeFailure,
     );
-
-    // Deleting the installation orphans further replays of the delivery.
-    mockOptionalEnv("GITHUB_APP_ID", undefined);
-    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
-    await gh.deleteInstallation(actor, [200]);
-    const orphaned = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      replayHeaders,
-      [404],
-    );
-    expect(orphaned.body).toStrictEqual({
-      error: "GitHub installation not found",
-    });
   });
 
   it("maintains GitHub issue session continuity across mention and label runs", async () => {
@@ -1828,7 +1682,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
     const repo = "bdd-org/bdd-sessions";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
 
     function mention(commentId: string, commentBody: string): string {
       return issueCommentEvent({
@@ -1981,24 +1834,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const fourthCancelled = await api.readRun(actor, fourth.runId);
     expect(fourthCancelled.status).toBe("cancelled");
   });
-
-  it("rejects callbacks without a runId or callback record", async () => {
-    const gh = createGithubBddApi(context);
-
-    const missingRunId = await gh.requestGithubIssuesCallback(
-      JSON.stringify({ status: "completed", payload: {} }),
-      {},
-      [400],
-    );
-    expect(missingRunId.body).toStrictEqual({ error: "Missing runId" });
-
-    const unknownRun = await gh.requestGithubIssuesCallback(
-      JSON.stringify({ runId: randomUUID(), status: "completed", payload: {} }),
-      {},
-      [404],
-    );
-    expect(unknownRun.body).toStrictEqual({ error: "Callback not found" });
-  });
 });
 
 describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
@@ -2008,7 +1843,6 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
     const repo = "bdd-org/bdd-label-dispatch";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
 
     await gh.createLabelListener(
       actor,
@@ -2413,7 +2247,6 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
     const { api, webhooks, actor, runnerGroup } = harness;
     const repo = "bdd-org/bdd-mentions";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
     // Re-capture the issue API with earlier conversation history so the
     // dispatched context renders prior comments (and drops the trigger).
     const issueApi = captureGithubIssueApi(harness.remoteInstallationId, {

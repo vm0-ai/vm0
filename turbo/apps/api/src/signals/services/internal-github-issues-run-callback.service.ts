@@ -2,10 +2,6 @@ import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import {
-  githubIssuesCallbackPayloadSchema,
-  type GitHubIssuesCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-github-issues";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -30,6 +26,10 @@ import {
 import { resolveGithubAgentReplyFooterText } from "./zero-github-footer.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
+import {
+  githubIssuesCallbackPayloadSchema,
+  type GitHubIssuesCallbackPayload,
+} from "./github-issues-callback-payload";
 
 const L = logger("InternalCallbacksGithubIssues");
 const RUN_COMPLETED_FALLBACK_MESSAGE = "Task completed successfully.";

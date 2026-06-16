@@ -13,10 +13,10 @@ describe("internalApiBaseUrl", () => {
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
     expect(
       new URL(
-        "/api/internal/callbacks/github/issues",
+        "/api/internal/callbacks/trigger/cron",
         internalApiBaseUrl(),
       ).toString(),
-    ).toBe("https://api.vm0.ai/api/internal/callbacks/github/issues");
+    ).toBe("https://api.vm0.ai/api/internal/callbacks/trigger/cron");
   });
 
   it("defaults to the API backend origin in production when VM0_API_BACKEND_URL is unset", () => {

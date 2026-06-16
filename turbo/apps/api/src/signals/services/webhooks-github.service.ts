@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-import {
-  githubIssuesCallbackPayloadSchema,
-  type GitHubIssuesCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-github-issues";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -38,6 +34,10 @@ import {
 } from "./integration-model-route.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import {
+  githubIssuesCallbackPayloadSchema,
+  type GitHubIssuesCallbackPayload,
+} from "./github-issues-callback-payload";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
