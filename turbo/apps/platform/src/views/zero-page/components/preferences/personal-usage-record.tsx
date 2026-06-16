@@ -295,7 +295,10 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
   const titleNode = titleLink ? (
     // Wrapper reserves the flex space so date/credits stay right-aligned, while
     // the inner link only grows to the text width — keeping the hover fill tight.
-    <span className="min-w-0 flex-1">
+    // flex (not block) so the inline-block link doesn't add a line-box descender
+    // strut, which would make this column taller than the square icon and leave
+    // the bar's bottom edge unaligned with the icon.
+    <span className="flex min-w-0 flex-1 items-center">
       <Link
         pathname={titleLink.pathname}
         options={titleLink.options}
