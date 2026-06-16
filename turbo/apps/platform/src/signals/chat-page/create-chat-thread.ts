@@ -2429,7 +2429,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+  extends SendMessageDeps,
+    QueueMessageDeps,
+    RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
@@ -2682,7 +2684,7 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const { setInputRef$, focusInput$ } = createInputRef();
+  const inputRef = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, runTracking.allFinished$);
   const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
@@ -2708,8 +2710,7 @@ export function createChatThreadSignals(
     defaultModelSelection$,
     agentPinned$,
     ...threadUi,
-    setInputRef$,
-    focusInput$,
+    ...inputRef,
     queueDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,
