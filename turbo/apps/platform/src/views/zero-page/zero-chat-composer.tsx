@@ -570,7 +570,7 @@ function ComposerFeedbackRow({
             <IconQuote
               size={12}
               stroke={1.5}
-              className="text-muted-foreground"
+              className="-scale-x-100 text-muted-foreground"
             />
           </span>
           <span className="min-w-0 truncate text-xs font-medium">
