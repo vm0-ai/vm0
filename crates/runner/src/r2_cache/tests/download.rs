@@ -76,8 +76,7 @@ async fn finalize_overwrites_existing_final_dir() {
 // Proves that `R2ImageCache::with_client` + the `mock_client!` macro
 // dispatch correctly through to a real `aws_sdk_s3::Client`. Detailed
 // coverage of `exists`, `upload`, `try_download`, `gc_older_than` against
-// mocked S3 responses lives in the test modules added by subsequent
-// commits.
+// mocked S3 responses lives in this module and sibling behavior modules.
 
 #[tokio::test]
 async fn with_client_dispatches_through_mock() {
