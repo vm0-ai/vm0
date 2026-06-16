@@ -9,6 +9,7 @@ import auth
 import auth_base_forwarder as forwarder
 from aws_sigv4 import AwsSigV4Credentials
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
@@ -26,6 +27,117 @@ def _templated_builtin_auth_header_names() -> list[str]:
 
 class TestAuthBaseUrlRewriteForwarding:
     """auth.base rewrite forwarding handler tests."""
+
+    async def test_url_rewrite_uses_real_forwarder_response(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Handler auth.base rewrites should drive the real forwarder path."""
+        request_body = b'{"message":"hello"}'
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            resolved_base="https://real.example.com/webhook/secret?base=trusted",
+            rel_path="/send",
+            method="POST",
+            request_body=request_body,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+                ("Cookie", "session=agent"),
+                ("X-Api-Key", "agent-api-key"),
+                ("X-Repeat", "one"),
+                ("X-Repeat", "two"),
+                ("X-Keep", "client"),
+            ),
+            auth_overrides={
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["WEBHOOK", "API_KEY"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+
+        with (
+            fake_forwarder_upstream(
+                status=201,
+                body=b'{"ok":true}',
+                headers=[
+                    ("Set-Cookie", "a=1"),
+                    ("Set-Cookie", "b=2"),
+                    ("Content-Type", "application/json"),
+                    ("X-Upstream", "real"),
+                ],
+            ) as upstream,
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+        assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
+        assert upstream.create_connection_calls
+        assert upstream.contexts[0].server_hostnames == ["real.example.com"]
+
+        request_line = upstream.socket.request_lines()[0]
+        _method, request_target, _version = request_line.split(" ", 2)
+        rewritten = urlparse(f"https://real.example.com{request_target}")
+        rewritten_query = parse_qs(rewritten.query, keep_blank_values=True)
+        assert request_line.startswith("POST ")
+        assert rewritten.path == "/webhook/secret/send"
+        assert rewritten_query == {
+            "base": ["trusted"],
+            "client": ["visible"],
+            "api_key": ["resolved-key"],
+        }
+        assert upstream.socket.request_header_values("Host") == ["real.example.com"]
+        assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
+        assert upstream.socket.request_header_values("X-Custom") == ["injected-value"]
+        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
+        assert upstream.socket.request_header_values("X-Keep") == ["client"]
+        assert upstream.socket.request_header_values("Cookie") == []
+        assert upstream.socket.request_header_values("X-Api-Key") == []
+        assert upstream.socket.request_header_values("Content-Length") == [str(len(request_body))]
+        assert upstream.socket.request_text().endswith("\r\n\r\n" + request_body.decode("ascii"))
+
+        assert flow.response is not None
+        assert flow.response.status_code == 201
+        assert flow.response.content == b'{"ok":true}'
+        response_pairs = list(flow.response.headers.items(multi=True))
+        assert response_pairs.count(("Set-Cookie", "a=1")) == 1
+        assert response_pairs.count(("Set-Cookie", "b=2")) == 1
+        assert ("Content-Type", "application/json") in response_pairs
+        assert ("X-Upstream", "real") in response_pairs
+
+        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK", "API_KEY"]
+        assert flow.metadata["auth_refreshed_connectors"] == ["discord"]
+        assert flow.metadata["auth_refreshed_secrets"] == ["WEBHOOK"]
+        assert flow.metadata["auth_cache_hit"] is False
+        assert "firewall_error" not in flow.metadata
+
+        assert flow.request.path == "/hook?client=visible"
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert flow.request.headers["Cookie"] == "session=agent"
+        assert flow.request.headers["X-Api-Key"] == "agent-api-key"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "Firewall URL rewrite:" in log_text
+        assert "real-token" not in log_text
+        assert "webhook/secret" not in log_text
 
     async def test_forward_request_includes_auth_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
