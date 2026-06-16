@@ -57,6 +57,7 @@ struct VsockExecFixture {
     sock_path: PathBuf,
     vsock: Arc<VsockHost>,
     coordinator: ParkCoordinator,
+    gate: GuestOperationStartGate,
     guest_task: tokio::task::JoinHandle<()>,
 }
 
@@ -78,21 +79,22 @@ impl VsockExecFixture {
         let vsock = Arc::new(host_task.await.unwrap().unwrap());
 
         let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let coordinator = ParkCoordinator::new();
+        let gate = GuestOperationStartGate::new(guest, coordinator.clone());
 
         Self {
             _dir: dir,
             sock_path,
             vsock,
             coordinator,
+            gate,
             guest_task,
         }
     }
 
     fn spawn_server(&self) -> ControlServerHandle {
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&self.vsock))));
-        let gate = GuestOperationStartGate::new(guest, self.coordinator.clone());
-        bind_test_server(self.sock_path.clone(), gate)
+        bind_test_server(self.sock_path.clone(), self.gate.clone())
             .unwrap()
             .spawn(CancellationToken::new())
     }
