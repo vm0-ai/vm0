@@ -12,8 +12,11 @@ describe("internalApiBaseUrl", () => {
 
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
     expect(
-      new URL("/api/internal/callbacks/chat", internalApiBaseUrl()).toString(),
-    ).toBe("https://api.vm0.ai/api/internal/callbacks/chat");
+      new URL(
+        "/api/internal/callbacks/telegram",
+        internalApiBaseUrl(),
+      ).toString(),
+    ).toBe("https://api.vm0.ai/api/internal/callbacks/telegram");
   });
 
   it("defaults to the API backend origin in production when VM0_API_BACKEND_URL is unset", () => {

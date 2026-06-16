@@ -39,7 +39,6 @@ import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalCallbacksAgentPhoneRoutes } from "./routes/internal-callbacks-agentphone";
-import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
@@ -207,7 +206,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...internalCallbacksAgentPhoneRoutes,
-  ...internalCallbacksChatRoutes,
   ...internalCallbacksGithubIssuesRoutes,
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,

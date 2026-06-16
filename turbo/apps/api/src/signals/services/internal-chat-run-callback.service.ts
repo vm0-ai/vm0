@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  chatCallbackPayloadSchema,
-  type ChatCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-chat";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -28,6 +24,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
+import { z } from "zod";
 
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
@@ -67,6 +64,15 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+
+const chatCallbackPayloadSchema = z
+  .object({
+    threadId: z.string(),
+    agentId: z.string(),
+  })
+  .passthrough();
+
+type ChatCallbackPayload = z.infer<typeof chatCallbackPayloadSchema>;
 
 interface ContentBlock {
   readonly type?: string;
