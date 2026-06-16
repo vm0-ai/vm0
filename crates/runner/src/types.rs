@@ -65,7 +65,7 @@ pub struct ExecutionContext {
     pub secret_values: Option<Vec<String>>,
     // Local submit may explicitly allow raw provider secrets for local-only
     // runner testing. This marker is internal and must not be claimable via API JSON.
-    #[serde(default, skip_deserializing)]
+    #[serde(default, skip)]
     pub local_secret_env_keys: Option<HashSet<String>>,
     // Encrypted runtime secret namespace forwarded to mitm-addon for auth
     // resolution. Decrypted keys match `${{ secrets.NAME }}` names; connector

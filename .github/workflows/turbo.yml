@@ -2037,14 +2037,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          HOST="$(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | head -n 1)"
+          HOST="$(
+            awk -v hosts="$METAL_HOSTS" 'BEGIN {
+              count = split(hosts, values, ",")
+              for (i = 1; i <= count; i++) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", values[i])
+                if (values[i] != "") {
+                  print values[i]
+                  exit
+                }
+              }
+            }'
+          )"
           if [ -z "$HOST" ]; then
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
             exit 1
           fi
 
-          ROOTFS_HASH="$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h] // empty')"
-          SNAPSHOT_HASH="$(echo "$SNAPSHOT_HASH_MAP" | jq -r --arg h "$HOST" '.[$h] // empty')"
+          ROOTFS_HASH="$(jq -r --arg h "$HOST" '.[$h] // empty' <<<"$ROOTFS_HASH_MAP")"
+          SNAPSHOT_HASH="$(jq -r --arg h "$HOST" '.[$h] // empty' <<<"$SNAPSHOT_HASH_MAP")"
           if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
             echo "::error::No rootfs/snapshot hash found for ${HOST}"
             exit 1
@@ -2083,12 +2094,12 @@ jobs:
           cleanup() {
             echo "--- Cleanup local env smoke runner ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
-            sudo rm -rf "$GROUP_DIR"
+            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
           }
           trap cleanup EXIT
 
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
-          sudo rm -rf "$GROUP_DIR"
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
 
           echo "--- Generating local runner config ---"
           sudo "$BIN_DIR/runner" config \
@@ -2134,29 +2145,35 @@ jobs:
           fi
           echo "$SUBMIT_OUTPUT"
 
-          RUN_ID="$(echo "$SUBMIT_OUTPUT" | jq -r '.run_id // empty')"
+          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_OUTPUT")"
           [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
           STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
 
-          for _ in $(seq 1 20); do
-            if sudo test -s "$STREAM_LOG" \
-              && sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG"; then
-              break
-            fi
-            sleep 1
-          done
+          print_failure_context() {
+            echo "--- Guest stdout stream tail ---"
+            sudo tail -200 "$STREAM_LOG" || true
+            print_service_logs
+          }
 
           echo "--- Forwarded env lines from guest stdout ---"
           sudo grep -E 'LOCAL_SUBMIT_VISIBLE=|LOCAL_SUBMIT_EMPTY=|VM0_STUCK_TOOL_TIMEOUT_SECS=|ANTHROPIC_API_KEY=' "$STREAM_LOG" || true
 
-          sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG" \
-            || fail "ordinary --env value was not visible to the guest CLI"
-          sudo grep -q 'LOCAL_SUBMIT_EMPTY=' "$STREAM_LOG" \
-            || fail "empty --env value was not visible to the guest CLI"
-          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=3' "$STREAM_LOG" \
-            || fail "guest-agent tuning env was not visible to the guest CLI"
-          sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" \
-            || fail "--secret-env value was not visible to the guest CLI"
+          sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG" || {
+            print_failure_context
+            fail "ordinary --env value was not visible to the guest CLI"
+          }
+          sudo grep -q 'LOCAL_SUBMIT_EMPTY=' "$STREAM_LOG" || {
+            print_failure_context
+            fail "empty --env value was not visible to the guest CLI"
+          }
+          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=3' "$STREAM_LOG" || {
+            print_failure_context
+            fail "guest-agent tuning env was not visible to the guest CLI"
+          }
+          sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" || {
+            print_failure_context
+            fail "--secret-env value was not visible to the guest CLI"
+          }
 
           echo "PASS: local submit forwarded env and secret-env to the guest CLI"
           REMOTE_SCRIPT
