@@ -4,10 +4,6 @@ import {
   zeroInsightsContract,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
-import {
-  zeroUsageInsightContract,
-  type UsageInsightResponse,
-} from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -295,45 +291,6 @@ function oldInsightsResponse(): InsightsResponse & NetworkInsightsData {
   };
 }
 
-function usageInsightResponse(): UsageInsightResponse {
-  return {
-    buckets: [
-      {
-        ts: `${localDateDaysAgo(1)} 00:00:00`,
-        series: { chat: 400, slack: 250 },
-        tokens: { chat: 800, slack: 500 },
-      },
-    ],
-    automations: [
-      {
-        automationId: "d0000000-0000-4000-a000-000000000001",
-        automationName: "Morning Briefing",
-        automationDescription: null,
-        credits: 300,
-        tokens: 600,
-      },
-    ],
-    automationOtherCount: 0,
-    automationOtherCredits: 0,
-    chats: [
-      {
-        threadId: "b0000000-0000-4000-a000-000000000001",
-        threadTitle: "Competitor scan",
-        credits: 120,
-        tokens: 240,
-      },
-    ],
-    chatOtherCount: 0,
-    chatOtherCredits: 0,
-    emailCredits: 0,
-    emailTokens: 0,
-    slackCredits: 250,
-    slackTokens: 500,
-    grandTotalCredits: 650,
-    grandTotalTokens: 1300,
-  };
-}
-
 function quoteVariantsInsightsResponse(): InsightsResponse &
   NetworkInsightsData {
   return {
@@ -457,7 +414,7 @@ describe("network insights page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { level: 1, name: "Insights & Usage" }),
+        screen.getByRole("heading", { level: 1, name: "Insights" }),
       ).toBeInTheDocument();
       expect(
         screen.getByText("Run an agent to see insights here."),
@@ -476,7 +433,7 @@ describe("network insights page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { level: 1, name: "Insights & Usage" }),
+        screen.getByRole("heading", { level: 1, name: "Insights" }),
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Yesterday")).toBeInTheDocument();
@@ -548,15 +505,12 @@ describe("network insights page", () => {
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, insightsResponse());
     });
-    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
-      return respond(200, usageInsightResponse());
-    });
 
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { level: 1, name: "Insights & Usage" }),
+        screen.getByRole("heading", { level: 1, name: "Insights" }),
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Research Bot")).toBeInTheDocument();
@@ -616,7 +570,6 @@ describe("network insights page", () => {
     expect(screen.getByText("Archive Bot")).toBeInTheDocument();
     expect(screen.getByText("Mira")).toBeInTheDocument();
     expect(screen.queryByText("Research Bot")).not.toBeInTheDocument();
-    expect(screen.queryByText("Morning Briefing")).not.toBeInTheDocument();
   });
 
   it("summarizes different daily activity patterns", async () => {
