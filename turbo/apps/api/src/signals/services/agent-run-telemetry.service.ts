@@ -447,11 +447,14 @@ ${systemTelemetrySinceFilter(params.since)}
 | limit ${params.limit + 1}`;
 
     const events = (await get(queryAxiom(apl))).slice();
-    const hasMore = events.length > params.limit;
-    const records = hasMore ? events.slice(0, params.limit) : events;
+    const networkLogsWithCursor = sanitizeAxiomNetworkEvents(events);
+    const hasMore = networkLogsWithCursor.length > params.limit;
+    const networkLogs = hasMore
+      ? networkLogsWithCursor.slice(0, params.limit)
+      : networkLogsWithCursor;
 
     return {
-      networkLogs: sanitizeAxiomNetworkEvents(records),
+      networkLogs,
       hasMore,
     };
   });

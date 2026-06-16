@@ -1761,6 +1761,13 @@ describe("RUN-04: agent run telemetry families", () => {
         ],
         network: [
           {
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "missing-time.example.com",
+          },
+          {
             _time: "2026-06-10T11:00:00Z",
             runId,
             userId: actor.userId,

@@ -167,11 +167,11 @@ ${sinceFilter}
 | limit ${limit + 1}`;
 
     const events = (await get(queryAxiom(apl))).slice();
-
-    const hasMore = events.length > limit;
-    const records = hasMore ? events.slice(0, limit) : events;
-
-    const networkLogs = sanitizeAxiomNetworkEvents(records);
+    const networkLogsWithCursor = sanitizeAxiomNetworkEvents(events);
+    const hasMore = networkLogsWithCursor.length > limit;
+    const networkLogs = hasMore
+      ? networkLogsWithCursor.slice(0, limit)
+      : networkLogsWithCursor;
 
     return { networkLogs, hasMore };
   });
