@@ -149,8 +149,18 @@ fn deserialize_optional_failure_reason<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let value = Option::<String>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| FailureReason::from_wire_value(&value)))
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum WireValue {
+        String(String),
+        Other(serde::de::IgnoredAny),
+    }
+
+    let value = Option::<WireValue>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(WireValue::String(value)) => FailureReason::from_wire_value(&value),
+        Some(WireValue::Other(_)) | None => None,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -454,6 +464,26 @@ mod tests {
             "cliExitCode": 1,
             "claudeNumTurns": 1,
             "failureReason": "future_reason",
+            "sessionHistoryStatus": "present",
+            "promptShape": "plain",
+            "promptBytes": 13,
+            "firstLineBytes": 13
+        });
+
+        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
+
+        assert_eq!(diagnostic.failure_reason, None);
+    }
+
+    #[test]
+    fn failure_diagnostic_deserializes_non_string_failure_reason_as_none() {
+        let json = serde_json::json!({
+            "schemaVersion": 1,
+            "failureClass": "cli_nonzero",
+            "framework": "claude_code",
+            "cliExitCode": 1,
+            "claudeNumTurns": 1,
+            "failureReason": 123,
             "sessionHistoryStatus": "present",
             "promptShape": "plain",
             "promptBytes": 13,
