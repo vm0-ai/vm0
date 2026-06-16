@@ -323,7 +323,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
           <Icon size={17} stroke={1.5} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-3">
+          <span className="flex min-h-8 min-w-0 items-center gap-3">
             {titleNode}
             <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
               {formatDate(row.lastActivityAt)}
