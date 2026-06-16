@@ -24,7 +24,8 @@ use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
     ResourceFailureKind, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, normalize_failure_exit_code, normalize_timeout_failure_exit_code,
+    agent_exit_failure_message, job_terminal_wait_timeout, normalize_failure_exit_code,
+    normalize_timeout_failure_exit_code,
 };
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -239,8 +240,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
-    // JOB_TIMEOUT configures both the guest-side process timeout and the
-    // host-side wait watchdog. They remain separate protocol mechanisms.
+    // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
+    // little longer for terminal proof so the guest timeout path can kill,
+    // drain stdout/stderr, and report ProcessTerminationKind::TimedOut.
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -275,7 +277,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // operation can be removed before sandbox cleanup closes the connection.
     let process_pid = handle.pid;
     let process_cancel = handle.take_cancel_handle();
-    let wait_process = sandbox.wait_process(handle, JOB_TIMEOUT);
+    let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
     tokio::pin!(wait_process);
     let (result, wait_cancelled, abort_stdout_drain) = tokio::select! {
         biased;

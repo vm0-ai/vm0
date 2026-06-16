@@ -153,6 +153,13 @@ pub struct StartProcessCall {
     pub control: ProcessControlMode,
 }
 
+/// Captured `wait_process` request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WaitProcessCall {
+    /// Timeout passed to `Sandbox::wait_process`.
+    pub timeout: Duration,
+}
+
 /// Captured process-cancel request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessCancelCall {
@@ -448,6 +455,9 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of full wait_process exits consumed by factory-created
     /// sandboxes. Empty queue follows the existing default/override behavior.
     wait_process_exits: Mutex<VecDeque<ProcessExit>>,
+    /// Recorded wait_process calls across all sandboxes built from this
+    /// override set.
+    wait_process_calls: Mutex<Vec<WaitProcessCall>>,
     /// FIFO queue of create results consumed by every factory built with
     /// these overrides. Empty queue → default Ok(()).
     create_results: Mutex<VecDeque<Result<()>>>,
@@ -476,6 +486,9 @@ pub struct MockSandboxOverrides {
     /// Recorded start_process output modes across all sandboxes built from
     /// this override set.
     start_process_calls: Mutex<Vec<StartProcessCall>>,
+    /// Recorded copy_file calls across all sandboxes built from this override
+    /// set.
+    copy_file_calls: Mutex<Vec<CopyFileCall>>,
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
@@ -518,6 +531,7 @@ impl MockSandboxOverrides {
             wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
             wait_process_exits: Mutex::new(VecDeque::new()),
+            wait_process_calls: Mutex::new(Vec::new()),
             create_results: Mutex::new(VecDeque::new()),
             create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
@@ -528,6 +542,7 @@ impl MockSandboxOverrides {
             destroy_gate: Mutex::new(None),
             destroy_behaviors: Mutex::new(VecDeque::new()),
             start_process_calls: Mutex::new(Vec::new()),
+            copy_file_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
             process_cancel_supported: Mutex::new(true),
             process_cancel_calls: Mutex::new(Vec::new()),
@@ -759,6 +774,22 @@ impl MockSandboxOverrides {
         self.start_process_calls.lock_ignoring_poison().clone()
     }
 
+    /// Return recorded wait-process calls across all sandboxes built from this
+    /// override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order.
+    pub fn wait_process_calls(&self) -> Vec<WaitProcessCall> {
+        self.wait_process_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return recorded copy-file calls across all sandboxes built from this
+    /// override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order.
+    pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
+        self.copy_file_calls.lock_ignoring_poison().clone()
+    }
+
     /// Queue stdout chunks emitted by the next streaming `start_process` call.
     /// Consumed FIFO across all sandboxes; empty queue emits no chunks.
     pub fn push_start_process_stdout_chunks(&self, chunks: Vec<ProcessOutputChunk>) {
@@ -978,8 +1009,9 @@ impl MockSandbox {
     /// The returned vector is a cloned snapshot in recorded order. Calls are
     /// recorded before mock validation errors such as invalid guest paths,
     /// oversized `max_bytes`, zero `max_bytes`, zero timeout, or invalid host
-    /// paths are returned. Copy-file calls are sandbox-local; shared overrides
-    /// do not expose a copy-file call accessor.
+    /// paths are returned. When this sandbox was built with shared overrides,
+    /// copy-file calls are also recorded in
+    /// [`MockSandboxOverrides::copy_file_calls`].
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
@@ -1220,15 +1252,19 @@ impl Sandbox for MockSandbox {
         host_path: &Path,
         options: CopyFileOptions,
     ) -> Result<CopyFileResult> {
+        let call = CopyFileCall {
+            path: path.to_string(),
+            host_path: host_path.to_path_buf(),
+            max_bytes: options.max_bytes,
+            timeout: options.timeout,
+            missing_ok: options.missing_ok,
+        };
         self.copy_file_calls
             .lock_ignoring_poison()
-            .push(CopyFileCall {
-                path: path.to_string(),
-                host_path: host_path.to_path_buf(),
-                max_bytes: options.max_bytes,
-                timeout: options.timeout,
-                missing_ok: options.missing_ok,
-            });
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides.copy_file_calls.lock_ignoring_poison().push(call);
+        }
         validate_mock_guest_file_path(SandboxOperation::CopyFile, "copy_file", path)?;
         validate_mock_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
@@ -1415,7 +1451,7 @@ impl Sandbox for MockSandbox {
     async fn wait_process(
         &self,
         mut handle: GuestProcessHandle,
-        _timeout: Duration,
+        timeout: Duration,
     ) -> Result<ProcessExit> {
         let Some(_waiter) = handle.take_waiter() else {
             return Err(SandboxError::Operation {
@@ -1429,6 +1465,10 @@ impl Sandbox for MockSandbox {
         handle.drop_unclaimed_stdout();
 
         if let Some(overrides) = &self.overrides {
+            overrides
+                .wait_process_calls
+                .lock_ignoring_poison()
+                .push(WaitProcessCall { timeout });
             // Block until the test signals (gives a window for cancellation).
             overrides.wait_for_wait_process_gate().await;
             // Return error when configured (simulates timeout or crash).

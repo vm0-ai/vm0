@@ -22,10 +22,10 @@ use super::super::sandbox_run::{
     execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success, register_proxy,
 };
 use super::super::{
-    AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
-    NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_LIMIT_MARKER,
+    AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JOB_TIMEOUT,
+    JobParams, NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_LIMIT_MARKER,
     STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job,
-    execute_job_reuse,
+    execute_job_reuse, job_terminal_wait_timeout,
 };
 use super::support::{
     CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_storage,
@@ -1133,6 +1133,71 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+}
+
+#[tokio::test]
+async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies_logs() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec());
+    exit.termination = ProcessTerminationKind::TimedOut;
+    exit.guest_duration_ms = Some(7_200_084);
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    assert_eq!(start_calls[0].timeout, JOB_TIMEOUT);
+
+    let wait_calls = overrides.wait_process_calls();
+    assert_eq!(wait_calls.len(), 1);
+    assert_eq!(wait_calls[0].timeout, job_terminal_wait_timeout());
+
+    let failure = outcome.failure.as_ref().expect("expected timeout failure");
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms: _,
+            guest_duration_ms,
+        } => {
+            assert_eq!(timeout_ms, JOB_TIMEOUT.as_millis());
+            assert_eq!(guest_duration_ms, Some(7_200_084));
+        }
+        ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
+    }
+
+    let copy_calls = overrides.copy_file_calls();
+    assert_eq!(copy_calls.len(), 3);
+    assert!(
+        copy_calls[0].path.ends_with("/system.log"),
+        "unexpected copy calls: {copy_calls:#?}"
+    );
+    assert!(
+        copy_calls[1].path.ends_with("/metrics.jsonl"),
+        "unexpected copy calls: {copy_calls:#?}"
+    );
+    assert!(
+        copy_calls[2].path.ends_with("/sandbox-ops.jsonl"),
+        "unexpected copy calls: {copy_calls:#?}"
+    );
 }
 
 #[tokio::test]
