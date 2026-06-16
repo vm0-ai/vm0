@@ -104,7 +104,7 @@
     "https://www.googleapis.com/discovery/v1/apis/compute/v1/rest": "e41ed83a8d3e203073002659dff49011fa4025b90ce182fbada3a4e7097df0c7"
   },
   "google-docs": {
-    "https://docs.googleapis.com/$discovery/rest?version=v1": "cd51b9ecc8179ee87f7948d93f0d7892c9e48fe59669b2081388a0ebeb59f95d"
+    "https://docs.googleapis.com/$discovery/rest?version=v1": "699e051c1579b00ed9a5cd5dc291f42bdbf152eefa1fe40b0352260f3bfe0ed9"
   },
   "google-drive": {
     "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest": "6f2e160f2f34cac9d5e2d1123e0af1cf60b8eb1f06e0016ecb6cb443cbf72b8e",
