@@ -2145,7 +2145,9 @@ jobs:
           fi
           echo "$SUBMIT_OUTPUT"
 
-          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_OUTPUT")"
+          SUBMIT_JSON="$(awk '/^\{/{line=$0} END{print line}' <<<"$SUBMIT_OUTPUT")"
+          [ -n "$SUBMIT_JSON" ] || fail "local submit output did not include a JSON response"
+          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_JSON")"
           [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
           STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
 
