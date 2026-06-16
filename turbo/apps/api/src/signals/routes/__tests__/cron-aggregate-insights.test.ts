@@ -625,6 +625,42 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
   });
 
+  it("does not record blocked auth failures as permission decisions", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const completedAt = new Date("2999-01-02T11:56:00.000Z");
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: completedAt,
+        startedAt: completedAt,
+        completedAt,
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-write",
+        action: "BLOCK",
+      },
+    ]);
+
+    await accept(apiClient().aggregate({ headers: cronHeaders() }), [200]);
+
+    const data = await findInsights(fixture);
+    expect(data?.services).toStrictEqual([
+      { domain: "github", calls: 1, agentNames: [expect.any(String)] },
+    ]);
+    expect(data?.permissions).toStrictEqual([]);
+  });
+
   it("attributes current-day network logs for older runs by runId", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),

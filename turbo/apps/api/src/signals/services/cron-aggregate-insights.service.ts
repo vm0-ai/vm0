@@ -39,7 +39,7 @@ interface AxiomNetworkRow {
   readonly runId: string;
   readonly host: string;
   readonly firewall_name: string;
-  readonly firewall_permission: string;
+  readonly firewall_permission?: string;
   readonly action: string;
 }
 
@@ -363,29 +363,36 @@ function aggregateNetworkDataPerUser(
     service.agentNames.add(info.agentName);
     userData.serviceMap.set(row.firewall_name, service);
 
-    if (row.firewall_permission || row.action === "DENY") {
-      const hasPermission = row.firewall_permission.length > 0;
-      const permKey = hasPermission
-        ? `${row.firewall_name}:${row.firewall_permission}`
-        : row.firewall_name;
-      const label = hasPermission
-        ? getPermissionLabel(row.firewall_name, row.firewall_permission)
-        : row.firewall_name;
-      const permission = userData.permMap.get(permKey) ?? {
-        label,
-        connectorType: row.firewall_name,
-        allowed: 0,
-        denied: 0,
-        agentNames: new Set<string>(),
-      };
-      if (row.action === "ALLOW") {
-        permission.allowed++;
-      } else if (row.action === "DENY") {
-        permission.denied++;
-      }
-      permission.agentNames.add(info.agentName);
-      userData.permMap.set(permKey, permission);
+    if (row.action !== "ALLOW" && row.action !== "DENY") {
+      continue;
     }
+
+    const firewallPermission = row.firewall_permission ?? "";
+    if (row.action === "ALLOW" && firewallPermission.length === 0) {
+      continue;
+    }
+
+    const hasPermission = firewallPermission.length > 0;
+    const permKey = hasPermission
+      ? `${row.firewall_name}:${firewallPermission}`
+      : row.firewall_name;
+    const label = hasPermission
+      ? getPermissionLabel(row.firewall_name, firewallPermission)
+      : row.firewall_name;
+    const permission = userData.permMap.get(permKey) ?? {
+      label,
+      connectorType: row.firewall_name,
+      allowed: 0,
+      denied: 0,
+      agentNames: new Set<string>(),
+    };
+    if (row.action === "ALLOW") {
+      permission.allowed++;
+    } else {
+      permission.denied++;
+    }
+    permission.agentNames.add(info.agentName);
+    userData.permMap.set(permKey, permission);
   }
 
   return userNetworkMap;
