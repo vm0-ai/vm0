@@ -298,7 +298,7 @@ const CATEGORY_ORDER = ["Read", "Write", "Send", "Admin", "Misc"];
 // ── Data loading ─────────────────────────────────────────────────────────
 
 interface SlackMethodData {
-  scope?: Record<string, string[] | undefined>;
+  scope?: Record<string, unknown>;
   http_method?: string;
 }
 
@@ -323,6 +323,32 @@ function loadMethods(): Map<string, SlackMethodData> {
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
+function collectScopes(
+  methodName: string,
+  scope: Record<string, unknown>,
+): Set<string> {
+  const allScopes = new Set<string>();
+
+  for (const [tokenType, scopes] of Object.entries(scope)) {
+    if (!Array.isArray(scopes)) {
+      throw new Error(
+        `Method "${methodName}" scope "${tokenType}" is not an array`,
+      );
+    }
+
+    for (const s of scopes) {
+      if (typeof s !== "string") {
+        throw new Error(
+          `Method "${methodName}" scope "${tokenType}" contains a non-string value`,
+        );
+      }
+      allScopes.add(s);
+    }
+  }
+
+  return allScopes;
+}
+
 function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
 
@@ -330,9 +356,7 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
     const scope = data.scope;
     if (typeof scope !== "object" || scope === null) continue;
 
-    const allScopes = new Set(
-      Object.values(scope).flatMap((scopes) => scopes ?? []),
-    );
+    const allScopes = collectScopes(methodName, scope);
 
     const httpMethod = data.http_method;
     if (!httpMethod) {
