@@ -178,17 +178,17 @@ impl CowLayer {
 
         // If bitmap has dirty bits, COW file must already exist — open it eagerly.
         let cow_fd = if dirty.count_ones() > 0 {
-            Some(
-                File::options()
-                    .read(true)
-                    .write(true)
-                    .open(cow_path)
-                    .map_err(|e| {
-                        NbdCowError::Io(std::io::Error::other(format!(
-                            "dirty bitmap present but COW file cannot be opened: {e}"
-                        )))
-                    })?,
-            )
+            let fd = File::options()
+                .read(true)
+                .write(true)
+                .open(cow_path)
+                .map_err(|e| {
+                    NbdCowError::Io(std::io::Error::other(format!(
+                        "dirty bitmap present but COW file cannot be opened: {e}"
+                    )))
+                })?;
+            validate_dirty_cow_coverage(&dirty, fd.metadata()?.len(), block_size)?;
+            Some(fd)
         } else {
             None
         };
@@ -550,6 +550,12 @@ pub fn validate_bitmap_cow_coverage(
     }
 
     let dirty = CowLayer::load_bitmap(bitmap_path, expected_blocks)?;
+    validate_dirty_cow_coverage(&dirty, cow_file_len, block_size)
+}
+
+fn validate_dirty_cow_coverage(dirty: &BitVec, cow_file_len: u64, block_size: usize) -> Result<()> {
+    debug_assert!(block_size > 0);
+
     let Some(last_dirty_block) = dirty.last_one() else {
         return Ok(());
     };
@@ -1081,6 +1087,23 @@ mod tests {
         assert!(
             matches!(&err, NbdCowError::Io(e) if e.kind() == std::io::ErrorKind::NotFound),
             "expected missing broken bitmap target error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn create_with_dirty_bitmap_beyond_cow_file_errors() {
+        let base = create_base_image(&vec![0xAA; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        write_bitmap_file(&bitmap_path_for(cow_file.path()), 2, 0b10);
+
+        let err = match CowLayer::new(base.path(), cow_file.path(), 8192, 4096, 1024 * 1024) {
+            Ok(_) => panic!("expected truncated COW file to fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string().contains("dirty bitmap references COW data"),
+            "expected dirty bitmap coverage error, got {err:?}"
         );
     }
 
