@@ -26,6 +26,8 @@ const OTHER_USAGE_AGENT_NAME = "Other usage";
 const NETWORK_RUN_ATTRIBUTION_BATCH_SIZE = 10_000;
 const AGGREGATION_REPROCESS_OVERLAP_MS = 5 * 60_000;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface AgentInfo {
   readonly agentId: string | null;
@@ -35,12 +37,12 @@ interface AgentInfo {
 }
 
 interface AxiomNetworkRow {
-  readonly _time: string;
-  readonly runId: string;
-  readonly host: string;
-  readonly firewall_name: string;
-  readonly firewall_permission?: string;
-  readonly action: string;
+  readonly _time?: unknown;
+  readonly runId?: unknown;
+  readonly host?: unknown;
+  readonly firewall_name?: unknown;
+  readonly firewall_permission?: unknown;
+  readonly action?: unknown;
 }
 
 interface UserNetworkData {
@@ -330,11 +332,14 @@ function aggregateNetworkDataPerUser(
   const userNetworkMap = new Map<string, UserNetworkData>();
 
   for (const row of networkRows) {
-    if (!isFirewallConnectorType(row.firewall_name)) {
+    const firewallName =
+      typeof row.firewall_name === "string" ? row.firewall_name : "";
+    if (!isFirewallConnectorType(firewallName)) {
       continue;
     }
 
-    const info = runIdToInfo.get(row.runId);
+    const runId = typeof row.runId === "string" ? row.runId : "";
+    const info = runIdToInfo.get(runId);
     if (!info) {
       continue;
     }
@@ -355,13 +360,13 @@ function aggregateNetworkDataPerUser(
     };
     userNetworkMap.set(key, userData);
 
-    const service = userData.serviceMap.get(row.firewall_name) ?? {
+    const service = userData.serviceMap.get(firewallName) ?? {
       calls: 0,
       agentNames: new Set<string>(),
     };
     service.calls++;
     service.agentNames.add(info.agentName);
-    userData.serviceMap.set(row.firewall_name, service);
+    userData.serviceMap.set(firewallName, service);
 
     if (row.action !== "ALLOW" && row.action !== "DENY") {
       continue;
@@ -377,14 +382,14 @@ function aggregateNetworkDataPerUser(
 
     const hasPermission = firewallPermission.length > 0;
     const permKey = hasPermission
-      ? `${row.firewall_name}:${firewallPermission}`
-      : row.firewall_name;
+      ? `${firewallName}:${firewallPermission}`
+      : firewallName;
     const label = hasPermission
-      ? getPermissionLabel(row.firewall_name, firewallPermission)
-      : row.firewall_name;
+      ? getPermissionLabel(firewallName, firewallPermission)
+      : firewallName;
     const permission = userData.permMap.get(permKey) ?? {
       label,
-      connectorType: row.firewall_name,
+      connectorType: firewallName,
       allowed: 0,
       denied: 0,
       agentNames: new Set<string>(),
@@ -399,6 +404,13 @@ function aggregateNetworkDataPerUser(
   }
 
   return userNetworkMap;
+}
+
+function axiomRunId(value: unknown): string | undefined {
+  if (typeof value !== "string" || !UUID_SHAPE.test(value)) {
+    return undefined;
+  }
+  return value;
 }
 
 function buildUserInsight(args: BuildUserInsightArgs): InsightData {
@@ -1036,11 +1048,10 @@ function queryWindowNetworkData(
 
     const networkRunIds = [
       ...new Set(
-        networkRows
-          .map((row) => {
-            return row.runId;
-          })
-          .filter(Boolean),
+        networkRows.flatMap((row) => {
+          const runId = axiomRunId(row.runId);
+          return runId ? [runId] : [];
+        }),
       ),
     ];
     const runAgentRows =

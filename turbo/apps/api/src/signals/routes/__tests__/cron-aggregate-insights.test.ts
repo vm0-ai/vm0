@@ -260,6 +260,22 @@ describe("GET /api/cron/aggregate-insights", () => {
     context.mocks.axiom.query.mockResolvedValue([
       {
         _time: completedAt.toISOString(),
+        runId: "not-a-uuid",
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: 123,
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
         runId,
         host: "api.slack.com",
         firewall_name: "slack",
@@ -276,7 +292,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(response.body).toStrictEqual({
       users: 1,
       windows: 1,
-      networkRows: 1,
+      networkRows: 3,
     });
     const data = await findInsights(fixture);
     expect(data).toMatchObject({
