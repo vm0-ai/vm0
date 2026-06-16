@@ -14,6 +14,7 @@ import {
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { reloadEnv } from "../../../src/env";
 import { AvatarCustomizer } from "../AvatarCustomizer";
 
 vi.mock("next-intl", () => {
@@ -101,6 +102,7 @@ describe("AvatarCustomizer", () => {
 
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_STATIC_ASSETS_BASE_URL", assetOrigin);
+    reloadEnv();
     setHappyDomUrl(`${assetOrigin}/`);
   });
 
