@@ -3847,7 +3847,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             session_id: None,
-            working_dir: "/workspace",
+            working_dir: "/workspace//repo/",
             image_size_bytes: 5,
             workspace_drive_required: false,
         })
@@ -3869,11 +3869,12 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
         sandbox_id,
         profile_name: TEST_PROFILE_NAME,
         session_id: Some(session_id),
-        working_dir: "/workspace",
+        working_dir: "/workspace//repo/",
         image_size_bytes: 5,
         workspace_drive_available: true,
     });
 
+    assert_eq!(active_lease.working_dir(), "/workspace/repo");
     assert!(active_lease.can_attempt_promotion(Some(session_id)));
     assert!(
         active_lease

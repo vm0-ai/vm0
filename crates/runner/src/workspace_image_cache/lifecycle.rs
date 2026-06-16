@@ -1126,7 +1126,10 @@ impl WorkspaceImagePromotionContext {
         debug_assert_eq!(request.sandbox_id, sandbox_id);
         debug_assert_eq!(request.profile_name, profile_name.as_str());
         debug_assert_eq!(request.session_id, Some(session_id.as_str()));
-        debug_assert_eq!(request.working_dir, working_dir.as_str());
+        debug_assert_eq!(
+            normalize_safe_guest_working_dir(request.working_dir).as_deref(),
+            Some(working_dir.as_str())
+        );
         debug_assert_eq!(request.image_size_bytes, image_size_bytes);
         WorkspaceImageLease {
             cache,
