@@ -8,6 +8,8 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
@@ -15,12 +17,19 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { seedAgentRunCallback$ } from "../../routes/__tests__/helpers/agent-run-callback";
 import {
   captureGithubIssueApi,
   mockGithubAppEnv,
 } from "../../routes/__tests__/helpers/api-bdd-github";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackOrgConnection$,
+  seedSlackOrgInstallation$,
+  type SlackIntegrationFixture,
+} from "../../routes/__tests__/helpers/zero-integrations-slack";
 import { createFixtureTracker } from "../../routes/__tests__/helpers/zero-route-test";
 import {
   deleteUsageInsightFixture$,
@@ -33,6 +42,7 @@ import {
   dispatchRunCallbacks,
   dispatchRunCallbacks$,
 } from "../agent-run-callback.service";
+import { dispatchProgressCallbacks$ } from "../agent-run-callbacks.service";
 import { createZeroRun$ } from "../zero-runs-create.service";
 
 const context = testContext();
@@ -45,6 +55,8 @@ const TRIGGER_LOOP_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/trigger/loop";
 const GITHUB_ISSUES_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/github/issues";
+const SLACK_ORG_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/slack/org";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
@@ -64,6 +76,12 @@ interface OpenRouterRequest {
   }[];
 }
 
+const trackSlackIntegration = createFixtureTracker<SlackIntegrationFixture>(
+  (fixture) => {
+    return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+  },
+);
+
 const trackFixture = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
@@ -75,7 +93,11 @@ const trackVm0ProviderKey = createFixtureTracker<Vm0ProviderKeyFixture>(
   },
 );
 
-async function seedAgentCallbackRun(): Promise<AgentCallbackRunFixture> {
+async function seedAgentCallbackRun(
+  options: {
+    readonly status?: "pending" | "running" | "completed" | "failed";
+  } = {},
+): Promise<AgentCallbackRunFixture> {
   const fixture = await trackFixture(
     store.set(seedUsageInsightFixture$, undefined, context.signal),
   );
@@ -91,7 +113,7 @@ async function seedAgentCallbackRun(): Promise<AgentCallbackRunFixture> {
       userId: fixture.userId,
       composeId,
       triggerSource: "agent",
-      status: "completed",
+      status: options.status ?? "completed",
       prompt: "Summarize the delegated task.",
       lastEventSequence: 0,
     },
@@ -213,6 +235,104 @@ async function readGithubIssueSession(args: {
     )
     .limit(1);
   return row;
+}
+
+async function readSlackConnectionId(args: {
+  readonly workspaceId: string;
+  readonly slackUserId: string;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
+        eq(slackOrgConnections.slackUserId, args.slackUserId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected Slack org connection");
+  }
+  return row.id;
+}
+
+async function readSlackThreadSession(args: {
+  readonly connectionId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(slackOrgThreadSessions)
+    .where(
+      and(
+        eq(slackOrgThreadSessions.connectionId, args.connectionId),
+        eq(slackOrgThreadSessions.slackChannelId, args.channelId),
+        eq(slackOrgThreadSessions.slackThreadTs, args.threadTs),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function seedSlackCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly messageTs: string;
+  readonly connectionId: string;
+  readonly agentId: string;
+}> {
+  const workspaceId = `T${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`;
+  await trackSlackIntegration(
+    store.set(
+      seedSlackOrgInstallation$,
+      {
+        orgId: fixture.orgId,
+        slackWorkspaceId: workspaceId,
+        botToken: `xoxb-${fixture.runId}`,
+      },
+      context.signal,
+    ),
+  );
+  const slackUserId = `U${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`;
+  await store.set(
+    seedSlackOrgConnection$,
+    {
+      slackWorkspaceId: workspaceId,
+      vm0UserId: fixture.userId,
+      slackUserId,
+    },
+    context.signal,
+  );
+  const connectionId = await readSlackConnectionId({
+    workspaceId,
+    slackUserId,
+  });
+  return {
+    workspaceId,
+    channelId: `C${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`,
+    threadTs: "1710000000.000100",
+    messageTs: "1710000000.000100",
+    connectionId,
+    agentId: fixture.composeId,
+  };
+}
+
+function mockSlackApi(): void {
+  context.mocks.slack.chat.postMessage.mockResolvedValue({
+    ok: true,
+    ts: "1710000000.000200",
+    channel: "C_CALLBACK",
+  });
+  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
+    ok: true,
+  });
 }
 
 async function seedGithubInstallation(
@@ -712,6 +832,186 @@ describe("dispatchRunCallbacks$ GitHub issues internal dispatch", () => {
     expect(routeRequests()).toBe(0);
     expect(issueApi.comments).toHaveLength(1);
     expect(issueApi.comments[0]?.body).toContain("Oops, something went wrong.");
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ Slack org internal dispatch", () => {
+  it("dispatches typed Slack org callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    mockRunOutput("Slack callback finished.");
+    const openRouterRequests = captureOpenRouterRequests("Slack run summary");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: payload.channelId,
+        thread_ts: payload.threadTs,
+        text: "Slack callback finished.",
+      }),
+    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: payload.channelId,
+      thread_ts: payload.threadTs,
+      status: "",
+    });
+    expect(openRouterRequests).toHaveLength(1);
+    await expect(readSummary(fixture.runId)).resolves.toBe("Slack run summary");
+    await expect(
+      readSlackThreadSession({
+        connectionId: payload.connectionId,
+        channelId: payload.channelId,
+        threadTs: payload.threadTs,
+      }),
+    ).resolves.toMatchObject({
+      agentSessionId: expect.any(String),
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "slack:org",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed Slack org progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+    await flushWaitUntilForTest();
+
+    expect(routeRequests()).toBe(0);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledWith({
+      channel_id: payload.channelId,
+      thread_ts: payload.threadTs,
+      status: "is thinking...",
+    });
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "slack:org",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy Slack org callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
+      Object.assign(new Error("channel_not_found"), {
+        data: { ok: false, error: "channel_not_found" },
+      }),
+    );
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: SLACK_ORG_CALLBACK_URL,
+        payload,
+      },
+      context.signal,
+    );
+    mockRunOutput("Undelivered Slack output.");
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Slack API error: channel_not_found",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: SLACK_ORG_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "Slack API error: channel_not_found",
+    });
+  });
+
+  it("dispatches typed Slack org callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    mockRunOutput("Non-ccstate Slack output.");
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: payload.channelId,
+        thread_ts: payload.threadTs,
+        text: "Non-ccstate Slack output.",
+      }),
+    );
     await expect(readCallback(callbackId)).resolves.toMatchObject({
       status: "delivered",
       attempts: 1,
