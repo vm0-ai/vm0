@@ -11,10 +11,10 @@
  * Each method JSON file contains:
  *   { "scope": { "bot": ["chat:write"], "user": ["chat:write"] }, ... }
  *
- * We group methods by scope (bot and user union) to generate firewall
- * permission groups. Methods with no scope (like auth.test, oauth.*)
- * are included in a "no_scopes_required" group since they still require
- * a valid token.
+ * We group methods by scope across every token type listed by the source
+ * data to generate firewall permission groups. Methods with no scope
+ * (like auth.test, oauth.*) are included in a "no_scopes_required" group
+ * since they still require a valid token.
  */
 
 import {
@@ -71,6 +71,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "View workflow builder workflows in an Enterprise organization",
   "admin.workflows:write":
     "Manage workflow builder workflows in an Enterprise organization",
+  apps: "Manage Slack app collaborators",
   "channels:manage":
     "Manage public channels that the app has been added to and create new ones",
   "conversations.connect:manage":
@@ -78,6 +79,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "team.billing:read": "View billing information for a workspace",
 
   // Read
+  "app_configurations:read":
+    "Read app configuration info via App Manifest APIs",
   "bookmarks:read": "List bookmarks in channels",
   "calls:read": "View information about ongoing and past calls",
   "canvases:read": "Access contents of canvases created inside Slack",
@@ -129,6 +132,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "users:read.email": "View email addresses of people in a workspace",
 
   // Write
+  "app_configurations:write":
+    "Write app configuration info and create apps via App Manifest APIs",
   "bookmarks:write": "Create, edit, and remove bookmarks",
   "calls:write": "Start and manage calls in a workspace",
   "canvases:write": "Create and edit canvases",
@@ -199,11 +204,13 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "admin.users:write": "Admin",
   "admin.workflows:read": "Admin",
   "admin.workflows:write": "Admin",
+  apps: "Admin",
   "channels:manage": "Admin",
   "conversations.connect:manage": "Admin",
   "team.billing:read": "Admin",
 
-  // Read (34)
+  // Read (35)
+  "app_configurations:read": "Read",
   "bookmarks:read": "Read",
   "calls:read": "Read",
   "canvases:read": "Read",
@@ -242,7 +249,8 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "users:read": "Read",
   "users:read.email": "Read",
 
-  // Write (23)
+  // Write (24)
+  "app_configurations:write": "Write",
   "bookmarks:write": "Write",
   "calls:write": "Write",
   "canvases:write": "Write",
@@ -290,10 +298,7 @@ const CATEGORY_ORDER = ["Read", "Write", "Send", "Admin", "Misc"];
 // ── Data loading ─────────────────────────────────────────────────────────
 
 interface SlackMethodData {
-  scope?: {
-    bot?: string[];
-    user?: string[];
-  };
+  scope?: Record<string, string[] | undefined>;
   http_method?: string;
 }
 
@@ -325,9 +330,9 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
     const scope = data.scope;
     if (typeof scope !== "object" || scope === null) continue;
 
-    const botScopes = scope.bot ?? [];
-    const userScopes = scope.user ?? [];
-    const allScopes = new Set([...botScopes, ...userScopes]);
+    const allScopes = new Set(
+      Object.values(scope).flatMap((scopes) => scopes ?? []),
+    );
 
     const httpMethod = data.http_method;
     if (!httpMethod) {
