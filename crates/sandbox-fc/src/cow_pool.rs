@@ -837,9 +837,9 @@ fn create_cow_file(
         Some(golden) => {
             sparse_copy(golden, cow_file)?;
             // Also copy the bitmap sidecar if it exists (for snapshot restore).
-            let golden_bitmap = PathBuf::from(format!("{}.bitmap", golden.display()));
+            let golden_bitmap = nbd_cow::cow::bitmap_path_for(golden);
             if golden_bitmap.exists() {
-                let cow_bitmap = PathBuf::from(format!("{}.bitmap", cow_file.display()));
+                let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
                 sparse_copy(&golden_bitmap, &cow_bitmap)?;
             }
         }
@@ -900,6 +900,8 @@ pub(crate) fn destroy_slot_async(slot: PrewarmedSlot) -> impl std::future::Futur
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
     use std::sync::Mutex;
 
     fn test_config(dir: &Path) -> CowPoolConfig {
@@ -1831,7 +1833,7 @@ mod tests {
         let workspaces = tmp.path().join("workspaces");
         let golden = tmp.path().join("golden.img");
         std::fs::write(&golden, b"golden").unwrap();
-        std::fs::create_dir(format!("{}.bitmap", golden.display())).unwrap();
+        std::fs::create_dir(nbd_cow::cow::bitmap_path_for(&golden)).unwrap();
 
         let config = CowPoolConfig {
             workspaces_dir: workspaces.clone(),
@@ -1861,7 +1863,28 @@ mod tests {
         };
         let slot = create_slot(&config).unwrap();
         assert!(slot.workspace().join("cow.img").exists());
-        assert!(!PathBuf::from(format!("{}.bitmap", slot.cow_file().display())).exists());
+        assert!(!nbd_cow::cow::bitmap_path_for(&slot.cow_file()).exists());
+        destroy_slot_sync(slot);
+    }
+
+    #[test]
+    fn create_slot_with_non_utf8_golden_cow_copies_bitmap() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let golden_name = OsString::from_vec(b"golden-\xff.img".to_vec());
+        let golden = tmp.path().join(PathBuf::from(golden_name));
+        let golden_bitmap = nbd_cow::cow::bitmap_path_for(&golden);
+        std::fs::write(&golden, b"golden").unwrap();
+        std::fs::write(&golden_bitmap, b"bitmap").unwrap();
+
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces,
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(golden),
+        };
+        let slot = create_slot(&config).unwrap();
+        let cow_bitmap = nbd_cow::cow::bitmap_path_for(&slot.cow_file());
+        assert_eq!(std::fs::read(cow_bitmap).unwrap(), b"bitmap");
         destroy_slot_sync(slot);
     }
 
