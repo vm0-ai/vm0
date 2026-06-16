@@ -138,6 +138,7 @@ function parseAwsQueryRequirements(
 
     if (
       value !== undefined &&
+      value !== "*" &&
       (value === "" || !AWS_QUERY_VALUE_RE.test(value))
     ) {
       throw new Error(

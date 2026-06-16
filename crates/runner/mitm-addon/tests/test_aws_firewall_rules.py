@@ -328,6 +328,75 @@ def test_s3_rest_operation_query_parameters_match_base_operation():
     assert response_override.permission == "s3:GetObject"
 
 
+def test_s3_required_query_value_selectors_distinguish_permissions():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:ListMultipartUploadParts",
+            "GET /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:PutObject",
+            "PUT /{Bucket}/{Key+}?partNumber=*&uploadId=* AWS sigv4=s3",
+        ),
+    )
+    policies = {"aws": network_policy(deny=["s3:PutObject"], unknown_policy="deny")}
+
+    list_parts = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?uploadId=upload-1",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(list_parts, matching.FirewallAllow)
+    assert list_parts.permission == "s3:ListMultipartUploadParts"
+
+    upload_part = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?partNumber=1&uploadId=upload-1",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(upload_part, matching.FirewallBlock)
+    assert upload_part.reason == "permission_denied"
+    assert upload_part.permissions == ("s3:PutObject",)
+
+    missing_upload_id = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?partNumber=1",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(missing_upload_id, matching.FirewallBlock)
+    assert missing_upload_id.reason == "unknown_endpoint"
+
+
+def test_required_query_value_selector_allows_repeated_query_values():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "rbin:UntagResource",
+            "DELETE /tags/{resourceArn}?tagKeys=* AWS sigv4=rbin",
+        )
+    )
+
+    result = match_compiled_firewalls(
+        "https://rbin.us-east-1.amazonaws.com/tags/resource-1?tagKeys=one&tagKeys=two",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="DELETE",
+        request_context=_sigv4_context("rbin"),
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "rbin:UntagResource"
+
+
 def test_s3_version_id_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(
@@ -565,13 +634,13 @@ def test_rest_query_value_distinguishes_permissions():
         ),
         firewall_permission(
             "apigateway:ImportApiKeys",
-            "POST /apikeys?mode=import AWS sigv4=apigateway",
+            "POST /apikeys?mode=import&format=* AWS sigv4=apigateway",
         ),
     )
     policies = {"aws": network_policy(deny=["apigateway:ImportApiKeys"], unknown_policy="deny")}
 
     import_api_keys = match_compiled_firewalls(
-        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import",
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&format=csv",
         firewalls,
         policies,
         method="POST",
@@ -601,8 +670,18 @@ def test_rest_query_value_distinguishes_permissions():
     assert isinstance(wrong_mode, matching.FirewallBlock)
     assert wrong_mode.reason == "unknown_endpoint"
 
+    missing_format = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(missing_format, matching.FirewallBlock)
+    assert missing_format.reason == "unknown_endpoint"
+
     duplicate_selector_query = match_compiled_firewalls(
-        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&mode=export",
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&mode=export&format=csv",
         firewalls,
         policies,
         method="POST",

@@ -70,8 +70,11 @@ def test_aws_builtin_firewall_includes_same_name_override_rules():
         in _rules_for_builtin_permission(firewall, "execute-api:ManageConnections")
     )
     assert (
-        "GET /2013-01-01/search?format=sdk&pretty=true AWS sigv4=cloudsearch"
+        "GET /2013-01-01/search?format=sdk&pretty=true&q=* AWS sigv4=cloudsearch"
         in _rules_for_builtin_permission(firewall, "cloudsearch:search")
+    )
+    assert "GET /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3" in _rules_for_builtin_permission(
+        firewall, "s3:ListMultipartUploadParts"
     )
 
 

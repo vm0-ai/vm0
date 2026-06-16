@@ -1298,7 +1298,7 @@ def _compile_aws_query_requirements(
         if key in keys:
             return None
         keys.add(key)
-        if separator and (value == "" or not _AWS_QUERY_VALUE_RE.fullmatch(value)):
+        if separator and value != "*" and (value == "" or not _AWS_QUERY_VALUE_RE.fullmatch(value)):
             return None
         requirements.append((key, value if separator else None))
 
@@ -1818,6 +1818,10 @@ def _aws_query_requirements_match(
 
     for key, expected_value in query_requirements:
         values = _query_values(query_pairs, key)
+        if expected_value == "*":
+            if not values:
+                return False
+            continue
         if len(values) != 1:
             return False
         if expected_value is None:

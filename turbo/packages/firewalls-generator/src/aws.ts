@@ -106,6 +106,7 @@ interface BotocoreModel {
     readonly targetPrefix?: unknown;
   };
   readonly operations?: unknown;
+  readonly shapes?: unknown;
 }
 
 interface BotocoreOperation {
@@ -113,6 +114,19 @@ interface BotocoreOperation {
     readonly method?: unknown;
     readonly requestUri?: unknown;
   };
+  readonly input?: {
+    readonly shape?: unknown;
+  };
+}
+
+interface BotocoreShape {
+  readonly members?: unknown;
+  readonly required?: unknown;
+}
+
+interface BotocoreShapeMember {
+  readonly location?: unknown;
+  readonly locationName?: unknown;
 }
 
 interface BuildResult {
@@ -318,6 +332,14 @@ function isBotocoreOperation(value: unknown): value is BotocoreOperation {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isBotocoreShape(value: unknown): value is BotocoreShape {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBotocoreShapeMember(value: unknown): value is BotocoreShapeMember {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function actionName(action: AwsAction): string | null {
   return typeof action.Name === "string" ? action.Name : null;
 }
@@ -355,6 +377,10 @@ function loadOperationsByName(
 
 function loadBotocoreOperations(model: BotocoreModel): Record<string, unknown> {
   return assertObject(model.operations, "Botocore operations");
+}
+
+function loadBotocoreShapes(model: BotocoreModel): Record<string, unknown> {
+  return assertObject(model.shapes, "Botocore shapes");
 }
 
 function botocoreProtocol(model: BotocoreModel): string {
@@ -707,6 +733,76 @@ function restRules(
   return [`${method} ${requestUri} AWS sigv4=${sigv4Service}`];
 }
 
+function queryRequirementKey(requirement: string): string {
+  return requirement.split("=", 1)[0]!;
+}
+
+function requestUriQueryKeys(requestUri: string): Set<string> {
+  const queryIndex = requestUri.indexOf("?");
+  if (queryIndex === -1) {
+    return new Set();
+  }
+  return new Set(
+    requestUri
+      .slice(queryIndex + 1)
+      .split("&")
+      .map((part) => {
+        return part.split("=", 1)[0]!;
+      })
+      .filter((key) => {
+        return key !== "";
+      }),
+  );
+}
+
+function requiredQuerystringRequirements(
+  model: BotocoreModel,
+  operation: BotocoreOperation,
+): string[] {
+  const inputShapeName = operation.input?.shape;
+  if (typeof inputShapeName !== "string") {
+    return [];
+  }
+  const inputShape = loadBotocoreShapes(model)[inputShapeName];
+  if (!isBotocoreShape(inputShape) || !Array.isArray(inputShape.required)) {
+    return [];
+  }
+  const members = assertObject(
+    inputShape.members,
+    `Botocore input shape ${inputShapeName} members`,
+  );
+  const requirements: string[] = [];
+  for (const rawRequiredName of inputShape.required) {
+    if (typeof rawRequiredName !== "string") {
+      continue;
+    }
+    const member = members[rawRequiredName];
+    if (!isBotocoreShapeMember(member) || member.location !== "querystring") {
+      continue;
+    }
+    const key =
+      typeof member.locationName === "string" && member.locationName !== ""
+        ? member.locationName
+        : rawRequiredName;
+    requirements.push(`${key}=*`);
+  }
+  return sortedUnique(requirements);
+}
+
+function appendQueryRequirements(
+  requestUri: string,
+  requirements: string[],
+): string {
+  const existingKeys = requestUriQueryKeys(requestUri);
+  const missingRequirements = requirements.filter((requirement) => {
+    return !existingKeys.has(queryRequirementKey(requirement));
+  });
+  if (missingRequirements.length === 0) {
+    return requestUri;
+  }
+  return `${requestUri}${requestUri.includes("?") ? "&" : "?"}${missingRequirements.join("&")}`;
+}
+
 function smithyRpcV2CborRules(
   method: string,
   targetPrefix: string,
@@ -773,14 +869,20 @@ function rulesForOperation(
     );
   }
   if (protocol === "rest-xml" || protocol === "rest-json") {
+    const requestUriWithRequiredQuery = appendQueryRequirements(
+      requestUri,
+      requiredQuerystringRequirements(model, rawOperation),
+    );
     if (options?.s3VirtualHosted) {
-      const virtualHostedRequestUri = s3VirtualHostedRequestUri(requestUri);
+      const virtualHostedRequestUri = s3VirtualHostedRequestUri(
+        requestUriWithRequiredQuery,
+      );
       if (service.key !== "s3" || virtualHostedRequestUri === null) {
         return null;
       }
       return restRules(method, virtualHostedRequestUri, sigv4Service);
     }
-    return restRules(method, requestUri, sigv4Service);
+    return restRules(method, requestUriWithRequiredQuery, sigv4Service);
   }
   throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
 }

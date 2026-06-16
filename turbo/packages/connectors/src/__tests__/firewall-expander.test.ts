@@ -409,6 +409,13 @@ describe("validateRule", () => {
         "fw",
       );
     }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "GET /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
   });
 
   it("should reject missing path", () => {
@@ -460,6 +467,9 @@ describe("validateRule", () => {
     }).toThrow('unsupported AWS predicate "body"');
     expect(() => {
       return validateRule("GET /?acl= AWS sigv4=s3", "p", "fw");
+    }).toThrow("has an invalid value");
+    expect(() => {
+      return validateRule("GET /?uploadId=** AWS sigv4=s3", "p", "fw");
     }).toThrow("has an invalid value");
     expect(() => {
       return validateRule("GET /?acl&acl AWS sigv4=s3", "p", "fw");

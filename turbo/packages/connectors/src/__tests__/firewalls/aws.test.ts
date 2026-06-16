@@ -209,10 +209,10 @@ describe("aws firewall", () => {
       "POST /2013-01-01/documents/batch?format=sdk AWS sigv4=cloudsearch",
     );
     expect(rulesFor(permissions, "cloudsearch:search")).toContain(
-      "GET /2013-01-01/search?format=sdk&pretty=true AWS sigv4=cloudsearch",
+      "GET /2013-01-01/search?format=sdk&pretty=true&q=* AWS sigv4=cloudsearch",
     );
     expect(rulesFor(permissions, "cloudsearch:suggest")).toContain(
-      "GET /2013-01-01/suggest?format=sdk&pretty=true AWS sigv4=cloudsearch",
+      "GET /2013-01-01/suggest?format=sdk&pretty=true&q=*&suggester=* AWS sigv4=cloudsearch",
     );
     expect(rulesFor(permissions, "execute-api:ManageConnections")).toEqual(
       expect.arrayContaining([
@@ -261,7 +261,7 @@ describe("aws firewall", () => {
       "POST / AWS sigv4=waf-regional target=AWSWAF_Regional_20161128.DisassociateWebACL",
     );
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
-      "POST /apikeys?mode=import AWS sigv4=apigateway",
+      "POST /apikeys?mode=import&format=* AWS sigv4=apigateway",
     );
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys AWS sigv4=apigateway",
@@ -320,6 +320,15 @@ describe("aws firewall", () => {
     expect(rulesFor(standardPermissions, "s3:PutObject")).toContain(
       "PUT /{Bucket}/{Key+} AWS sigv4=s3",
     );
+    expect(rulesFor(standardPermissions, "s3:AbortMultipartUpload")).toContain(
+      "DELETE /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3",
+    );
+    expect(
+      rulesFor(standardPermissions, "s3:ListMultipartUploadParts"),
+    ).toContain("GET /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3");
+    expect(rulesFor(standardPermissions, "s3:PutObject")).toContain(
+      "PUT /{Bucket}/{Key+}?partNumber=*&uploadId=* AWS sigv4=s3",
+    );
 
     const virtualHostedPermissions = firewall.apis[3]!.permissions ?? [];
     expect(rulesFor(virtualHostedPermissions, "s3:DeleteObject")).not.toContain(
@@ -334,6 +343,12 @@ describe("aws firewall", () => {
     expect(rulesFor(virtualHostedPermissions, "s3:GetObjectTagging")).toContain(
       "GET /{Key+}?tagging AWS sigv4=s3",
     );
+    expect(
+      rulesFor(virtualHostedPermissions, "s3:AbortMultipartUpload"),
+    ).toContain("DELETE /{Key+}?uploadId=* AWS sigv4=s3");
+    expect(
+      rulesFor(virtualHostedPermissions, "s3:ListMultipartUploadParts"),
+    ).toContain("GET /{Key+}?uploadId=* AWS sigv4=s3");
   });
 
   it("registers AWS default policies and permission categories", () => {
@@ -385,9 +400,9 @@ describe("aws firewall", () => {
       ambiguousOperations: 27,
       unsupportedOperations: 0,
       permissionCount: 17524,
-      ruleCount: 19769,
+      ruleCount: 19774,
       s3VirtualHostedPermissionCount: 73,
-      s3VirtualHostedRuleCount: 94,
+      s3VirtualHostedRuleCount: 99,
     });
     expect(awsGenerationStats.permissionCount).toBe(standardPermissions.length);
     expect(awsGenerationStats.ruleCount).toBe(countRules(standardPermissions));
