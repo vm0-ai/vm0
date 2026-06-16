@@ -2228,10 +2228,10 @@ function TemplatePickerDialog({
                         type="button"
                         aria-pressed={selected}
                         className={cn(
-                          "h-7 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                           selected
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                            ? "bg-muted text-foreground"
+                            : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}
                         onClick={() => {
                           setVideoGroup(group.tag);
