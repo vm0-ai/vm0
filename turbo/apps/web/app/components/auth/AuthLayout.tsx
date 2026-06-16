@@ -431,6 +431,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             height={20}
             priority
             className="dark:hidden"
+            unoptimized
           />
           <Image
             src={webStaticAssetUrl("assets/vm0-logo.svg")}
@@ -439,6 +440,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             height={20}
             priority
             className="hidden dark:block"
+            unoptimized
           />
         </Link>
 

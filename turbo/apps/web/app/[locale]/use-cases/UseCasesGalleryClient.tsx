@@ -70,6 +70,7 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
         width={20}
         height={20}
         className={`object-contain${connector.dark ? " landing-icon-invert" : ""}${connector.looseViewBox ? " scale-[2.2]" : ""}`}
+        unoptimized
       />
     </div>
   );

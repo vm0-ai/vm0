@@ -101,6 +101,7 @@ export default function ConnectorStatusPage({
               height={20}
               priority
               className="dark:hidden"
+              unoptimized
             />
             <Image
               src={webStaticAssetUrl("assets/vm0-logo.svg")}
@@ -109,6 +110,7 @@ export default function ConnectorStatusPage({
               height={20}
               priority
               className="hidden dark:block"
+              unoptimized
             />
             <span className="text-2xl text-foreground">Platform</span>
           </div>

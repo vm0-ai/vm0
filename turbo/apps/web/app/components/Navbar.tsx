@@ -482,6 +482,7 @@ export function Navbar({
                 alt="VM0 - Your Trustworthy AI Teammate"
                 width={120}
                 height={30}
+                unoptimized
               />
             </Link>
           </div>
@@ -704,6 +705,7 @@ function MobileMenuRow({ item, onSelect }: MobileMenuRowProps) {
         width={22}
         height={22}
         className="mobile-menu-row-icon"
+        unoptimized
       />
       <span className="mobile-menu-row-label">{item.label}</span>
       {item.external && (

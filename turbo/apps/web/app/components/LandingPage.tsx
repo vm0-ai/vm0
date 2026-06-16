@@ -318,6 +318,7 @@ function CompetitorIcon({ item }: { item: ComparisonItem }) {
           width={24}
           height={24}
           className="h-6 w-6"
+          unoptimized
         />
       ) : (
         <span className="text-base font-semibold text-[hsl(var(--foreground))]">
@@ -428,6 +429,7 @@ function RoleCard({
               height={500}
               className="h-auto max-h-full w-auto max-w-full"
               draggable={false}
+              unoptimized
             />
           </div>
         ) : (
@@ -442,6 +444,7 @@ function RoleCard({
               height={500}
               className="max-h-full max-w-full object-contain"
               draggable={false}
+              unoptimized
             />
           </div>
         )}
@@ -1005,6 +1008,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
               className="deco-shapes"
               fill
               priority
+              unoptimized
             />
           </div>
 
@@ -1021,6 +1025,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                   width={22}
                   height={16}
                   className="h-4 w-[22px]"
+                  unoptimized
                 />
                 <span>{t("hero.seedBanner")}</span>
                 <svg
@@ -1182,6 +1187,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                   width={34}
                                   height={34}
                                   className="h-[34px] w-[34px] shrink-0 light-only"
+                                  unoptimized
                                 />
                                 <Image
                                   src={connector.darkIcon}
@@ -1189,6 +1195,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                   width={34}
                                   height={34}
                                   className="h-[34px] w-[34px] shrink-0 dark-only"
+                                  unoptimized
                                 />
                               </>
                             ) : (
@@ -1198,6 +1205,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                 width={34}
                                 height={34}
                                 className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
+                                unoptimized
                               />
                             )}
                             <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
@@ -1227,6 +1235,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                   width={34}
                                   height={34}
                                   className="h-[34px] w-[34px] shrink-0 light-only"
+                                  unoptimized
                                 />
                                 <Image
                                   src={connector.darkIcon}
@@ -1234,6 +1243,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                   width={34}
                                   height={34}
                                   className="h-[34px] w-[34px] shrink-0 dark-only"
+                                  unoptimized
                                 />
                               </>
                             ) : (
@@ -1243,6 +1253,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                                 width={34}
                                 height={34}
                                 className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
+                                unoptimized
                               />
                             )}
                             <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">

@@ -22,6 +22,7 @@ export function Footer() {
                 width={112}
                 height={28}
                 className="dark:hidden"
+                unoptimized
               />
               <Image
                 src={webStaticAssetUrl("assets/vm0-logo.svg")}
@@ -29,6 +30,7 @@ export function Footer() {
                 width={112}
                 height={28}
                 className="hidden dark:block"
+                unoptimized
               />
             </div>
             <p className="footer-tagline">{t("tagline")}</p>
@@ -92,6 +94,7 @@ export function Footer() {
                   alt="GitHub"
                   width={20}
                   height={20}
+                  unoptimized
                 />
               </a>
               <a
@@ -106,6 +109,7 @@ export function Footer() {
                   alt="Discord"
                   width={20}
                   height={20}
+                  unoptimized
                 />
               </a>
               <a
@@ -120,6 +124,7 @@ export function Footer() {
                   alt="X"
                   width={20}
                   height={20}
+                  unoptimized
                 />
               </a>
               <a
@@ -134,6 +139,7 @@ export function Footer() {
                   alt="LinkedIn"
                   width={20}
                   height={20}
+                  unoptimized
                 />
               </a>
             </div>
