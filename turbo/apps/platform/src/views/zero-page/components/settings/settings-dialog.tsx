@@ -258,6 +258,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     >
       <DialogContent
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
+        onOpenAutoFocus={(event) => {
+          // Don't auto-focus the first nav item ("Preference") on open; it
+          // leaves an unwanted focus ring every time the dialog is opened.
+          event.preventDefault();
+        }}
         onInteractOutside={(event) => {
           if (isClerkModalTarget(event.target)) {
             event.preventDefault();
