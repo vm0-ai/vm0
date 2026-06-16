@@ -118,7 +118,7 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import templatePickerIcon from "./assets/empty-templates.webp";
+import templatePickerIcon from "./assets/empty-templates.svg";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
