@@ -735,7 +735,7 @@ mod tests {
                     .json_body(json!({
                         "error": {
                             "code": "BAD_REQUEST",
-                            "message": "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"",
+                            "message": "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
                         },
                     }));
             })
@@ -757,7 +757,7 @@ mod tests {
         assert_event_field(
             event,
             "response_error_message",
-            "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"",
+            "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
         );
         assert_event_field(event, "response_body_truncated", "false");
         assert!(path.exists());
