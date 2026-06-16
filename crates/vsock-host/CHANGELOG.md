@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.34](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.33...vsock-host-v0.17.34) (2026-06-16)
+
+
+### Documentation
+
+* document vsock fence rejections ([#17821](https://github.com/vm0-ai/vm0/issues/17821)) ([61b14f7](https://github.com/vm0-ai/vm0/commit/61b14f7a40daacbffc26e08830a55c5688e0f80d))
+
 ## [0.17.33](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.32...vsock-host-v0.17.33) (2026-06-15)
 
 
