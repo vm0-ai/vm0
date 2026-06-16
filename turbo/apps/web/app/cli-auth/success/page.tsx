@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
 import { IconCheck } from "@tabler/icons-react";
@@ -61,8 +62,8 @@ export default function CliAuthSuccessPage(): React.JSX.Element {
             <Image
               src={
                 theme === "dark"
-                  ? "/assets/vm0-logo.svg"
-                  : "/assets/vm0-logo-dark.svg"
+                  ? webStaticAssetUrl("assets/vm0-logo.svg")
+                  : webStaticAssetUrl("assets/vm0-logo-dark.svg")
               }
               alt="VM0"
               width={82}
@@ -71,7 +72,7 @@ export default function CliAuthSuccessPage(): React.JSX.Element {
               className="dark:hidden"
             />
             <Image
-              src="/assets/vm0-logo.svg"
+              src={webStaticAssetUrl("assets/vm0-logo.svg")}
               alt="VM0"
               width={82}
               height={20}

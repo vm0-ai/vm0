@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
@@ -98,14 +99,40 @@ const CONNECTORS_ROW1: {
   dark?: boolean;
   darkIcon?: string;
 }[] = [
-  { name: "Axiom", icon: "/assets/connectors/axiom.svg", dark: true },
-  { name: "Ahrefs", icon: "/assets/connectors/ahref.svg" },
-  { name: "Airtable", icon: "/assets/connectors/airtable.svg" },
-  { name: "Gmail", icon: "/assets/connectors/gmail.svg" },
-  { name: "Google Sheets", icon: "/assets/connectors/google-sheet.svg" },
-  { name: "Notion", icon: "/assets/connectors/notion.svg", dark: true },
-  { name: "DocuSign", icon: "/assets/connectors/docusign.svg" },
-  { name: "Linear", icon: "/assets/connectors/linear.svg" },
+  {
+    name: "Axiom",
+    icon: webStaticAssetUrl("assets/connectors/axiom.svg"),
+    dark: true,
+  },
+  {
+    name: "Ahrefs",
+    icon: webStaticAssetUrl("assets/connectors/ahref.svg"),
+  },
+  {
+    name: "Airtable",
+    icon: webStaticAssetUrl("assets/connectors/airtable.svg"),
+  },
+  {
+    name: "Gmail",
+    icon: webStaticAssetUrl("assets/connectors/gmail.svg"),
+  },
+  {
+    name: "Google Sheets",
+    icon: webStaticAssetUrl("assets/connectors/google-sheet.svg"),
+  },
+  {
+    name: "Notion",
+    icon: webStaticAssetUrl("assets/connectors/notion.svg"),
+    dark: true,
+  },
+  {
+    name: "DocuSign",
+    icon: webStaticAssetUrl("assets/connectors/docusign.svg"),
+  },
+  {
+    name: "Linear",
+    icon: webStaticAssetUrl("assets/connectors/linear.svg"),
+  },
 ];
 
 const CONNECTORS_ROW2: {
@@ -114,18 +141,42 @@ const CONNECTORS_ROW2: {
   dark?: boolean;
   darkIcon?: string;
 }[] = [
-  { name: "Google Calendar", icon: "/assets/connectors/google-calendar.svg" },
-  { name: "Intercom", icon: "/assets/connectors/intercom.svg", dark: true },
+  {
+    name: "Google Calendar",
+    icon: webStaticAssetUrl("assets/connectors/google-calendar.svg"),
+  },
+  {
+    name: "Intercom",
+    icon: webStaticAssetUrl("assets/connectors/intercom.svg"),
+    dark: true,
+  },
   {
     name: "Deel",
-    icon: "/assets/connectors/deel.svg",
-    darkIcon: "/assets/connectors/deel-dark.svg",
+    icon: webStaticAssetUrl("assets/connectors/deel.svg"),
+    darkIcon: webStaticAssetUrl("assets/connectors/deel-dark.svg"),
   },
-  { name: "HubSpot", icon: "/assets/connectors/hubspot.svg" },
-  { name: "Dropbox", icon: "/assets/connectors/dropbox.svg" },
-  { name: "Sentry", icon: "/assets/connectors/sentry.svg", dark: true },
-  { name: "Figma", icon: "/assets/connectors/figma.svg" },
-  { name: "Vercel", icon: "/assets/connectors/vercel.svg", dark: true },
+  {
+    name: "HubSpot",
+    icon: webStaticAssetUrl("assets/connectors/hubspot.svg"),
+  },
+  {
+    name: "Dropbox",
+    icon: webStaticAssetUrl("assets/connectors/dropbox.svg"),
+  },
+  {
+    name: "Sentry",
+    icon: webStaticAssetUrl("assets/connectors/sentry.svg"),
+    dark: true,
+  },
+  {
+    name: "Figma",
+    icon: webStaticAssetUrl("assets/connectors/figma.svg"),
+  },
+  {
+    name: "Vercel",
+    icon: webStaticAssetUrl("assets/connectors/vercel.svg"),
+    dark: true,
+  },
 ];
 
 function CtaButton({
@@ -185,7 +236,7 @@ function AddToSlackButton({ className }: { className?: string }) {
       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/assets/mockup/slack.svg"
+          src={webStaticAssetUrl("assets/mockup/slack.svg")}
           alt=""
           className="h-5 w-5 max-w-none scale-[2.2]"
         />
@@ -232,20 +283,24 @@ interface ComparisonItem {
 }
 
 const COMPARISON_ITEMS: ComparisonItem[] = [
-  { key: "manus", iconSrc: "/assets/connectors/manus.svg", iconBg: "#F3F4F6" },
+  {
+    key: "manus",
+    iconSrc: webStaticAssetUrl("assets/connectors/manus.svg"),
+    iconBg: "#F3F4F6",
+  },
   {
     key: "openclaw",
-    iconSrc: "/assets/connectors/openclaw.svg",
+    iconSrc: webStaticAssetUrl("assets/connectors/openclaw.svg"),
     iconBg: "#F3F4F6",
   },
   {
     key: "zapier",
-    iconSrc: "/assets/connectors/zapier.svg",
+    iconSrc: webStaticAssetUrl("assets/connectors/zapier.svg"),
     iconBg: "#F3F4F6",
   },
   {
     key: "claudeCode",
-    iconSrc: "/assets/connectors/anthropic.svg",
+    iconSrc: webStaticAssetUrl("assets/connectors/anthropic.svg"),
     iconBg: "#F3F4F6",
   },
 ];
@@ -945,7 +1000,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
             }}
           >
             <Image
-              src="/assets/hero/decorative-shapes.svg"
+              src={webStaticAssetUrl("assets/hero/decorative-shapes.svg")}
               alt=""
               className="deco-shapes"
               fill
@@ -961,7 +1016,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 className="hidden items-center gap-2 rounded-lg border border-[hsl(var(--gray-200))] bg-white px-3 py-1.5 text-sm text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-white"
               >
                 <Image
-                  src="/assets/hero/announcement-icon.svg"
+                  src={webStaticAssetUrl("assets/hero/announcement-icon.svg")}
                   alt=""
                   width={22}
                   height={16}
@@ -1031,7 +1086,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 <RoleCard
                   t={t}
                   roleKey="founders"
-                  image="/assets/mockup/web-ui-1.png"
+                  image={webStaticAssetUrl("assets/mockup/web-ui-1.png")}
                   imageAlt="Daily business brief generated by Zero"
                   imageBg="#d58341"
                 />
@@ -1040,7 +1095,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 <RoleCard
                   t={t}
                   roleKey="sales"
-                  image="/assets/mockup/across-tools.png"
+                  image={webStaticAssetUrl("assets/mockup/across-tools.png")}
                   imageAlt="KOL research synced from X into a Notion tracker"
                   imageBg="#39A2A3"
                 />
@@ -1049,7 +1104,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 <RoleCard
                   t={t}
                   roleKey="engineering"
-                  image="/assets/mockup/web-ui-3.png"
+                  image={webStaticAssetUrl("assets/mockup/web-ui-3.png")}
                   imageAlt="Sentry error triage report"
                   imageBg="#546887"
                 />
@@ -1058,7 +1113,7 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 <RoleCard
                   t={t}
                   roleKey="operations"
-                  image="/assets/mockup/atslack.png"
+                  image={webStaticAssetUrl("assets/mockup/atslack.png")}
                   imageAlt="Weekly status summary written inside Slack"
                   imageBg="#9a948d"
                   imageLayout="bottom"
@@ -1227,7 +1282,9 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
                   <Image
                     alt="Permission management interface"
-                    src="/assets/mockup/permission-management.svg"
+                    src={webStaticAssetUrl(
+                      "assets/mockup/permission-management.svg",
+                    )}
                     width={448}
                     height={300}
                     className="w-full max-w-[448px]"

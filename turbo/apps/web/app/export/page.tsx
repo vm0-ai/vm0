@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useAuth } from "@clerk/nextjs";
@@ -486,8 +487,8 @@ export default function ExportPage(): React.JSX.Element {
             <Image
               src={
                 theme === "dark"
-                  ? "/assets/vm0-logo.svg"
-                  : "/assets/vm0-logo-dark.svg"
+                  ? webStaticAssetUrl("assets/vm0-logo.svg")
+                  : webStaticAssetUrl("assets/vm0-logo-dark.svg")
               }
               alt="VM0"
               width={82}
@@ -496,7 +497,7 @@ export default function ExportPage(): React.JSX.Element {
               className="dark:hidden"
             />
             <Image
-              src="/assets/vm0-logo.svg"
+              src={webStaticAssetUrl("assets/vm0-logo.svg")}
               alt="VM0"
               width={82}
               height={20}

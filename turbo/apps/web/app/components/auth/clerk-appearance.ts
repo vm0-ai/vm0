@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import type { SignIn } from "@clerk/nextjs";
 import type { ComponentProps } from "react";
 
@@ -9,7 +10,9 @@ export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
   return {
     layout: {
       logoImageUrl:
-        theme === "dark" ? "/assets/vm0-logo.svg" : "/assets/vm0-logo-dark.svg",
+        theme === "dark"
+          ? webStaticAssetUrl("assets/vm0-logo.svg")
+          : webStaticAssetUrl("assets/vm0-logo-dark.svg"),
       logoPlacement: "inside",
     },
     variables: {

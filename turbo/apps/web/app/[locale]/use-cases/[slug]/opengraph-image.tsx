@@ -35,8 +35,14 @@ const ALL_MESSAGES: Record<string, MessagesShape> = {
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const fontCache = new Map<string, ArrayBuffer>();
 
+function toPublicRelPath(relPath: string): string {
+  return relPath
+    .replace(/^https:\/\/static\.(?:vm0\.io|vm7\.io)\/web\//u, "")
+    .replace(/^\//u, "");
+}
+
 function readPublicAsBase64(relPath: string, mime: string): string {
-  const cleaned = relPath.replace(/^\//, "");
+  const cleaned = toPublicRelPath(relPath);
   const buf = readFileSync(path.join(PUBLIC_DIR, cleaned));
   return `data:${mime};base64,${buf.toString("base64")}`;
 }

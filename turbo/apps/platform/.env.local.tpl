@@ -5,6 +5,7 @@ VITE_API_URL=http://localhost:3000
 VITE_PAID_ONBOARDING_URL=https://so.vm7.ai:8441
 VITE_PAID_ONBOARDING_DOMAIN=
 PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
+VITE_STATIC_ASSETS_BASE_URL=https://static.vm7.io
 VITE_ZERO_HOST_DOMAIN=sites.vm7.io
 
 # Web Push (VAPID public key for push subscription)

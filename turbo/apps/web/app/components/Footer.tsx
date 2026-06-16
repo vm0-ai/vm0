@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -16,14 +17,14 @@ export function Footer() {
           <div className="footer-brand">
             <div className="footer-logo">
               <Image
-                src="/assets/vm0-logo-dark.svg"
+                src={webStaticAssetUrl("assets/vm0-logo-dark.svg")}
                 alt="VM0"
                 width={112}
                 height={28}
                 className="dark:hidden"
               />
               <Image
-                src="/assets/vm0-logo.svg"
+                src={webStaticAssetUrl("assets/vm0-logo.svg")}
                 alt="VM0"
                 width={112}
                 height={28}
@@ -87,7 +88,7 @@ export function Footer() {
                 aria-label="GitHub"
               >
                 <Image
-                  src="/assets/github-gray.svg"
+                  src={webStaticAssetUrl("assets/github-gray.svg")}
                   alt="GitHub"
                   width={20}
                   height={20}
@@ -101,7 +102,7 @@ export function Footer() {
                 aria-label="Discord"
               >
                 <Image
-                  src="/assets/discord.svg"
+                  src={webStaticAssetUrl("assets/discord.svg")}
                   alt="Discord"
                   width={20}
                   height={20}
@@ -114,7 +115,12 @@ export function Footer() {
                 className="footer-link"
                 aria-label="X"
               >
-                <Image src="/assets/x.svg" alt="X" width={20} height={20} />
+                <Image
+                  src={webStaticAssetUrl("assets/x.svg")}
+                  alt="X"
+                  width={20}
+                  height={20}
+                />
               </a>
               <a
                 href="https://www.linkedin.com/company/vm0"
@@ -124,7 +130,7 @@ export function Footer() {
                 aria-label="LinkedIn"
               >
                 <Image
-                  src="/assets/linkedin.svg"
+                  src={webStaticAssetUrl("assets/linkedin.svg")}
                   alt="LinkedIn"
                   width={20}
                   height={20}

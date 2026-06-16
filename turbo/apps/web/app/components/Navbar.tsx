@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -374,7 +375,7 @@ export function Navbar({
         label: t("blog"),
         description: t("blogDesc"),
         href: "/blog",
-        icon: "/assets/nav/blog.png",
+        icon: webStaticAssetUrl("assets/nav/blog.png"),
       }
     : null;
 
@@ -383,7 +384,7 @@ export function Navbar({
         label: t("docs"),
         description: t("docsDesc"),
         href: "/docs",
-        icon: "/assets/nav/docs.png",
+        icon: webStaticAssetUrl("assets/nav/docs.png"),
       }
     : null;
 
@@ -392,31 +393,31 @@ export function Navbar({
       label: t("useCases"),
       description: t("useCasesDesc"),
       href: "/use-cases",
-      icon: "/assets/nav/use-cases.png",
+      icon: webStaticAssetUrl("assets/nav/use-cases.png"),
     },
     {
       label: t("reports"),
       description: t("reportsDesc"),
       href: "/report",
-      icon: "/assets/nav/report.png",
+      icon: webStaticAssetUrl("assets/nav/report.png"),
     },
     {
       label: t("presentations"),
       description: t("presentationsDesc"),
       href: "/presentation",
-      icon: "/assets/nav/presentation.png",
+      icon: webStaticAssetUrl("assets/nav/presentation.png"),
     },
     {
       label: t("illustrations"),
       description: t("illustrationsDesc"),
       href: "/illustration",
-      icon: "/assets/nav/illustration.png",
+      icon: webStaticAssetUrl("assets/nav/illustration.png"),
     },
     {
       label: t("webDesign"),
       description: t("webDesignDesc"),
       href: "/web-design",
-      icon: "/assets/nav/web-design.png",
+      icon: webStaticAssetUrl("assets/nav/web-design.png"),
     },
   ];
 
@@ -427,20 +428,20 @@ export function Navbar({
       label: t("support"),
       description: t("supportDesc"),
       href: "/support",
-      icon: "/assets/nav/support.png",
+      icon: webStaticAssetUrl("assets/nav/support.png"),
     },
     {
       label: t("status"),
       description: t("statusDesc"),
       href: STATUS_URL,
-      icon: "/assets/nav/status.png",
+      icon: webStaticAssetUrl("assets/nav/status.png"),
       external: true,
     },
     {
       label: t("github"),
       description: t("githubDesc"),
       href: GITHUB_URL,
-      icon: "/assets/nav/github.png",
+      icon: webStaticAssetUrl("assets/nav/github.png"),
       external: true,
     },
   ];
@@ -450,19 +451,19 @@ export function Navbar({
       label: t("models"),
       description: t("modelsDesc"),
       href: "/models",
-      icon: "/assets/nav/models.png",
+      icon: webStaticAssetUrl("assets/nav/models.png"),
     },
     {
       label: t("modelRankings"),
       description: t("modelRankingsDesc"),
       href: "/rankings",
-      icon: "/assets/nav/rankings.png",
+      icon: webStaticAssetUrl("assets/nav/rankings.png"),
     },
     {
       label: t("security"),
       description: t("securityDesc"),
       href: "/security",
-      icon: "/assets/nav/security.png",
+      icon: webStaticAssetUrl("assets/nav/security.png"),
     },
   ];
 
@@ -475,8 +476,8 @@ export function Navbar({
               <Image
                 src={
                   theme === "light"
-                    ? "/assets/vm0-logo-dark.svg"
-                    : "/assets/vm0-logo.svg"
+                    ? webStaticAssetUrl("assets/vm0-logo-dark.svg")
+                    : webStaticAssetUrl("assets/vm0-logo.svg")
                 }
                 alt="VM0 - Your Trustworthy AI Teammate"
                 width={120}

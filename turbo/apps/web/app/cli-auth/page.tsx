@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -233,8 +234,8 @@ export default function CliAuthPage(): React.JSX.Element {
             <Image
               src={
                 theme === "dark"
-                  ? "/assets/vm0-logo.svg"
-                  : "/assets/vm0-logo-dark.svg"
+                  ? webStaticAssetUrl("assets/vm0-logo.svg")
+                  : webStaticAssetUrl("assets/vm0-logo-dark.svg")
               }
               alt="VM0"
               width={82}
@@ -243,7 +244,7 @@ export default function CliAuthPage(): React.JSX.Element {
               className="dark:hidden"
             />
             <Image
-              src="/assets/vm0-logo.svg"
+              src={webStaticAssetUrl("assets/vm0-logo.svg")}
               alt="VM0"
               width={82}
               height={20}

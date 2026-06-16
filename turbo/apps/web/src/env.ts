@@ -37,6 +37,7 @@ function initEnv() {
       NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       NEXT_PUBLIC_APP_URL: z.url(),
       NEXT_PUBLIC_PAID_ONBOARDING_URL: z.url().optional(),
+      NEXT_PUBLIC_STATIC_ASSETS_BASE_URL: z.url().optional(),
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
       NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
       NEXT_PUBLIC_POSTHOG_HOST: z.url().optional(),
@@ -83,6 +84,9 @@ function initEnv() {
       NEXT_PUBLIC_PAID_ONBOARDING_URL:
         process.env.NEXT_PUBLIC_PAID_ONBOARDING_URL ??
         process.env.PAID_ONBOARDING_URL,
+      NEXT_PUBLIC_STATIC_ASSETS_BASE_URL:
+        process.env.NEXT_PUBLIC_STATIC_ASSETS_BASE_URL ??
+        process.env.STATIC_ASSETS_BASE_URL,
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL:
         process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL ??
         process.env.PLAUSIBLE_SCRIPT_URL,

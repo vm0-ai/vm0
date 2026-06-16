@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -60,7 +61,7 @@ export async function generateMetadata({
       url: `${getBlogBaseUrl()}/${locale}/blog`,
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: `VM0 ${t("title")}`,
@@ -71,7 +72,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: `VM0 ${t("title")}`,
       description: t("description"),
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },

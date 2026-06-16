@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../lib/static-assets";
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { notFound } from "next/navigation";
@@ -30,7 +31,7 @@ export async function generateMetadata({
       url,
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: "VM0 - Your Trustworthy AI Teammate",
@@ -42,7 +43,7 @@ export async function generateMetadata({
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
         "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       site: "@vm0_ai",
       creator: "@vm0_ai",
     },

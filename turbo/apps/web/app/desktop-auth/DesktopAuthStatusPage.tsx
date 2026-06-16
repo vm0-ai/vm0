@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import type { ReactNode } from "react";
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import Image from "next/image";
@@ -55,7 +56,7 @@ export function DesktopAuthStatusPage({
         <div className="flex flex-col items-center p-10">
           <div className="mb-8 flex items-center gap-2">
             <Image
-              src="/assets/vm0-logo-dark.svg"
+              src={webStaticAssetUrl("assets/vm0-logo-dark.svg")}
               alt="VM0"
               width={82}
               height={20}
@@ -63,7 +64,7 @@ export function DesktopAuthStatusPage({
               className="dark:hidden"
             />
             <Image
-              src="/assets/vm0-logo.svg"
+              src={webStaticAssetUrl("assets/vm0-logo.svg")}
               alt="VM0"
               width={82}
               height={20}

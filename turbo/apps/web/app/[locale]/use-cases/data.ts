@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 // ---------------------------------------------------------------------------
 // Use Cases – types & static data
 // ---------------------------------------------------------------------------
@@ -67,7 +68,7 @@ export interface UseCase {
 const SLACK: ConnectorRef = {
   id: "slack",
   label: "Slack",
-  icon: "/assets/mockup/slack.svg",
+  icon: webStaticAssetUrl("assets/mockup/slack.svg"),
   looseViewBox: true,
   url: "/works",
 };
@@ -75,123 +76,123 @@ const SLACK: ConnectorRef = {
 const SENTRY: ConnectorRef = {
   id: "sentry",
   label: "Sentry",
-  icon: "/assets/connectors/sentry.svg",
+  icon: webStaticAssetUrl("assets/connectors/sentry.svg"),
   dark: true,
 };
 
 const GITHUB: ConnectorRef = {
   id: "github",
   label: "GitHub",
-  icon: "/assets/connectors/github.svg",
+  icon: webStaticAssetUrl("assets/connectors/github.svg"),
   dark: true,
 };
 
 const GMAIL: ConnectorRef = {
   id: "gmail",
   label: "Gmail",
-  icon: "/assets/connectors/gmail.svg",
+  icon: webStaticAssetUrl("assets/connectors/gmail.svg"),
 };
 
 const GOOGLE_CALENDAR: ConnectorRef = {
   id: "google-calendar",
   label: "Calendar",
-  icon: "/assets/connectors/google-calendar.svg",
+  icon: webStaticAssetUrl("assets/connectors/google-calendar.svg"),
 };
 
 const LINEAR: ConnectorRef = {
   id: "linear",
   label: "Linear",
-  icon: "/assets/connectors/linear.svg",
+  icon: webStaticAssetUrl("assets/connectors/linear.svg"),
 };
 
 const X_TWITTER: ConnectorRef = {
   id: "x",
   label: "X (Twitter)",
-  icon: "/assets/connectors/x.svg",
+  icon: webStaticAssetUrl("assets/connectors/x.svg"),
   dark: true,
 };
 
 const NOTION: ConnectorRef = {
   id: "notion",
   label: "Notion",
-  icon: "/assets/connectors/notion.svg",
+  icon: webStaticAssetUrl("assets/connectors/notion.svg"),
   dark: true,
 };
 
 const AXIOM: ConnectorRef = {
   id: "axiom",
   label: "Axiom",
-  icon: "/assets/connectors/axiom.svg",
+  icon: webStaticAssetUrl("assets/connectors/axiom.svg"),
   dark: true,
 };
 
 const V0: ConnectorRef = {
   id: "v0",
   label: "v0",
-  icon: "/assets/connectors/v0.svg",
+  icon: webStaticAssetUrl("assets/connectors/v0.svg"),
 };
 
 const VM0: ConnectorRef = {
   id: "vm0",
   label: "vm0",
-  icon: "/assets/connectors/vm0.svg",
+  icon: webStaticAssetUrl("assets/connectors/vm0.svg"),
 };
 
 const RESEND: ConnectorRef = {
   id: "resend",
   label: "Resend",
-  icon: "/assets/connectors/resend.svg",
+  icon: webStaticAssetUrl("assets/connectors/resend.svg"),
   dark: true,
 };
 
 const STRAPI: ConnectorRef = {
   id: "strapi",
   label: "Strapi",
-  icon: "/assets/connectors/strapi.svg",
+  icon: webStaticAssetUrl("assets/connectors/strapi.svg"),
 };
 
 const PLAUSIBLE: ConnectorRef = {
   id: "plausible",
   label: "Plausible",
-  icon: "/assets/connectors/plausible.svg",
+  icon: webStaticAssetUrl("assets/connectors/plausible.svg"),
 };
 
 const GOOGLE_DRIVE: ConnectorRef = {
   id: "google-drive",
   label: "Google Drive",
-  icon: "/assets/connectors/google-drive.svg",
+  icon: webStaticAssetUrl("assets/connectors/google-drive.svg"),
 };
 
 const APOLLO: ConnectorRef = {
   id: "apollo",
   label: "Apollo",
-  icon: "/assets/connectors/apollo.svg",
+  icon: webStaticAssetUrl("assets/connectors/apollo.svg"),
   dark: true,
 };
 
 const HEYGEN: ConnectorRef = {
   id: "heygen",
   label: "HeyGen",
-  icon: "/assets/connectors/heygen.svg",
+  icon: webStaticAssetUrl("assets/connectors/heygen.svg"),
 };
 
 const ELEVENLABS: ConnectorRef = {
   id: "elevenlabs",
   label: "ElevenLabs",
-  icon: "/assets/connectors/elevenlabs.svg",
+  icon: webStaticAssetUrl("assets/connectors/elevenlabs.svg"),
   dark: true,
 };
 
 const GAMMA: ConnectorRef = {
   id: "gamma",
   label: "Gamma",
-  icon: "/assets/connectors/gamma.svg",
+  icon: webStaticAssetUrl("assets/connectors/gamma.svg"),
 };
 
 const VERCEL: ConnectorRef = {
   id: "vercel",
   label: "Vercel",
-  icon: "/assets/connectors/vercel.svg",
+  icon: webStaticAssetUrl("assets/connectors/vercel.svg"),
   dark: true,
 };
 
@@ -303,7 +304,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "error-triage-daily",
     color: "#9abe7c",
-    screenshots: ["/assets/use-cases/error-triage-daily.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/error-triage-daily.png")],
     avatar: {
       rotation: 2,
       skin: 1,
@@ -337,7 +338,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-engineering-brief",
     color: "#7c9ebe",
-    screenshots: ["/assets/use-cases/daily-engineering-brief.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/daily-engineering-brief.png"),
+    ],
     avatar: {
       rotation: 2,
       skin: 4,
@@ -373,7 +376,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "product-health-briefing",
     color: "#6b9e8c",
-    screenshots: ["/assets/use-cases/product-health-briefing.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/product-health-briefing.png"),
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -404,7 +409,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-merge-releases",
     color: "#4fa68b",
-    screenshots: ["/assets/use-cases/auto-merge-releases.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/auto-merge-releases.png"),
+    ],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -438,8 +445,8 @@ export const USE_CASES: UseCase[] = [
     slug: "pr-review",
     color: "#5a8a7a",
     screenshots: [
-      "/assets/use-cases/pr-review.png",
-      "/assets/use-cases/pr-review-2.png",
+      webStaticAssetUrl("assets/use-cases/pr-review.png"),
+      webStaticAssetUrl("assets/use-cases/pr-review-2.png"),
     ],
     avatar: {
       rotation: 4,
@@ -473,7 +480,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "tech-debt-scan",
     color: "#7c9ebe",
-    screenshots: ["/assets/use-cases/tech-debt-scan.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/tech-debt-scan.png")],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -500,8 +507,8 @@ export const USE_CASES: UseCase[] = [
     slug: "release-pipeline-monitor",
     color: "#5a9abe",
     screenshots: [
-      "/assets/use-cases/merge-queue-monitor.png",
-      "/assets/use-cases/release-readiness-check.png",
+      webStaticAssetUrl("assets/use-cases/merge-queue-monitor.png"),
+      webStaticAssetUrl("assets/use-cases/release-readiness-check.png"),
     ],
     avatar: {
       rotation: 1,
@@ -531,7 +538,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-test-coverage",
     color: "#5abe7c",
-    screenshots: ["/assets/use-cases/auto-test-coverage.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/auto-test-coverage.png")],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -561,7 +568,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cost-optimizer",
     color: "#8a5abe",
-    screenshots: ["/assets/use-cases/cost-optimizer.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/cost-optimizer.png")],
     avatar: {
       rotation: 4,
       skin: 5,
@@ -595,8 +602,8 @@ export const USE_CASES: UseCase[] = [
     slug: "production-db-query",
     color: "#be8a5a",
     screenshots: [
-      "/assets/use-cases/production-db-query.png",
-      "/assets/use-cases/production-db-query-2.png",
+      webStaticAssetUrl("assets/use-cases/production-db-query.png"),
+      webStaticAssetUrl("assets/use-cases/production-db-query-2.png"),
     ],
     avatar: {
       rotation: 5,
@@ -627,7 +634,9 @@ export const USE_CASES: UseCase[] = [
     slug: "file-bugs-from-slack",
     color: "#c08050",
     videoId: "E08Bc02tDIM",
-    screenshots: ["/assets/use-cases/file-bugs-from-slack.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/file-bugs-from-slack.png"),
+    ],
     avatar: {
       rotation: 4,
       skin: 4,
@@ -656,7 +665,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "investor-board-updates",
     color: "#3e7abe",
-    screenshots: ["/assets/use-cases/investor-board-updates.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/investor-board-updates.png"),
+    ],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -692,7 +703,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "release-notes-generator",
     color: "#5abe8e",
-    screenshots: ["/assets/use-cases/release-notes-generator.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/release-notes-generator.png"),
+    ],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -725,7 +738,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cross-tool-context",
     color: "#7abebe",
-    screenshots: ["/assets/use-cases/cross-tool-context.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/cross-tool-context.png")],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -761,8 +774,8 @@ export const USE_CASES: UseCase[] = [
     slug: "morning-brief",
     color: "#d4a06b",
     screenshots: [
-      "/assets/use-cases/morning-brief.png",
-      "/assets/use-cases/morning-brief-2.png",
+      webStaticAssetUrl("assets/use-cases/morning-brief.png"),
+      webStaticAssetUrl("assets/use-cases/morning-brief-2.png"),
     ],
     avatar: {
       rotation: 5,
@@ -801,8 +814,8 @@ export const USE_CASES: UseCase[] = [
     slug: "customer-360",
     color: "#9e8abe",
     screenshots: [
-      "/assets/use-cases/customer-360.png",
-      "/assets/use-cases/customer-360-2.png",
+      webStaticAssetUrl("assets/use-cases/customer-360.png"),
+      webStaticAssetUrl("assets/use-cases/customer-360-2.png"),
     ],
     avatar: {
       rotation: 1,
@@ -836,8 +849,8 @@ export const USE_CASES: UseCase[] = [
     slug: "daily-user-analysis",
     color: "#5a8abe",
     screenshots: [
-      "/assets/use-cases/daily-user-analysis.png",
-      "/assets/use-cases/daily-user-analysis-2.png",
+      webStaticAssetUrl("assets/use-cases/daily-user-analysis.png"),
+      webStaticAssetUrl("assets/use-cases/daily-user-analysis-2.png"),
     ],
     avatar: {
       rotation: 5,
@@ -872,8 +885,8 @@ export const USE_CASES: UseCase[] = [
     slug: "document-decisions",
     color: "#8a7cbe",
     screenshots: [
-      "/assets/use-cases/document-decisions.png",
-      "/assets/use-cases/document-decisions-2.png",
+      webStaticAssetUrl("assets/use-cases/document-decisions.png"),
+      webStaticAssetUrl("assets/use-cases/document-decisions-2.png"),
     ],
     avatar: {
       rotation: 2,
@@ -903,7 +916,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "developer-support-triage",
     color: "#8abe9a",
-    screenshots: ["/assets/use-cases/developer-support-triage.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/developer-support-triage.png"),
+    ],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -934,8 +949,8 @@ export const USE_CASES: UseCase[] = [
     slug: "api-performance",
     color: "#c07890",
     screenshots: [
-      "/assets/use-cases/api-performance.png",
-      "/assets/use-cases/api-performance-2.png",
+      webStaticAssetUrl("assets/use-cases/api-performance.png"),
+      webStaticAssetUrl("assets/use-cases/api-performance-2.png"),
     ],
     avatar: {
       rotation: 1,
@@ -970,8 +985,8 @@ export const USE_CASES: UseCase[] = [
     slug: "competitor-intelligence",
     color: "#be7c9a",
     screenshots: [
-      "/assets/use-cases/competitor-audit.png",
-      "/assets/use-cases/competitor-pricing-monitor.png",
+      webStaticAssetUrl("assets/use-cases/competitor-audit.png"),
+      webStaticAssetUrl("assets/use-cases/competitor-pricing-monitor.png"),
     ],
     avatar: {
       rotation: 3,
@@ -1007,7 +1022,7 @@ export const USE_CASES: UseCase[] = [
     slug: "slack-triage",
     color: "#7c9885",
     videoId: "XcqnMX1U0xY",
-    screenshots: ["/assets/use-cases/slack-triage.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/slack-triage.png")],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -1041,7 +1056,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-email-triage",
     color: "#be8a5c",
-    screenshots: ["/assets/use-cases/daily-email-triage.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/daily-email-triage.png")],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1071,10 +1086,10 @@ export const USE_CASES: UseCase[] = [
     slug: "cold-outreach-pipeline",
     color: "#d07a5c",
     screenshots: [
-      "/assets/use-cases/cold-outreach-pipeline.png",
-      "/assets/use-cases/cold-outreach-pipeline-2.png",
-      "/assets/use-cases/cold-outreach-pipeline-3.png",
-      "/assets/use-cases/cold-outreach-pipeline-4.png",
+      webStaticAssetUrl("assets/use-cases/cold-outreach-pipeline.png"),
+      webStaticAssetUrl("assets/use-cases/cold-outreach-pipeline-2.png"),
+      webStaticAssetUrl("assets/use-cases/cold-outreach-pipeline-3.png"),
+      webStaticAssetUrl("assets/use-cases/cold-outreach-pipeline-4.png"),
     ],
     avatar: {
       rotation: 3,
@@ -1110,7 +1125,7 @@ export const USE_CASES: UseCase[] = [
     slug: "kol-cold-outreach",
     color: "#c4a08a",
     videoId: "aignt_fZSVo",
-    screenshots: ["/assets/use-cases/kol-cold-outreach.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/kol-cold-outreach.png")],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1140,7 +1155,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "lead-followups",
     color: "#be5a4f",
-    screenshots: ["/assets/use-cases/lead-followups.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/lead-followups.png")],
     avatar: {
       rotation: 1,
       skin: 3,
@@ -1169,7 +1184,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "marketing-emails",
     color: "#d68c7c",
-    screenshots: ["/assets/use-cases/marketing-emails.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/marketing-emails.png")],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -1204,7 +1219,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "trending-topic-radar",
     color: "#be9a5c",
-    screenshots: ["/assets/use-cases/trending-topic-radar.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/trending-topic-radar.png"),
+    ],
     avatar: {
       rotation: 5,
       skin: 3,
@@ -1239,8 +1256,8 @@ export const USE_CASES: UseCase[] = [
     slug: "marketing-performance-report",
     color: "#7cbe9a",
     screenshots: [
-      "/assets/use-cases/marketing-analytics.png",
-      "/assets/use-cases/content-performance-report.png",
+      webStaticAssetUrl("assets/use-cases/marketing-analytics.png"),
+      webStaticAssetUrl("assets/use-cases/content-performance-report.png"),
     ],
     avatar: {
       rotation: 3,
@@ -1277,8 +1294,8 @@ export const USE_CASES: UseCase[] = [
     slug: "security-compliance",
     color: "#be7c5a",
     screenshots: [
-      "/assets/use-cases/security-compliance.png",
-      "/assets/use-cases/security-compliance-2.png",
+      webStaticAssetUrl("assets/use-cases/security-compliance.png"),
+      webStaticAssetUrl("assets/use-cases/security-compliance-2.png"),
     ],
     avatar: {
       rotation: 5,
@@ -1312,7 +1329,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "control-verification",
     color: "#5a7cbe",
-    screenshots: ["/assets/use-cases/control-verification.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/control-verification.png"),
+    ],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -1347,7 +1366,9 @@ export const USE_CASES: UseCase[] = [
     slug: "employee-onboarding",
     color: "#6b8cae",
     videoId: "2YA7Iff4XHs",
-    screenshots: ["/assets/use-cases/employee-onboarding.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/employee-onboarding.png"),
+    ],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -1378,7 +1399,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "meeting-action-items",
     color: "#be9a3a",
-    screenshots: ["/assets/use-cases/meeting-action-items.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/meeting-action-items.png"),
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1408,7 +1431,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "docs-auto-update",
     color: "#c28a9e",
-    screenshots: ["/assets/use-cases/docs-auto-update.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/docs-auto-update.png")],
     avatar: {
       rotation: 5,
       skin: 2,
@@ -1442,7 +1465,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "brief-to-draft-content",
     color: "#8ebe5a",
-    screenshots: ["/assets/use-cases/brief-to-draft-content.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/brief-to-draft-content.png"),
+    ],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -1477,8 +1502,8 @@ export const USE_CASES: UseCase[] = [
     slug: "multilingual-cms-publishing",
     color: "#8E75FF",
     screenshots: [
-      "/assets/use-cases/multilingual-cms-publishing-2.png",
-      "/assets/use-cases/multilingual-cms-publishing.png",
+      webStaticAssetUrl("assets/use-cases/multilingual-cms-publishing-2.png"),
+      webStaticAssetUrl("assets/use-cases/multilingual-cms-publishing.png"),
     ],
     avatar: {
       rotation: 2,
@@ -1512,7 +1537,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "automate-blog-production",
     color: "#d4915e",
-    screenshots: ["/assets/use-cases/automate-blog-production.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/automate-blog-production.png"),
+    ],
     avatar: {
       rotation: 2,
       skin: 2,
@@ -1546,8 +1573,8 @@ export const USE_CASES: UseCase[] = [
     slug: "promo-video-from-recordings",
     color: "#c86478",
     screenshots: [
-      "/assets/use-cases/promo-video-from-recordings-2.png",
-      "/assets/use-cases/promo-video-from-recordings-3.png",
+      webStaticAssetUrl("assets/use-cases/promo-video-from-recordings-2.png"),
+      webStaticAssetUrl("assets/use-cases/promo-video-from-recordings-3.png"),
     ],
     avatar: {
       rotation: 3,
@@ -1584,7 +1611,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "gmail-poll-dm",
     color: "#b88cbe",
-    screenshots: ["/assets/use-cases/gmail-poll-dm.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/gmail-poll-dm.png")],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -1613,7 +1640,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "build-with-v0",
     color: "#7c8cbe",
-    screenshots: ["/assets/use-cases/build-with-v0.png"],
+    screenshots: [webStaticAssetUrl("assets/use-cases/build-with-v0.png")],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -1646,7 +1673,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "podcast-deep-research",
     color: "#5b6eab",
-    screenshots: ["/assets/use-cases/podcast-deep-research.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/podcast-deep-research.png"),
+    ],
     avatar: {
       rotation: 0,
       skin: 5,
@@ -1679,7 +1708,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "summarize-shared-articles",
     color: "#5c9eb8",
-    screenshots: ["/assets/use-cases/summarize-shared-articles.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/summarize-shared-articles.png"),
+    ],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -1712,7 +1743,9 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "publish-use-case-pages",
     color: "#b06e4a",
-    screenshots: ["/assets/use-cases/publish-use-case-pages.png"],
+    screenshots: [
+      webStaticAssetUrl("assets/use-cases/publish-use-case-pages.png"),
+    ],
     avatar: {
       rotation: 4,
       skin: 2,

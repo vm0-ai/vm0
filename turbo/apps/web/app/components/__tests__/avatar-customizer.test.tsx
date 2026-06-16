@@ -76,7 +76,7 @@ async function waitForAvatarSvgCount(count: number) {
 describe("AvatarCustomizer", () => {
   beforeAll(async () => {
     assetServer = createServer((request, response) => {
-      if (request.url?.startsWith("/assets/avatar-svg/")) {
+      if (request.url?.startsWith("/web/assets/avatar-svg/")) {
         response.writeHead(200, {
           connection: "close",
           "content-length": mockAvatarSvgBody.byteLength,
@@ -100,6 +100,7 @@ describe("AvatarCustomizer", () => {
   });
 
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_STATIC_ASSETS_BASE_URL", assetOrigin);
     setHappyDomUrl(`${assetOrigin}/`);
   });
 
