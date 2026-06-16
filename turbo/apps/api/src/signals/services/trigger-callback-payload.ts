@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+export const triggerLoopCallbackPayloadSchema = z
+  .object({
+    triggerId: z.string(),
+  })
+  .passthrough();
+
 export const triggerCronCallbackPayloadSchema = z
   .object({
     triggerId: z.string(),
@@ -8,6 +14,9 @@ export const triggerCronCallbackPayloadSchema = z
   })
   .passthrough();
 
+export type TriggerLoopCallbackPayload = z.infer<
+  typeof triggerLoopCallbackPayloadSchema
+>;
 export type TriggerCronCallbackPayload = z.infer<
   typeof triggerCronCallbackPayloadSchema
 >;

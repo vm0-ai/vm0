@@ -1,8 +1,4 @@
 import { command } from "ccstate";
-import {
-  triggerLoopCallbackPayloadSchema,
-  type TriggerLoopCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 import { automationTriggers } from "@vm0/db/schema/automation";
 import { eq } from "drizzle-orm";
 
@@ -17,6 +13,8 @@ import type {
 import {
   triggerCronCallbackPayloadSchema,
   type TriggerCronCallbackPayload,
+  triggerLoopCallbackPayloadSchema,
+  type TriggerLoopCallbackPayload,
 } from "./trigger-callback-payload";
 
 const MAX_CONSECUTIVE_FAILURES = 3;

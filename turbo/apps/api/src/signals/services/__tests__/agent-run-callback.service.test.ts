@@ -1934,6 +1934,50 @@ describe("dispatchRunCallbacks$ trigger internal dispatch", () => {
     });
   });
 
+  it("dispatches legacy loop trigger URLs through the same ccstate path", async () => {
+    mockNow(new Date("2026-05-13T04:00:00.000Z"));
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "loop",
+      consecutiveFailures: 2,
+      intervalSeconds: 300,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: TRIGGER_LOOP_CALLBACK_URL,
+        payload: { triggerId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_LOOP_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 0,
+      enabled: true,
+      nextRunAt: new Date("2026-05-13T04:05:00.000Z"),
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: TRIGGER_LOOP_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
   it("dispatches typed cron trigger callbacks through ccstate without fetching the route", async () => {
     const completedAt = new Date("2026-05-13T04:00:00.000Z");
     mockNow(completedAt);
