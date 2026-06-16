@@ -42,6 +42,8 @@ mod status;
 mod storage_cache;
 mod storage_fingerprints;
 mod telemetry;
+#[cfg(test)]
+mod test_fixtures;
 mod types;
 mod workspace_image_cache;
 mod workspace_mount;
