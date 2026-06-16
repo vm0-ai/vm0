@@ -120,7 +120,7 @@
     "https://sheets.googleapis.com/$discovery/rest?version=v4": "0c6848d26f5e80d1482f1c552b8d371e01ef0d997a9b74c56b5a684cf9f55958"
   },
   "notion": {
-    "https://developers.notion.com/openapi.json": "a17c0c6138c18e36c5acd21acd8747d657cbdcba724617ce729dde5760546192"
+    "https://developers.notion.com/openapi.json": "b28e6ec6abc50b637355001425afbd6ef8644a95915a852893b9256d84f98c87"
   },
   "sentry": {
     "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json": "b4f4c0d380d62373fd61af53eaa0feb2f88ffe7845082219d775c2a4204c8d4f"
