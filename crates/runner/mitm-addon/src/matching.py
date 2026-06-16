@@ -250,6 +250,11 @@ class SegmentError(NamedTuple):
 
 ParsedSegment = SegmentLiteral | SegmentParam | SegmentError
 _PathSpecificity = tuple[int, int, int, int, int, int, int]
+_AwsRuleIdentity = tuple[
+    tuple[ParsedSegment, ...],
+    tuple[tuple[str, str | None], ...],
+    tuple[tuple[str, str], ...],
+]
 
 
 class CompiledPathPattern(NamedTuple):
@@ -323,6 +328,7 @@ class _CompiledRuleCandidate(NamedTuple):
     rule: str
     specificity: _PathSpecificity
     params: dict[str, str]
+    aws_rule_identity: _AwsRuleIdentity | None
 
 
 class FirewallRequestContext(NamedTuple):
@@ -1889,6 +1895,17 @@ def _aws_predicates_match(
     )
 
 
+def _aws_rule_identity(rule: _CompiledRule) -> _AwsRuleIdentity | None:
+    predicates = rule.aws_predicates
+    if predicates is None:
+        return None
+    return (
+        rule.path.segments,
+        tuple(sorted(rule.query_requirements, key=lambda item: item[0])),
+        tuple(sorted(predicates.items())),
+    )
+
+
 def _best_compiled_rule_candidates(
     api_entry: _CompiledApi,
     *,
@@ -1945,6 +1962,7 @@ def _best_compiled_rule_candidates(
                         rule.raw,
                         rule.specificity,
                         {**base_params, **params},
+                        _aws_rule_identity(rule),
                     )
                 )
 
@@ -2089,20 +2107,20 @@ class _FirewallDecisionState:
             self.denied_match = match
 
 
-def _aws_blocked_permissions_by_rule(
+def _aws_blocked_permissions_by_identity(
     candidates: list[_CompiledRuleCandidate],
     policy: _CompiledNetworkPolicy | None,
-) -> dict[str, list[str]]:
+) -> dict[_AwsRuleIdentity, list[str]]:
     if policy is None:
         return {}
 
-    blocked: dict[str, list[str]] = {}
+    blocked: dict[_AwsRuleIdentity, list[str]] = {}
     for candidate in candidates:
         if (
-            _AWS_RULE_SEPARATOR in candidate.rule
+            candidate.aws_rule_identity is not None
             and candidate.permission in policy.blocked_permissions
         ):
-            blocked.setdefault(candidate.rule, []).append(candidate.permission)
+            blocked.setdefault(candidate.aws_rule_identity, []).append(candidate.permission)
     return blocked
 
 
@@ -2311,12 +2329,15 @@ def match_compiled_firewall_request(
             if not candidates:
                 continue
 
-            aws_blocked_permissions = _aws_blocked_permissions_by_rule(candidates, policy)
+            aws_blocked_permissions = _aws_blocked_permissions_by_identity(
+                candidates,
+                policy,
+            )
             for candidate in candidates:
                 if not decision.accept_rule_candidate(candidate):
                     continue
 
-                blocked_aws_permissions = aws_blocked_permissions.get(candidate.rule)
+                blocked_aws_permissions = aws_blocked_permissions.get(candidate.aws_rule_identity)
                 if blocked_aws_permissions is not None:
                     for permission in blocked_aws_permissions:
                         decision.record_denied_rule(block_match, permission)

@@ -736,6 +736,61 @@ def test_aws_duplicate_rule_denied_permission_takes_priority():
     assert result.permissions == ("lex:StartImport",)
 
 
+def test_aws_duplicate_rule_uses_query_semantics():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "apigateway:POST",
+            "POST /items?mode=import&format=* AWS sigv4=apigateway",
+        ),
+        firewall_permission(
+            "apigateway:ImportItems",
+            "POST /items?format=*&mode=import AWS sigv4=apigateway",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/items?mode=import&format=json",
+        firewalls,
+        {"aws": network_policy(deny=["apigateway:ImportItems"], unknown_policy="deny")},
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "permission_denied"
+    assert result.permissions == ("apigateway:ImportItems",)
+
+
+def test_aws_duplicate_rule_uses_predicate_semantics():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "ec2:DescribeInstances",
+            "POST / AWS sigv4=ec2 action=DescribeInstances",
+        ),
+        firewall_permission(
+            "ec2:DescribeInstancesAlias",
+            "POST / AWS action=DescribeInstances sigv4=ec2",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        {
+            "aws": network_policy(
+                deny=["ec2:DescribeInstancesAlias"],
+                unknown_policy="deny",
+            )
+        },
+        method="POST",
+        request_context=_sigv4_context("ec2"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "permission_denied"
+    assert result.permissions == ("ec2:DescribeInstancesAlias",)
+
+
 def test_aws_predicate_rule_requires_matching_sigv4_service():
     firewalls = _aws_firewall(
         firewall_permission(
