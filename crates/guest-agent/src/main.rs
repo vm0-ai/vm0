@@ -399,9 +399,9 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
     const MARKER: &str = "api error: 529";
     normalized.match_indices(MARKER).any(|(index, _)| {
         let detail = &normalized[index + MARKER.len()..];
-        detail
-            .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
-            .starts_with("overloaded")
+        let detail = detail
+            .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'));
+        detail.starts_with("overloaded") || detail.contains("overloaded_error")
     })
 }
 
@@ -1276,6 +1276,16 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "API Error: 529 upstream failed. Background retry failed: API Error: 529 Overloaded.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_provider_overloaded_error_type() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            r#"API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"The service is overloaded"}}"#,
         );
 
         assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
