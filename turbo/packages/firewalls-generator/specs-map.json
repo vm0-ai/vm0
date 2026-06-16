@@ -526,7 +526,7 @@
     "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json": "f00242857c84b56ec6cfab86cbb487b7a84611bc447bc2cbd56e1dac7f86fabe"
   },
   "vercel": {
-    "https://openapi.vercel.sh/": "5b3f7e764fac6e87a1092c7e599841a316613b3bc63edef2ccd286d9e3a4b8cc"
+    "https://openapi.vercel.sh/": "45a6cb8b14bb2bc8762e1881da017fc74504584e71ff01fd9607dd4f1816f181"
   },
   "x": {
     "https://api.twitter.com/2/openapi.json": "1d8be10b9c4ab1b6c1f22af42124c5b1ef982d32d751e74f98a28354f04b17a6"
