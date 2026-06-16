@@ -3242,6 +3242,13 @@
       "when": 1781506774317,
       "tag": "0462_flimsy_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 463,
+      "version": "7",
+      "when": 1781579599750,
+      "tag": "0463_friendly_tigra",
+      "breakpoints": true
     }
   ]
 }

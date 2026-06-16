@@ -27,11 +27,11 @@ import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
 import { badRequestMessage, notFound } from "../../lib/error";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
+import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -92,11 +92,19 @@ interface ZeroAgentComposeContent {
   readonly agents?: Record<string, ZeroAgentConfig | undefined>;
 }
 
-interface RunCallback {
+interface HttpRunCallback {
   readonly url: string;
   readonly secret: string;
   readonly payload: unknown;
 }
+
+interface InternalRunCallback {
+  readonly internalKind: InternalRunCallbackKind;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
@@ -575,7 +583,7 @@ function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
         {
-          url: `${internalApiBaseUrl()}/api/internal/callbacks/agent`,
+          internalKind: "agent" as const,
           secret: generateCallbackSecret(),
           payload: { triggerAgentId },
         },
