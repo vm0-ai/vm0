@@ -396,7 +396,12 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
 }
 
 fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
-    normalized.contains("api error: 529") && normalized.contains("overloaded")
+    let Some((_, detail)) = normalized.split_once("api error: 529") else {
+        return false;
+    };
+    detail
+        .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
+        .starts_with("overloaded")
 }
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
@@ -1261,6 +1266,24 @@ mod tests {
             AgentFramework::ClaudeCode,
             "API Error: 529 upstream failed",
         );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_negated_claude_overloaded_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 not overloaded",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_overloaded_without_529() {
+        let reason =
+            classify_cli_failure_reason(AgentFramework::ClaudeCode, "API Error: 503 Overloaded");
 
         assert_eq!(reason, None);
     }
