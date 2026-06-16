@@ -547,14 +547,31 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let ctx = minimal_context();
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-    let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
-        .await
-        .unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
 
-    assert_eq!(exit_code, 1);
+    let failure = outcome.failure.as_ref().expect("expected OOM failure");
+    assert_eq!(outcome.exit_code(), 1);
+    assert_eq!(failure.error.as_str(), "Agent process killed by OOM killer");
     assert_eq!(
-        error_msg.as_deref(),
-        Some("Agent process killed by OOM killer")
+        failure
+            .resource_diagnostics
+            .expect("expected OOM resource diagnostics")
+            .failure_kind,
+        Some(ResourceFailureKind::GuestMemoryOomKilled)
     );
     let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
     let mut expected = b"partial stdout\n".to_vec();

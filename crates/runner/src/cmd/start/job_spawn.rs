@@ -1095,6 +1095,28 @@ mod tests {
     }
 
     #[test]
+    fn oom_resource_failure_logs_resource_kind() {
+        let failure =
+            executor::ExecutionFailure::new(1, "Agent process killed by OOM killer", None)
+                .with_resource_diagnostics(Some(
+                    executor::ResourceFailureDiagnostics::from_failure_kind(
+                        executor::ResourceFailureKind::GuestMemoryOomKilled,
+                    ),
+                ));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "exit_code", "1");
+        assert_field_eq(&event, "error", "Agent process killed by OOM killer");
+        assert_field_eq(&event, "resource_failure_kind", "guest_memory_oom_killed");
+    }
+
+    #[test]
     fn runner_job_timeout_logs_specific_terminal_message_and_fields() {
         let failure = executor::ExecutionFailure::runner_job_timeout(
             124,

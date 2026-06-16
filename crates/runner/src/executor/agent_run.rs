@@ -22,9 +22,9 @@ use super::storage::{download_storages, filter_unchanged_storages};
 use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
-    JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, RunnerResult, SandboxReuseResult,
-    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, normalize_failure_exit_code,
-    normalize_timeout_failure_exit_code,
+    JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
+    ResourceFailureKind, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
+    agent_exit_failure_message, normalize_failure_exit_code, normalize_timeout_failure_exit_code,
 };
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -72,6 +72,15 @@ impl AgentExecutionResult {
         diagnostics: AgentStdoutStreamDiagnostics,
     ) -> Self {
         self.stdout_stream_diagnostics = diagnostics;
+        self
+    }
+
+    pub(super) fn with_resource_failure_kind(mut self, kind: ResourceFailureKind) -> Self {
+        if let Some(failure) = self.failure.take() {
+            self.failure = Some(failure.with_resource_diagnostics(Some(
+                ResourceFailureDiagnostics::from_failure_kind(kind),
+            )));
+        }
         self
     }
 }
@@ -383,7 +392,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                              (cgroup memory limit exceeded)"
                     .to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
-                return Ok(AgentExecutionResult::failure(1, error, None));
+                return Ok(AgentExecutionResult::failure(1, error, None)
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -451,6 +461,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 let error = "Agent process killed by OOM killer";
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
+                    .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
                     .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
             }
             Err(e) => {

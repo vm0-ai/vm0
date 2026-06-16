@@ -227,6 +227,8 @@ pub enum ExecutionFailureKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceFailureKind {
     GuestRootFilesystemFull,
+    GuestMemoryOomKilled,
+    HostMemoryOomKilled,
 }
 
 impl ResourceFailureKind {
@@ -234,6 +236,8 @@ impl ResourceFailureKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::GuestRootFilesystemFull => "guest_root_filesystem_full",
+            Self::GuestMemoryOomKilled => "guest_memory_oom_killed",
+            Self::HostMemoryOomKilled => "host_memory_oom_killed",
         }
     }
 }
@@ -248,6 +252,14 @@ pub struct ResourceFailureDiagnostics {
 }
 
 impl ResourceFailureDiagnostics {
+    #[must_use]
+    pub fn from_failure_kind(failure_kind: ResourceFailureKind) -> Self {
+        Self {
+            failure_kind: Some(failure_kind),
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn is_empty(self) -> bool {
         self.failure_kind.is_none()

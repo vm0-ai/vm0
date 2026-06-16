@@ -75,7 +75,7 @@ firecracker:
     snapshot_hash: {snapshot_hash}
     vcpu: 2
     memory_mb: 4096
-    rootfs_disk_mb: 16384
+    rootfs_disk_mb: 8192
     workspace_disk_mb: 16384
 {extra}"#,
             rootfs_hash = TEST_ROOTFS_HASH,
@@ -148,7 +148,7 @@ fn make_profiles() -> BTreeMap<String, ProfileConfig> {
             snapshot_hash: TEST_SNAPSHOT_HASH.into(),
             vcpu: 2,
             memory_mb: 4096,
-            rootfs_disk_mb: 16384,
+            rootfs_disk_mb: 8192,
             workspace_disk_mb: 16384,
         },
     );
@@ -816,7 +816,7 @@ async fn generate_then_load_round_trip() {
 
     let config_path = runner_dir.join("runner.yaml");
     let generated = tokio::fs::read_to_string(&config_path).await.unwrap();
-    assert!(generated.contains("rootfs_disk_mb: 16384"));
+    assert!(generated.contains("rootfs_disk_mb: 8192"));
     assert!(generated.contains("workspace_disk_mb: 16384"));
     assert!(
         generated
