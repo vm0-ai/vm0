@@ -488,13 +488,7 @@ fn install_produced_artifact(
         "produced setup artifact",
     )?;
     let chmod_stat = setup_file_stat(&artifact.file, &artifact.path, "produced setup artifact")?;
-    if (chmod_stat.st_mode & 0o7777) != mode {
-        return Err(RunnerError::Internal(format!(
-            "{} mode is {:o} after chmod, expected {mode:o}",
-            artifact.path.display(),
-            chmod_stat.st_mode & 0o7777
-        )));
-    }
+    validate_setup_artifact_mode(&chmod_stat, &artifact.path, mode, "produced setup artifact")?;
     drop(temp_path_file);
 
     std::fs::rename(&artifact.path, target)
@@ -509,7 +503,9 @@ fn install_produced_artifact(
         &target_stat,
         target,
         "installed setup artifact",
-    )
+    )?;
+    validate_trusted_regular_setup_file(&target_stat, target, "installed setup artifact")?;
+    validate_setup_artifact_mode(&target_stat, target, mode, "installed setup artifact")
 }
 
 fn ensure_artifact_installed_blocking(
@@ -644,6 +640,23 @@ fn validate_same_setup_file_identity(
         actual.st_ino,
         expected.st_dev,
         expected.st_ino
+    )))
+}
+
+fn validate_setup_artifact_mode(
+    stat: &libc::stat,
+    path: &Path,
+    mode: u32,
+    context: &str,
+) -> RunnerResult<()> {
+    if (stat.st_mode & 0o7777) == mode {
+        return Ok(());
+    }
+
+    Err(RunnerError::Internal(format!(
+        "{context} {} mode is {:o}, expected {mode:o}",
+        path.display(),
+        stat.st_mode & 0o7777
     )))
 }
 
@@ -1443,6 +1456,22 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("device/inode"));
+    }
+
+    #[test]
+    fn validate_setup_artifact_mode_rejects_wrong_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let file = File::open(&path).unwrap();
+        let stat = setup_file_stat(&file, &path, "test").unwrap();
+
+        let error =
+            validate_setup_artifact_mode(&stat, &path, SETUP_EXECUTABLE_ARTIFACT_MODE, "test")
+                .unwrap_err();
+
+        assert!(error.to_string().contains("mode"));
     }
 
     #[tokio::test]
