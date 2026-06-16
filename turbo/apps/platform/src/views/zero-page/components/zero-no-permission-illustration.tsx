@@ -1,4 +1,4 @@
-import noPermissionIllustration from "../assets/no-permission-illustration.webp";
+import { noPermissionIllustration } from "../platform-assets.ts";
 
 type ZeroNoPermissionIllustrationProps = {
   className?: string;

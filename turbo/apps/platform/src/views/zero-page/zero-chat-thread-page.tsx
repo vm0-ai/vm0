@@ -82,8 +82,7 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import emptyChatImg from "./assets/empty-chat.webp";
-import emptyArtifactImg from "./assets/empty-artifact.webp";
+import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";

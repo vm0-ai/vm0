@@ -86,7 +86,7 @@ import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
-import noConnectorImg from "../zero-page/assets/no-connector.webp";
+import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
 import {

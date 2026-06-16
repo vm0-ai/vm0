@@ -67,7 +67,7 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import noConnectorImg from "./assets/no-connector.webp";
+import { noConnectorImg } from "./platform-assets.ts";
 import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
 import {
   Button,
