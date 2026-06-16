@@ -1327,6 +1327,39 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("4ms");
     });
 
+    it("should display BLOCK before protocol-specific formatting", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  type: "tcp",
+                  action: "BLOCK",
+                  host: "db.internal",
+                  port: 5432,
+                  firewall_name: "database",
+                  firewall_error: "connector_not_configured",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("BLOCK");
+      expect(logCalls).toContain("db.internal:5432");
+      expect(logCalls).toContain("[database]");
+      expect(logCalls).toContain("connector_not_configured");
+      expect(logCalls).not.toContain("TCP");
+    });
+
     it("should display ERROR action with auth failed suffix", async () => {
       server.use(
         http.get(

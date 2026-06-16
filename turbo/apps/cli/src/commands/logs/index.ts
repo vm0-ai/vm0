@@ -113,11 +113,16 @@ function formatNetworkDeny(entry: NetworkLogEntry): string {
  */
 function formatNetworkBlock(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
-  const url = entry.url || entry.host || "unknown";
+  const target =
+    entry.url ??
+    (entry.host && entry.port !== undefined
+      ? `${entry.host}:${entry.port}`
+      : entry.host) ??
+    "unknown";
   const error = entry.firewall_error
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.yellow.bold("BLOCK")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.yellow.bold("BLOCK")} ${chalk.dim(target)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
 }
 
 /**
@@ -256,10 +261,10 @@ function formatNetworkOther(entry: NetworkLogEntry): string {
  * Format a network log entry
  */
 function formatNetworkLog(entry: NetworkLogEntry): string {
+  if (entry.action === "BLOCK") return formatNetworkBlock(entry);
   if (entry.type === "tcp") return formatNetworkTcp(entry);
   if (entry.type && entry.type !== "http") return formatNetworkOther(entry);
   if (entry.action === "DENY") return formatNetworkDeny(entry);
-  if (entry.action === "BLOCK") return formatNetworkBlock(entry);
   return formatNetworkRequest(entry);
 }
 
