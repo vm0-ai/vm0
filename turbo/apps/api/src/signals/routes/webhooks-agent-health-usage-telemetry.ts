@@ -262,7 +262,6 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const authResult = resolveSandboxAuthForRun(body.runId, get(authorization$));
   if (!authResult.ok) {
     L.warn("Agent telemetry rejected sandbox auth", {
-      runId: body.runId,
       authFailureReason: authResult.reason,
     });
     return unauthorizedRunMismatch;
