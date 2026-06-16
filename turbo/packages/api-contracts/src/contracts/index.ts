@@ -1374,12 +1374,6 @@ export {
   type CreateTriggerRequest,
 } from "./automations";
 export {
-  internalCallbacksTriggerContract,
-  triggerLoopCallbackPayloadSchema,
-  type InternalCallbacksTriggerContract,
-  type TriggerLoopCallbackPayload,
-} from "./internal-callbacks-trigger";
-export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,
   internalCallbackHeadersSchema,

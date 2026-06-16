@@ -38,7 +38,6 @@ import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
-import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
@@ -201,7 +200,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
-  ...internalCallbacksTriggerRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,

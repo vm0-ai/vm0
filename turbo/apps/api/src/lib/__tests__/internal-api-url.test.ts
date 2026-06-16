@@ -6,17 +6,17 @@ import { internalApiBaseUrl } from "../internal-api-url";
 // Mocked env is reset after each test by the shared test setup
 // (src/__tests__/setup.ts calls clearMockedEnv in afterEach).
 describe("internalApiBaseUrl", () => {
-  it("uses VM0_API_BACKEND_URL when set so internal callbacks skip www", () => {
+  it("uses VM0_API_BACKEND_URL when set so internal API calls skip www", () => {
     mockEnv("VM0_API_URL", "https://www.vm0.ai");
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
 
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
     expect(
       new URL(
-        "/api/internal/callbacks/trigger/loop",
+        "/api/internal/event-consumers/telegram-typing",
         internalApiBaseUrl(),
       ).toString(),
-    ).toBe("https://api.vm0.ai/api/internal/callbacks/trigger/loop");
+    ).toBe("https://api.vm0.ai/api/internal/event-consumers/telegram-typing");
   });
 
   it("defaults to the API backend origin in production when VM0_API_BACKEND_URL is unset", () => {
