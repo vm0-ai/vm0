@@ -657,6 +657,33 @@ export function hasBaseUrlVars(base: string): boolean {
   return BASE_URL_VARS_PATTERN.test(base);
 }
 
+function firewallAuthInjectsCredentials(auth: FirewallApi["auth"]): boolean {
+  return (
+    Object.keys(auth.headers ?? {}).length > 0 ||
+    Object.keys(auth.query ?? {}).length > 0 ||
+    Object.keys(auth.awsSigv4 ?? {}).length > 0 ||
+    (typeof auth.base === "string" && auth.base.length > 0)
+  );
+}
+
+function baseUrlScheme(base: string): string {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) return "";
+  return base.slice(0, schemeEnd).toLowerCase();
+}
+
+function validateCredentialedBaseUrlTransport(
+  base: string,
+  serviceName: string,
+  auth: FirewallApi["auth"],
+): void {
+  if (!firewallAuthInjectsCredentials(auth)) return;
+  if (baseUrlScheme(base) === REQUIRED_AUTH_BASE_URL_SCHEME) return;
+  throw new Error(
+    `Invalid base URL "${base}" in firewall "${serviceName}": credentialed base URL must use https`,
+  );
+}
+
 /**
  * Resolve `${{ vars.X }}` templates in firewall base URLs.
  * Returns a new array with all base URL templates replaced by actual values.
@@ -684,6 +711,7 @@ export function resolveFirewallBaseUrlVars(
           },
         );
         validateBaseUrl(resolved, fw.name);
+        validateCredentialedBaseUrlTransport(resolved, fw.name, api.auth);
         return { ...api, base: resolved };
       }),
     };
