@@ -38,9 +38,7 @@ export const planProImg = zeroPageAssetUrl(
 export const planTeamImg = zeroPageAssetUrl(
   "components/org-manage/assets/plan-team.webp",
 );
-export const trialWorkflowSrc = zeroPageAssetUrl(
-  "assets/trial-workflow.webp",
-);
+export const trialWorkflowSrc = zeroPageAssetUrl("assets/trial-workflow.webp");
 export const webCafeSrc = zeroPageAssetUrl("assets/web-cafe.webp");
 export const webEnergeticSrc = zeroPageAssetUrl("assets/web-energetic.webp");
 export const webFantasySrc = zeroPageAssetUrl("assets/web-fantasy.webp");
