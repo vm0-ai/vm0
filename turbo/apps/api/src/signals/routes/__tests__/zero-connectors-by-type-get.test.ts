@@ -31,6 +31,8 @@ async function seedConnector(args: {
   readonly userId: string;
   readonly type: string;
   readonly authMethod?: string;
+  readonly needsReconnect?: boolean;
+  readonly reconnectReason?: string | null;
 }): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb.insert(connectors).values({
@@ -38,6 +40,8 @@ async function seedConnector(args: {
     orgId: args.orgId,
     type: args.type,
     authMethod: args.authMethod ?? "oauth",
+    needsReconnect: args.needsReconnect ?? false,
+    reconnectReason: args.reconnectReason ?? null,
   });
 }
 
@@ -113,7 +117,13 @@ describe("GET /api/zero/connectors/:type", () => {
     seededFixtures.push(
       await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
     );
-    await seedConnector({ orgId, userId, type: "github" });
+    await seedConnector({
+      orgId,
+      userId,
+      type: "github",
+      needsReconnect: true,
+      reconnectReason: "provider_session_expired",
+    });
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorsByTypeContract);
@@ -126,6 +136,8 @@ describe("GET /api/zero/connectors/:type", () => {
     );
 
     expect(response.body.type).toBe("github");
+    expect(response.body.connectionStatus).toBe("reconnect-required");
+    expect(response.body.reconnectReason).toBe("provider_session_expired");
   });
 
   it("returns 404 for legacy user-owned credential secrets without a connector row", async () => {

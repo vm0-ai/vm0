@@ -421,6 +421,62 @@ describe("zeroConnectorList", () => {
     expect(connector).toBeNull();
   });
 
+  it("returns stored reconnect reasons only for reconnect-required connectors", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values([
+      {
+        orgId,
+        userId,
+        type: "github",
+        authMethod: "oauth",
+        needsReconnect: true,
+        reconnectReason: "provider_session_expired",
+      },
+      {
+        orgId,
+        userId,
+        type: "gitlab",
+        authMethod: "api-token",
+        needsReconnect: false,
+        reconnectReason: "authorization_expired_or_revoked",
+      },
+      {
+        orgId,
+        userId,
+        type: "stripe",
+        authMethod: "api-token",
+        needsReconnect: true,
+        reconnectReason: "unexpected_provider_value",
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+    const github = list.connectors.find((connector) => {
+      return connector.type === "github";
+    });
+    const gitlab = list.connectors.find((connector) => {
+      return connector.type === "gitlab";
+    });
+    const stripe = list.connectors.find((connector) => {
+      return connector.type === "stripe";
+    });
+
+    expect(github).toMatchObject({
+      connectionStatus: "reconnect-required",
+      reconnectReason: "provider_session_expired",
+    });
+    expect(gitlab).toMatchObject({
+      connectionStatus: "connected",
+      reconnectReason: null,
+    });
+    expect(stripe).toMatchObject({
+      connectionStatus: "reconnect-required",
+      reconnectReason: null,
+    });
+  });
+
   it("derives reconnect state for expiring non-refreshable connectors", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -467,14 +523,17 @@ describe("zeroConnectorList", () => {
 
     expect(gitlab).toMatchObject({
       connectionStatus: "connected",
+      reconnectReason: null,
       tokenExpiresAt: futureAt.toISOString(),
     });
     expect(stripe).toMatchObject({
       connectionStatus: "reconnect-required",
+      reconnectReason: "credential_expired",
       tokenExpiresAt: expiredAt.toISOString(),
     });
     expect(lark).toMatchObject({
       connectionStatus: "connected",
+      reconnectReason: null,
       tokenExpiresAt: expiredAt.toISOString(),
     });
     expect(list.connectorProvidedBindings).not.toContainEqual(
@@ -497,6 +556,7 @@ describe("zeroConnectorList", () => {
     );
     expect(stripeByType).toMatchObject({
       connectionStatus: "reconnect-required",
+      reconnectReason: "credential_expired",
       tokenExpiresAt: expiredAt.toISOString(),
     });
 

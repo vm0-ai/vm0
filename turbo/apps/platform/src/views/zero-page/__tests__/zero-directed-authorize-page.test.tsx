@@ -25,6 +25,7 @@ function connectorResponse(type: ConnectorType): ConnectorResponse {
     externalEmail: null,
     oauthScopes: ["repo", "read:user"],
     connectionStatus: "connected",
+    reconnectReason: null,
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
