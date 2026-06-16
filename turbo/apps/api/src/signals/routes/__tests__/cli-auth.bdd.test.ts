@@ -869,6 +869,9 @@ describe("CLI-TEST: test-enable-connector", () => {
       connectorTypes: ["github", "slack"],
     });
 
+    const agent = await bdd.readAgent(actor, compose.composeId);
+    expect(agent.visibility).toBe("private");
+
     const userConnectors = await authDevice.readUserConnectors(
       actor,
       compose.composeId,

@@ -424,6 +424,7 @@ const enableTestConnectors$ = command(
         orgId: compose.orgId,
         owner: compose.userId,
         name: compose.name,
+        visibility: "private",
       })
       .onConflictDoNothing();
     signal.throwIfAborted();
