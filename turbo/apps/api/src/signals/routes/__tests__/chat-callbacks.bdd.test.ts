@@ -600,10 +600,10 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).toContain(
       "# Current Integration\nYou are currently running inside: Web",
     );
-    expect(appended).toContain("# Generation Template");
-    expect(appended).toContain("Type: presentation");
-    expect(appended).toContain(`Design system ID: ${template.designSystemId}`);
-    expect(appended).toContain(`Template ID: ${template.templateId}`);
+    expect(appended).toContain("# Artifact Template Context");
+    expect(appended).toContain("- Artifact type: presentation");
+    expect(appended).toContain(`(${template.designSystemId})`);
+    expect(appended).toContain(`(${template.templateId})`);
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",

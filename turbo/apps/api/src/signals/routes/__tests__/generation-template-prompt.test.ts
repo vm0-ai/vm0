@@ -18,10 +18,22 @@ describe("buildGenerationTemplatePrompt", () => {
       },
     });
 
-    expect(result).toStrictEqual({
-      status: "resolved",
-      prompt: expect.stringContaining(`Template ID: ${item.templateId}`),
-    });
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("# Artifact Template Context");
+    expect(result.prompt).toContain(
+      "The user deliberately selected this artifact template",
+    );
+    expect(result.prompt).toContain(
+      "It does not force you to generate: the user's prompt decides the task",
+    );
+    expect(result.prompt).toContain(`(${item.designSystemId})`);
+    expect(result.prompt).toContain(`(${item.templateId})`);
+    expect(result.prompt).toContain(
+      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
+    );
   });
 
   it("builds illustration template guidance", () => {
@@ -38,11 +50,12 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    // Names the attached style and the capability fact that applies it, so the
+    expect(result.prompt).toContain("# Artifact Template Context");
+    // States the attached style and the exact command that applies it, so the
     // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
     expect(result.prompt).toContain(item.illustrationStyleId);
     expect(result.prompt).toContain(
-      `zero generate image --style ${item.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${item.illustrationStyleId}`,
     );
   });
 
@@ -58,28 +71,30 @@ describe("buildGenerationTemplatePrompt", () => {
 
     expect(result).toStrictEqual({
       status: "resolved",
-      prompt: expect.stringContaining("# Video Template Preset"),
+      prompt: expect.stringContaining("# Artifact Template Context"),
     });
     if (result.status !== "resolved") {
       return;
     }
-    expect(result.prompt).toContain(`Preset ID: ${item.id}`);
-    expect(result.prompt).toContain(`Preset name: ${item.nameEn}`);
+    expect(result.prompt).toContain(`Preset: ${item.nameEn} (${item.id})`);
+    expect(result.prompt).toContain("- Visual tone:");
+    expect(result.prompt).toContain("- Camera style:");
+    expect(result.prompt).toContain("- Editing pace:");
+    expect(result.prompt).toContain("- Narrative mode:");
+    expect(result.prompt).toContain("- Production type:");
+    expect(result.prompt).toContain("- Emotional tone:");
+    expect(result.prompt).toContain("- Style reference:");
+    expect(result.prompt).toContain("- Prompt style notes:");
     expect(result.prompt).toContain(
-      "Apply all dimensions and constraints below as hard generation constraints.",
+      "Reflect the style dimensions and prompt notes above in the final video prompt.",
     );
-    expect(result.prompt).toContain("- Visual Tone:");
-    expect(result.prompt).toContain("- Camera Style:");
-    expect(result.prompt).toContain("- Editing Pace:");
-    expect(result.prompt).toContain("- Narrative Mode:");
-    expect(result.prompt).toContain("- Production Type:");
-    expect(result.prompt).toContain("- Emotional Tone:");
-    expect(result.prompt).toContain("- Style Reference:");
+    // The content-safety guardrail is the only video moderation in the repo, so
+    // it must survive every rewrite of this prompt.
     expect(result.prompt).toContain(
-      "- Style constraints (inject into the video prompt):",
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
     );
     expect(result.prompt).toContain(
-      `reflect every dimension and constraint above for the style ${item.nameEn}`,
+      "zero generate video --provider built-in --prompt",
     );
   });
 });
