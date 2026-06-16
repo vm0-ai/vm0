@@ -34,6 +34,7 @@ def http_response(
 ) -> bytes:
     reason = {
         200: "OK",
+        201: "Created",
         302: "Found",
         429: "Too Many Requests",
     }.get(status, "OK")

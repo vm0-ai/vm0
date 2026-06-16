@@ -87,6 +87,7 @@ class TestAuthBaseUrlRewriteForwarding:
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
         assert upstream.create_connection_calls
+        assert upstream.create_connection_calls[0][0] == ("93.184.216.34", 443)
         assert upstream.contexts[0].server_hostnames == ["real.example.com"]
 
         request_line = upstream.socket.request_lines()[0]
