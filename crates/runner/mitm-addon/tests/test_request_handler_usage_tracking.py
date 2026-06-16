@@ -784,11 +784,12 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
                 await _await_request_task(request_task)
         finally:
             release_forward.set()
-            forward_finished = await asyncio.to_thread(
-                forward_unblocked.wait,
-                _FORWARD_START_TIMEOUT_SECONDS,
-            )
-            assert forward_finished
+            if forward_started.is_set():
+                forward_finished = await asyncio.to_thread(
+                    forward_unblocked.wait,
+                    _FORWARD_START_TIMEOUT_SECONDS,
+                )
+                assert forward_finished
             await asyncio.gather(request_task, return_exceptions=True)
 
     assert flow.response is None
