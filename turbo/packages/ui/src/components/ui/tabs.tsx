@@ -69,9 +69,11 @@ function nextTabIndex(
 }
 
 function TabsList({ children, className }: TabsListProps) {
-  const { onValueChange } = useTabsContext();
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Manual activation: arrow keys only move focus between tabs, so a focused
+  // but not-yet-selected tab is a real, visibly-focused state. Selection
+  // happens on Enter/Space/click, which a native <button> already handles.
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const list = listRef.current;
     if (!list) {
@@ -96,10 +98,6 @@ function TabsList({ children, className }: TabsListProps) {
     }
     event.preventDefault();
     target.focus();
-    const value = target.dataset.value;
-    if (value !== undefined) {
-      onValueChange(value);
-    }
   };
 
   return (
@@ -132,7 +130,6 @@ function TabsTrigger({
       role="tab"
       aria-selected={isActive}
       tabIndex={isActive ? 0 : -1}
-      data-value={value}
       disabled={disabled}
       onClick={() => {
         return onValueChange(value);
