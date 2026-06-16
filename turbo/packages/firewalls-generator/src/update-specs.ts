@@ -70,24 +70,26 @@ const deelUpdater: Updater = {
   fetch: async () => {
     const indexUrl = "https://developer.deel.com/openapi.json";
 
-    // 1. Fetch HTML index to discover spec IDs (not cached — ephemeral discovery)
+    // 1. Fetch HTML index to discover spec URLs (not cached — ephemeral discovery)
     const res = await fetchRemote(indexUrl, "Deel spec index");
     const html = await res.text();
-    const ids = [
+    const specUrls = [
       ...new Set(
-        [...html.matchAll(/\?api=([0-9a-f-]{36})/g)].map((m) => m[1]!),
+        [...html.matchAll(/href="(openapi\/[^"]+\.json)"/g)].map((m) =>
+          new URL(m[1]!, indexUrl).toString(),
+        ),
       ),
     ];
-    if (ids.length === 0) {
-      throw new Error("No spec IDs found in Deel docs index page");
+    if (specUrls.length === 0) {
+      throw new Error("No spec URLs found in Deel docs index page");
     }
-    console.error(`  Discovered ${ids.length} spec IDs`);
+    console.error(`  Discovered ${specUrls.length} spec URLs`);
 
     // 2. Cache each discovered spec
     const entries = new Map<string, string>();
-    for (const id of ids) {
-      const url = `${indexUrl}?api=${id}`;
-      const specRes = await fetchRemote(url, `deel: ${id.slice(0, 8)}`);
+    for (const url of specUrls) {
+      const specName = url.split("/").pop() ?? url;
+      const specRes = await fetchRemote(url, `deel: ${specName}`);
       entries.set(url, await specRes.text());
     }
     return entries;
