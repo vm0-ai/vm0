@@ -51,7 +51,7 @@ FIREWALL_MODULES = {
     "clerk": ("clerk_0",),
     "clickup": ("clickup_0",),
     "close": ("close_0",),
-    "cloudflare": ("cloudflare_0", "cloudflare_1"),
+    "cloudflare": ("cloudflare_0", "cloudflare_1", "cloudflare_2"),
     "coda": ("coda_0",),
     "coingecko": ("coingecko_0",),
     "coresignal": ("coresignal_0",),

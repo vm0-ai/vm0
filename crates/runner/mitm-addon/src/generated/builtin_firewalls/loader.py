@@ -196,8 +196,9 @@ def load_json_parts(name: str) -> tuple[str, ...]:
     if name == "cloudflare":
         from . import cloudflare_0
         from . import cloudflare_1
+        from . import cloudflare_2
 
-        return (cloudflare_0.JSON_PART, cloudflare_1.JSON_PART)
+        return (cloudflare_0.JSON_PART, cloudflare_1.JSON_PART, cloudflare_2.JSON_PART)
     if name == "coda":
         from . import coda_0
 
