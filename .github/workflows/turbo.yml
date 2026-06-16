@@ -2015,7 +2015,7 @@ jobs:
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -2047,83 +2047,6 @@ jobs:
           path: /tmp
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
-      - name: Clean runner E2E zero agents
-        run: |
-          set -euo pipefail
-          token="$(jq -r '.token // empty' ~/.vm0/config.json)"
-          if [ -z "$token" ]; then
-            echo "::error::Missing runner E2E token"
-            exit 1
-          fi
-          token_user_id="$(TOKEN="$token" node -e '
-            try {
-              const token = process.env.TOKEN ?? "";
-              const prefix = "vm0_pat_";
-              if (!token.startsWith(prefix)) process.exit(1);
-              const payloadPart = token.slice(prefix.length).split(".")[1];
-              if (!payloadPart) process.exit(1);
-              const payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8"));
-              if (payload.scope !== "cli" || !payload.userId) process.exit(1);
-              process.stdout.write(payload.userId);
-            } catch {
-              process.exit(1);
-            }
-          ' || true)"
-          if [ -z "$token_user_id" ]; then
-            echo "::error::Failed to decode runner E2E token user id"
-            exit 1
-          fi
-          cleanup_tmp="$(mktemp -d)"
-          trap 'rm -rf "$cleanup_tmp"' EXIT
-
-          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
-          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-
-          agents_file="$cleanup_tmp/agents.json"
-          list_status="$(curl -sS -o "$agents_file" -w "%{http_code}" "${headers[@]}" "${VM0_API_URL}/api/zero/agents")"
-          if [ "$list_status" != "200" ]; then
-            echo "::error::Failed to list runner E2E zero agents: HTTP ${list_status}"
-            cat "$agents_file"
-            exit 1
-          fi
-
-          jq -e 'type == "array"' "$agents_file" >/dev/null
-          listed="$(jq 'length' "$agents_file")"
-          mapfile -t agent_ids < <(jq -r --arg userId "$token_user_id" '.[] | select(.ownerId == $userId) | .agentId // empty' "$agents_file")
-          owned="${#agent_ids[@]}"
-          deleted=0
-          skipped_active=0
-          skipped_foreign=$((listed - owned))
-
-          for agent_id in "${agent_ids[@]}"; do
-            [ -n "$agent_id" ] || continue
-            body_file="$(mktemp "$cleanup_tmp/delete.XXXXXX")"
-            delete_status="$(curl -sS -o "$body_file" -w "%{http_code}" -X DELETE "${headers[@]}" "${VM0_API_URL}/api/zero/agents/${agent_id}" || true)"
-            case "$delete_status" in
-              204)
-                deleted=$((deleted + 1))
-                ;;
-              404)
-                ;;
-              409)
-                skipped_active=$((skipped_active + 1))
-                echo "::warning::Skipped active runner E2E zero agent ${agent_id}"
-                cat "$body_file"
-                ;;
-              *)
-                echo "::error::Failed to delete runner E2E zero agent ${agent_id}: HTTP ${delete_status}"
-                cat "$body_file"
-                exit 1
-                ;;
-            esac
-          done
-
-          echo "Runner E2E zero agent cleanup: listed=${listed} owned=${owned} deleted=${deleted} skipped_active=${skipped_active} skipped_foreign=${skipped_foreign}"
-        env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Reset model-first defaults
         run: |
           set -euo pipefail
