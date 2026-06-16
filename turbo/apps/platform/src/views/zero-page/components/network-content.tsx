@@ -104,11 +104,16 @@ function latencyColor(ms: number | undefined | null): string {
 
 function TypeBadge({
   type,
-  denied = false,
+  action,
 }: {
   type: string;
-  denied?: boolean;
+  action?: NetworkLogEntry["action"];
 }) {
+  if (action === "BLOCK") {
+    return <InlineBadge color="warning">BLOCK</InlineBadge>;
+  }
+
+  const denied = action === "DENY";
   return (
     <InlineBadge color={denied ? "red" : typeBadgeColor(type)}>
       <span className={denied ? "line-through" : undefined}>{type}</span>
@@ -534,7 +539,7 @@ function NetworkLogRow({
           {formatTime(entry.timestamp)}
         </TableCell>
         <TableCell>
-          <TypeBadge type={type} denied={entry.action === "DENY"} />
+          <TypeBadge type={type} action={entry.action} />
         </TableCell>
         <TableCell className="font-mono text-xs whitespace-nowrap">
           {isHttp ? (entry.method ?? "—") : "—"}

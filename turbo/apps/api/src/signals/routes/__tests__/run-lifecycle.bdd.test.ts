@@ -2960,6 +2960,21 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             request_size: 100,
             response_size: 256,
           },
+          {
+            timestamp: nowDate().toISOString(),
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.test",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.test/v1/connect",
+            status: 424,
+            latency_ms: 4,
+            request_size: 0,
+            response_size: 128,
+            firewall_name: "blocked-service",
+            firewall_error: "connector_not_configured",
+          },
         ],
         sandboxOperations: [
           {
@@ -2976,13 +2991,19 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     );
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
       "sandbox-telemetry-network",
-      [
+      expect.arrayContaining([
         expect.objectContaining({
           runId: created.runId,
           host: "api.example.test",
           status: 200,
         }),
-      ],
+        expect.objectContaining({
+          runId: created.runId,
+          action: "BLOCK",
+          host: "blocked.example.test",
+          firewall_error: "connector_not_configured",
+        }),
+      ]),
     );
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",

@@ -118,7 +118,9 @@ function stringRecordValue(value: unknown): Record<string, string> | undefined {
 function networkActionValue(
   value: unknown,
 ): NetworkLogEntry["action"] | undefined {
-  return value === "ALLOW" || value === "DENY" ? value : undefined;
+  return value === "ALLOW" || value === "DENY" || value === "BLOCK"
+    ? value
+    : undefined;
 }
 
 function networkBodyEncodingValue(

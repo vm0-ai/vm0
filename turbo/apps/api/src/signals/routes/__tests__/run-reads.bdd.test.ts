@@ -1990,6 +1990,19 @@ describe("RUN-04: agent run telemetry families", () => {
             dns_result: "140.82.121.4",
             dns_serial: "42",
           },
+          {
+            _time: "2026-06-10T11:00:03Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.com",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.com/v1/connect",
+            status: 424,
+            firewall_error: "connector_not_configured",
+          },
         ],
       },
     });
@@ -2003,7 +2016,7 @@ describe("RUN-04: agent run telemetry families", () => {
     if (network.status !== 200) {
       throw new Error("Expected the zero network log read to succeed");
     }
-    expect(network.body.networkLogs).toHaveLength(3);
+    expect(network.body.networkLogs).toHaveLength(4);
     expect(network.body.hasMore).toBeFalsy();
     expect(network.body.networkLogs[0]).toStrictEqual({
       timestamp: "2026-06-10T11:00:00Z",
@@ -2041,6 +2054,12 @@ describe("RUN-04: agent run telemetry families", () => {
       dns_event: "reply",
       dns_result: "140.82.121.4",
       dns_serial: "42",
+    });
+    expect(network.body.networkLogs[3]).toMatchObject({
+      type: "http",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      firewall_error: "connector_not_configured",
     });
 
     const sinceMs = Date.parse("2026-06-10T10:59:00Z");

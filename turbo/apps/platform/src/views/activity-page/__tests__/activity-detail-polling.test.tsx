@@ -675,6 +675,20 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       dns_serial: "dns-99",
     },
     {
+      timestamp: "2026-03-10T14:56:11.500Z",
+      type: "http",
+      action: "BLOCK",
+      host: "blocked.service.test",
+      method: "POST",
+      url: "https://blocked.service.test/v1/connect",
+      status: 424,
+      latency_ms: 4,
+      request_size: 0,
+      response_size: 128,
+      firewall_name: "blocked-service",
+      firewall_error: "connector_not_configured",
+    },
+    {
       timestamp: "2026-03-10T14:56:12.000Z",
       type: "tcp",
       action: "DENY",
@@ -1559,8 +1573,9 @@ describe("activity detail polling", () => {
     click(screen.getByText("Network"));
 
     await waitFor(() => {
+      expect(screen.getByText("BLOCK")).toBeInTheDocument();
       expect(
-        screen.getByText("No matching logs in loaded results"),
+        screen.getByText("https://blocked.service.test/v1/connect"),
       ).toBeInTheDocument();
     });
 
@@ -1577,6 +1592,7 @@ describe("activity detail polling", () => {
       expect(screen.getByText("edge.gateway:0")).toBeInTheDocument();
       expect(screen.getByText("local.socket:0")).toBeInTheDocument();
     });
+    expect(screen.getByText("blocked-service")).toBeInTheDocument();
     expect(screen.getAllByText("DNS").length).toBeGreaterThan(0);
     expect(screen.getAllByText("TCP").length).toBeGreaterThan(0);
     expect(screen.getAllByText("UDP").length).toBeGreaterThan(0);
