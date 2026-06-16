@@ -2989,22 +2989,26 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       sandboxHeaders,
       [200],
     );
-    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
-      "sandbox-telemetry-network",
-      expect.arrayContaining([
-        expect.objectContaining({
-          runId: created.runId,
-          host: "api.example.test",
-          status: 200,
-        }),
-        expect.objectContaining({
-          runId: created.runId,
-          action: "BLOCK",
-          host: "blocked.example.test",
-          firewall_error: "connector_not_configured",
-        }),
-      ]),
+    const networkIngestCall = context.mocks.axiom.ingest.mock.calls.find(
+      ([dataset]) => {
+        return dataset === "sandbox-telemetry-network";
+      },
     );
+    expect(networkIngestCall).toBeDefined();
+    expect(networkIngestCall?.[1]).toHaveLength(2);
+    expect(networkIngestCall?.[1]).toStrictEqual([
+      expect.objectContaining({
+        runId: created.runId,
+        host: "api.example.test",
+        status: 200,
+      }),
+      expect.objectContaining({
+        runId: created.runId,
+        action: "BLOCK",
+        host: "blocked.example.test",
+        firewall_error: "connector_not_configured",
+      }),
+    ]);
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [
