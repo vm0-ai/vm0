@@ -18,6 +18,10 @@ import {
   handleGithubIssuesInternalCallbackWithoutCcstate,
 } from "./internal-github-issues-run-callback.service";
 import {
+  handleSlackOrgInternalCallback$,
+  handleSlackOrgInternalCallbackWithoutCcstate,
+} from "./internal-slack-org-run-callback.service";
+import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
   type InternalRunCallbackEnvelope,
@@ -93,6 +97,13 @@ const dispatchInternalCallback$ = command(
       case "github:issues": {
         return await set(
           handleGithubIssuesInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "slack:org": {
+        return await set(
+          handleSlackOrgInternalCallback$,
           input.envelope,
           signal,
         );
@@ -384,6 +395,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "github:issues": {
       return await handleGithubIssuesInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "slack:org": {
+      return await handleSlackOrgInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );

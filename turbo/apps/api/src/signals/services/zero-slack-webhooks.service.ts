@@ -26,7 +26,6 @@ import { and, desc, eq, or } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import {
   getSlackSignatureHeaders,
@@ -1190,7 +1189,7 @@ const runAgentForSlackOrg$ = command(
         selectedModelOverride: params.selectedModelOverride,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/slack/org`,
+            internalKind: "slack:org",
             secret: generateCallbackSecret(),
             payload: params.callbackContext,
           },

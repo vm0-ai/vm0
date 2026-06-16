@@ -11,6 +11,7 @@ import { db$ } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
+import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -19,7 +20,7 @@ function resolveCallbackUrl(url: string): string {
 }
 
 export const dispatchProgressCallbacks$ = command(
-  async ({ get }, runId: string, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, runId: string, signal: AbortSignal): Promise<void> => {
     const db = get(db$);
     const [run] = await db
       .select({
@@ -65,6 +66,19 @@ export const dispatchProgressCallbacks$ = command(
     await Promise.allSettled(
       callbacks.map(async (callback) => {
         const internalKind = internalRunCallbackKindForRecord(callback);
+        if (internalKind === "slack:org") {
+          await set(
+            handleSlackOrgInternalCallback$,
+            {
+              callbackId: callback.id,
+              runId,
+              status: "progress",
+              payload: callback.payload,
+            },
+            signal,
+          );
+          return;
+        }
         if (
           internalKind === "agent" ||
           internalKind === "github:issues" ||
