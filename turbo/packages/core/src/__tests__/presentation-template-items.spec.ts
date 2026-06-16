@@ -46,6 +46,25 @@ describe("presentation template items", () => {
     }
   });
 
+  it("keeps the legacy catalog available and resolvable", () => {
+    const legacyItem = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return candidate.slug === "starship-v3-investor-update";
+    });
+
+    expect(legacyItem).toBeDefined();
+    expect(
+      PRESENTATION_TEMPLATE_PICKER_ITEMS.some((candidate) => {
+        return candidate.slug === legacyItem?.slug;
+      }),
+    ).toBe(false);
+    expect(legacyItem?.designSystemId).toBe("design-system:spacex");
+    expect(legacyItem?.templateId).toBe("template:html-ppt-pitch-deck");
+    expect(findDesignSystem(legacyItem?.designSystemId ?? "")).toBeDefined();
+    expect(findTemplate(legacyItem?.templateId ?? "")?.targets).toContain(
+      "presentation",
+    );
+  });
+
   it("keeps the picker catalog separate from the legacy catalog", () => {
     expect(
       PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {

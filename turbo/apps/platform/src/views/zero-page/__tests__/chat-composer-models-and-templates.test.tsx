@@ -1501,6 +1501,32 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("uses switched presentation templates when the new catalog switch is on", async () => {
+    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(newTemplate.title)).toBeInTheDocument();
+      expect(screen.queryByText(legacyTemplate.title)).not.toBeInTheDocument();
+    });
+  });
+
   it("selects and removes an illustration style from the picker", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
