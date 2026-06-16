@@ -21,6 +21,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use guest_common::log_warn;
 use serde_json::json;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -51,7 +52,7 @@ pub enum UploadMode {
 }
 
 /// Persist the current read position for a file.
-fn save_position(pos_path: &str, pos: u64) {
+fn save_position(pos_path: impl AsRef<Path>, pos: u64) {
     let _ = paths::write_private(pos_path, pos.to_string());
 }
 
@@ -257,7 +258,7 @@ mod tests {
     fn save_position_and_read_back() {
         let dir = tempfile::tempdir().unwrap();
         let pos = dir.path().join("test.pos");
-        save_position(pos.to_str().unwrap(), 42);
+        save_position(&pos, 42);
         let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
         assert_eq!(val, 42);
     }
@@ -266,8 +267,8 @@ mod tests {
     fn save_position_overwrites_existing() {
         let dir = tempfile::tempdir().unwrap();
         let pos = dir.path().join("overwrite.pos");
-        save_position(pos.to_str().unwrap(), 10);
-        save_position(pos.to_str().unwrap(), 20);
+        save_position(&pos, 10);
+        save_position(&pos, 20);
         let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
         assert_eq!(val, 20);
     }

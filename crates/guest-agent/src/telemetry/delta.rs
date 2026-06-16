@@ -1,6 +1,7 @@
 use super::UploadMode;
 use serde_json::Value;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 /// Maximum bytes held for a single line-aligned telemetry read.
 const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
@@ -132,18 +133,22 @@ fn read_bounded_at(file: &mut std::fs::File, file_len: u64, pos: u64) -> Option<
 ///
 /// In `Final` mode, the tail is consumed as-is when it fits within the bounded
 /// read window after any required line-boundary resync.
-pub(super) fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> TextDelta {
+pub(super) fn read_file_delta(
+    file_path: impl AsRef<Path>,
+    pos_path: impl AsRef<Path>,
+    mode: UploadMode,
+) -> TextDelta {
     read_file_delta_with_behavior(
-        file_path,
-        pos_path,
+        file_path.as_ref(),
+        pos_path.as_ref(),
         mode,
         OversizedLineBehavior::EmitSystemLogMarker,
     )
 }
 
 fn read_file_delta_with_behavior(
-    file_path: &str,
-    pos_path: &str,
+    file_path: &Path,
+    pos_path: &Path,
     mode: UploadMode,
     oversized_line_behavior: OversizedLineBehavior,
 ) -> TextDelta {
@@ -227,9 +232,17 @@ fn read_file_delta_with_behavior(
 }
 
 /// Read new JSONL entries from a file, skipping invalid lines.
-pub(super) fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> JsonlDelta {
-    let delta =
-        read_file_delta_with_behavior(file_path, pos_path, mode, OversizedLineBehavior::Drop);
+pub(super) fn read_jsonl_delta(
+    file_path: impl AsRef<Path>,
+    pos_path: impl AsRef<Path>,
+    mode: UploadMode,
+) -> JsonlDelta {
+    let delta = read_file_delta_with_behavior(
+        file_path.as_ref(),
+        pos_path.as_ref(),
+        mode,
+        OversizedLineBehavior::Drop,
+    );
     if delta.content.is_empty() {
         return JsonlDelta {
             entries: Vec::new(),
@@ -254,68 +267,94 @@ pub(super) fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
-    fn read_file_delta_parts(file_path: &str, pos_path: &str, mode: UploadMode) -> (String, u64) {
-        let delta = read_file_delta(file_path, pos_path, mode);
-        (delta.content, delta.new_pos)
+    struct DeltaFixture {
+        _dir: tempfile::TempDir,
+        file: PathBuf,
+        pos: PathBuf,
     }
 
-    fn read_jsonl_delta_parts(
-        file_path: &str,
-        pos_path: &str,
-        mode: UploadMode,
-    ) -> (Vec<Value>, u64) {
-        let delta = read_jsonl_delta(file_path, pos_path, mode);
-        (delta.entries, delta.new_pos)
+    impl DeltaFixture {
+        fn text() -> Self {
+            Self::new("log.txt", "log.pos")
+        }
+
+        fn jsonl() -> Self {
+            Self::new("data.jsonl", "data.pos")
+        }
+
+        fn new(file_name: &str, pos_name: &str) -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join(file_name);
+            let pos = dir.path().join(pos_name);
+            Self {
+                _dir: dir,
+                file,
+                pos,
+            }
+        }
+
+        fn write_file(&self, content: impl AsRef<[u8]>) {
+            fs::write(&self.file, content).unwrap();
+        }
+
+        fn write_pos(&self, pos: u64) {
+            self.write_pos_raw(pos.to_string());
+        }
+
+        fn write_pos_raw(&self, content: impl AsRef<[u8]>) {
+            fs::write(&self.pos, content).unwrap();
+        }
+
+        fn read_text(&self, mode: UploadMode) -> TextDelta {
+            read_file_delta(&self.file, &self.pos, mode)
+        }
+
+        fn read_text_parts(&self, mode: UploadMode) -> (String, u64) {
+            let delta = self.read_text(mode);
+            (delta.content, delta.new_pos)
+        }
+
+        fn read_jsonl(&self, mode: UploadMode) -> JsonlDelta {
+            read_jsonl_delta(&self.file, &self.pos, mode)
+        }
+
+        fn read_jsonl_parts(&self, mode: UploadMode) -> (Vec<Value>, u64) {
+            let delta = self.read_jsonl(mode);
+            (delta.entries, delta.new_pos)
+        }
     }
 
     #[test]
     fn read_file_delta_from_start() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello world\n").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("hello world\n");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "hello world\n");
         assert_eq!(new_pos, 12);
     }
 
     #[test]
     fn read_file_delta_incremental() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello\nworld\n").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("hello\nworld\n");
         // Simulate having already consumed the first complete line.
-        fs::write(&pos, "6").unwrap();
+        fixture.write_pos(6);
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "world\n");
         assert_eq!(new_pos, 12);
     }
 
     #[test]
     fn read_file_delta_from_middle_of_line_skips_suffix_then_resumes() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello world\nnext\n").unwrap();
-        fs::write(&pos, "6").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("hello world\nnext\n");
+        fixture.write_pos(6);
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let delta = fixture.read_text(UploadMode::Live);
         assert_eq!(delta.content, "next\n");
         assert_eq!(delta.new_pos, 17);
         assert!(delta.made_progress);
@@ -323,48 +362,30 @@ mod tests {
 
     #[test]
     fn read_file_delta_no_new_data() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "done").unwrap();
-        fs::write(&pos, "4").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("done");
+        fixture.write_pos(4);
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert!(content.is_empty());
         assert_eq!(new_pos, 4);
     }
 
     #[test]
     fn read_file_delta_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("missing.txt");
-        let pos = dir.path().join("missing.pos");
+        let fixture = DeltaFixture::new("missing.txt", "missing.pos");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
     }
 
     #[test]
     fn read_jsonl_delta_parses_valid_lines() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("data.jsonl");
-        let pos = dir.path().join("data.pos");
-        fs::write(&file, "{\"a\":1}\n{\"b\":2}\ninvalid\n").unwrap();
+        let fixture = DeltaFixture::jsonl();
+        fixture.write_file("{\"a\":1}\n{\"b\":2}\ninvalid\n");
 
-        let (entries, new_pos) = read_jsonl_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (entries, new_pos) = fixture.read_jsonl_parts(UploadMode::Live);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0]["a"], 1);
         assert_eq!(entries[1]["b"], 2);
@@ -374,17 +395,11 @@ mod tests {
     #[test]
     fn read_file_delta_truncated_file() {
         // Position file says we read 100 bytes, but file is shorter → no new data.
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "short").unwrap();
-        fs::write(&pos, "100").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("short");
+        fixture.write_pos(100);
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert!(content.is_empty());
         assert_eq!(new_pos, 100);
     }
@@ -392,49 +407,31 @@ mod tests {
     #[test]
     fn read_file_delta_corrupt_pos_file() {
         // Corrupt position file → starts from 0.
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "data\n").unwrap();
-        fs::write(&pos, "notanumber").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("data\n");
+        fixture.write_pos_raw("notanumber");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "data\n");
         assert_eq!(new_pos, 5);
     }
 
     #[test]
     fn read_jsonl_delta_empty_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("empty.jsonl");
-        let pos = dir.path().join("empty.pos");
-        fs::write(&file, "").unwrap();
+        let fixture = DeltaFixture::new("empty.jsonl", "empty.pos");
+        fixture.write_file("");
 
-        let (entries, new_pos) = read_jsonl_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (entries, new_pos) = fixture.read_jsonl_parts(UploadMode::Live);
         assert!(entries.is_empty());
         assert_eq!(new_pos, 0);
     }
 
     #[test]
     fn read_jsonl_delta_all_invalid_lines() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("bad.jsonl");
-        let pos = dir.path().join("bad.pos");
-        fs::write(&file, "bad1\nbad2\nbad3\n").unwrap();
+        let fixture = DeltaFixture::new("bad.jsonl", "bad.pos");
+        fixture.write_file("bad1\nbad2\nbad3\n");
 
-        let (entries, new_pos) = read_jsonl_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (entries, new_pos) = fixture.read_jsonl_parts(UploadMode::Live);
         assert!(entries.is_empty());
         assert!(new_pos > 0);
     }
@@ -443,31 +440,21 @@ mod tests {
     /// to the next pass instead of being uploaded half-written.
     #[test]
     fn read_file_delta_defers_trailing_fragment() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         // Two complete lines followed by a partial write.
-        fs::write(&file, "line1\nline2\npartial").unwrap();
+        fixture.write_file("line1\nline2\npartial");
 
         // First pass: read up to the last newline, leave "partial" behind.
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "line1\nline2\n");
         assert_eq!(new_pos, 12);
 
         // Simulate the producer completing the line.
-        fs::write(&file, "line1\nline2\npartial done\n").unwrap();
-        fs::write(&pos, "12").unwrap();
+        fixture.write_file("line1\nline2\npartial done\n");
+        fixture.write_pos(12);
 
         // Second pass: now "partial done\n" is complete.
-        let (content2, new_pos2) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content2, new_pos2) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 25);
     }
@@ -476,16 +463,10 @@ mod tests {
     /// since there will be no subsequent pass to pick it up.
     #[test]
     fn read_file_delta_final_pass_consumes_fragment() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "line1\npartial").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("line1\npartial");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Final);
         assert_eq!(content, "line1\npartial");
         assert_eq!(new_pos, 13);
     }
@@ -496,37 +477,27 @@ mod tests {
     /// lost because `save_position` had advanced past it.
     #[test]
     fn read_file_delta_utf8_multibyte_survives_split() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         // "中" is 3 bytes (0xE4 0xB8 0xAD). Simulate the producer having
         // written only the first byte mid-line: "prefix\n\xE4".
         let mut partial = Vec::from("prefix\n");
         partial.push(0xE4);
-        fs::write(&file, &partial).unwrap();
+        fixture.write_file(&partial);
 
         // First pass: stops at the newline, leaves the orphan 0xE4 behind.
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
-        fs::write(&pos, new_pos.to_string()).unwrap();
+        fixture.write_pos(new_pos);
 
         // Producer finishes writing the character and terminates the line.
         let mut complete = partial.clone();
         complete.extend_from_slice(&[0xB8, 0xAD]); // rest of "中"
         complete.extend_from_slice(b"\n");
-        fs::write(&file, &complete).unwrap();
+        fixture.write_file(&complete);
 
         // Second pass: reads the complete multibyte character.
-        let (content2, new_pos2) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content2, new_pos2) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content2, "中\n");
         assert_eq!(new_pos2, complete.len() as u64);
         // No U+FFFD anywhere — the character is intact.
@@ -538,29 +509,19 @@ mod tests {
     /// pass, and once the producer completes it, the entry is uploaded.
     #[test]
     fn read_jsonl_delta_defers_partial_line() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("data.jsonl");
-        let pos = dir.path().join("data.pos");
-        fs::write(&file, "{\"a\":1}\n{\"b\":2").unwrap();
+        let fixture = DeltaFixture::jsonl();
+        fixture.write_file("{\"a\":1}\n{\"b\":2");
 
         // First pass: only {"a":1} is complete.
-        let (entries, new_pos) = read_jsonl_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (entries, new_pos) = fixture.read_jsonl_parts(UploadMode::Live);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["a"], 1);
         assert_eq!(new_pos, 8);
-        fs::write(&pos, new_pos.to_string()).unwrap();
+        fixture.write_pos(new_pos);
 
         // Producer completes the record.
-        fs::write(&file, "{\"a\":1}\n{\"b\":2}\n").unwrap();
-        let (entries2, new_pos2) = read_jsonl_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        fixture.write_file("{\"a\":1}\n{\"b\":2}\n");
+        let (entries2, new_pos2) = fixture.read_jsonl_parts(UploadMode::Live);
         assert_eq!(entries2.len(), 1);
         assert_eq!(entries2[0]["b"], 2);
         assert_eq!(new_pos2, 16);
@@ -571,44 +532,28 @@ mod tests {
     /// picked up intact once the producer writes the terminating \n.
     #[test]
     fn read_file_delta_live_no_newline_at_all() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "partial").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("partial");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
 
         // Producer completes the line — the next pass picks up everything.
-        fs::write(&file, "partial done\n").unwrap();
-        let (content2, new_pos2) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        fixture.write_file("partial done\n");
+        let (content2, new_pos2) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 13);
     }
 
     #[test]
     fn read_file_delta_large_unread_delta_reads_bounded_complete_prefix() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         let line = format!("{}\n", "x".repeat(1023));
         let content = line.repeat((TELEMETRY_DELTA_READ_LIMIT / line.len()) + 2);
-        fs::write(&file, content).unwrap();
+        fixture.write_file(content);
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let delta = fixture.read_text(UploadMode::Live);
         assert_eq!(delta.content.len(), TELEMETRY_DELTA_READ_LIMIT);
         assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
         assert!(delta.made_progress);
@@ -616,16 +561,10 @@ mod tests {
 
     #[test]
     fn read_file_delta_oversized_no_newline_system_log_emits_marker() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1));
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let delta = fixture.read_text(UploadMode::Live);
         assert_eq!(delta.content, OVERSIZED_SYSTEM_LOG_LINE_MARKER);
         assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
         assert!(delta.made_progress);
@@ -633,18 +572,12 @@ mod tests {
 
     #[test]
     fn read_file_delta_mid_oversized_line_skips_suffix_then_resumes() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         let content = format!("{}tail\nnext\n", "x".repeat(TELEMETRY_DELTA_READ_LIMIT));
-        fs::write(&file, content).unwrap();
-        fs::write(&pos, TELEMETRY_DELTA_READ_LIMIT.to_string()).unwrap();
+        fixture.write_file(content);
+        fixture.write_pos(TELEMETRY_DELTA_READ_LIMIT as u64);
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let delta = fixture.read_text(UploadMode::Live);
         assert_eq!(delta.content, "next\n");
         assert_eq!(
             delta.new_pos,
@@ -655,16 +588,10 @@ mod tests {
 
     #[test]
     fn read_jsonl_delta_oversized_invalid_line_advances_without_entries() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("data.jsonl");
-        let pos = dir.path().join("data.pos");
-        fs::write(&file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).unwrap();
+        let fixture = DeltaFixture::jsonl();
+        fixture.write_file("x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1));
 
-        let delta = read_jsonl_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let delta = fixture.read_jsonl(UploadMode::Live);
         assert!(delta.entries.is_empty());
         assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
         assert!(delta.made_progress);
@@ -672,18 +599,12 @@ mod tests {
 
     #[test]
     fn read_file_delta_final_from_middle_of_line_resumes_and_consumes_tail() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         let content = "old suffix\nnext\ntail";
-        fs::write(&file, content).unwrap();
-        fs::write(&pos, "4").unwrap();
+        fixture.write_file(content);
+        fixture.write_pos(4);
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let delta = fixture.read_text(UploadMode::Final);
         assert_eq!(delta.content, "next\ntail");
         assert_eq!(delta.new_pos, content.len() as u64);
         assert!(delta.made_progress);
@@ -691,20 +612,14 @@ mod tests {
 
     #[test]
     fn read_file_delta_final_resync_reads_full_bounded_tail_window() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         let skipped_suffix = "x".repeat(TELEMETRY_DELTA_READ_LIMIT / 2);
         let tail = "t".repeat(TELEMETRY_DELTA_READ_LIMIT - 8);
         let content = format!("{skipped_suffix}\n{tail}");
-        fs::write(&file, &content).unwrap();
-        fs::write(&pos, "1").unwrap();
+        fixture.write_file(&content);
+        fixture.write_pos(1);
 
-        let delta = read_file_delta(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let delta = fixture.read_text(UploadMode::Final);
         assert_eq!(delta.content, tail);
         assert_eq!(delta.new_pos, content.len() as u64);
         assert!(delta.made_progress);
@@ -714,16 +629,10 @@ mod tests {
     /// no newlines at all — otherwise the tail is silently dropped.
     #[test]
     fn read_file_delta_final_pass_all_no_newline() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
-        fs::write(&file, "no_newline").unwrap();
+        let fixture = DeltaFixture::text();
+        fixture.write_file("no_newline");
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Final);
         assert_eq!(content, "no_newline");
         assert_eq!(new_pos, 10);
     }
@@ -733,36 +642,26 @@ mod tests {
     /// in the middle of the 4-byte sequence must not corrupt the char.
     #[test]
     fn read_file_delta_utf8_4byte_emoji_survives_split() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         // "😀" is 4 bytes (0xF0 0x9F 0x98 0x80). Producer wrote the first
         // two bytes mid-line: "prefix\n\xF0\x9F".
         let mut partial = Vec::from("prefix\n");
         partial.extend_from_slice(&[0xF0, 0x9F]);
-        fs::write(&file, &partial).unwrap();
+        fixture.write_file(&partial);
 
         // First pass stops at \n, defers the orphan bytes.
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
-        fs::write(&pos, new_pos.to_string()).unwrap();
+        fixture.write_pos(new_pos);
 
         // Producer finishes the emoji and terminates the line.
         let mut complete = partial.clone();
         complete.extend_from_slice(&[0x98, 0x80]);
         complete.extend_from_slice(b"\n");
-        fs::write(&file, &complete).unwrap();
+        fixture.write_file(&complete);
 
-        let (content2, new_pos2) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content2, new_pos2) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content2, "😀\n");
         assert_eq!(new_pos2, complete.len() as u64);
         assert!(!content2.contains('\u{FFFD}'));
@@ -776,20 +675,14 @@ mod tests {
     /// replacement of `from_utf8_lossy` with the stricter `from_utf8`.
     #[test]
     fn read_file_delta_final_pass_invalid_utf8_replaces_with_fffd() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         // Complete "log\n" followed by a lone 0xE4 (first byte of a
         // 3-byte UTF-8 char, the rest never arrived).
         let mut torn = Vec::from("log\n");
         torn.push(0xE4);
-        fs::write(&file, &torn).unwrap();
+        fixture.write_file(&torn);
 
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Final);
         assert_eq!(content, "log\n\u{FFFD}");
         assert_eq!(new_pos, 5);
     }
@@ -801,37 +694,27 @@ mod tests {
     /// catch-up flush (consumes EOF).
     #[test]
     fn live_pass_then_final_catch_up_preserves_utf8() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("log.txt");
-        let pos = dir.path().join("log.pos");
+        let fixture = DeltaFixture::text();
         // Producer state at the moment the Live flush fires: "log\n"
         // plus the first byte of "中" (0xE4).
         let mut partial = Vec::from("log\n");
         partial.push(0xE4);
-        fs::write(&file, &partial).unwrap();
+        fixture.write_file(&partial);
 
         // Pre-checkpoint Live flush: newline-aligned, defers the orphan byte.
-        let (content, new_pos) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Live,
-        );
+        let (content, new_pos) = fixture.read_text_parts(UploadMode::Live);
         assert_eq!(content, "log\n");
         assert_eq!(new_pos, 4);
-        fs::write(&pos, new_pos.to_string()).unwrap();
+        fixture.write_pos(new_pos);
 
         // Producer finishes "中" and appends a final line.
         let mut complete = partial.clone();
         complete.extend_from_slice(&[0xB8, 0xAD]);
         complete.extend_from_slice(b"\ntail");
-        fs::write(&file, &complete).unwrap();
+        fixture.write_file(&complete);
 
         // Catch-up final pass: consumes the rest including the no-newline tail.
-        let (content2, new_pos2) = read_file_delta_parts(
-            file.to_str().unwrap(),
-            pos.to_str().unwrap(),
-            UploadMode::Final,
-        );
+        let (content2, new_pos2) = fixture.read_text_parts(UploadMode::Final);
         assert_eq!(content2, "中\ntail");
         assert_eq!(new_pos2, complete.len() as u64);
         assert!(!content2.contains('\u{FFFD}'));
