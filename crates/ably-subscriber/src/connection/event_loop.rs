@@ -17,7 +17,7 @@ use super::handshake::{
 };
 use super::message::{decode_data, message_targets_channel};
 use super::session::{SessionState, TokenRenewalFailure};
-use super::state::{ChannelLifecycleState, idle_deadline, reconnect_spacing_delay, retry_delay};
+use super::state::{ChannelLifecycleState, reconnect_spacing_delay, retry_delay};
 use super::transport::{
     WsRead, WsTransport, WsWrite, connect_and_split, websocket_close_frame_reason,
     websocket_close_reason, websocket_error_reason,
@@ -164,57 +164,95 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         let mut close_before_reconnect = false;
         // Main message processing loop
         loop {
-            if let Some(attach_timed_out) = p.session.clear_elapsed_channel_operation_deadline(
-                Instant::now(),
-                p.timing.channel_retry_timeout,
-            ) {
-                if attach_timed_out {
-                    tracing::warn!(
-                        timeout_ms = p.timing.realtime_request_timeout.as_millis(),
-                        "Channel attach timed out, entering suspended channel retry"
-                    );
-                }
-                continue;
-            }
+            let Some(transport) = p.transport.as_ref() else {
+                tracing::warn!("WebSocket transport missing before receive loop");
+                break;
+            };
+            let idle_deadline = transport
+                .ws_read
+                .idle_deadline(p.session.max_idle_interval(), p.timing.heartbeat_margin);
+            let heartbeat_elapsed =
+                idle_deadline.is_some_and(|(deadline, _)| deadline <= Instant::now());
 
-            if let Some(should_attach) = p.session.clear_elapsed_channel_retry(Instant::now()) {
-                if should_attach
-                    && p.session
-                        .begin_channel_attach(p.timing.realtime_request_timeout)
-                {
-                    match send_attach(&mut p, &mut close_rx).await {
-                        LoopAction::Stop => return,
-                        LoopAction::Reconnect { disconnected_event } => {
-                            record_reconnect_disconnected_event(
-                                &mut disconnected_sent,
-                                disconnected_event,
-                            );
-                            immediate_retry = true;
-                            break;
-                        }
-                        LoopAction::Continue => {}
+            if !heartbeat_elapsed {
+                if let Some(attach_timed_out) = p.session.clear_elapsed_channel_operation_deadline(
+                    Instant::now(),
+                    p.timing.channel_retry_timeout,
+                ) {
+                    if attach_timed_out {
+                        tracing::warn!(
+                            timeout_ms = p.timing.realtime_request_timeout.as_millis(),
+                            "Channel attach timed out, entering suspended channel retry"
+                        );
                     }
+                    continue;
                 }
-                continue;
+
+                if let Some(should_attach) = p.session.clear_elapsed_channel_retry(Instant::now()) {
+                    if should_attach
+                        && p.session
+                            .begin_channel_attach(p.timing.realtime_request_timeout)
+                    {
+                        match send_attach(&mut p, &mut close_rx).await {
+                            LoopAction::Stop => return,
+                            LoopAction::Reconnect { disconnected_event } => {
+                                record_reconnect_disconnected_event(
+                                    &mut disconnected_sent,
+                                    disconnected_event,
+                                );
+                                immediate_retry = true;
+                                break;
+                            }
+                            LoopAction::Continue => {}
+                        }
+                    }
+                    continue;
+                }
             }
 
             let Some(transport) = p.transport.as_mut() else {
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
             };
-            let idle_deadline =
-                idle_deadline(p.session.max_idle_interval(), p.timing.heartbeat_margin);
 
-            tokio::select! {
+            let event = tokio::select! {
                 biased;
 
                 _ = &mut close_rx => {
+                    ReceiveLoopEvent::CloseRequested
+                }
+
+                _ = sleep_until_optional(p.session.token_renewal_at()), if p.session.token_renewal_at().is_some() => {
+                    ReceiveLoopEvent::TokenRenewal
+                }
+
+                frame = transport.ws_read.next() => {
+                    ReceiveLoopEvent::Frame(frame)
+                }
+
+                _ = sleep_until_optional(idle_deadline.map(|(deadline, _)| deadline)), if idle_deadline.is_some() => {
+                    let Some((_, idle_timeout)) = idle_deadline else {
+                        continue;
+                    };
+                    ReceiveLoopEvent::HeartbeatTimeout { idle_timeout }
+                }
+
+                _ = sleep_until_optional(p.session.channel_operation_deadline()), if p.session.channel_operation_deadline().is_some() => {
+                    ReceiveLoopEvent::ChannelOperationDeadline
+                }
+
+                _ = sleep_until_optional(p.session.channel_retry_at()), if p.session.channel_retry_at().is_some() => {
+                    ReceiveLoopEvent::ChannelRetry
+                }
+            };
+
+            match event {
+                ReceiveLoopEvent::CloseRequested => {
                     tracing::info!("Close requested");
                     send_close_message(&mut p).await;
                     return;
                 }
-
-                _ = sleep_until_optional(p.session.token_renewal_at()), if p.session.token_renewal_at().is_some() => {
+                ReceiveLoopEvent::TokenRenewal => {
                     let connect_timeout = p.timing.connect_timeout;
                     let result = tokio::select! {
                         biased;
@@ -229,36 +267,60 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         return;
                     }
                 }
-
-                _ = sleep_until_optional(p.session.channel_operation_deadline()), if p.session.channel_operation_deadline().is_some() => {}
-
-                _ = sleep_until_optional(p.session.channel_retry_at()), if p.session.channel_retry_at().is_some() => {}
-
-                frame = transport.ws_read.next() => {
-                    match frame {
-                        Some(Ok(tungstenite::Message::Binary(data))) => {
-                            match decode_msg(&data) {
-                                Ok(msg) => {
-                                    match handle_message(&mut p, msg, &mut close_rx).await {
-                                        LoopAction::Stop => return,
-                                        LoopAction::Reconnect {
-                                            disconnected_event,
-                                        } => {
-                                            record_reconnect_disconnected_event(
-                                                &mut disconnected_sent,
-                                                disconnected_event,
-                                            );
-                                            immediate_retry = true;
-                                            break;
-                                        }
-                                        LoopAction::Continue => {}
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to decode message: {e}");
-                                }
+                ReceiveLoopEvent::ChannelOperationDeadline => {
+                    if let Some(attach_timed_out) =
+                        p.session.clear_elapsed_channel_operation_deadline(
+                            Instant::now(),
+                            p.timing.channel_retry_timeout,
+                        )
+                        && attach_timed_out
+                    {
+                        tracing::warn!(
+                            timeout_ms = p.timing.realtime_request_timeout.as_millis(),
+                            "Channel attach timed out, entering suspended channel retry"
+                        );
+                    }
+                }
+                ReceiveLoopEvent::ChannelRetry => {
+                    if let Some(should_attach) =
+                        p.session.clear_elapsed_channel_retry(Instant::now())
+                        && should_attach
+                        && p.session
+                            .begin_channel_attach(p.timing.realtime_request_timeout)
+                    {
+                        match send_attach(&mut p, &mut close_rx).await {
+                            LoopAction::Stop => return,
+                            LoopAction::Reconnect { disconnected_event } => {
+                                record_reconnect_disconnected_event(
+                                    &mut disconnected_sent,
+                                    disconnected_event,
+                                );
+                                immediate_retry = true;
+                                break;
                             }
+                            LoopAction::Continue => {}
                         }
+                    }
+                }
+                ReceiveLoopEvent::Frame(frame) => {
+                    match frame {
+                        Some(Ok(tungstenite::Message::Binary(data))) => match decode_msg(&data) {
+                            Ok(msg) => match handle_message(&mut p, msg, &mut close_rx).await {
+                                LoopAction::Stop => return,
+                                LoopAction::Reconnect { disconnected_event } => {
+                                    record_reconnect_disconnected_event(
+                                        &mut disconnected_sent,
+                                        disconnected_event,
+                                    );
+                                    immediate_retry = true;
+                                    break;
+                                }
+                                LoopAction::Continue => {}
+                            },
+                            Err(e) => {
+                                tracing::warn!("Failed to decode message: {e}");
+                            }
+                        },
                         Some(Ok(tungstenite::Message::Close(frame))) => {
                             let reason = websocket_close_reason(frame.as_ref());
                             if let Some(ref f) = frame {
@@ -269,7 +331,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                     "WebSocket Close frame received",
                                 );
                             } else {
-                                tracing::info!("WebSocket Close frame received without close frame");
+                                tracing::info!(
+                                    "WebSocket Close frame received without close frame"
+                                );
                             }
                             disconnect_reason = Some(reason);
                             immediate_retry = true;
@@ -296,11 +360,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         }
                     }
                 }
-
-                _ = sleep_until_optional(idle_deadline.map(|(deadline, _)| deadline)), if idle_deadline.is_some() => {
-                    let Some((_, idle_timeout)) = idle_deadline else {
-                        continue;
-                    };
+                ReceiveLoopEvent::HeartbeatTimeout { idle_timeout } => {
                     disconnect_reason = Some(format!("heartbeat timeout after {idle_timeout:?}"));
                     immediate_retry = true;
                     close_before_reconnect = true;
@@ -445,6 +505,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             p.session.mark_reconnect_failed_if_not_suspended();
         }
     }
+}
+
+enum ReceiveLoopEvent {
+    CloseRequested,
+    TokenRenewal,
+    ChannelOperationDeadline,
+    ChannelRetry,
+    Frame(Option<Result<tungstenite::Message, tungstenite::Error>>),
+    HeartbeatTimeout { idle_timeout: Duration },
 }
 
 #[derive(Debug, PartialEq, Eq)]
