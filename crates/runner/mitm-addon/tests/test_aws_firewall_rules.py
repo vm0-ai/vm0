@@ -366,6 +366,46 @@ def test_s3_subresource_rejects_ambiguous_extra_subresource():
     assert result.reason == "unknown_endpoint"
 
 
+def test_rest_query_value_distinguishes_permissions():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "apigateway:ImportApiKeys",
+            "POST /apikeys?mode=import AWS sigv4=apigateway",
+        )
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    import_api_keys = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(import_api_keys, matching.FirewallAllow)
+    assert import_api_keys.permission == "apigateway:ImportApiKeys"
+
+    wrong_mode = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=export",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(wrong_mode, matching.FirewallBlock)
+    assert wrong_mode.reason == "unknown_endpoint"
+
+    extra_operation_query = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&operation=delete",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(extra_operation_query, matching.FirewallBlock)
+    assert extra_operation_query.reason == "unknown_endpoint"
+
+
 def test_aws_predicate_rule_requires_matching_sigv4_service():
     firewalls = _aws_firewall(
         firewall_permission(

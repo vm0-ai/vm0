@@ -61,39 +61,45 @@ describe("aws firewall", () => {
 
     const standardApis = firewall.apis.slice(0, 3);
     for (const api of standardApis) {
+      expect(api.permissions?.length ?? 0).toBeGreaterThan(1000);
       expect(
         api.permissions?.map((permission) => {
           return permission.name;
         }),
       ).toEqual(
         expect.arrayContaining([
+          "apigateway:POST",
           "ec2:DescribeInstances",
           "ec2:RunInstances",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
+          "iam:CreateRole",
+          "lambda:CreateFunction",
           "s3:GetObject",
           "s3:GetObjectTagging",
           "s3:PutBucketAcl",
+          "sts:GetCallerIdentity",
         ]),
       );
     }
 
     const virtualHostedApis = firewall.apis.slice(3);
     for (const api of virtualHostedApis) {
+      expect(api.permissions?.length ?? 0).toBeGreaterThan(20);
       expect(
         api.permissions?.map((permission) => {
           return permission.name;
         }),
-      ).toStrictEqual([
-        "s3:GetBucketAcl",
-        "s3:GetBucketPolicy",
-        "s3:GetObject",
-        "s3:GetObjectTagging",
-        "s3:PutBucketAcl",
-        "s3:PutBucketPolicy",
-        "s3:PutObject",
-        "s3:PutObjectTagging",
-      ]);
+      ).toEqual(
+        expect.arrayContaining([
+          "s3:GetBucketAcl",
+          "s3:GetObject",
+          "s3:GetObjectTagging",
+          "s3:PutBucketAcl",
+          "s3:PutObject",
+          "s3:PutObjectTagging",
+        ]),
+      );
     }
 
     const permissions = standardApis[0]!.permissions ?? [];
@@ -109,31 +115,44 @@ describe("aws firewall", () => {
       permissions.find((permission) => {
         return permission.name === "dynamodb:GetItem";
       })?.rules,
-    ).toStrictEqual([
-      "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem",
-    ]);
+    ).toContain("POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem");
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "iam:CreateRole";
+      })?.rules,
+    ).toContain("POST / AWS sigv4=iam action=CreateRole");
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "sts:GetCallerIdentity";
+      })?.rules,
+    ).toContain("POST / AWS sigv4=sts action=GetCallerIdentity");
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "apigateway:POST";
+      })?.rules,
+    ).toContain("POST /apikeys?mode=import AWS sigv4=apigateway");
     expect(
       permissions.find((permission) => {
         return permission.name === "s3:GetObjectTagging";
       })?.rules,
-    ).toStrictEqual(["GET /{Bucket}/{Key+}?tagging AWS sigv4=s3"]);
+    ).toContain("GET /{Bucket}/{Key+}?tagging AWS sigv4=s3");
 
     const virtualHostedPermissions = virtualHostedApis[0]!.permissions ?? [];
     expect(
       virtualHostedPermissions.find((permission) => {
         return permission.name === "s3:GetBucketAcl";
       })?.rules,
-    ).toStrictEqual(["GET /?acl AWS sigv4=s3"]);
+    ).toContain("GET /?acl AWS sigv4=s3");
     expect(
       virtualHostedPermissions.find((permission) => {
         return permission.name === "s3:GetObject";
       })?.rules,
-    ).toStrictEqual(["GET /{Key+} AWS sigv4=s3"]);
+    ).toContain("GET /{Key+} AWS sigv4=s3");
     expect(
       virtualHostedPermissions.find((permission) => {
         return permission.name === "s3:GetObjectTagging";
       })?.rules,
-    ).toStrictEqual(["GET /{Key+}?tagging AWS sigv4=s3"]);
+    ).toContain("GET /{Key+}?tagging AWS sigv4=s3");
 
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
       "AWS_ACCESS_KEY_ID",
@@ -160,9 +179,12 @@ describe("aws firewall", () => {
     expect(defaults.policies["ec2:CreateTags"]).toBe("deny");
     expect(defaults.policies["dynamodb:GetItem"]).toBe("allow");
     expect(defaults.policies["dynamodb:PutItem"]).toBe("deny");
+    expect(defaults.policies["iam:CreateRole"]).toBe("deny");
+    expect(defaults.policies["lambda:CreateFunction"]).toBe("deny");
     expect(defaults.policies["s3:GetObject"]).toBe("allow");
     expect(defaults.policies["s3:PutBucketAcl"]).toBe("deny");
     expect(defaults.policies["s3:PutObjectTagging"]).toBe("deny");
+    expect(defaults.policies["sts:GetCallerIdentity"]).toBe("allow");
   });
 
   it("does not treat AWS predicate rules as plain path rules in the TypeScript matcher", () => {

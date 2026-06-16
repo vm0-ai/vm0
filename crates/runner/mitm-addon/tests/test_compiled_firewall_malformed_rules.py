@@ -83,7 +83,7 @@ def test_malformed_rule_blocks_unknown_policy_allow():
             "POST / AWS sigv4=ec2 action=DescribeInstances target=DynamoDB_20120810.GetItem",
             "https://api.github.com/",
         ),
-        ("GET /{Bucket}?acl=1 AWS sigv4=s3", "https://api.github.com/bucket"),
+        ("GET /{Bucket}?acl= AWS sigv4=s3", "https://api.github.com/bucket"),
     ],
 )
 def test_malformed_rule_syntax_fails_closed_before_unknown_allow(rule, url):

@@ -71,7 +71,8 @@ _VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _VALID_AUTH_BASE_SCHEME = "https"
 _VALID_AWS_PREDICATE_KEYS = frozenset(("sigv4", "action", "target"))
 _AWS_PREDICATE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
-_AWS_SUBRESOURCE_QUERY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
+_AWS_QUERY_KEY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
+_AWS_QUERY_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:{}-]+$")
 # SigV4 query auth keys and S3 REST operation parameters that do not select a
 # different S3 subresource operation.
 _AWS_IGNORED_QUERY_KEYS = frozenset(
@@ -257,7 +258,7 @@ class _CompiledRule(NamedTuple):
     method: str
     raw: str
     path: CompiledPathPattern
-    query_subresource: str | None
+    query_requirements: tuple[tuple[str, str | None], ...]
     aws_predicates: Mapping[str, str] | None
     specificity: _PathSpecificity
 
@@ -1265,12 +1266,43 @@ def _compile_aws_predicates(raw_predicates: str) -> Mapping[str, str] | None:
     return MappingProxyType(predicates)
 
 
+def _compile_aws_query_requirements(
+    raw_query: str,
+) -> tuple[tuple[str, str | None], ...] | None:
+    if raw_query == "":
+        return None
+
+    requirements: list[tuple[str, str | None]] = []
+    keys: set[str] = set()
+    for token in raw_query.split("&"):
+        if token == "":
+            return None
+        key, separator, value = token.partition("=")
+        if not key or not _AWS_QUERY_KEY_RE.fullmatch(key):
+            return None
+        if key in keys:
+            return None
+        keys.add(key)
+        if separator and (value == "" or not _AWS_QUERY_VALUE_RE.fullmatch(value)):
+            return None
+        requirements.append((key, value if separator else None))
+
+    return tuple(requirements)
+
+
 def _split_rule_path_and_aws_predicates(
     raw_path: str,
-) -> tuple[str, str | None, Mapping[str, str] | None] | None:
+) -> (
+    tuple[
+        str,
+        tuple[tuple[str, str | None], ...],
+        Mapping[str, str] | None,
+    ]
+    | None
+):
     separator_index = raw_path.find(_AWS_RULE_SEPARATOR)
     if separator_index == -1:
-        return raw_path, None, None
+        return raw_path, (), None
     if raw_path.find(_AWS_RULE_SEPARATOR, separator_index + 1) != -1:
         return None
 
@@ -1280,20 +1312,15 @@ def _split_rule_path_and_aws_predicates(
     if predicates is None:
         return None
 
-    query_subresource: str | None = None
+    query_requirements: tuple[tuple[str, str | None], ...] = ()
     query_index = raw_rule_path.find("?")
     if query_index != -1:
-        query_subresource = raw_rule_path[query_index + 1 :]
-        raw_rule_path = raw_rule_path[:query_index]
-        if (
-            query_subresource == ""
-            or "=" in query_subresource
-            or "&" in query_subresource
-            or not _AWS_SUBRESOURCE_QUERY_RE.fullmatch(query_subresource)
-        ):
+        query_requirements = _compile_aws_query_requirements(raw_rule_path[query_index + 1 :]) or ()
+        if not query_requirements:
             return None
+        raw_rule_path = raw_rule_path[:query_index]
 
-    return raw_rule_path, query_subresource, predicates
+    return raw_rule_path, query_requirements, predicates
 
 
 def _compile_rule(rule_str: str) -> _CompiledRule | None:
@@ -1306,10 +1333,10 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     parsed = _split_rule_path_and_aws_predicates(raw_path)
     if parsed is None:
         return None
-    path, query_subresource, aws_predicates = parsed
+    path, query_requirements, aws_predicates = parsed
     if (
         not path.startswith("/")
-        or (query_subresource is None and "?" in path)
+        or (not query_requirements and "?" in path)
         or "#" in path
         or "\\" in path
         or has_unsafe_url_codepoint(path)
@@ -1325,7 +1352,7 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
         method,
         rule_str,
         pattern,
-        query_subresource,
+        query_requirements,
         aws_predicates,
         _path_specificity(pattern),
     )
@@ -1656,44 +1683,49 @@ def _query_has_only_ignored_aws_keys(query_pairs: list[tuple[str, str]]) -> bool
     return all(key.lower() in _AWS_IGNORED_QUERY_KEYS for key, _value in query_pairs)
 
 
-def _query_has_only_subresource_or_ignored_aws_keys(
+def _query_has_only_required_or_ignored_aws_keys(
     query_pairs: list[tuple[str, str]],
-    subresource: str,
+    required_keys: set[str],
 ) -> bool:
     return all(
-        key == subresource or key.lower() in _AWS_IGNORED_QUERY_KEYS for key, _value in query_pairs
+        key in required_keys or key.lower() in _AWS_IGNORED_QUERY_KEYS
+        for key, _value in query_pairs
     )
 
 
-def _aws_subresource_matches(
-    query_subresource: str | None,
+def _aws_query_requirements_match(
+    query_requirements: tuple[tuple[str, str | None], ...],
     *,
     query_pairs: list[tuple[str, str]],
 ) -> bool:
-    if query_subresource is None:
+    if not query_requirements:
         return _query_has_only_ignored_aws_keys(query_pairs)
-    return len(_query_values(query_pairs, query_subresource)) == 1 and (
-        _query_has_only_subresource_or_ignored_aws_keys(
-            query_pairs,
-            query_subresource,
-        )
-    )
+
+    required_keys = {key for key, _value in query_requirements}
+    for key, expected_value in query_requirements:
+        values = _query_values(query_pairs, key)
+        if len(values) != 1:
+            return False
+        if expected_value is None:
+            if values[0] != "":
+                return False
+            continue
+        if values[0] != expected_value:
+            return False
+
+    return _query_has_only_required_or_ignored_aws_keys(query_pairs, required_keys)
 
 
 def _aws_predicates_match(
     rule: _CompiledRule,
     *,
-    url: str,
     query_pairs: list[tuple[str, str]],
     context: FirewallRequestContext | None,
+    sigv4_service: str | None,
 ) -> bool:
     predicates = rule.aws_predicates
     if predicates is None:
         return True
-    sigv4_service = aws_sigv4.inspect_sigv4_service(
-        url=url,
-        headers=_headers_for_sigv4(context.headers if context is not None else None),
-    )
     if sigv4_service != predicates["sigv4"]:
         return False
 
@@ -1713,7 +1745,10 @@ def _aws_predicates_match(
             headers=context.headers if context is not None else None,
         )
 
-    return _aws_subresource_matches(rule.query_subresource, query_pairs=query_pairs)
+    return _aws_query_requirements_match(
+        rule.query_requirements,
+        query_pairs=query_pairs,
+    )
 
 
 def _best_compiled_rule_candidates(
@@ -1729,10 +1764,26 @@ def _best_compiled_rule_candidates(
     rel_path_segs = _split_path_segments(rel_path)
     best_specificity: _PathSpecificity | None = None
     best_candidates: list[_CompiledRuleCandidate] = []
+    sigv4_service_unset = object()
+    sigv4_service: str | None | object = sigv4_service_unset
+
+    def get_sigv4_service() -> str | None:
+        nonlocal sigv4_service
+        if sigv4_service is sigv4_service_unset:
+            sigv4_service = aws_sigv4.inspect_sigv4_service(
+                url=url,
+                headers=_headers_for_sigv4(context.headers if context is not None else None),
+            )
+        return sigv4_service if isinstance(sigv4_service, str) else None
 
     for perm in api_entry.permissions:
         for rule in perm.rules:
             if rule.method not in ("ANY", upper_method):
+                continue
+            if (
+                rule.aws_predicates is not None
+                and get_sigv4_service() != rule.aws_predicates["sigv4"]
+            ):
                 continue
 
             params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
@@ -1740,9 +1791,9 @@ def _best_compiled_rule_candidates(
                 continue
             if rule.aws_predicates is not None and not _aws_predicates_match(
                 rule,
-                url=url,
                 query_pairs=get_query_pairs(),
                 context=context,
+                sigv4_service=get_sigv4_service(),
             ):
                 continue
 

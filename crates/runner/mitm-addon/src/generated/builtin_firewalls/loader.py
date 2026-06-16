@@ -79,8 +79,76 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         return (aviationstack_0.JSON_PART,)
     if name == "aws":
         from . import aws_0
+        from . import aws_1
+        from . import aws_2
+        from . import aws_3
+        from . import aws_4
+        from . import aws_5
+        from . import aws_6
+        from . import aws_7
+        from . import aws_8
+        from . import aws_9
+        from . import aws_10
+        from . import aws_11
+        from . import aws_12
+        from . import aws_13
+        from . import aws_14
+        from . import aws_15
+        from . import aws_16
+        from . import aws_17
+        from . import aws_18
+        from . import aws_19
+        from . import aws_20
+        from . import aws_21
+        from . import aws_22
+        from . import aws_23
+        from . import aws_24
+        from . import aws_25
+        from . import aws_26
+        from . import aws_27
+        from . import aws_28
+        from . import aws_29
+        from . import aws_30
+        from . import aws_31
+        from . import aws_32
+        from . import aws_33
 
-        return (aws_0.JSON_PART,)
+        return (
+            aws_0.JSON_PART,
+            aws_1.JSON_PART,
+            aws_2.JSON_PART,
+            aws_3.JSON_PART,
+            aws_4.JSON_PART,
+            aws_5.JSON_PART,
+            aws_6.JSON_PART,
+            aws_7.JSON_PART,
+            aws_8.JSON_PART,
+            aws_9.JSON_PART,
+            aws_10.JSON_PART,
+            aws_11.JSON_PART,
+            aws_12.JSON_PART,
+            aws_13.JSON_PART,
+            aws_14.JSON_PART,
+            aws_15.JSON_PART,
+            aws_16.JSON_PART,
+            aws_17.JSON_PART,
+            aws_18.JSON_PART,
+            aws_19.JSON_PART,
+            aws_20.JSON_PART,
+            aws_21.JSON_PART,
+            aws_22.JSON_PART,
+            aws_23.JSON_PART,
+            aws_24.JSON_PART,
+            aws_25.JSON_PART,
+            aws_26.JSON_PART,
+            aws_27.JSON_PART,
+            aws_28.JSON_PART,
+            aws_29.JSON_PART,
+            aws_30.JSON_PART,
+            aws_31.JSON_PART,
+            aws_32.JSON_PART,
+            aws_33.JSON_PART,
+        )
     if name == "axiom":
         from . import axiom_0
 

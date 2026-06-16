@@ -23,7 +23,11 @@ import {
   CLOUDFLARE_OAUTH_SCOPES_URL,
   CLOUDFLARE_OPENAPI_URL,
 } from "./cloudflare-sources";
-import { AWS_BOTOCORE_MODEL_URLS, AWS_SERVICE_REFERENCE_URLS } from "./aws";
+import {
+  AWS_BOTOCORE_TREE_URL,
+  AWS_SERVICE_REFERENCE_MAPPING_URL,
+  discoverAwsServiceSources,
+} from "./aws";
 import { CLERK_OPENAPI_URL } from "./clerk";
 import {
   GOOGLE_CLOUD_DISCOVERY_URLS,
@@ -284,15 +288,61 @@ const cloudflareUpdater: Updater = {
   },
 };
 
+const awsUpdater: Updater = {
+  name: "aws",
+  fetch: async () => {
+    const entries = new Map<string, string>();
+
+    const mappingRes = await fetchRemote(
+      AWS_SERVICE_REFERENCE_MAPPING_URL,
+      "aws: service reference mapping",
+    );
+    const mappingText = await mappingRes.text();
+    entries.set(AWS_SERVICE_REFERENCE_MAPPING_URL, mappingText);
+
+    const treeRes = await fetchRemote(
+      AWS_BOTOCORE_TREE_URL,
+      "aws: botocore service tree",
+      {
+        headers: { Accept: "application/vnd.github.v3+json" },
+      },
+    );
+    const treeText = await treeRes.text();
+    entries.set(AWS_BOTOCORE_TREE_URL, treeText);
+
+    const services = discoverAwsServiceSources(
+      JSON.parse(mappingText) as unknown,
+      JSON.parse(treeText) as unknown,
+    );
+    console.error(`  Discovered ${services.length} AWS service models`);
+
+    for (const service of services) {
+      if (!entries.has(service.serviceReferenceUrl)) {
+        const referenceRes = await fetchRemote(
+          service.serviceReferenceUrl,
+          `aws ${service.key}: service reference`,
+        );
+        entries.set(service.serviceReferenceUrl, await referenceRes.text());
+      }
+      if (!entries.has(service.botocoreModelUrl)) {
+        const modelRes = await fetchRemote(
+          service.botocoreModelUrl,
+          `aws ${service.key}: botocore model`,
+        );
+        entries.set(service.botocoreModelUrl, await modelRes.text());
+      }
+    }
+
+    return entries;
+  },
+};
+
 // ── Updater registry ────────────────────────────────────────────────────
 
 const UPDATERS: Updater[] = [
   // Static generators
   staticUpdater("clerk", [CLERK_OPENAPI_URL]),
-  staticUpdater("aws", [
-    ...Object.values(AWS_SERVICE_REFERENCE_URLS),
-    ...Object.values(AWS_BOTOCORE_MODEL_URLS),
-  ]),
+  awsUpdater,
   cloudflareUpdater,
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",

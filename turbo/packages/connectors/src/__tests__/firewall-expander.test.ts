@@ -395,6 +395,20 @@ describe("validateRule", () => {
         "fw",
       );
     }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "POST /apikeys?mode=import AWS sigv4=apigateway",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "POST /{Bucket}/{Key+}?select&select-type=2 AWS sigv4=s3",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
   });
 
   it("should reject missing path", () => {
@@ -445,8 +459,11 @@ describe("validateRule", () => {
       return validateRule("POST / AWS sigv4=ec2 body=Action", "p", "fw");
     }).toThrow('unsupported AWS predicate "body"');
     expect(() => {
-      return validateRule("GET /?acl=1 AWS sigv4=s3", "p", "fw");
-    }).toThrow("AWS subresource query must be a single query key");
+      return validateRule("GET /?acl= AWS sigv4=s3", "p", "fw");
+    }).toThrow("has an invalid value");
+    expect(() => {
+      return validateRule("GET /?acl&acl AWS sigv4=s3", "p", "fw");
+    }).toThrow('duplicate AWS query requirement "acl"');
   });
 
   it("should reject path with fragment", () => {

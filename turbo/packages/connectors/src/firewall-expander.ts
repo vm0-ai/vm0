@@ -35,12 +35,13 @@ const VALID_RULE_METHODS = new Set([
 ]);
 const AWS_RULE_SEPARATOR = " AWS ";
 const AWS_PREDICATE_VALUE_RE = /^[A-Za-z0-9._:-]+$/;
-const AWS_SUBRESOURCE_QUERY_RE = /^[A-Za-z0-9._~-]+$/;
+const AWS_QUERY_KEY_RE = /^[A-Za-z0-9._~-]+$/;
+const AWS_QUERY_VALUE_RE = /^[A-Za-z0-9._~:{}-]+$/;
 const VALID_AWS_PREDICATE_KEYS = new Set(["sigv4", "action", "target"]);
 
 interface ParsedRuleRemainder {
   readonly path: string;
-  readonly querySubresource?: string;
+  readonly queryRequirements?: readonly string[];
   readonly awsPredicates?: ReadonlyMap<string, string>;
 }
 
@@ -101,6 +102,54 @@ function parseAwsPredicates(
   return predicates;
 }
 
+function parseAwsQueryRequirements(
+  rawQuery: string,
+  rule: string,
+  permName: string,
+  serviceName: string,
+): readonly string[] {
+  if (rawQuery === "") {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS query requirements must not be empty`,
+    );
+  }
+
+  const keys = new Set<string>();
+  const requirements: string[] = [];
+  for (const token of rawQuery.split("&")) {
+    if (token === "") {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS query requirements must not contain empty entries`,
+      );
+    }
+
+    const [key, value, extra] = token.split("=");
+    if (extra !== undefined || !key || !AWS_QUERY_KEY_RE.test(key)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS query requirement "${token}" has an invalid key`,
+      );
+    }
+    if (keys.has(key)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": duplicate AWS query requirement "${key}"`,
+      );
+    }
+    keys.add(key);
+
+    if (
+      value !== undefined &&
+      (value === "" || !AWS_QUERY_VALUE_RE.test(value))
+    ) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS query requirement "${token}" has an invalid value`,
+      );
+    }
+    requirements.push(token);
+  }
+
+  return requirements;
+}
+
 function parseRuleRemainder(
   rest: string,
   rule: string,
@@ -139,21 +188,16 @@ function parseRuleRemainder(
   }
 
   const path = rawPath.slice(0, queryIndex);
-  const querySubresource = rawPath.slice(queryIndex + 1);
-  if (
-    querySubresource === "" ||
-    querySubresource.includes("=") ||
-    querySubresource.includes("&") ||
-    !AWS_SUBRESOURCE_QUERY_RE.test(querySubresource)
-  ) {
-    throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS subresource query must be a single query key`,
-    );
-  }
+  const queryRequirements = parseAwsQueryRequirements(
+    rawPath.slice(queryIndex + 1),
+    rule,
+    permName,
+    serviceName,
+  );
 
   return {
     path,
-    querySubresource,
+    queryRequirements,
     awsPredicates: parseAwsPredicates(
       predicateText,
       rule,
