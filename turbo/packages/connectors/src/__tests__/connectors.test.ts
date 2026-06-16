@@ -2587,14 +2587,9 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Google Analytics OAuth only when its switch is enabled", () => {
+  it("exposes Google Analytics OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-analytics", {}),
-    ).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("google-analytics", {
-        [FeatureSwitchKey.GoogleAnalyticsConnector]: true,
-      }),
     ).toStrictEqual(["oauth"]);
   });
 
