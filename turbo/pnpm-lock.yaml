@@ -228,7 +228,7 @@ importers:
         version: 1.92.2
       tar:
         specifier: '>=7.5.7'
-        version: 7.5.13
+        version: 7.5.16
       uuid:
         specifier: ^14.0.0
         version: 14.0.0
@@ -380,7 +380,7 @@ importers:
         version: 19.2.6(react@19.2.6)
       tar:
         specifier: '>=7.5.7'
-        version: 7.5.13
+        version: 7.5.16
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.15.21(@swc/helpers@0.5.20))(jiti@2.6.1)(postcss@8.5.15)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
@@ -9404,8 +9404,8 @@ packages:
   tar-stream@3.1.8:
     resolution: {integrity: sha512-U6QpVRyCGHva435KoNWy9PRoi2IFYCgtEhq9nmrPPpbRacPs9IH4aJ3gbrFC8dPcXvdSZ4XXfXT5Fshbp2MtlQ==}
 
-  tar@7.5.13:
-    resolution: {integrity: sha512-tOG/7GyXpFevhXVh8jOPJrmtRpOTsYqUIkVdVooZYJS/z8WhfQUX8RJILmeuJNinGAMSu1veBr4asSHFt5/hng==}
+  tar@7.5.16:
+    resolution: {integrity: sha512-56adEpPMouktRlBLXiaYFFzZ/3+JXa8P9n7WbR+ibIjtviN55mEaOkiysCnPnWm+7kkui1Dn8J9l+g6zV8731w==}
     engines: {node: '>=18'}
 
   teex@1.0.1:
@@ -11121,7 +11121,7 @@ snapshots:
       nopt: 6.0.0
       proc-log: 2.0.1
       semver: 7.8.4
-      tar: 7.5.13
+      tar: 7.5.16
       which: 2.0.2
     transitivePeerDependencies:
       - bluebird
@@ -11202,7 +11202,7 @@ snapshots:
       ora: 5.4.1
       read-binary-file-arch: 1.0.6
       semver: 7.8.4
-      tar: 7.5.13
+      tar: 7.5.16
       yargs: 17.7.2
     transitivePeerDependencies:
       - bluebird
@@ -15246,7 +15246,7 @@ snapshots:
       promise-inflight: 1.0.1
       rimraf: 3.0.2
       ssri: 9.0.1
-      tar: 7.5.13
+      tar: 7.5.16
       unique-filename: 2.0.1
     transitivePeerDependencies:
       - bluebird
@@ -15716,7 +15716,7 @@ snapshots:
       glob: 13.0.6
       openapi-fetch: 0.14.1
       platform: 1.3.6
-      tar: 7.5.13
+      tar: 7.5.16
 
   eastasianwidth@0.2.0: {}
 
@@ -19523,7 +19523,7 @@ snapshots:
       - bare-buffer
       - react-native-b4a
 
-  tar@7.5.13:
+  tar@7.5.16:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0
