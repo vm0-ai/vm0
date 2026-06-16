@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { extractSecretNamesFromApis } from "../../firewall-types";
+import {
+  extractSecretNamesFromApis,
+  type FirewallApi,
+} from "../../firewall-types";
 import {
   findMatchingPermissions,
   matchFirewallBaseUrl,
@@ -13,6 +16,7 @@ import {
 } from "../../firewalls/index";
 
 const FORBIDDEN_PLACEHOLDER_WORD_RE = /placeholder|fake|dummy|test|example/i;
+type FirewallPermission = NonNullable<FirewallApi["permissions"]>[number];
 
 function matchesAwsFirewall(url: string): boolean {
   const firewall = getConnectorFirewall("aws");
@@ -26,8 +30,29 @@ function expectRecognizablePlaceholder(value: string | undefined): void {
   expect(value).not.toMatch(FORBIDDEN_PLACEHOLDER_WORD_RE);
 }
 
+function permissionNames(
+  permissions: readonly FirewallPermission[] | undefined,
+): string[] {
+  return (permissions ?? []).map((permission) => {
+    return permission.name;
+  });
+}
+
+function rulesFor(
+  permissions: readonly FirewallPermission[],
+  name: string,
+): string[] {
+  const permission = permissions.find((candidate) => {
+    return candidate.name === name;
+  });
+  if (!permission) {
+    throw new Error(`Missing AWS firewall permission ${name}`);
+  }
+  return permission.rules;
+}
+
 describe("aws firewall", () => {
-  it("registers AWS as a SigV4 firewall connector with generated permissions", () => {
+  it("registers AWS as a SigV4 firewall connector", () => {
     expect(isFirewallConnectorType("aws")).toBe(true);
     const firewall = getConnectorFirewall("aws");
 
@@ -60,14 +85,31 @@ describe("aws firewall", () => {
       });
     }
 
+    expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(firewall.placeholders?.AWS_ACCESS_KEY_ID).toMatch(
+      /^ASIA[A-Z0-9]{16}$/,
+    );
+    expect(firewall.placeholders?.AWS_SECRET_ACCESS_KEY).toMatch(
+      /^[A-Za-z0-9/+=]{40}$/,
+    );
+    expect(firewall.placeholders?.AWS_SESSION_TOKEN).toMatch(
+      /^[A-Za-z0-9/+=]{20,}$/,
+    );
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_ACCESS_KEY_ID);
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SECRET_ACCESS_KEY);
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
+  });
+
+  it("includes generated AWS permissions on standard and S3 virtual hosted APIs", () => {
+    const firewall = getConnectorFirewall("aws");
     const standardApis = firewall.apis.slice(0, 3);
     for (const api of standardApis) {
       expect(api.permissions?.length ?? 0).toBeGreaterThan(1000);
-      expect(
-        api.permissions?.map((permission) => {
-          return permission.name;
-        }),
-      ).toEqual(
+      expect(permissionNames(api.permissions)).toEqual(
         expect.arrayContaining([
           "apigateway:POST",
           "ec2:DescribeInstances",
@@ -87,11 +129,7 @@ describe("aws firewall", () => {
     const virtualHostedApis = firewall.apis.slice(3);
     for (const api of virtualHostedApis) {
       expect(api.permissions?.length ?? 0).toBeGreaterThan(20);
-      expect(
-        api.permissions?.map((permission) => {
-          return permission.name;
-        }),
-      ).toEqual(
+      expect(permissionNames(api.permissions)).toEqual(
         expect.arrayContaining([
           "s3:GetBucketAcl",
           "s3:GetObject",
@@ -102,77 +140,69 @@ describe("aws firewall", () => {
         ]),
       );
     }
+  });
 
-    const permissions = standardApis[0]!.permissions ?? [];
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "ec2:DescribeInstances";
-      })?.rules,
-    ).toStrictEqual([
+  it("maps representative AWS operations to their IAM permissions", () => {
+    const firewall = getConnectorFirewall("aws");
+    const permissions = firewall.apis[0]!.permissions ?? [];
+
+    expect(rulesFor(permissions, "ec2:DescribeInstances")).toStrictEqual([
       "GET / AWS sigv4=ec2 action=DescribeInstances",
       "POST / AWS sigv4=ec2 action=DescribeInstances",
     ]);
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "dynamodb:GetItem";
-      })?.rules,
-    ).toContain("POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem");
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "iam:CreateRole";
-      })?.rules,
-    ).toContain("POST / AWS sigv4=iam action=CreateRole");
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "sts:GetCallerIdentity";
-      })?.rules,
-    ).toContain("POST / AWS sigv4=sts action=GetCallerIdentity");
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "apigateway:POST";
-      })?.rules,
-    ).toContain("POST /apikeys?mode=import AWS sigv4=apigateway");
-    expect(
-      permissions.find((permission) => {
-        return permission.name === "s3:GetObjectTagging";
-      })?.rules,
-    ).toContain("GET /{Bucket}/{Key+}?tagging AWS sigv4=s3");
-
-    const virtualHostedPermissions = virtualHostedApis[0]!.permissions ?? [];
-    expect(
-      virtualHostedPermissions.find((permission) => {
-        return permission.name === "s3:GetBucketAcl";
-      })?.rules,
-    ).toContain("GET /?acl AWS sigv4=s3");
-    expect(
-      virtualHostedPermissions.find((permission) => {
-        return permission.name === "s3:GetObject";
-      })?.rules,
-    ).toContain("GET /{Key+} AWS sigv4=s3");
-    expect(
-      virtualHostedPermissions.find((permission) => {
-        return permission.name === "s3:GetObjectTagging";
-      })?.rules,
-    ).toContain("GET /{Key+}?tagging AWS sigv4=s3");
-
-    expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
-      "AWS_ACCESS_KEY_ID",
-      "AWS_SECRET_ACCESS_KEY",
-      "AWS_SESSION_TOKEN",
-    ]);
-    expect(firewall.placeholders?.AWS_ACCESS_KEY_ID).toMatch(
-      /^ASIA[A-Z0-9]{16}$/,
+    expect(rulesFor(permissions, "dynamodb:GetItem")).toContain(
+      "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem",
     );
-    expect(firewall.placeholders?.AWS_SECRET_ACCESS_KEY).toMatch(
-      /^[A-Za-z0-9/+=]{40}$/,
+    expect(rulesFor(permissions, "iam:CreateRole")).toContain(
+      "POST / AWS sigv4=iam action=CreateRole",
     );
-    expect(firewall.placeholders?.AWS_SESSION_TOKEN).toMatch(
-      /^[A-Za-z0-9/+=]{20,}$/,
+    expect(rulesFor(permissions, "sts:GetCallerIdentity")).toContain(
+      "POST / AWS sigv4=sts action=GetCallerIdentity",
     );
-    expectRecognizablePlaceholder(firewall.placeholders?.AWS_ACCESS_KEY_ID);
-    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SECRET_ACCESS_KEY);
-    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
+    expect(rulesFor(permissions, "apigateway:POST")).toContain(
+      "POST /apikeys?mode=import AWS sigv4=apigateway",
+    );
+  });
 
+  it("maps S3 operation selectors to the right IAM permissions", () => {
+    const firewall = getConnectorFirewall("aws");
+    const standardPermissions = firewall.apis[0]!.permissions ?? [];
+
+    expect(rulesFor(standardPermissions, "s3:GetObjectTagging")).toContain(
+      "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+    );
+    expect(rulesFor(standardPermissions, "s3:GetObject")).not.toContain(
+      "PUT /{Bucket}/{Key+} AWS sigv4=s3",
+    );
+    expect(rulesFor(standardPermissions, "s3:GetObjectAcl")).not.toContain(
+      "GET /{Bucket} AWS sigv4=s3",
+    );
+    expect(rulesFor(standardPermissions, "s3:GetObjectAcl")).not.toContain(
+      "GET /{Bucket}?list-type=2 AWS sigv4=s3",
+    );
+    expect(rulesFor(standardPermissions, "s3:ListBucket")).toEqual(
+      expect.arrayContaining([
+        "GET /{Bucket} AWS sigv4=s3",
+        "GET /{Bucket}?list-type=2 AWS sigv4=s3",
+      ]),
+    );
+    expect(rulesFor(standardPermissions, "s3:PutObject")).toContain(
+      "PUT /{Bucket}/{Key+} AWS sigv4=s3",
+    );
+
+    const virtualHostedPermissions = firewall.apis[3]!.permissions ?? [];
+    expect(rulesFor(virtualHostedPermissions, "s3:GetBucketAcl")).toContain(
+      "GET /?acl AWS sigv4=s3",
+    );
+    expect(rulesFor(virtualHostedPermissions, "s3:GetObject")).toContain(
+      "GET /{Key+} AWS sigv4=s3",
+    );
+    expect(rulesFor(virtualHostedPermissions, "s3:GetObjectTagging")).toContain(
+      "GET /{Key+}?tagging AWS sigv4=s3",
+    );
+  });
+
+  it("registers AWS default policies and permission categories", () => {
     const defaults = getDefaultFirewallPolicies("aws");
     expect(defaults.unknownPolicy).toBe("deny");
     expect(defaults.policies["ec2:DescribeInstances"]).toBe("allow");

@@ -307,15 +307,15 @@ def test_s3_rest_operation_query_parameters_match_base_operation():
             "GET /{Bucket}/{Key+} AWS sigv4=s3",
         )
     )
-    versioned_object = match_compiled_firewalls(
-        "https://s3.amazonaws.com/my-bucket/my-key?versionId=1",
+    part_number = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?partNumber=1",
         firewalls,
         {"aws": network_policy(unknown_policy="deny")},
         method="GET",
         request_context=_sigv4_context("s3"),
     )
-    assert isinstance(versioned_object, matching.FirewallAllow)
-    assert versioned_object.permission == "s3:GetObject"
+    assert isinstance(part_number, matching.FirewallAllow)
+    assert part_number.permission == "s3:GetObject"
 
     response_override = match_compiled_firewalls(
         "https://s3.amazonaws.com/my-bucket/my-key?response-content-type=text%2Fplain",
@@ -326,6 +326,54 @@ def test_s3_rest_operation_query_parameters_match_base_operation():
     )
     assert isinstance(response_override, matching.FirewallAllow)
     assert response_override.permission == "s3:GetObject"
+
+
+def test_s3_version_id_uses_unknown_policy():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:DeleteObject",
+            "DELETE /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:GetObjectTagging",
+            "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+        ),
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    get_version = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?versionId=1",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(get_version, matching.FirewallBlock)
+    assert get_version.reason == "unknown_endpoint"
+
+    delete_version = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?versionId=1",
+        firewalls,
+        policies,
+        method="DELETE",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(delete_version, matching.FirewallBlock)
+    assert delete_version.reason == "unknown_endpoint"
+
+    get_version_tagging = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?tagging&versionId=1",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(get_version_tagging, matching.FirewallBlock)
+    assert get_version_tagging.reason == "unknown_endpoint"
 
 
 def test_s3_unknown_subresource_uses_unknown_policy():

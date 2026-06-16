@@ -74,7 +74,7 @@ _AWS_PREDICATE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 _AWS_QUERY_KEY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
 _AWS_QUERY_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:{}-]+$")
 # SigV4 query auth keys and S3 REST operation parameters that do not select a
-# different S3 subresource operation.
+# different S3 subresource or version-specific IAM operation.
 _AWS_IGNORED_QUERY_KEYS = frozenset(
     key.lower()
     for key in (
@@ -85,7 +85,6 @@ _AWS_IGNORED_QUERY_KEYS = frozenset(
         "response-content-language",
         "response-content-type",
         "response-expires",
-        "versionId",
         "X-Amz-Algorithm",
         "X-Amz-Credential",
         "X-Amz-Date",
