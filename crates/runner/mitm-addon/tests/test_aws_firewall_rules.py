@@ -376,6 +376,39 @@ def test_s3_version_id_uses_unknown_policy():
     assert get_version_tagging.reason == "unknown_endpoint"
 
 
+def test_s3_copy_source_header_uses_unknown_policy():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:PutObject",
+            "PUT /{Bucket}/{Key+} AWS sigv4=s3",
+        )
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    put_object = match_compiled_firewalls(
+        "https://s3.amazonaws.com/destination-bucket/copied-key",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(put_object, matching.FirewallAllow)
+    assert put_object.permission == "s3:PutObject"
+
+    copy_object = match_compiled_firewalls(
+        "https://s3.amazonaws.com/destination-bucket/copied-key",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context(
+            "s3",
+            headers=(("x-amz-copy-source", "source-bucket/source-key"),),
+        ),
+    )
+    assert isinstance(copy_object, matching.FirewallBlock)
+    assert copy_object.reason == "unknown_endpoint"
+
+
 def test_s3_unknown_subresource_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(

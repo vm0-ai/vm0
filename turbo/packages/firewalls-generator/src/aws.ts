@@ -149,14 +149,11 @@ const AWS_OPERATION_ACTION_OVERRIDES = new Map<string, string>([
   // operation names do not match their IAM action names, so pick the action
   // users expect to control the generated endpoint rule.
   ["s3:CompleteMultipartUpload", "PutObject"],
-  ["s3:CopyObject", "PutObject"],
   ["s3:CreateMultipartUpload", "PutObject"],
-  ["s3:DeleteObjects", "DeleteObject"],
   ["s3:HeadObject", "GetObject"],
   ["s3:ListObjects", "ListBucket"],
   ["s3:ListObjectsV2", "ListBucket"],
   ["s3:UploadPart", "PutObject"],
-  ["s3:UploadPartCopy", "PutObject"],
 ]);
 
 function assertObject(value: unknown, label: string): Record<string, unknown> {

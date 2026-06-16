@@ -73,6 +73,7 @@ _VALID_AWS_PREDICATE_KEYS = frozenset(("sigv4", "action", "target"))
 _AWS_PREDICATE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 _AWS_QUERY_KEY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
 _AWS_QUERY_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:{}-]+$")
+_AWS_S3_COPY_SOURCE_HEADER = "x-amz-copy-source"
 # SigV4 query auth keys and S3 REST operation parameters that do not select a
 # different S3 subresource or version-specific IAM operation.
 _AWS_IGNORED_QUERY_KEYS = frozenset(
@@ -1625,6 +1626,12 @@ def _unique_header_value(
     return matched[0]
 
 
+def _has_header(headers: tuple[tuple[str, str], ...] | None, name: str) -> bool:
+    if headers is None:
+        return False
+    return any(header_name.lower() == name for header_name, _value in headers)
+
+
 def _query_values(query_pairs: list[tuple[str, str]], name: str) -> list[str]:
     return [value for key, value in query_pairs if key == name]
 
@@ -1743,6 +1750,12 @@ def _aws_predicates_match(
             target,
             headers=context.headers if context is not None else None,
         )
+
+    if predicates["sigv4"] == "s3" and _has_header(
+        context.headers if context is not None else None,
+        _AWS_S3_COPY_SOURCE_HEADER,
+    ):
+        return False
 
     return _aws_query_requirements_match(
         rule.query_requirements,

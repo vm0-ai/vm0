@@ -171,6 +171,9 @@ describe("aws firewall", () => {
     expect(rulesFor(standardPermissions, "s3:GetObjectTagging")).toContain(
       "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
     );
+    expect(rulesFor(standardPermissions, "s3:DeleteObject")).not.toContain(
+      "POST /{Bucket}?delete AWS sigv4=s3",
+    );
     expect(rulesFor(standardPermissions, "s3:GetObject")).not.toContain(
       "PUT /{Bucket}/{Key+} AWS sigv4=s3",
     );
@@ -191,6 +194,9 @@ describe("aws firewall", () => {
     );
 
     const virtualHostedPermissions = firewall.apis[3]!.permissions ?? [];
+    expect(rulesFor(virtualHostedPermissions, "s3:DeleteObject")).not.toContain(
+      "POST /?delete AWS sigv4=s3",
+    );
     expect(rulesFor(virtualHostedPermissions, "s3:GetBucketAcl")).toContain(
       "GET /?acl AWS sigv4=s3",
     );
