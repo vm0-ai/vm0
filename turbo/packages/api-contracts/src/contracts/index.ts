@@ -1356,12 +1356,6 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  githubIssuesCallbackPayloadSchema,
-  internalCallbacksGithubIssuesContract,
-  type GitHubIssuesCallbackPayload,
-  type InternalCallbacksGithubIssuesContract,
-} from "./internal-callbacks-github-issues";
-export {
   automationsMainContract,
   automationsByRefContract,
   automationTriggersContract,
