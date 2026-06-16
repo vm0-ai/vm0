@@ -37,4 +37,19 @@ describe("presentation template items", () => {
       expect(Array.isArray(item.previewImages)).toBe(true);
     }
   });
+
+  it("exposes the aplocoto playful-editorial showcase", () => {
+    const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return candidate.slug === "tomorrow-lab-playful-deck";
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.designSystemId).toBe("design-system:playful-editorial");
+    expect(item?.templateId).toBe("template:html-ppt-aplocoto");
+    expect(item?.previewImages.length).toBe(15);
+    expect(findDesignSystem(item?.designSystemId ?? "")).toBeDefined();
+    expect(findTemplate(item?.templateId ?? "")?.targets).toContain(
+      "presentation",
+    );
+  });
 });
