@@ -133,6 +133,24 @@ zero_curl() {
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
 }
 
+create_private_zero_agent() {
+    local display_name="$1"
+    local payload response agent_id
+
+    payload=$(jq -nc \
+        --arg displayName "$display_name" \
+        '{displayName: $displayName, visibility: "private"}')
+    response=$(zero_curl "/api/zero/agents" -X POST -d "$payload") || return 1
+    agent_id=$(printf '%s' "$response" | jq -r '.agentId // empty')
+    if [[ -z "$agent_id" ]]; then
+        echo "# Failed to extract agentId from zero agent create response" >&2
+        echo "# Response: $response" >&2
+        return 1
+    fi
+
+    printf '%s\n' "$agent_id"
+}
+
 zero_usage_runs_response() {
     local run_id="$1"
     zero_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"

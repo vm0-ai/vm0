@@ -70,12 +70,17 @@ EOF
     # zero-compose-service.ts updateComposeMetadata.
     _codex_zero_curl "/api/zero/composes/$AGENT_ID/metadata" \
         -X PATCH -d '{"displayName":"BYOK codex e2e"}' >/dev/null
+    _codex_zero_curl "/api/zero/agents/$AGENT_ID" \
+        -X PATCH -d '{"visibility":"private"}' >/dev/null
 }
 
 teardown_file() {
     # Best-effort cleanup; never mask the actual test failure.
     if [[ -n "${THREAD_ID:-}" ]]; then
         _codex_zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${AGENT_ID:-}" ]]; then
+        $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
     fi
     disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then

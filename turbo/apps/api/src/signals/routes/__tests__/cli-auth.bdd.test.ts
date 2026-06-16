@@ -869,6 +869,9 @@ describe("CLI-TEST: test-enable-connector", () => {
       connectorTypes: ["github", "slack"],
     });
 
+    const agent = await bdd.readAgent(actor, compose.composeId);
+    expect(agent.visibility).toBe("private");
+
     const userConnectors = await authDevice.readUserConnectors(
       actor,
       compose.composeId,
@@ -877,6 +880,19 @@ describe("CLI-TEST: test-enable-connector", () => {
       "github",
       "slack",
     ]);
+
+    const publicAgent = await bdd.createAgent(actor, {
+      displayName: `Public test agent ${actor.userId.slice(-12)}`,
+      visibility: "public",
+    });
+    await authDevice.requestTestEnableConnector(
+      { email: actor.email },
+      { composeId: publicAgent.agentId, connectorTypes: ["github"] },
+      [200],
+    );
+    const updatedPublicAgent = await bdd.readAgent(actor, publicAgent.agentId);
+    expect(updatedPublicAgent.visibility).toBe("private");
+    expect(updatedPublicAgent.displayName).toBe(publicAgent.displayName);
 
     const customEmailCompose = await authDevice.createCompose(
       actor,
@@ -889,6 +905,26 @@ describe("CLI-TEST: test-enable-connector", () => {
     );
     expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
       emailAddress: ["custom@test.com"],
+    });
+  });
+
+  it("does not enable connectors for another test user's compose", async () => {
+    const owner = bdd.user();
+    await authDevice.provisionTestOrg(owner);
+    const compose = await authDevice.createCompose(
+      owner,
+      composeContent(`cli-auth-bdd-owner-${owner.userId.slice(-12)}`),
+    );
+
+    const other = bdd.user();
+    await authDevice.provisionTestOrg(other);
+    const response = await authDevice.requestTestEnableConnector(
+      { email: other.email },
+      { composeId: compose.composeId, connectorTypes: ["github"] },
+      [404],
+    );
+    expect(response.body).toStrictEqual({
+      error: `Compose not found: ${compose.composeId}`,
     });
   });
 

@@ -3484,9 +3484,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expectApiError(revokedPoll.body);
     await runs.requestReadRun(doomed, run.runId, [404]);
     expect((await gh.readInstallation(doomed)).isConnected).toBeFalsy();
-    await expect(
-      runs.listUserPermissionGrants(doomed, sharedAgent.agentId),
-    ).resolves.toStrictEqual([]);
+    await waitForExpectation(async () => {
+      await expect(
+        runs.listUserPermissionGrants(doomed, sharedAgent.agentId),
+      ).resolves.toStrictEqual([]);
+    });
     const peerGrants = await runs.listUserPermissionGrants(
       peer,
       sharedAgent.agentId,
