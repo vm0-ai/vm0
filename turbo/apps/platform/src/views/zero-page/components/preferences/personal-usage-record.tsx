@@ -101,9 +101,15 @@ const RANGE_OPTIONS = [
 }[];
 
 // Row divider is an inset hairline (pseudo-element with horizontal margin) so
-// it doesn't run edge-to-edge into the card border.
+// it doesn't run edge-to-edge into the card border. The row itself is no longer
+// clickable — only the title text is — so there's no row-wide hover fill.
 const ROW_CLASS =
-  "relative block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
+  "relative px-5 py-3.5 [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
+
+// Dotted-underline link affordance for the title, mirroring the insights page
+// (network-insights-page.tsx): hover reveals a tooltip, click navigates.
+const TITLE_LINK_CLASS =
+  "min-w-0 flex-1 truncate text-sm font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2 transition-colors hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -266,62 +272,76 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
     detach(closeSettings(false, pageSignal), Reason.DomCallback);
   };
   const credits = formatCredits(row.credits);
-  const inner = (
-    <div className="flex min-w-0 items-start gap-3">
-      <span
-        title={label}
-        aria-label={label}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
-      >
-        <Icon size={17} stroke={1.5} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-            {formatDate(row.lastActivityAt)}
-          </span>
-          <span className="shrink-0 whitespace-nowrap text-right text-sm font-medium text-foreground tabular-nums">
-            {credits}
-          </span>
-        </span>
-        {row.member ? (
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {row.member.email}
-          </span>
-        ) : null}
-        <UsageBreakdownBar row={row} max={max} />
-      </span>
-    </div>
+
+  // Only the title is a navigation target. Thread rows open the chat, run rows
+  // open the activity; rows with neither stay plain text.
+  const titleLink = row.threadId
+    ? {
+        pathname: "/chats/:threadId" as const,
+        options: { pathParams: { threadId: row.threadId } },
+      }
+    : row.runId
+      ? {
+          pathname: "/activities/:activityRunId" as const,
+          options: { pathParams: { activityRunId: row.runId } },
+        }
+      : null;
+
+  const titleNode = titleLink ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          pathname={titleLink.pathname}
+          options={titleLink.options}
+          className={TITLE_LINK_CLASS}
+          onClick={closeOnNavigate}
+        >
+          {title}
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4} className="max-w-xs">
+        <p className="whitespace-normal break-words text-xs">{title}</p>
+        <p className="mt-1.5 border-t border-white/15 pt-1.5 text-[11px] opacity-80">
+          Click to open →
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  ) : (
+    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+      {title}
+    </span>
   );
 
-  if (row.threadId) {
-    return (
-      <Link
-        pathname="/chats/:threadId"
-        options={{ pathParams: { threadId: row.threadId } }}
-        className={ROW_CLASS}
-        onClick={closeOnNavigate}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  if (row.runId) {
-    return (
-      <Link
-        pathname="/activities/:activityRunId"
-        options={{ pathParams: { activityRunId: row.runId } }}
-        className={ROW_CLASS}
-        onClick={closeOnNavigate}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  return <div className={ROW_CLASS}>{inner}</div>;
+  return (
+    <div className={ROW_CLASS}>
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          title={label}
+          aria-label={label}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+        >
+          <Icon size={17} stroke={1.5} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-3">
+            {titleNode}
+            <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+              {formatDate(row.lastActivityAt)}
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-right text-sm font-medium text-foreground tabular-nums">
+              {credits}
+            </span>
+          </span>
+          {row.member ? (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {row.member.email}
+            </span>
+          ) : null}
+          <UsageBreakdownBar row={row} max={max} />
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function UsageRecordSkeleton() {
