@@ -397,7 +397,13 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
+    let sandbox_id = dispatch.id.to_string();
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+        &context,
+        &config.api_url,
+        &sandbox_id,
+        dispatch.reuse_result,
+    ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: None,
@@ -510,7 +516,13 @@ pub async fn execute_job_reuse(
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
+    let sandbox_id_string = sandbox_id.to_string();
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+        &context,
+        &config.api_url,
+        &sandbox_id_string,
+        SandboxReuseResult::Reused,
+    ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: Some(sandbox),

@@ -100,10 +100,34 @@ pub(super) fn validate_model_provider_env_placeholders(
 
 pub(super) fn validate_execution_context_before_sandbox(
     context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+) -> Result<(), String> {
+    let host_env = HostEnv::from_process();
+    validate_execution_context_before_sandbox_with_host_env(
+        context,
+        api_url,
+        sandbox_id,
+        reuse_result,
+        &host_env,
+    )
+}
+
+pub(super) fn validate_execution_context_before_sandbox_with_host_env(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    host_env: &HostEnv,
 ) -> Result<(), String> {
     validate_model_provider_env_placeholders(context)?;
     validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
+    let bootstrap_env =
+        build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
+            .map_err(|error| error.to_string())?;
+    validate_bootstrap_environment_for_guest(&bootstrap_env)?;
     Ok(())
 }
 
@@ -122,6 +146,30 @@ fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(),
         if value.contains('\0') {
             return Err(format!(
                 "user environment contains NUL byte for env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_bootstrap_environment_for_guest(
+    environment: &HashMap<String, String>,
+) -> Result<(), String> {
+    let mut entries: Vec<(&String, &String)> = environment.iter().collect();
+    entries.sort_by_key(|(key, _)| *key);
+
+    for (key, value) in entries {
+        if !guest_contracts::env::is_valid_user_env_key(key) {
+            return Err(format!(
+                "bootstrap environment contains invalid env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+        if value.contains('\0') {
+            return Err(format!(
+                "bootstrap environment contains NUL byte for env key {:?}",
                 guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
             ));
         }

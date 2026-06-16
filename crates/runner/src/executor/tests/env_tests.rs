@@ -23,6 +23,16 @@ use crate::host_env::{
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult};
 
+fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
+    let sandbox_id = SandboxId::new_v4().to_string();
+    validate_execution_context_before_sandbox(
+        ctx,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+}
+
 #[test]
 fn model_provider_env_placeholder_validation_accepts_env_without_protected_keys() {
     let ctx = context_with_env(HashMap::from([("PROJECT_ID".into(), "vm0".into())]));
@@ -79,11 +89,18 @@ fn model_provider_env_placeholder_validation_rejects_unmarked_protected_key() {
 }
 
 #[test]
+fn execution_context_validation_accepts_minimal_context() {
+    let ctx = minimal_context();
+
+    assert!(validate_context_for_test(&ctx).is_ok());
+}
+
+#[test]
 fn execution_context_validation_rejects_invalid_user_env_key_before_sandbox() {
     let secret = "secret-value";
     let ctx = context_with_env(HashMap::from([("BAD-KEY".into(), secret.into())]));
 
-    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+    let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("invalid env key"));
     assert!(error.contains("BAD-KEY"));
@@ -95,7 +112,7 @@ fn execution_context_validation_rejects_user_env_nul_value_before_sandbox() {
     let secret = "secret\0value";
     let ctx = context_with_env(HashMap::from([("CUSTOM_ENV".into(), secret.into())]));
 
-    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+    let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("NUL byte"));
     assert!(error.contains("CUSTOM_ENV"));
@@ -108,11 +125,55 @@ fn execution_context_validation_rejects_user_timezone_nul_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.user_timezone = Some(secret.into());
 
-    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+    let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("NUL byte"));
     assert!(error.contains("TZ"));
     assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
+    let secret = "3\0";
+    let ctx = context_with_env(HashMap::from([(
+        "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
+        secret.into(),
+    )]));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("bootstrap environment"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
+    let secret = "before\0after";
+    let mut ctx = minimal_context();
+    ctx.prompt = secret.into();
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("bootstrap environment"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_PROMPT"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_invalid_codex_resume_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        session_id: "not-a-thread-id".into(),
+        session_history: "{}".into(),
+    });
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("invalid codex session_id"));
 }
 
 #[test]
