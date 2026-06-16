@@ -14,18 +14,20 @@ pub(super) struct CacheEntryPaths {
     entry_dir: PathBuf,
     metadata: PathBuf,
     current_image: PathBuf,
-    entry_lock: PathBuf,
 }
 
 impl CacheEntryPaths {
-    pub(super) fn new(cache_dir: &Path, lock_dir: &Path, cache_key: &str) -> Self {
+    pub(super) fn new(cache_dir: &Path, cache_key: &str) -> Self {
         let entry_dir = cache_dir.join(cache_key);
         Self {
             metadata: entry_dir.join("metadata.json"),
             current_image: entry_dir.join("current.ext4"),
-            entry_lock: workspace_image_cache_lock_path(lock_dir, cache_key),
             entry_dir,
         }
+    }
+
+    pub(super) fn lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
+        workspace_image_cache_lock_path(lock_dir, cache_key)
     }
 
     pub(super) fn entry_dir(&self) -> &Path {
@@ -42,10 +44,6 @@ impl CacheEntryPaths {
 
     pub(super) fn tmp_image(&self, run_id: RunId) -> PathBuf {
         self.entry_dir.join(format!("current.ext4.tmp.{run_id}"))
-    }
-
-    pub(super) fn entry_lock(&self) -> &Path {
-        &self.entry_lock
     }
 }
 
@@ -109,15 +107,11 @@ impl SessionWorkspaceCache {
     }
 
     pub(super) fn entry_paths(&self, cache_key: &str) -> CacheEntryPaths {
-        CacheEntryPaths::new(
-            self.workspace_image_cache_dir(),
-            &self.inner.lock_dir,
-            cache_key,
-        )
+        CacheEntryPaths::new(self.workspace_image_cache_dir(), cache_key)
     }
 
     pub(super) fn entry_lock_path(&self, cache_key: &str) -> PathBuf {
-        self.entry_paths(cache_key).entry_lock().to_path_buf()
+        CacheEntryPaths::lock_path(&self.inner.lock_dir, cache_key)
     }
 
     pub(super) fn capacity_lock_path(&self) -> PathBuf {

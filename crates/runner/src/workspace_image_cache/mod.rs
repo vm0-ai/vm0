@@ -7,8 +7,8 @@
 //!
 //! ## Invariants
 //!
-//! - Entry paths are always derived from the same cache key through
-//!   `CacheEntryPaths`; callers should not hand-roll per-entry paths.
+//! - Within this module, entry paths are always derived from the same cache key
+//!   through `CacheEntryPaths`; callers should not hand-roll per-entry paths.
 //! - The shared cache root may contain entries for multiple runner groups. Reuse
 //!   is scoped by cache key metadata; global inspection and GC may scan the
 //!   shared root.
