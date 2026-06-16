@@ -1677,7 +1677,7 @@ export const USE_CASES: UseCase[] = [
       webStaticAssetUrl("assets/use-cases/podcast-deep-research.png"),
     ],
     avatar: {
-      rotation: 0,
+      rotation: 1,
       skin: 5,
       hairStyle: 3,
       hairColor: 4,
