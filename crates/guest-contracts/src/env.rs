@@ -34,6 +34,8 @@ pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
 /// boundary.
 pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 
+const USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
+
 /// Returns whether `key` is supported by vm0 guest shell exec env injection.
 ///
 /// This is the shell identifier format accepted by the guest env script's
@@ -48,6 +50,21 @@ pub fn is_shell_identifier_env_key(key: &str) -> bool {
         return false;
     }
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+pub fn sanitize_user_env_key_for_diagnostic(key: &str) -> String {
+    let mut chars = key.escape_debug();
+    let mut truncated = String::new();
+    for _ in 0..USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS {
+        let Some(ch) = chars.next() else {
+            return truncated;
+        };
+        truncated.push(ch);
+    }
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
 }
 
 #[cfg(test)]
@@ -80,6 +97,7 @@ mod tests {
             "BAD-NAME",
             "BAD.NAME",
             "BAD NAME",
+            "ÅKEY",
             "\u{00e9}clair",
         ] {
             assert!(
@@ -87,5 +105,15 @@ mod tests {
                 "{key} should not be a supported shell exec env key"
             );
         }
+    }
+
+    #[test]
+    fn user_env_key_diagnostic_escapes_and_truncates() {
+        let key = format!("BAD\n{}", "X".repeat(200));
+        let diagnostic = sanitize_user_env_key_for_diagnostic(&key);
+
+        assert!(diagnostic.starts_with(r"BAD\n"));
+        assert!(diagnostic.ends_with("..."));
+        assert!(!diagnostic.contains('\n'));
     }
 }

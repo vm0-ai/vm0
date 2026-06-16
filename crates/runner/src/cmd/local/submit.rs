@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -14,6 +14,7 @@ use std::time::Duration;
 use clap::Args;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::host_file;
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
@@ -353,7 +354,7 @@ impl SubmitPlan {
 
             let key = &entry[..eq_pos];
             let value = &entry[eq_pos + 1..];
-            if !Self::is_valid_env_key(key) {
+            if !guest_contracts::env::is_shell_identifier_env_key(key) {
                 return Err(RunnerError::Config(format!(
                     "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
                 )));
@@ -364,17 +365,6 @@ impl SubmitPlan {
         }
 
         Ok(Some(map))
-    }
-
-    fn is_valid_env_key(key: &str) -> bool {
-        let mut chars = key.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        if !(first == '_' || first.is_ascii_alphabetic()) {
-            return false;
-        }
-        chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
     }
 
     fn validate_disjoint_env_keys(
@@ -402,15 +392,30 @@ impl SubmitPlan {
             .queue
             .job_dir
             .join(format!("{}.job.tmp", self.queue.job_id));
-        if let Err(e) = std::fs::write(&tmp_path, &self.request_json) {
+        let result = (|| {
+            let mut file = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .mode(host_file::PRIVATE_FILE_MODE)
+                .custom_flags(host_file::private_file_open_flags())
+                .open(&tmp_path)
+                .map_err(|e| RunnerError::Internal(format!("open job file tmp: {e}")))?;
+            host_file::secure_regular_private_file(&file, &tmp_path, "job file").map_err(|e| {
+                RunnerError::Internal(format!("validate job file tmp {}: {e}", tmp_path.display()))
+            })?;
+            file.write_all(&self.request_json)
+                .map_err(|e| RunnerError::Internal(format!("write job file: {e}")))?;
+            drop(file);
+
+            std::fs::rename(&tmp_path, &self.queue.job)
+                .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
+            Ok(())
+        })();
+
+        if result.is_err() {
             let _ = remove_file_if_exists(&tmp_path);
-            return Err(RunnerError::Internal(format!("write job file: {e}")));
         }
-        if let Err(e) = std::fs::rename(&tmp_path, &self.queue.job) {
-            let _ = remove_file_if_exists(&tmp_path);
-            return Err(RunnerError::Internal(format!("rename job file: {e}")));
-        }
-        Ok(())
+        result
     }
 
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
@@ -954,6 +959,34 @@ mod tests {
 
             assert!(err.to_string().contains(expected), "got: {err}");
         }
+    }
+
+    #[test]
+    fn write_job_file_creates_private_job_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        let plan = SubmitPlan {
+            group: "test/group".into(),
+            profile: crate::profile::DEFAULT_PROFILE.to_owned(),
+            queue,
+            timeout: Duration::ZERO,
+            request_json: br#"{"secretEnvironment":{"ANTHROPIC_API_KEY":"sk-local-secret"}}"#
+                .to_vec(),
+        };
+
+        plan.write_job_file().unwrap();
+
+        let mode = std::fs::metadata(&plan.queue.job)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, host_file::PRIVATE_FILE_MODE);
     }
 
     #[test]

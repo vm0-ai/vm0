@@ -8,7 +8,7 @@ use sandbox::SandboxId;
 
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
-    validate_model_provider_env_placeholders,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -76,6 +76,43 @@ fn model_provider_env_placeholder_validation_rejects_unmarked_protected_key() {
     assert!(!error.contains("ANTHROPIC_API_KEY"));
     assert!(!error.contains(anthropic_secret));
     assert!(!error.contains(openai_secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_invalid_user_env_key_before_sandbox() {
+    let secret = "secret-value";
+    let ctx = context_with_env(HashMap::from([("BAD-KEY".into(), secret.into())]));
+
+    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+
+    assert!(error.contains("invalid env key"));
+    assert!(error.contains("BAD-KEY"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_user_env_nul_value_before_sandbox() {
+    let secret = "secret\0value";
+    let ctx = context_with_env(HashMap::from([("CUSTOM_ENV".into(), secret.into())]));
+
+    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("CUSTOM_ENV"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_user_timezone_nul_before_sandbox() {
+    let secret = "Asia\0Shanghai";
+    let mut ctx = minimal_context();
+    ctx.user_timezone = Some(secret.into());
+
+    let error = validate_execution_context_before_sandbox(&ctx).unwrap_err();
+
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("TZ"));
+    assert!(!error.contains(secret));
 }
 
 #[test]

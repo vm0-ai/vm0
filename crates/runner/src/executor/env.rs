@@ -102,7 +102,31 @@ pub(super) fn validate_execution_context_before_sandbox(
     context: &ExecutionContext,
 ) -> Result<(), String> {
     validate_model_provider_env_placeholders(context)?;
+    validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
+    Ok(())
+}
+
+fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(), String> {
+    let user_env = build_user_env_json(context);
+    let mut entries: Vec<(&String, &String)> = user_env.iter().collect();
+    entries.sort_by_key(|(key, _)| *key);
+
+    for (key, value) in entries {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            return Err(format!(
+                "user environment contains invalid env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+        if value.contains('\0') {
+            return Err(format!(
+                "user environment contains NUL byte for env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+    }
+
     Ok(())
 }
 
