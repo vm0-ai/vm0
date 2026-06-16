@@ -94,6 +94,7 @@ struct PublishedMarker {
 
 struct SubmitQueueEntry {
     job_id: RunId,
+    group_dir: PathBuf,
     job_dir: PathBuf,
     job: PathBuf,
     result: PathBuf,
@@ -105,6 +106,7 @@ impl SubmitQueueEntry {
     fn for_job(group_dir: &Path, profile: &str, job_id: RunId) -> RunnerResult<Self> {
         Ok(Self {
             job_id,
+            group_dir: group_dir.to_path_buf(),
             job_dir: local_queue::profile_jobs_dir(group_dir, profile)?,
             job: local_queue::job_path(group_dir, profile, job_id)?,
             result: local_queue::result_path(group_dir, job_id),
@@ -115,17 +117,20 @@ impl SubmitQueueEntry {
 
     /// Clean up queue files after a completed job has produced a result.
     fn cleanup_completed(&self) {
-        let job_removed = remove_file_if_exists(&self.job);
+        let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
+            .remove_job_files_if_present(self.job_id);
         let _ = remove_file_if_exists(&self.cancel);
         let _ = remove_file_if_exists(&self.claim);
-        if job_removed {
+        if jobs_removed {
             let _ = remove_file_if_exists(&self.result);
         }
     }
 
     /// Clean up submit-owned queue files after timing out while waiting for a result.
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
-        if remove_file_if_exists(&self.job) && !self.claim.exists() {
+        let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
+            .remove_job_files_if_present(self.job_id);
+        if jobs_removed && !self.claim.exists() {
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
                 remove_marker_if_unchanged(&self.result, marker);
@@ -528,6 +533,13 @@ mod tests {
 
     fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
         SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
+    }
+
+    fn write_queue_job_file(group_dir: &Path, profile: &str, job_id: RunId) -> PathBuf {
+        let path = local_queue::job_path(group_dir, profile, job_id).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{}").unwrap();
+        path
     }
 
     #[test]
@@ -1125,6 +1137,31 @@ mod tests {
     }
 
     #[test]
+    fn completed_cleanup_removes_duplicate_job_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let large_job = write_queue_job_file(group_dir, "vm0/large", job_id);
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.cleanup_completed();
+
+        assert!(!default_job.exists());
+        assert!(!large_job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
     fn completed_cleanup_keeps_result_when_job_cannot_be_removed() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -1144,6 +1181,35 @@ mod tests {
         assert!(
             queue.result.exists(),
             "result must remain as the terminal marker if the job path was not removed"
+        );
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn completed_cleanup_keeps_result_when_duplicate_job_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let blocked_job = local_queue::job_path(group_dir, "vm0/large", job_id).unwrap();
+        std::fs::create_dir_all(&blocked_job).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.cleanup_completed();
+
+        assert!(!default_job.exists());
+        assert!(blocked_job.exists());
+        assert!(
+            queue.result.exists(),
+            "result must remain as the terminal marker if any duplicate job path was not removed"
         );
         assert!(!queue.cancel.exists());
         assert!(!queue.claim.exists());
@@ -1227,6 +1293,31 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_cleanup_removes_duplicate_unclaimed_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let large_job = write_queue_job_file(group_dir, "vm0/large", job_id);
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!default_job.exists());
+        assert!(!large_job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(
+            !queue.claim.exists(),
+            "abandoned cleanup should not create a temporary claim"
+        );
+    }
+
+    #[test]
     fn abandoned_cleanup_removes_marker_when_job_already_absent() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -1242,6 +1333,31 @@ mod tests {
 
         assert!(!queue.result.exists());
         assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_keeps_marker_when_duplicate_job_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let blocked_job = local_queue::job_path(group_dir, "vm0/large", job_id).unwrap();
+        std::fs::create_dir_all(&blocked_job).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!default_job.exists());
+        assert!(blocked_job.exists());
+        assert!(
+            queue.result.exists(),
+            "terminal marker must remain if any duplicate job path could not be removed"
+        );
+        assert!(queue.cancel.exists());
         assert!(!queue.claim.exists());
     }
 
