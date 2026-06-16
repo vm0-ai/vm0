@@ -869,7 +869,6 @@ function generateTypeScript(result: BuildResult): string {
 
   lines.push("  ],");
   lines.push("};");
-  lines.push(...renderStats(result.stats));
   lines.push(
     ...renderCategories("awsCategories", "awsFirewall", {
       categories: result.categories,
@@ -878,6 +877,7 @@ function generateTypeScript(result: BuildResult): string {
   );
   renderAwsDefaultAllowed(lines, result.defaultAllowed);
   lines.push(...renderDefaultUnknownPolicy("awsDefaultUnknownPolicy", "deny"));
+  lines.push(...renderStats(result.stats));
 
   return lines.join("\n");
 }
