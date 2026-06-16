@@ -350,6 +350,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidCredentials);
     }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_provider_overloaded_error(&normalized)
+    {
+        return Some(FailureReason::ProviderOverloaded);
+    }
     if matches!(framework, AgentFramework::Codex)
         && (normalized.contains("invalid_api_key")
             || normalized.contains("incorrect api key provided"))
@@ -388,6 +393,10 @@ fn is_insufficient_credits_error(normalized: &str) -> bool {
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
     normalized.contains("failed to authenticate")
         && normalized.contains("api error: 401 invalid authentication credentials")
+}
+
+fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
+    normalized.contains("api error: 529") && normalized.contains("overloaded")
 }
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
@@ -1193,6 +1202,36 @@ mod tests {
     #[test]
     fn cli_failure_reason_ignores_generic_claude_401() {
         let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, "401 unauthorized");
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_provider_overloaded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_claude_529() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 upstream failed",
+        );
 
         assert_eq!(reason, None);
     }

@@ -732,6 +732,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                 FailureReason::InsufficientCredits
                     | FailureReason::InvalidApiKey
                     | FailureReason::InvalidCredentials
+                    | FailureReason::ProviderOverloaded
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
             )
@@ -895,6 +896,7 @@ mod tests {
             FailureReason::InsufficientCredits,
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
@@ -950,6 +952,7 @@ mod tests {
         for reason in [
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
