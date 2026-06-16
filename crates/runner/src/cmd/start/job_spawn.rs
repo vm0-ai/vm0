@@ -903,7 +903,7 @@ mod tests {
             let diagnostic = job_failure_diagnostic(Some(reason));
             let failure = executor::ExecutionFailure::new(
                 1,
-                format!("quota failure: {}", reason.as_str()),
+                format!("classified failure: {}", reason.as_str()),
                 Some(diagnostic),
             );
 

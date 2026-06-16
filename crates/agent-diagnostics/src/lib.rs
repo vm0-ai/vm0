@@ -360,6 +360,11 @@ mod tests {
 
     #[test]
     fn failure_diagnostic_serializes_provider_overloaded_reason() {
+        assert_eq!(
+            FailureReason::ProviderOverloaded.as_str(),
+            "provider_overloaded"
+        );
+
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
             AgentFramework::ClaudeCode,

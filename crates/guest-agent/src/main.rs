@@ -1217,6 +1217,35 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_claude_result_provider_overloaded_diagnostic() {
+        let message = "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
     fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
