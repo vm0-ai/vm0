@@ -312,9 +312,10 @@ function loadMethods(): Map<string, SlackMethodData> {
     // key is "methods/{name}.json"
     const methodName = key.replace(/^methods\//, "").replace(/\.json$/, "");
     const parsed = JSON.parse(content) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      methods.set(methodName, parsed as SlackMethodData);
+    if (!isRecord(parsed)) {
+      throw new Error(`Method "${methodName}" spec is not an object`);
     }
+    methods.set(methodName, parsed);
   }
 
   console.error(`  ${methods.size} methods`);
