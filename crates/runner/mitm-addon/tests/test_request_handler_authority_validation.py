@@ -1191,11 +1191,17 @@ async def test_http_host_spoof_does_not_trigger_vm0_api_auto_allow(
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(),
+        fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
 
-    assert flow.response is None
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
     assert flow.metadata["firewall_base"] == "http://203.0.113.10/api/runs"
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "insecure_transport"
     assert flow.metadata["original_url"] == "http://203.0.113.10/api/runs/heartbeat"
-    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body["error"] == "insecure_transport"

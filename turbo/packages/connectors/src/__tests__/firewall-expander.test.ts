@@ -1237,6 +1237,28 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const strapiFirewall = {
+    name: "strapi",
+    apis: [
+      {
+        base: "${{ vars.STRAPI_BASE_URL }}",
+        auth: {
+          headers: { Authorization: "Bearer ${{ secrets.STRAPI_TOKEN }}" },
+        },
+      },
+    ],
+  };
+
+  const nonCredentialFirewall = {
+    name: "diagnostic",
+    apis: [
+      {
+        base: "${{ vars.DIAGNOSTIC_BASE_URL }}",
+        auth: {},
+      },
+    ],
+  };
+
   it("resolves template base URL with provided vars", () => {
     const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
       ZENDESK_SUBDOMAIN: "mycompany",
@@ -1278,6 +1300,28 @@ describe("resolveFirewallBaseUrlVars", () => {
         ZENDESK_SUBDOMAIN: "bad value with spaces",
       });
     }).toThrow("must not contain whitespace");
+  });
+
+  it("rejects credentialed template base URLs that resolve to http", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL: "http://strapi.example.test",
+      });
+    }).toThrow("credentialed base URL must use https");
+  });
+
+  it("accepts credentialed template base URLs that resolve to https", () => {
+    const result = resolveFirewallBaseUrlVars([strapiFirewall], {
+      STRAPI_BASE_URL: "https://strapi.example.test",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://strapi.example.test");
+  });
+
+  it("keeps generic http matching available for non-credential template bases", () => {
+    const result = resolveFirewallBaseUrlVars([nonCredentialFirewall], {
+      DIAGNOSTIC_BASE_URL: "http://diagnostic.example.test",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("http://diagnostic.example.test");
   });
 
   it("preserves auth headers unchanged", () => {
