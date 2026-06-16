@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.147.0](https://github.com/vm0-ai/vm0/compare/api-v1.146.2...api-v1.147.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Bug Fixes
+
+* clarify custom skill persistence guidance ([#17828](https://github.com/vm0-ai/vm0/issues/17828)) ([b8ca919](https://github.com/vm0-ai/vm0/commit/b8ca9198b31ef855ec5bbaea379fdde149ccedfe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+    * @vm0/core bumped to 8.344.0
+    * @vm0/db bumped to 1.53.0
+
 ## [1.146.2](https://github.com/vm0-ai/vm0/compare/api-v1.146.1...api-v1.146.2) (2026-06-16)
 
 

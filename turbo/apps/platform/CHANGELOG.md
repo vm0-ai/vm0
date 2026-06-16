@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.459.0](https://github.com/vm0-ai/vm0/compare/app-v0.458.1...app-v0.459.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Bug Fixes
+
+* **platform:** align template tab focus ring to the tab bar ([#17880](https://github.com/vm0-ai/vm0/issues/17880)) ([9f70373](https://github.com/vm0-ai/vm0/commit/9f70373957efc7d91cc6cecc7946cdab106a9b02)), closes [#17769](https://github.com/vm0-ai/vm0/issues/17769)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+    * @vm0/core bumped to 8.344.0
+
 ## [0.458.1](https://github.com/vm0-ai/vm0/compare/app-v0.458.0...app-v0.458.1) (2026-06-16)
 
 

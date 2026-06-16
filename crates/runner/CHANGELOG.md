@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.118.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.5...runner-rs-v0.118.6) (2026-06-16)
+
+
+### Refactoring
+
+* split runner r2 cache module ([#17883](https://github.com/vm0-ai/vm0/issues/17883)) ([65f08eb](https://github.com/vm0-ai/vm0/commit/65f08eb0bc146ab6760ab7f1d4ce79acb3df53de))
+
 ## [0.118.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.4...runner-rs-v0.118.5) (2026-06-16)
 
 
