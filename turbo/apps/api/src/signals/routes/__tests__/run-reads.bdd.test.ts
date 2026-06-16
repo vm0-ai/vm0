@@ -2211,9 +2211,6 @@ function captureScheduleRunCallbacks(): void {
   webhooks.captureInternalCallbackDeliveries(
     "/api/internal/callbacks/trigger/loop",
   );
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/trigger/cron",
-  );
 }
 
 describe("RUN-04/OPS-01: zero run logs", () => {

@@ -1,8 +1,6 @@
 import { command } from "ccstate";
 import {
-  triggerCronCallbackPayloadSchema,
   triggerLoopCallbackPayloadSchema,
-  type TriggerCronCallbackPayload,
   type TriggerLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 import { automationTriggers } from "@vm0/db/schema/automation";
@@ -16,6 +14,10 @@ import type {
   InternalRunCallbackEnvelope,
   InternalRunCallbackKind,
 } from "./internal-run-callback";
+import {
+  triggerCronCallbackPayloadSchema,
+  type TriggerCronCallbackPayload,
+} from "./trigger-callback-payload";
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 

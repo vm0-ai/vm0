@@ -12,7 +12,6 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { calculateNextRun } from "../../services/automations/time-trigger";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
@@ -26,7 +25,6 @@ import {
 const context = testContext();
 const store = createStore();
 
-const CRON_PATH = "/api/internal/callbacks/trigger/cron";
 const LOOP_PATH = "/api/internal/callbacks/trigger/loop";
 const TEST_CALLBACK_SECRET = "test-callback-secret";
 
@@ -34,14 +32,12 @@ interface TriggerCallbackFixture extends UsageInsightFixture {
   readonly composeId: string;
 }
 
-type TriggerKind = "cron" | "loop";
+type TriggerKind = "loop";
 
 interface TriggerSeedOptions {
   readonly kind: TriggerKind;
-  readonly enabled?: boolean;
   readonly consecutiveFailures?: number;
   readonly intervalSeconds?: number;
-  readonly cronExpression?: string;
 }
 
 interface CallbackSeedOptions {
@@ -80,7 +76,6 @@ async function seedTrigger(
   options: TriggerSeedOptions,
 ): Promise<string> {
   const writeDb = store.set(writeDb$);
-  const isCron = options.kind === "cron";
   const [thread] = await writeDb
     .insert(chatThreads)
     .values({ userId: fixture.userId, agentComposeId: fixture.composeId })
@@ -108,11 +103,11 @@ async function seedTrigger(
     .values({
       automationId: automation.id,
       kind: options.kind,
-      cronExpression: isCron ? (options.cronExpression ?? "0 9 * * *") : null,
-      intervalSeconds: isCron ? null : (options.intervalSeconds ?? 300),
+      cronExpression: null,
+      intervalSeconds: options.intervalSeconds ?? 300,
       timezone: "UTC",
       nextRunAt: null,
-      enabled: options.enabled ?? true,
+      enabled: true,
       consecutiveFailures: options.consecutiveFailures ?? 0,
     })
     .returning({ id: automationTriggers.id });
@@ -202,13 +197,6 @@ async function updateTrigger(
     .where(eq(automationTriggers.id, triggerId));
 }
 
-async function deleteTrigger(triggerId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(automationTriggers)
-    .where(eq(automationTriggers.id, triggerId));
-}
-
 async function runSummary(runId: string): Promise<string | null> {
   const writeDb = store.set(writeDb$);
   const [row] = await writeDb
@@ -223,53 +211,9 @@ afterEach(() => {
   clearMockNow();
 });
 
-describe("POST /api/internal/callbacks/trigger/*", () => {
+describe("POST /api/internal/callbacks/trigger/loop", () => {
   const track = createFixtureTracker<TriggerCallbackFixture>((fixture) => {
     return deleteFixture(fixture);
-  });
-
-  it("rejects cron callbacks with invalid signatures", async () => {
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, { kind: "cron" });
-    const { runId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(
-      CRON_PATH,
-      {
-        runId,
-        status: "completed",
-        payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-      },
-      true,
-    );
-
-    expect(response.status).toBe(401);
-  });
-
-  it("rejects invalid cron payloads", async () => {
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, { kind: "cron" });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: { triggerId },
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Invalid or missing payload",
-    });
   });
 
   it("rejects invalid loop payloads", async () => {
@@ -410,149 +354,5 @@ describe("POST /api/internal/callbacks/trigger/*", () => {
     expect(updated?.consecutiveFailures).toBe(3);
     expect(updated?.enabled).toBeFalsy();
     expect(updated?.nextRunAt).toBeNull();
-  });
-
-  it("advances cron callbacks from the dispatched expression on completion", async () => {
-    const completedAt = new Date("2026-05-13T04:00:00.000Z");
-    mockNow(completedAt);
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, {
-      kind: "cron",
-      consecutiveFailures: 2,
-    });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    const updated = await triggerById(triggerId);
-    expect(updated?.consecutiveFailures).toBe(0);
-    expect(updated?.enabled).toBeTruthy();
-    expect(updated?.nextRunAt?.toISOString()).toBe(
-      calculateNextRun("0 9 * * *", "UTC", completedAt)?.toISOString(),
-    );
-    await expect(runSummary(runId)).resolves.toBeNull();
-  });
-
-  it("increments cron failure counters before the auto-disable threshold", async () => {
-    const failedAt = new Date("2026-05-13T04:00:00.000Z");
-    mockNow(failedAt);
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, { kind: "cron" });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "failed",
-      error: "Agent crashed",
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    const updated = await triggerById(triggerId);
-    expect(updated?.consecutiveFailures).toBe(1);
-    expect(updated?.enabled).toBeTruthy();
-    expect(updated?.nextRunAt?.toISOString()).toBe(
-      calculateNextRun("0 9 * * *", "UTC", failedAt)?.toISOString(),
-    );
-  });
-
-  it("auto-disables cron triggers after the third consecutive failure", async () => {
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, {
-      kind: "cron",
-      consecutiveFailures: 2,
-    });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "failed",
-      error: "Agent crashed",
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    const updated = await triggerById(triggerId);
-    expect(updated?.consecutiveFailures).toBe(3);
-    expect(updated?.enabled).toBeFalsy();
-    expect(updated?.nextRunAt).toBeNull();
-  });
-
-  it("skips completed callbacks for deleted triggers", async () => {
-    const fixture = await track(seedFixture());
-    const triggerId = await seedTrigger(fixture, { kind: "cron" });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-    await deleteTrigger(triggerId);
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      success: true,
-      skipped: true,
-    });
-  });
-
-  it("skips completed callbacks for disabled triggers (once after claim)", async () => {
-    const fixture = await track(seedFixture());
-    // A once trigger is disabled at claim time, so its completion callback must
-    // land in the disabled-skip branch — live schedule parity.
-    const triggerId = await seedTrigger(fixture, {
-      kind: "cron",
-      enabled: false,
-    });
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: CRON_PATH,
-      triggerId,
-      payload: { triggerId, timezone: "UTC" },
-    });
-
-    const response = await postSignedCallback(CRON_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: { triggerId, timezone: "UTC" },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      success: true,
-      skipped: true,
-    });
-    const updated = await triggerById(triggerId);
-    expect(updated?.enabled).toBeFalsy();
-    expect(updated?.consecutiveFailures).toBe(0);
   });
 });

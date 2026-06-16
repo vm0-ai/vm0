@@ -1,11 +1,9 @@
 import { randomBytes } from "node:crypto";
 
-import type {
-  TriggerCronCallbackPayload,
-  TriggerLoopCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
+import type { TriggerLoopCallbackPayload } from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 
 import type { InternalRunCallbackKind } from "../internal-run-callback";
+import type { TriggerCronCallbackPayload } from "../trigger-callback-payload";
 
 /**
  * Identifies how an Automation should be interpreted into an agent run. The

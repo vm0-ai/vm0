@@ -11,7 +11,7 @@ import type { InternalRunCallbackKind } from "../services/internal-run-callback"
 
 type TriggerInternalRunCallbackKind = Extract<
   InternalRunCallbackKind,
-  "trigger:cron" | "trigger:loop"
+  "trigger:loop"
 >;
 
 function successResponse(skipped?: true): {
@@ -56,14 +56,9 @@ function createTriggerCallbackHandler(kind: TriggerInternalRunCallbackKind) {
   });
 }
 
-const handleCronTriggerCallback$ = createTriggerCallbackHandler("trigger:cron");
 const handleLoopTriggerCallback$ = createTriggerCallbackHandler("trigger:loop");
 
 export const internalCallbacksTriggerRoutes: readonly RouteEntry[] = [
-  {
-    route: internalCallbacksTriggerContract.cron,
-    handler: callbackRoute(handleCronTriggerCallback$),
-  },
   {
     route: internalCallbacksTriggerContract.loop,
     handler: callbackRoute(handleLoopTriggerCallback$),
