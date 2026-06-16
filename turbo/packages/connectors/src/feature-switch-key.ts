@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   ChatInlineFeedback = "chatInlineFeedback",
   ChatSlashSkillCommands = "chatSlashSkillCommands",
   ChatAutomationSidebar = "chatAutomationSidebar",
+  ConnectorReconnectReasons = "connectorReconnectReasons",
   AssistantTextStreaming = "assistantTextStreaming",
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",

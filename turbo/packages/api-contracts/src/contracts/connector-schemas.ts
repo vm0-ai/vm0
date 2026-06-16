@@ -14,6 +14,16 @@ export type ConnectorResponseConnectionStatus = z.infer<
   typeof connectorResponseConnectionStatusSchema
 >;
 
+export const connectorReconnectReasonSchema = z.enum([
+  "provider_session_expired",
+  "authorization_expired_or_revoked",
+  "credential_expired",
+]);
+
+export type ConnectorReconnectReason = z.infer<
+  typeof connectorReconnectReasonSchema
+>;
+
 export const connectorResponseSchema = z.object({
   id: z.uuid(),
   type: connectorTypeSchema,
@@ -23,6 +33,7 @@ export const connectorResponseSchema = z.object({
   externalEmail: z.string().nullable(),
   oauthScopes: z.array(z.string()).nullable(),
   connectionStatus: connectorResponseConnectionStatusSchema,
+  reconnectReason: connectorReconnectReasonSchema.nullable().default(null),
   tokenExpiresAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),

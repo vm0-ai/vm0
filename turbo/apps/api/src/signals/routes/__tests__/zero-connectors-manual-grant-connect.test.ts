@@ -281,6 +281,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       authMethod: "api-token",
       tokenExpiresAt: new Date("2030-01-01T00:00:00Z"),
       needsReconnect: true,
+      reconnectReason: "authorization_expired_or_revoked",
     });
     await db.insert(secrets).values([
       {
@@ -320,6 +321,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         authMethod: "api-token",
         tokenExpiresAt: null,
         needsReconnect: false,
+        reconnectReason: null,
       },
     ]);
     await expect(
