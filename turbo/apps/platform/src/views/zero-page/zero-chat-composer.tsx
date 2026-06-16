@@ -118,6 +118,7 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import templatePickerIcon from "./assets/empty-templates.webp";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -2433,7 +2434,12 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <IconTemplate size={18} stroke={1.5} />
+              <img
+                src={templatePickerIcon}
+                alt=""
+                role="presentation"
+                className="h-[18px] w-[18px] object-contain"
+              />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
