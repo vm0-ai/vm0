@@ -1,17 +1,19 @@
 import { computed, type Computed } from "ccstate";
-import type {
-  AgentEventsResponse,
-  AxiomNetworkEvent,
-  EventsResponse,
-  MetricsResponse,
-  NetworkLogsResponse,
-  RunEvent,
-  RunResult,
-  RunState,
-  RunStatus,
-  SystemLogResponse,
-  TelemetryMetric,
-  TelemetryResponse,
+import {
+  networkLogActionSchema,
+  type AgentEventsResponse,
+  type AxiomNetworkEvent,
+  type EventsResponse,
+  type MetricsResponse,
+  type NetworkLogEntry,
+  type NetworkLogsResponse,
+  type RunEvent,
+  type RunResult,
+  type RunState,
+  type RunStatus,
+  type SystemLogResponse,
+  type TelemetryMetric,
+  type TelemetryResponse,
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -175,11 +177,18 @@ function optionalAxiomStringRecord(
   );
 }
 
-function networkLogFromAxiom(event: AxiomNetworkEvent) {
+function networkActionValue(
+  value: unknown,
+): NetworkLogEntry["action"] | undefined {
+  const parsed = networkLogActionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function networkLogFromAxiom(event: AxiomNetworkEvent): NetworkLogEntry {
   return {
     timestamp: event._time,
     type: optionalAxiomField(event.type),
-    action: optionalAxiomField(event.action),
+    action: networkActionValue(event.action),
     host: optionalAxiomField(event.host),
     port: optionalAxiomField(event.port),
     method: optionalAxiomField(event.method),
