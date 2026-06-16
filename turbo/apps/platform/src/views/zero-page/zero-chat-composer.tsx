@@ -536,6 +536,7 @@ function ComposerFeedbackRow({
   item,
   autoFocus,
   showDivider,
+  isLast,
   onChangeNote,
   onRemove,
   onKeyDown,
@@ -543,6 +544,7 @@ function ComposerFeedbackRow({
   item: FeedbackItem;
   autoFocus: boolean;
   showDivider: boolean;
+  isLast: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
@@ -550,12 +552,14 @@ function ComposerFeedbackRow({
   return (
     <div
       className={cn(
-        // Bottom padding on every row; top padding only when a dashed divider
-        // separates stacked fragments. The first row gets no top inset so the
-        // quote chip sits as high as the attachment chips do (matching the
-        // composer's pt-3), letting the card extend upward instead of leaving a
-        // gap above the chip.
-        "flex flex-col gap-1.5 pb-1.5",
+        // Top padding only when a dashed divider separates stacked fragments.
+        // The first row gets no top inset so the quote chip sits as high as the
+        // attachment chips do (matching the composer's pt-3), letting the card
+        // extend upward instead of leaving a gap above the chip. The last row
+        // owns the resting box (see the note below) and so drops its bottom
+        // padding to sit flush above the toolbar like the normal textarea.
+        "flex flex-col gap-1.5",
+        !isLast && "pb-1.5",
         showDivider && "border-t border-dashed border-border/60 pt-1.5",
       )}
     >
@@ -595,7 +599,15 @@ function ComposerFeedbackRow({
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className={cn(
+          "w-full resize-none overflow-hidden border-0 bg-transparent px-1 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0",
+          // The active (last) note mirrors the normal composer's resting box
+          // (min-h-[96px] + pt-4 + leading-6) so its ghost text stays anchored at
+          // the same baseline as the plain textarea. The quote pill therefore
+          // stacks above this box and pushes the card upward, instead of eating
+          // into the box and shoving the ghost text down toward the toolbar.
+          isLast ? "min-h-[96px] pb-0 pt-4 leading-6" : "py-1 leading-snug",
+        )}
       />
     </div>
   );
@@ -618,10 +630,12 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    // min-h keeps the card from shrinking below the textarea's resting height.
-    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
-    // up with attachments on both the left and top edges.
-    <div className="flex min-h-[96px] flex-col px-4 pb-2 pt-3">
+    // The active note owns the resting box (min-h-[96px]) so it can't collapse;
+    // the container just supplies insets. px-4 / pt-3 mirror the attachment-chips
+    // inset so the quote chip lines up with attachments on the left and top
+    // edges, and pb-0 lets the note sit flush above the toolbar like the plain
+    // textarea does.
+    <div className="flex flex-col px-4 pb-0 pt-3">
       {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
@@ -629,6 +643,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
             item={item}
             autoFocus={item.id === newestId}
             showDivider={index > 0}
+            isLast={index === feedback.items.length - 1}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
