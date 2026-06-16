@@ -350,6 +350,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidCredentials);
     }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_provider_overloaded_error(&normalized)
+    {
+        return Some(FailureReason::ProviderOverloaded);
+    }
     if matches!(framework, AgentFramework::Codex)
         && (normalized.contains("invalid_api_key")
             || normalized.contains("incorrect api key provided"))
@@ -388,6 +393,39 @@ fn is_insufficient_credits_error(normalized: &str) -> bool {
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
     normalized.contains("failed to authenticate")
         && normalized.contains("api error: 401 invalid authentication credentials")
+}
+
+fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
+    const MARKER: &str = "api error: 529";
+    normalized.match_indices(MARKER).any(|(index, _)| {
+        let detail = &normalized[index + MARKER.len()..];
+        let detail = detail
+            .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'));
+        starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
+    })
+}
+
+fn starts_with_overloaded_word(detail: &str) -> bool {
+    const TOKEN: &str = "overloaded";
+    detail.strip_prefix(TOKEN).is_some_and(|remaining| {
+        remaining
+            .chars()
+            .next()
+            .is_none_or(|c| !is_error_type_char(c))
+    })
+}
+
+fn contains_overloaded_error_type(detail: &str) -> bool {
+    const TOKEN: &str = "overloaded_error";
+    detail.match_indices(TOKEN).any(|(index, _)| {
+        let before = detail[..index].chars().next_back();
+        let after = detail[index + TOKEN.len()..].chars().next();
+        !before.is_some_and(is_error_type_char) && !after.is_some_and(is_error_type_char)
+    })
+}
+
+fn is_error_type_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '-')
 }
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
@@ -1193,6 +1231,123 @@ mod tests {
     #[test]
     fn cli_failure_reason_ignores_generic_claude_401() {
         let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, "401 unauthorized");
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_provider_overloaded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_provider_overloaded_diagnostic() {
+        let message = "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_claude_529() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 upstream failed",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_later_claude_provider_overloaded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 upstream failed. Background retry failed: API Error: 529 Overloaded.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_provider_overloaded_error_type() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            r#"API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"The service is overloaded"}}"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_negated_claude_overloaded_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 not overloaded",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_prefixed_claude_overloaded_error_type() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            r#"API Error: 529 {"type":"error","error":{"type":"not_overloaded_error"}}"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_overloaded_prefix_word() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 overloadedness check failed",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_overloaded_without_529() {
+        let reason =
+            classify_cli_failure_reason(AgentFramework::ClaudeCode, "API Error: 503 Overloaded");
 
         assert_eq!(reason, None);
     }
