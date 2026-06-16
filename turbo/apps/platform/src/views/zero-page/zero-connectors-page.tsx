@@ -14,11 +14,13 @@ import {
   IconPlus,
   IconLoader2,
   IconDotsVertical,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -51,6 +53,7 @@ import {
   getConnectorConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
+  connectorReconnectReasonTooltipText,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -80,6 +83,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -307,6 +311,7 @@ function GlobalConnectorCard({
   onDisconnect,
   onReviewScopes,
   isDisconnecting,
+  showReconnectReasonTooltip,
 }: {
   connector: ConnectorTypeWithStatus;
   isPolling: boolean;
@@ -314,9 +319,13 @@ function GlobalConnectorCard({
   onDisconnect: () => void;
   onReviewScopes?: () => void;
   isDisconnecting: boolean;
+  showReconnectReasonTooltip: boolean;
 }) {
   const status = (() => {
     const connectionStatus = connectorCurrentConnectionStatus(connector);
+    const reconnectReasonTooltip = showReconnectReasonTooltip
+      ? connectorReconnectReasonTooltipText(connector)
+      : null;
     if (isPolling) {
       const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
@@ -330,10 +339,28 @@ function GlobalConnectorCard({
     }
     if (connector.connected && connectionStatus === "reconnect-required") {
       return (
-        <span className="flex items-center gap-2 text-xs truncate">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
             Connection expired
+            {reconnectReasonTooltip ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Why this connection expired"
+                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-amber-600 transition-colors hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:text-amber-400 dark:hover:text-amber-300"
+                    >
+                      <IconInfoCircle size={12} stroke={1.8} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs" side="top">
+                    {reconnectReasonTooltip}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : null}
           </span>
           <button
             type="button"
@@ -611,6 +638,9 @@ export function ZeroConnectorsPage() {
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
+  const features = useLastResolved(featureSwitch$);
+  const showReconnectReasonTooltip =
+    features?.[FeatureSwitchKey.ConnectorReconnectReasons] ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
   const activeCategoryId = useGet(activeConnectorCategoryId$);
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
@@ -697,6 +727,7 @@ export function ZeroConnectorsPage() {
         connector={optimisticConnector}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
+        showReconnectReasonTooltip={showReconnectReasonTooltip}
         onConnect={() => {
           return connectHandler(c.type);
         }}

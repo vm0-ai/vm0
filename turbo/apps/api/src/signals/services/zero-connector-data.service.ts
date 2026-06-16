@@ -1,9 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  ConnectorListResponse,
-  ConnectorProvidedBinding,
-  ConnectorResponse,
-  ScopeDiffResponse,
+import {
+  connectorReconnectReasonSchema,
+  type ConnectorListResponse,
+  type ConnectorProvidedBinding,
+  type ConnectorReconnectReason,
+  type ConnectorResponse,
+  type ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
@@ -58,7 +60,10 @@ import {
   userFeatureSwitchContext,
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
-import { connectorCredentialStatus } from "./connector-credential-status.service";
+import {
+  connectorCredentialReconnectReason,
+  connectorCredentialStatus,
+} from "./connector-credential-status.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -68,6 +73,7 @@ type StoredConnectorRow = {
   readonly externalEmail: string | null;
   readonly oauthScopes: string | null;
   readonly needsReconnect: boolean;
+  readonly reconnectReason: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -156,6 +162,16 @@ function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
 }
 
+function parseStoredReconnectReason(
+  value: string | null,
+): ConnectorReconnectReason | null {
+  if (value === null) {
+    return null;
+  }
+  const parsed = connectorReconnectReasonSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
@@ -168,6 +184,10 @@ function storedConnectorRowToResponse(
     tokenExpiresAt: row.tokenExpiresAt,
     now,
   });
+  const connectionStatus =
+    credentialStatus === "reconnect-required"
+      ? "reconnect-required"
+      : "connected";
   return {
     id: row.id,
     type,
@@ -176,10 +196,18 @@ function storedConnectorRowToResponse(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
-    connectionStatus:
-      credentialStatus === "reconnect-required"
-        ? "reconnect-required"
-        : "connected",
+    connectionStatus,
+    reconnectReason:
+      connectionStatus === "reconnect-required"
+        ? (parseStoredReconnectReason(row.reconnectReason) ??
+          connectorCredentialReconnectReason({
+            type,
+            authMethod: row.authMethod,
+            storedNeedsReconnect: row.needsReconnect,
+            tokenExpiresAt: row.tokenExpiresAt,
+            now,
+          }))
+        : null,
     tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -376,6 +404,7 @@ export function zeroConnectorList(args: {
           externalEmail: connectors.externalEmail,
           oauthScopes: connectors.oauthScopes,
           needsReconnect: connectors.needsReconnect,
+          reconnectReason: connectors.reconnectReason,
           tokenExpiresAt: connectors.tokenExpiresAt,
           createdAt: connectors.createdAt,
           updatedAt: connectors.updatedAt,
@@ -484,6 +513,7 @@ function storedConnectorByType(args: {
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
         needsReconnect: connectors.needsReconnect,
+        reconnectReason: connectors.reconnectReason,
         tokenExpiresAt: connectors.tokenExpiresAt,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
@@ -915,6 +945,7 @@ async function upsertManualGrantConnectorRow(
       oauthScopes: null,
       tokenExpiresAt: null,
       needsReconnect: false,
+      reconnectReason: null,
     })
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.type],
@@ -926,6 +957,7 @@ async function upsertManualGrantConnectorRow(
         oauthScopes: null,
         tokenExpiresAt: null,
         needsReconnect: false,
+        reconnectReason: null,
         updatedAt: sql`clock_timestamp()`,
       },
     })
@@ -937,6 +969,7 @@ async function upsertManualGrantConnectorRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      reconnectReason: connectors.reconnectReason,
       tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
@@ -1696,6 +1729,7 @@ async function upsertConnectorTokenConnectionRow(
       oauthScopes: JSON.stringify(args.oauthScopes),
       tokenExpiresAt: args.tokenExpiresAt,
       needsReconnect: false,
+      reconnectReason: null,
       orgId: args.orgId,
     })
     .onConflictDoUpdate({
@@ -1708,6 +1742,7 @@ async function upsertConnectorTokenConnectionRow(
         oauthScopes: JSON.stringify(args.oauthScopes),
         tokenExpiresAt: args.tokenExpiresAt,
         needsReconnect: false,
+        reconnectReason: null,
         updatedAt: sql`clock_timestamp()`,
       },
     })
@@ -1719,6 +1754,7 @@ async function upsertConnectorTokenConnectionRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      reconnectReason: connectors.reconnectReason,
       tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,

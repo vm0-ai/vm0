@@ -32,6 +32,7 @@ export const connectors = pgTable(
     orgId: text("org_id").notNull(),
 
     needsReconnect: boolean("needs_reconnect").notNull().default(false),
+    reconnectReason: varchar("reconnect_reason", { length: 64 }),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -330,6 +330,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
     enabled: false,
   },
+  [FeatureSwitchKey.ConnectorReconnectReasons]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Show explanatory tooltip help for connectors that need reconnect.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AssistantTextStreaming]: {
     maintainer: "ethan@vm0.ai",
     description:
