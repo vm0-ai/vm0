@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.118.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.1...runner-rs-v0.118.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* update axiom firewall specs ([#17775](https://github.com/vm0-ai/vm0/issues/17775)) ([066b01d](https://github.com/vm0-ai/vm0/commit/066b01d1c770753654e2164000430aa5f6888f05))
+* update clerk firewall specs ([#17779](https://github.com/vm0-ai/vm0/issues/17779)) ([041cec1](https://github.com/vm0-ai/vm0/commit/041cec11a91134a312b654479b4d4db7dcfd4134))
+* update cloudflare firewall specs ([#17789](https://github.com/vm0-ai/vm0/issues/17789)) ([d9ecd29](https://github.com/vm0-ai/vm0/commit/d9ecd29b9e615a92aed0d19e10a0dfb07f78e98b))
+
+
+### Refactoring
+
+* centralize runner execution context test fixtures ([#17825](https://github.com/vm0-ai/vm0/issues/17825)) ([e9b2194](https://github.com/vm0-ai/vm0/commit/e9b2194ada7d163e1f4eea89010d722a8e06b739))
+* split runner builtin firewall catalog ([#17778](https://github.com/vm0-ai/vm0/issues/17778)) ([c72d98a](https://github.com/vm0-ai/vm0/commit/c72d98ab6e68605b7880c6f97f93b4698d27694e))
+
 ## [0.118.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.0...runner-rs-v0.118.1) (2026-06-15)
 
 
