@@ -123,7 +123,7 @@
     "https://developers.notion.com/openapi.json": "b28e6ec6abc50b637355001425afbd6ef8644a95915a852893b9256d84f98c87"
   },
   "sentry": {
-    "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json": "b4f4c0d380d62373fd61af53eaa0feb2f88ffe7845082219d775c2a4204c8d4f"
+    "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json": "1686f95d23c3a888c1a5729007b85cca61b9bcca85461a1cc4850fe9a6a5204d"
   },
   "slack": {
     "methods/admin.analytics.getFile.json": "35020cd113a10e2b3fe2ab0407b3e4cd11b79d5c925295a73bedc75ee3438d53",
