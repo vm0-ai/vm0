@@ -585,7 +585,6 @@ describe("GET /api/cron/aggregate-insights", () => {
         runId,
         host: "api.github.com",
         firewall_name: "github",
-        firewall_permission: "",
         action: "DENY",
       },
       {
