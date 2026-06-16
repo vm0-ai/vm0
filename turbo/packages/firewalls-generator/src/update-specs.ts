@@ -200,6 +200,11 @@ const stripeUpdater: Updater = {
   name: "stripe",
   fetch: async () => {
     const entries = new Map<string, string>();
+    const stripeDocsRequestInit = {
+      headers: {
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    } satisfies RequestInit;
 
     const openapiRes = await fetchRemote(
       STRIPE_OPENAPI_URL,
@@ -210,6 +215,7 @@ const stripeUpdater: Updater = {
     const permissionsRes = await fetchRemote(
       STRIPE_PERMISSIONS_URL,
       "stripe: permissions reference",
+      stripeDocsRequestInit,
     );
     const permissionsMarkdown = await permissionsRes.text();
     entries.set(STRIPE_PERMISSIONS_URL, permissionsMarkdown);
@@ -217,6 +223,7 @@ const stripeUpdater: Updater = {
     const restrictedKeysRes = await fetchRemote(
       STRIPE_RESTRICTED_API_KEYS_URL,
       "stripe: restricted API keys reference",
+      stripeDocsRequestInit,
     );
     entries.set(STRIPE_RESTRICTED_API_KEYS_URL, await restrictedKeysRes.text());
 
@@ -225,6 +232,7 @@ const stripeUpdater: Updater = {
       const sourceRes = await fetchRemote(
         source.url,
         `stripe: supplemental permissions ${source.resource}`,
+        stripeDocsRequestInit,
       );
       const sourceMarkdown = await sourceRes.text();
       for (const snippet of source.requiredSnippets) {
@@ -243,7 +251,11 @@ const stripeUpdater: Updater = {
     const sortedDocsUrls = [...docsUrls].sort();
     console.error(`  Found ${sortedDocsUrls.length} Stripe API docs links`);
     for (const url of sortedDocsUrls) {
-      const res = await fetchRemote(url, `stripe: ${url}`);
+      const res = await fetchRemote(
+        url,
+        `stripe: ${url}`,
+        stripeDocsRequestInit,
+      );
       entries.set(url, await res.text());
     }
 
