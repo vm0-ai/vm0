@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useRef } from "react";
 import { cn } from "../../lib/utils";
 
 interface TabsContextValue {
@@ -43,14 +43,74 @@ function Tabs({ value, onValueChange, children, className }: TabsProps) {
   );
 }
 
+/**
+ * Resolve the index of the tab to focus next for a roving-tabindex tablist.
+ * Returns null for keys that are not tablist navigation keys.
+ */
+function nextTabIndex(
+  key: string,
+  current: number,
+  total: number,
+): number | null {
+  if (key === "Home") {
+    return 0;
+  }
+  if (key === "End") {
+    return total - 1;
+  }
+  const base = current === -1 ? 0 : current;
+  if (key === "ArrowRight") {
+    return (base + 1) % total;
+  }
+  if (key === "ArrowLeft") {
+    return (base - 1 + total) % total;
+  }
+  return null;
+}
+
 function TabsList({ children, className }: TabsListProps) {
+  const { onValueChange } = useTabsContext();
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+    const tabs = Array.from(
+      list.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])'),
+    );
+    if (tabs.length === 0) {
+      return;
+    }
+    const current = tabs.indexOf(
+      list.ownerDocument.activeElement as HTMLButtonElement,
+    );
+    const next = nextTabIndex(event.key, current, tabs.length);
+    if (next === null) {
+      return;
+    }
+    const target = tabs[next];
+    if (!target) {
+      return;
+    }
+    event.preventDefault();
+    target.focus();
+    const value = target.dataset.value;
+    if (value !== undefined) {
+      onValueChange(value);
+    }
+  };
+
   return (
     <div
+      ref={listRef}
       className={cn(
         "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
         className,
       )}
       role="tablist"
+      onKeyDown={handleKeyDown}
     >
       {children}
     </div>
@@ -71,6 +131,8 @@ function TabsTrigger({
       type="button"
       role="tab"
       aria-selected={isActive}
+      tabIndex={isActive ? 0 : -1}
+      data-value={value}
       disabled={disabled}
       onClick={() => {
         return onValueChange(value);
