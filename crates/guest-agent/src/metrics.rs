@@ -65,6 +65,7 @@ impl CpuTracker {
             return 0.0;
         }
         let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
+        let pct = pct.clamp(0.0, 100.0);
         (pct * 100.0).round() / 100.0
     }
 }
@@ -244,6 +245,20 @@ mod tests {
 
         assert_eq!(tracker.prev_idle, 10);
         assert_eq!(tracker.prev_total, 10);
+    }
+
+    #[test]
+    fn cpu_tracker_clamps_inconsistent_delta_to_valid_range() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 75 0 30 0"),
+            0.0
+        );
     }
 
     #[test]
