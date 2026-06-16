@@ -229,8 +229,7 @@ const reconnectReasonTooltipText = {
     "The provider requires sign-in again. Reconnect to continue.",
   authorization_expired_or_revoked:
     "Authorization expired or was revoked. Reconnect to continue.",
-  credential_expired:
-    "The stored credential expired. Reconnect or replace it to continue.",
+  credential_expired: "The stored credential expired. Reconnect to continue.",
 } satisfies Record<ConnectorReconnectReason, string>;
 
 export function connectorReconnectReasonTooltipText(
