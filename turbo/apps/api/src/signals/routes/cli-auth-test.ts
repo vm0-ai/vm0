@@ -406,7 +406,13 @@ const enableTestConnectors$ = command(
         name: agentComposes.name,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.id, bodyResult.data.composeId))
+      .where(
+        and(
+          eq(agentComposes.id, bodyResult.data.composeId),
+          eq(agentComposes.orgId, orgId),
+          eq(agentComposes.userId, userId),
+        ),
+      )
       .limit(1);
     signal.throwIfAborted();
 

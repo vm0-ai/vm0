@@ -908,6 +908,26 @@ describe("CLI-TEST: test-enable-connector", () => {
     });
   });
 
+  it("does not enable connectors for another test user's compose", async () => {
+    const owner = bdd.user();
+    await authDevice.provisionTestOrg(owner);
+    const compose = await authDevice.createCompose(
+      owner,
+      composeContent(`cli-auth-bdd-owner-${owner.userId.slice(-12)}`),
+    );
+
+    const other = bdd.user();
+    await authDevice.provisionTestOrg(other);
+    const response = await authDevice.requestTestEnableConnector(
+      { email: other.email },
+      { composeId: compose.composeId, connectorTypes: ["github"] },
+      [404],
+    );
+    expect(response.body).toStrictEqual({
+      error: `Compose not found: ${compose.composeId}`,
+    });
+  });
+
   it("allows protected preview rewrites for enable-connector", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
