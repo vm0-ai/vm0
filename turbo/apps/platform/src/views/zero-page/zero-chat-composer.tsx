@@ -1469,9 +1469,13 @@ function PptCard({
 function IllustrationTemplateHero({
   item,
   source,
+  navigable,
+  onNavigate,
 }: {
   item: IllustrationTemplateItem;
   source: string;
+  navigable: boolean;
+  onNavigate: (direction: -1 | 1) => void;
 }) {
   const heroImage = illustrationHeroImageUrl(source);
 
@@ -1484,10 +1488,23 @@ function IllustrationTemplateHero({
         key={source}
         src={heroImage}
         alt={`${item.title} illustration preview`}
-        className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        className={cn(
+          "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          navigable && "cursor-pointer",
+        )}
         loading="lazy"
         decoding="async"
         fetchPriority="low"
+        onClick={
+          navigable
+            ? (event) => {
+                // Navigate by clicking the image halves instead of overlay
+                // buttons, so the native context menu (copy image) stays usable.
+                const rect = event.currentTarget.getBoundingClientRect();
+                onNavigate(event.clientX - rect.left < rect.width / 2 ? -1 : 1);
+              }
+            : undefined
+        }
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
@@ -1649,6 +1666,12 @@ async function selectDecodedIllustrationVariant({
   }
 }
 
+function scrollIllustrationThumbnailIntoView(
+  node: HTMLButtonElement | null,
+): void {
+  node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 function IllustrationTemplateCard({
   item,
   selected,
@@ -1665,6 +1688,7 @@ function IllustrationTemplateCard({
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
   const heroSource = images[safeIndex] ?? item.previewImage;
+  const hasMultipleVariants = images.length > 1;
 
   return (
     <div
@@ -1676,8 +1700,18 @@ function IllustrationTemplateCard({
           : "border-border hover:border-muted-foreground/30",
       )}
     >
-      <IllustrationTemplateHero item={item} source={heroSource} />
-      {images.length > 1 && (
+      <IllustrationTemplateHero
+        item={item}
+        source={heroSource}
+        navigable={hasMultipleVariants}
+        onNavigate={(direction) => {
+          onVariantChange(
+            item.slug,
+            (safeIndex + direction + images.length) % images.length,
+          );
+        }}
+      />
+      {hasMultipleVariants && (
         <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {images.map((image, index) => {
             const active = index === safeIndex;
@@ -1689,6 +1723,10 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
+                // Keep the selected thumbnail fully in view when the active
+                // variant changes (e.g. via hero navigation), so later
+                // thumbnails past the clipped strip edge stay reachable.
+                ref={active ? scrollIllustrationThumbnailIntoView : undefined}
                 aria-label={`Show variant ${index + 1}`}
                 aria-pressed={active}
                 className={cn(
