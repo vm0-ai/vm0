@@ -131,9 +131,10 @@ impl CowLayer {
     ///
     /// # Errors
     ///
-    /// Returns an invalid-input error if `block_size` is zero or if `size` is
-    /// not an exact multiple of `block_size`. The COW layer stores and restores
-    /// full blocks internally, so partial final blocks are not supported.
+    /// Returns an invalid-input error if `block_size` is zero, if `size` is
+    /// zero, or if `size` is not an exact multiple of `block_size`. The COW
+    /// layer stores and restores full blocks internally, so partial final blocks
+    /// are not supported.
     ///
     /// Returns an I/O error if the base image cannot be opened, or if an
     /// existing bitmap sidecar or its associated COW file cannot be restored.
@@ -148,6 +149,12 @@ impl CowLayer {
             return Err(NbdCowError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "block_size must be positive",
+            )));
+        }
+        if size == 0 {
+            return Err(NbdCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "device size must be positive",
             )));
         }
         if !size.is_multiple_of(block_size as u64) {
@@ -643,6 +650,16 @@ mod tests {
         let cow_file = NamedTempFile::new().unwrap();
 
         let result = CowLayer::new(base.path(), cow_file.path(), 4096, 0, 1024 * 1024);
+
+        assert_invalid_input(result);
+    }
+
+    #[test]
+    fn constructor_rejects_zero_size() {
+        let base = create_base_image(&[]);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        let result = CowLayer::new(base.path(), cow_file.path(), 0, 4096, 1024 * 1024);
 
         assert_invalid_input(result);
     }
