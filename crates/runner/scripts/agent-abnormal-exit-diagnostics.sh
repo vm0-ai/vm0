@@ -29,6 +29,11 @@ fi
 section resources
 ulimit -a 2>&1
 df -h 2>&1
+if [ -e /home/user/workspace ]; then
+  df -P -k / /home/user/workspace 2>&1
+else
+  df -P -k / 2>&1
+fi
 if command -v free >/dev/null 2>&1; then
   free -m 2>&1
 elif [ -r /proc/meminfo ]; then
@@ -41,6 +46,41 @@ if [ -r /proc/sys/fs/file-nr ]; then
 else
   echo "/proc/sys/fs/file-nr: unavailable"
 fi
+
+section rootfs-usage
+du_summary() {
+  target_path="$1"
+  if [ ! -e "$target_path" ]; then
+    echo "$target_path: missing"
+    return
+  fi
+  output=""
+  if command -v timeout >/dev/null 2>&1; then
+    output=$(timeout 1s du -sxh -- "$target_path" 2>/dev/null) || {
+      echo "$target_path: du timed out or failed"
+      return
+    }
+  else
+    output=$(du -sxh -- "$target_path" 2>/dev/null) || {
+      echo "$target_path: du failed"
+      return
+    }
+  fi
+  printf '%s\n' "$output"
+}
+
+for path in \
+  /home/user/.codex \
+  /home/user/.claude \
+  /home/user/.cache \
+  /home/user/.npm \
+  /home/user/.vm0 \
+  /tmp \
+  /var/tmp \
+  /var/log \
+  /home/user; do
+  du_summary "$path"
+done
 
 section processes
 if command -v ps >/dev/null 2>&1; then

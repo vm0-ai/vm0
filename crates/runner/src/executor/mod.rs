@@ -211,6 +211,7 @@ pub struct ExecutionFailure {
     pub error: String,
     pub diagnostic: Option<FailureDiagnostic>,
     pub kind: ExecutionFailureKind,
+    pub resource_diagnostics: Option<ResourceFailureDiagnostics>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,6 +222,52 @@ pub enum ExecutionFailureKind {
         elapsed_ms: u128,
         guest_duration_ms: Option<u32>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceFailureKind {
+    GuestRootFilesystemFull,
+    GuestMemoryOomKilled,
+    HostMemoryOomKilled,
+}
+
+impl ResourceFailureKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GuestRootFilesystemFull => "guest_root_filesystem_full",
+            Self::GuestMemoryOomKilled => "guest_memory_oom_killed",
+            Self::HostMemoryOomKilled => "host_memory_oom_killed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ResourceFailureDiagnostics {
+    pub failure_kind: Option<ResourceFailureKind>,
+    pub guest_root_fs_used_percent: Option<u16>,
+    pub guest_root_fs_available_kb: Option<u64>,
+    pub guest_workspace_fs_used_percent: Option<u16>,
+    pub guest_memory_available_mb: Option<u64>,
+}
+
+impl ResourceFailureDiagnostics {
+    #[must_use]
+    pub fn from_failure_kind(failure_kind: ResourceFailureKind) -> Self {
+        Self {
+            failure_kind: Some(failure_kind),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.failure_kind.is_none()
+            && self.guest_root_fs_used_percent.is_none()
+            && self.guest_root_fs_available_kb.is_none()
+            && self.guest_workspace_fs_used_percent.is_none()
+            && self.guest_memory_available_mb.is_none()
+    }
 }
 
 impl ExecutionFailure {
@@ -237,6 +284,7 @@ impl ExecutionFailure {
             error,
             diagnostic,
             kind: ExecutionFailureKind::Generic,
+            resource_diagnostics: None,
         }
     }
 
@@ -260,7 +308,18 @@ impl ExecutionFailure {
                 elapsed_ms: elapsed.as_millis(),
                 guest_duration_ms,
             },
+            resource_diagnostics: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_resource_diagnostics(
+        mut self,
+        resource_diagnostics: Option<ResourceFailureDiagnostics>,
+    ) -> Self {
+        self.resource_diagnostics =
+            resource_diagnostics.filter(|diagnostics| !diagnostics.is_empty());
+        self
     }
 
     #[must_use]
