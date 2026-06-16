@@ -691,6 +691,30 @@ def test_rest_query_value_distinguishes_permissions():
     assert duplicate_selector_query.reason == "unknown_endpoint"
 
 
+def test_rest_query_selector_uses_path_shape_semantics():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "apigateway:POST",
+            "POST /{restApiId}/apikeys AWS sigv4=apigateway",
+        ),
+        firewall_permission(
+            "apigateway:ImportApiKeys",
+            "POST /{RestApiId}/apikeys?mode=import&format=* AWS sigv4=apigateway",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/abc123/apikeys?mode=export",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unknown_endpoint"
+
+
 def test_rest_rules_allow_normal_query_parameters():
     firewalls = _aws_firewall(
         firewall_permission(
@@ -789,6 +813,60 @@ def test_aws_duplicate_rule_uses_predicate_semantics():
     assert isinstance(result, matching.FirewallBlock)
     assert result.reason == "permission_denied"
     assert result.permissions == ("ec2:DescribeInstancesAlias",)
+
+
+def test_aws_duplicate_rule_uses_path_shape_semantics():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:GetObjectAlias",
+            "GET /{bucket}/{key+} AWS sigv4=s3",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/path/to/key",
+        firewalls,
+        {"aws": network_policy(deny=["s3:GetObjectAlias"], unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "permission_denied"
+    assert result.permissions == ("s3:GetObjectAlias",)
+
+
+def test_aws_duplicate_rule_keeps_method_semantics():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "ec2:DescribeInstances",
+            "GET / AWS sigv4=ec2 action=DescribeInstances",
+        ),
+        firewall_permission(
+            "ec2:DescribeInstancesAny",
+            "ANY / AWS sigv4=ec2 action=DescribeInstances",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        {
+            "aws": network_policy(
+                deny=["ec2:DescribeInstancesAny"],
+                unknown_policy="deny",
+            )
+        },
+        method="GET",
+        request_context=_sigv4_context("ec2"),
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "ec2:DescribeInstances"
 
 
 def test_aws_predicate_rule_requires_matching_sigv4_service():

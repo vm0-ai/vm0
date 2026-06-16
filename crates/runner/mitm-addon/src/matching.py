@@ -250,8 +250,10 @@ class SegmentError(NamedTuple):
 
 ParsedSegment = SegmentLiteral | SegmentParam | SegmentError
 _PathSpecificity = tuple[int, int, int, int, int, int, int]
+_AwsPathSegmentIdentity = tuple[str, ...]
 _AwsRuleIdentity = tuple[
-    tuple[ParsedSegment, ...],
+    str,
+    tuple[_AwsPathSegmentIdentity, ...],
     tuple[tuple[str, str | None], ...],
     tuple[tuple[str, str], ...],
 ]
@@ -1380,15 +1382,27 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     )
 
 
+def _aws_path_segment_identity(segment: ParsedSegment) -> _AwsPathSegmentIdentity:
+    if isinstance(segment, SegmentLiteral):
+        return ("literal", segment.value)
+    if isinstance(segment, SegmentParam):
+        return ("param", segment.prefix, segment.suffix, segment.greedy)
+    return ("error", segment.reason)
+
+
 def _aws_query_selector_signature(
     rule: _CompiledRule,
-) -> tuple[str, tuple[ParsedSegment, ...], str] | None:
+) -> tuple[str, tuple[_AwsPathSegmentIdentity, ...], str] | None:
     predicates = rule.aws_predicates
     if predicates is None:
         return None
     if "action" in predicates or "target" in predicates:
         return None
-    return rule.method, rule.path.segments, predicates["sigv4"]
+    return (
+        rule.method,
+        tuple(_aws_path_segment_identity(segment) for segment in rule.path.segments),
+        predicates["sigv4"],
+    )
 
 
 def _with_aws_query_selector_keys(
@@ -1410,7 +1424,7 @@ def _attach_aws_query_selector_keys(
     permissions: list[_CompiledPermission],
 ) -> tuple[_CompiledPermission, ...]:
     selector_keys_by_signature: dict[
-        tuple[str, tuple[ParsedSegment, ...], str],
+        tuple[str, tuple[_AwsPathSegmentIdentity, ...], str],
         set[str],
     ] = {}
     for permission in permissions:
@@ -1900,7 +1914,8 @@ def _aws_rule_identity(rule: _CompiledRule) -> _AwsRuleIdentity | None:
     if predicates is None:
         return None
     return (
-        rule.path.segments,
+        rule.method,
+        tuple(_aws_path_segment_identity(segment) for segment in rule.path.segments),
         tuple(sorted(rule.query_requirements, key=lambda item: item[0])),
         tuple(sorted(predicates.items())),
     )
