@@ -190,12 +190,6 @@ export {
   type TelegramCallbackPayload,
 } from "./internal-callbacks-telegram";
 export {
-  internalCallbacksAgentPhoneContract,
-  agentPhoneCallbackPayloadSchema,
-  type InternalCallbacksAgentPhoneContract,
-  type AgentPhoneCallbackPayload,
-} from "./internal-callbacks-agentphone";
-export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
