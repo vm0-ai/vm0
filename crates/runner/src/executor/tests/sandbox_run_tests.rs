@@ -1271,6 +1271,7 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
     );
     assert!(active_diagnostic_cmd.contains("df -P -k / /home/user/workspace"));
     assert!(active_diagnostic_cmd.contains("section rootfs-usage"));
+    assert!(active_diagnostic_cmd.contains("timeout 1s du -sxh -- \"$path\""));
     assert!(active_diagnostic_cmd.contains("du -sxh -- \"$path\""));
     assert!(!active_diagnostic_cmd.contains("  /home/user/workspace \\"));
     assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);

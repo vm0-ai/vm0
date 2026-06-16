@@ -48,8 +48,20 @@ else
 fi
 
 section rootfs-usage
+du_summary() {
+  path="$1"
+  if [ ! -e "$path" ]; then
+    echo "$path: missing"
+    return
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1s du -sxh -- "$path" 2>&1 || echo "$path: du timed out or failed"
+  else
+    du -sxh -- "$path" 2>&1
+  fi
+}
+
 for path in \
-  /home/user \
   /home/user/.codex \
   /home/user/.claude \
   /home/user/.cache \
@@ -57,12 +69,9 @@ for path in \
   /home/user/.vm0 \
   /tmp \
   /var/tmp \
-  /var/log; do
-  if [ -e "$path" ]; then
-    du -sxh -- "$path" 2>&1
-  else
-    echo "$path: missing"
-  fi
+  /var/log \
+  /home/user; do
+  du_summary "$path"
 done
 
 section processes
