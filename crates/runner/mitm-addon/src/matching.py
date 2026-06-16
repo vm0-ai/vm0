@@ -105,6 +105,7 @@ _AWS_IGNORED_QUERY_KEYS = frozenset(
         "max-directory-buckets",
         "max-keys",
         "max-parts",
+        "max-uploads",
         "part-number-marker",
         "prefix",
         "response-cache-control",

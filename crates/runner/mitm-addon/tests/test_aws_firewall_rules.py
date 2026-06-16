@@ -344,7 +344,11 @@ def test_s3_list_operation_query_parameters_match_base_operation():
             "s3:ListBucket",
             "GET /{Bucket} AWS sigv4=s3",
             "GET /{Bucket}?list-type=2 AWS sigv4=s3",
-        )
+        ),
+        firewall_permission(
+            "s3:ListBucketMultipartUploads",
+            "GET /{Bucket}?uploads AWS sigv4=s3",
+        ),
     )
     policies = {"aws": network_policy(unknown_policy="deny")}
 
@@ -367,6 +371,16 @@ def test_s3_list_operation_query_parameters_match_base_operation():
     )
     assert isinstance(list_objects_v2, matching.FirewallAllow)
     assert list_objects_v2.permission == "s3:ListBucket"
+
+    list_multipart_uploads = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket?uploads&prefix=logs/&max-uploads=100",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(list_multipart_uploads, matching.FirewallAllow)
+    assert list_multipart_uploads.permission == "s3:ListBucketMultipartUploads"
 
 
 def test_s3_version_id_selects_object_version_permission():
