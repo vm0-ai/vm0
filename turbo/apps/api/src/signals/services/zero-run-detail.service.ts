@@ -1,11 +1,12 @@
 import { computed, type Computed } from "ccstate";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type {
-  AgentEventsResponse,
-  AxiomNetworkEvent,
-  NetworkLogEntry,
-  NetworkLogsResponse,
-  RunEvent,
+import {
+  networkLogActionSchema,
+  type AgentEventsResponse,
+  type AxiomNetworkEvent,
+  type NetworkLogEntry,
+  type NetworkLogsResponse,
+  type RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -118,7 +119,8 @@ function stringRecordValue(value: unknown): Record<string, string> | undefined {
 function networkActionValue(
   value: unknown,
 ): NetworkLogEntry["action"] | undefined {
-  return value === "ALLOW" || value === "DENY" ? value : undefined;
+  const parsed = networkLogActionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function networkBodyEncodingValue(

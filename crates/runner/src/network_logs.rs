@@ -30,6 +30,27 @@ const NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES: usize = 500;
 const NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES: usize = 1024 * 1024;
 const NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES: usize = 64;
 const NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES: usize = 1;
+const NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES: usize = 2048;
+const NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS: usize = 512;
+
+#[derive(Default)]
+struct UploadRejectionDetails {
+    error_code: Option<String>,
+    error_message: Option<String>,
+    body_truncated: bool,
+    body_read_error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorEnvelope {
+    error: ApiErrorDetails,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorDetails {
+    code: Option<String>,
+    message: Option<String>,
+}
 
 /// Upload network logs from the per-run JSONL file.
 /// Reads the file at `path`, POSTs bounded batches to telemetry endpoint,
@@ -181,10 +202,16 @@ async fn flush_network_log_batch(
             true
         }
         Ok(resp) => {
+            let status = resp.status();
+            let rejection = upload_rejection_details(resp).await;
             warn!(
                 run_id = %run_id,
                 batch_index,
-                status = %resp.status(),
+                status = %status,
+                response_error_code = rejection.error_code.as_deref().unwrap_or(""),
+                response_error_message = rejection.error_message.as_deref().unwrap_or(""),
+                response_body_truncated = rejection.body_truncated,
+                response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
                 "network logs upload rejected"
             );
             false
@@ -210,6 +237,64 @@ fn estimated_entry_bytes(line: &str) -> usize {
         .saturating_add(NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES)
 }
 
+async fn upload_rejection_details(mut resp: reqwest::Response) -> UploadRejectionDetails {
+    let mut body = Vec::new();
+    let mut body_truncated = false;
+
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let remaining = NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES.saturating_sub(body.len());
+                if chunk.len() > remaining {
+                    if let Some(prefix) = chunk.get(..remaining) {
+                        body.extend_from_slice(prefix);
+                    }
+                    body_truncated = true;
+                    break;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return UploadRejectionDetails {
+                    body_read_error: Some(truncate_log_field(e.to_string())),
+                    ..Default::default()
+                };
+            }
+        }
+    }
+
+    parse_upload_rejection_body(&body, body_truncated)
+}
+
+fn parse_upload_rejection_body(body: &[u8], body_truncated: bool) -> UploadRejectionDetails {
+    let Ok(api_error) = serde_json::from_slice::<ApiErrorEnvelope>(body) else {
+        return UploadRejectionDetails {
+            body_truncated,
+            ..Default::default()
+        };
+    };
+
+    UploadRejectionDetails {
+        error_code: api_error.error.code.map(truncate_log_field),
+        error_message: api_error.error.message.map(truncate_log_field),
+        body_truncated,
+        body_read_error: None,
+    }
+}
+
+fn truncate_log_field(value: String) -> String {
+    let mut truncated = String::new();
+    for (index, ch) in value.chars().enumerate() {
+        if index == NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS {
+            truncated.push_str("...");
+            return truncated;
+        }
+        truncated.push(ch);
+    }
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -217,6 +302,8 @@ mod tests {
 
     use httpmock::prelude::*;
     use serde_json::json;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use crate::http::HttpClientConfig;
 
@@ -242,6 +329,39 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n")
             + "\n"
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
     }
 
     #[test]
@@ -281,6 +401,36 @@ mod tests {
         let invalid = "not json at all";
         assert!(serde_json::from_str::<NetworkLog>(valid).is_ok());
         assert!(serde_json::from_str::<NetworkLog>(invalid).is_err());
+    }
+
+    #[test]
+    fn upload_rejection_body_parser_extracts_bounded_api_error_fields() {
+        let long_message = "x".repeat(NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS + 1);
+        let body = json!({
+            "error": {
+                "code": "BAD_REQUEST",
+                "message": long_message,
+            },
+        });
+        let details = parse_upload_rejection_body(body.to_string().as_bytes(), false);
+
+        assert_eq!(details.error_code.as_deref(), Some("BAD_REQUEST"));
+        assert_eq!(
+            details.error_message.unwrap().len(),
+            NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS + 3
+        );
+        assert!(!details.body_truncated);
+        assert!(details.body_read_error.is_none());
+    }
+
+    #[test]
+    fn upload_rejection_body_parser_ignores_malformed_body() {
+        let details = parse_upload_rejection_body(b"not-json", true);
+
+        assert_eq!(details.error_code, None);
+        assert_eq!(details.error_message, None);
+        assert!(details.body_truncated);
+        assert!(details.body_read_error.is_none());
     }
 
     #[tokio::test]
@@ -580,14 +730,36 @@ mod tests {
         let upload = server
             .mock_async(|when, then| {
                 when.method(POST).path("/api/webhooks/agent/telemetry");
-                then.status(500);
+                then.status(400)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
+                        },
+                    }));
             })
             .await;
 
         let http = http_for_server(&server);
-        upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;
+        let (_, events) = capture_async_log_events(upload_network_logs(
+            &http,
+            RunId::nil(),
+            SANDBOX_TOKEN,
+            &path,
+        ))
+        .await;
 
         upload.assert_calls_async(1).await;
+        let event = captured_event(&events, "network logs upload rejected");
+        assert_event_field(event, "status", "400 Bad Request");
+        assert_event_field(event, "response_error_code", "BAD_REQUEST");
+        assert_event_field(
+            event,
+            "response_error_message",
+            "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
+        );
+        assert_event_field(event, "response_body_truncated", "false");
         assert!(path.exists());
     }
 

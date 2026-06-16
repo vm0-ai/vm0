@@ -16,6 +16,14 @@ import {
   openImageLightbox$ as openImageLightboxModal$,
   openVideoLightbox$ as openVideoLightboxModal$,
 } from "./zero-attachment-chips.ts";
+import {
+  ARTIFACT_FULLSCREEN_PARAM,
+  ARTIFACT_INBOX_QUERY_PARAM,
+  ARTIFACT_QUERY_PARAM,
+  clearArtifactSidebarParams,
+  clearChatAutomationSidebarParams,
+  PRESENTATION_EDITOR_QUERY_PARAM,
+} from "./right-sidebar-search-params.ts";
 
 // ---------------------------------------------------------------------------
 // Artifact sidebar — URL-routed page-level slot for previewing a single
@@ -28,10 +36,6 @@ import {
 // search-param delete, and components read pure computeds over `searchParams$`.
 // ---------------------------------------------------------------------------
 
-const ARTIFACT_QUERY_PARAM = "artifact";
-const ARTIFACT_INBOX_QUERY_PARAM = "artifacts";
-const ARTIFACT_FULLSCREEN_PARAM = "artifact-fullscreen";
-const PRESENTATION_EDITOR_QUERY_PARAM = "presentation-editor";
 const IMAGE_ID_PREFIX = "image:";
 
 export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
@@ -121,6 +125,7 @@ export const openArtifactSidebarPreview$ = command(
     params.set(ARTIFACT_QUERY_PARAM, url);
     params.delete(ARTIFACT_INBOX_QUERY_PARAM);
     params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    clearChatAutomationSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );
@@ -131,6 +136,7 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
   params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_INBOX_QUERY_PARAM);
+  clearChatAutomationSidebarParams(params);
   set(updateSearchParams$, params);
 });
 
@@ -149,6 +155,7 @@ export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   params.set(ARTIFACT_INBOX_QUERY_PARAM, threadId);
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  clearChatAutomationSidebarParams(params);
   set(internalArtifactInboxSection$, "all");
   set(internalArtifactInboxQuery$, "");
   set(internalArtifactInboxSearchOpen$, false);
@@ -179,6 +186,7 @@ export const openArtifactFromInbox$ = command(
     params.set(ARTIFACT_INBOX_QUERY_PARAM, args.threadId);
     params.set(ARTIFACT_QUERY_PARAM, args.url);
     params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    clearChatAutomationSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );
@@ -199,10 +207,7 @@ export const closeArtifact$ = command(({ get, set }) => {
   ) {
     return;
   }
-  params.delete(ARTIFACT_QUERY_PARAM);
-  params.delete(ARTIFACT_INBOX_QUERY_PARAM);
-  params.delete(ARTIFACT_FULLSCREEN_PARAM);
-  params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
+  clearArtifactSidebarParams(params);
   set(replaceSearchParams$, params);
 });
 

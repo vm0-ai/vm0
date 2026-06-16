@@ -1533,6 +1533,91 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("navigates illustration variants by clicking the hero image halves and keeps the selected thumbnail in view", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 200,
+          bottom: 200,
+          width: 200,
+          height: 200,
+          toJSON: () => {
+            return {};
+          },
+        };
+      },
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+
+    const heroAlt = `${illustrationTemplate.title} illustration preview`;
+    const heroSrc = (index: number) => {
+      return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
+        width: 768,
+        height: 768,
+        quality: 72,
+      });
+    };
+    const lastIndex = illustrationTemplate.previewImages.length - 1;
+
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+    });
+
+    // Clicking the right half advances to the next variant.
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 150 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
+    });
+
+    // Switching the variant scrolls the now-selected thumbnail fully into view.
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "nearest",
+      inline: "nearest",
+    });
+
+    // Clicking the left half goes back to the previous variant.
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+    });
+
+    // Clicking the left half from the first variant wraps to the last one.
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute(
+        "src",
+        heroSrc(lastIndex),
+      );
+    });
+  });
+
   it("keeps historical illustration labels behind the template picker feature switch", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, {

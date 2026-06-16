@@ -324,6 +324,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatAutomationSidebar]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
+    enabled: false,
+  },
   [FeatureSwitchKey.AssistantTextStreaming]: {
     maintainer: "ethan@vm0.ai",
     description:

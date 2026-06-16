@@ -89,7 +89,7 @@ const refreshAgentPhoneTypingForRun$ = command(
 
     const targets = new Map<string, AgentPhoneTypingTarget>();
     for (const callback of callbacks) {
-      if (!callback.url.endsWith("/api/internal/callbacks/agentphone")) {
+      if (!callback.url?.endsWith("/api/internal/callbacks/agentphone")) {
         continue;
       }
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.343.0](https://github.com/vm0-ai/vm0/compare/core-v8.342.0...core-v8.343.0) (2026-06-16)
+
+
+### Features
+
+* add chat automation sidebar ([#17851](https://github.com/vm0-ai/vm0/issues/17851)) ([6e03396](https://github.com/vm0-ai/vm0/commit/6e03396f303243421317a4a7ebef3ddf7296beb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.1
+    * @vm0/connectors bumped to 1.80.0
+
+## [8.342.0](https://github.com/vm0-ai/vm0/compare/core-v8.341.2...core-v8.342.0) (2026-06-16)
+
+
+### Features
+
+* persist computer use host selection ([#17818](https://github.com/vm0-ai/vm0/issues/17818)) ([f59cc04](https://github.com/vm0-ai/vm0/commit/f59cc044090b287c09b3e42ad5c2cc57351e1f7b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.0
+
 ## [8.341.2](https://github.com/vm0-ai/vm0/compare/core-v8.341.1...core-v8.341.2) (2026-06-16)
 
 

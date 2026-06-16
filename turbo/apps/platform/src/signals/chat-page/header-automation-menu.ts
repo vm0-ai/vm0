@@ -1,16 +1,20 @@
 import { command, computed, state } from "ccstate";
 
 import { zeroClient$ } from "../api-client.ts";
-import { automationTitle } from "../zero-page/automation-title.ts";
+import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { listAutomations } from "../zero-page/automations-api.ts";
+import { automationToTimeString } from "../zero-page/zero-automations.ts";
 
 export interface HeaderAutomationEntry {
   readonly id: string;
+  readonly agentId: string;
   readonly name: string;
-  readonly title: string;
+  readonly description: string | null;
   readonly chatThreadId: string;
   readonly enabled: boolean;
   readonly nextRunAt: string | null;
+  readonly rule: string;
+  readonly timezone: string;
 }
 
 const headerAutomationMenuReload$ = state(0);
@@ -29,17 +33,23 @@ export const reloadHeaderAutomationMenu$ = command(({ get, set }) => {
 export const headerAutomationMenu$ = computed(
   async (get): Promise<readonly HeaderAutomationEntry[]> => {
     get(headerAutomationMenuReload$);
+    const prefs = await get(userPreferences$);
+    const displayTz =
+      prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
     const automations = await listAutomations(get(zeroClient$), {
       cache: "no-store",
     });
     return automations.map((automation) => {
       return {
         id: automation.id,
+        agentId: automation.agentId,
         name: automation.name,
-        title: automationTitle(automation),
+        description: automation.description,
         chatThreadId: automation.chatThreadId,
         enabled: automation.enabled,
         nextRunAt: automation.nextRunAt,
+        rule: automationToTimeString(automation, displayTz),
+        timezone: displayTz,
       };
     });
   },

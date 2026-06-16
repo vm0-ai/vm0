@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.458.0](https://github.com/vm0-ai/vm0/compare/app-v0.457.0...app-v0.458.0) (2026-06-16)
+
+
+### Features
+
+* add chat automation sidebar ([#17851](https://github.com/vm0-ai/vm0/issues/17851)) ([6e03396](https://github.com/vm0-ai/vm0/commit/6e03396f303243421317a4a7ebef3ddf7296beb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.1
+    * @vm0/connectors bumped to 1.80.0
+    * @vm0/core bumped to 8.343.0
+
+## [0.457.0](https://github.com/vm0-ai/vm0/compare/app-v0.456.2...app-v0.457.0) (2026-06-16)
+
+
+### Features
+
+* persist computer use host selection ([#17818](https://github.com/vm0-ai/vm0/issues/17818)) ([f59cc04](https://github.com/vm0-ai/vm0/commit/f59cc044090b287c09b3e42ad5c2cc57351e1f7b))
+
+
+### Bug Fixes
+
+* restore chat thread focus for shortcuts ([#17843](https://github.com/vm0-ai/vm0/issues/17843)) ([6476786](https://github.com/vm0-ai/vm0/commit/6476786afab5716807fd6f675616d13810967e58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.0
+    * @vm0/core bumped to 8.342.0
+
 ## [0.456.2](https://github.com/vm0-ai/vm0/compare/app-v0.456.1...app-v0.456.2) (2026-06-16)
 
 

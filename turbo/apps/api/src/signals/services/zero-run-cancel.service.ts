@@ -14,7 +14,7 @@ import {
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
 import { tapError } from "../utils";
-import { dispatchRunCallbacks } from "./agent-run-callback.service";
+import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
@@ -185,12 +185,15 @@ export const dispatchCancelSideEffects$ = command(
     signal.throwIfAborted();
 
     await tapError(
-      dispatchRunCallbacks(
-        db,
-        result.runId,
-        "failed",
-        undefined,
-        "Run cancelled",
+      set(
+        dispatchRunCallbacks$,
+        {
+          db,
+          runId: result.runId,
+          status: "failed",
+          error: "Run cancelled",
+        },
+        signal,
       ),
       (error) => {
         L.error("Failed to dispatch cancel callbacks", {

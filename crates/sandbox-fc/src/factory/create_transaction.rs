@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{future::Future, path::PathBuf, pin::Pin};
 
 use async_trait::async_trait;
 use sandbox::{SandboxError, SandboxInvalidStateContext};
@@ -18,8 +18,92 @@ use crate::paths::{SandboxPaths, SockPaths};
 pub(super) trait CreateRollbackCleanup {
     async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> CowCleanupOutcome;
     async fn release_network(&self, network: &mut Option<NetnsLease>);
-    async fn remove_dir(&self, kind: &'static str, path: PathBuf);
-    async fn destroy_slot(&self, slot: PrewarmedSlot);
+    fn start_filesystem_cleanup(
+        &self,
+        cleanup: CreateRollbackFilesystemCleanup,
+    ) -> CreateRollbackFilesystemCleanupWaiter;
+}
+
+#[must_use = "create rollback filesystem cleanup waiters should be awaited so join failures are logged"]
+pub(super) struct CreateRollbackFilesystemCleanupWaiter {
+    future: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
+}
+
+impl CreateRollbackFilesystemCleanupWaiter {
+    fn new<F>(future: F) -> Self
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        Self {
+            future: Box::pin(future),
+        }
+    }
+
+    fn ready() -> Self {
+        Self::new(std::future::ready(()))
+    }
+
+    async fn wait(self) {
+        self.future.await;
+    }
+}
+
+pub(super) struct CreateRollbackFilesystemCleanup {
+    steps: Vec<CreateRollbackFilesystemCleanupStep>,
+}
+
+enum CreateRollbackFilesystemCleanupStep {
+    RemoveDir { kind: &'static str, path: PathBuf },
+    DestroySlot(PrewarmedSlot),
+}
+
+impl CreateRollbackFilesystemCleanup {
+    fn new() -> Self {
+        Self { steps: Vec::new() }
+    }
+
+    fn push_remove_dir(&mut self, kind: &'static str, path: PathBuf) {
+        self.steps
+            .push(CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path });
+    }
+
+    fn push_destroy_slot(&mut self, slot: PrewarmedSlot) {
+        self.steps
+            .push(CreateRollbackFilesystemCleanupStep::DestroySlot(slot));
+    }
+
+    fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+
+    fn run_sync(self, id: &str) {
+        for step in self.steps {
+            match step {
+                CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path } => {
+                    remove_create_rollback_dir_sync(id, kind, path);
+                }
+                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
+                    crate::cow_pool::destroy_slot_sync(slot);
+                }
+            }
+        }
+    }
+}
+
+fn remove_create_rollback_dir_sync(id: &str, kind: &'static str, path: PathBuf) {
+    match std::fs::remove_dir_all(&path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            warn!(
+                id = %id,
+                error = %e,
+                path = %path.display(),
+                kind,
+                "failed to delete create-rollback directory"
+            );
+        }
+    }
 }
 
 pub(super) struct FactoryCreateRollbackCleanup {
@@ -40,26 +124,27 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
         }
     }
 
-    async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
-        // Keep rollback deletion cancellation-safe. tokio::fs deletion can
-        // continue on the blocking pool after the rollback task is aborted.
-        match std::fs::remove_dir_all(&path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
+    fn start_filesystem_cleanup(
+        &self,
+        cleanup: CreateRollbackFilesystemCleanup,
+    ) -> CreateRollbackFilesystemCleanupWaiter {
+        if cleanup.is_empty() {
+            return CreateRollbackFilesystemCleanupWaiter::ready();
+        }
+
+        // Start blocking deletion before returning the waiter so dropping or
+        // aborting the async rollback task cannot move this cleanup back into
+        // transaction Drop on a Tokio worker thread.
+        let id = self.id.clone();
+        let cleanup = tokio::task::spawn_blocking(move || cleanup.run_sync(&id));
+        CreateRollbackFilesystemCleanupWaiter::new(async move {
+            if let Err(e) = cleanup.await {
                 warn!(
-                    id = %self.id,
                     error = %e,
-                    path = %path.display(),
-                    kind,
-                    "failed to delete create-rollback directory"
+                    "create rollback filesystem cleanup task failed"
                 );
             }
-        }
-    }
-
-    async fn destroy_slot(&self, slot: PrewarmedSlot) {
-        crate::cow_pool::destroy_slot_async(slot).await;
+        })
     }
 }
 
@@ -330,10 +415,10 @@ impl SandboxCreateTransaction {
             );
             return;
         }
-        if let Some(sock_dir) = self.sock_dir.take() {
-            cleanup.remove_dir("sock", sock_dir).await;
-        }
-        self.cleanup_workspace_on_rollback(cleanup, keep_workspace)
+        let filesystem_cleanup = self.take_filesystem_cleanup_on_rollback(keep_workspace);
+        cleanup
+            .start_filesystem_cleanup(filesystem_cleanup)
+            .wait()
             .await;
     }
 
@@ -344,19 +429,32 @@ impl SandboxCreateTransaction {
             || self.cow_device.is_some()
     }
 
-    async fn cleanup_workspace_on_rollback<C>(&mut self, cleanup: &C, keep_workspace: bool)
-    where
-        C: CreateRollbackCleanup + Sync,
-    {
+    fn take_filesystem_cleanup_on_rollback(
+        &mut self,
+        keep_workspace: bool,
+    ) -> CreateRollbackFilesystemCleanup {
+        let mut cleanup = CreateRollbackFilesystemCleanup::new();
+        if let Some(sock_dir) = self.sock_dir.take() {
+            cleanup.push_remove_dir("sock", sock_dir);
+        }
+        self.add_workspace_filesystem_cleanup_on_rollback(&mut cleanup, keep_workspace);
+        cleanup
+    }
+
+    fn add_workspace_filesystem_cleanup_on_rollback(
+        &mut self,
+        cleanup: &mut CreateRollbackFilesystemCleanup,
+        keep_workspace: bool,
+    ) {
         match std::mem::take(&mut self.workspace) {
             WorkspaceOwnership::None => {}
-            WorkspaceOwnership::Slot(slot) => cleanup.destroy_slot(slot).await,
+            WorkspaceOwnership::Slot(slot) => cleanup.push_destroy_slot(slot),
             WorkspaceOwnership::RenameInProgress {
                 slot,
                 target_workspace,
             } => {
-                cleanup.remove_dir("workspace", target_workspace).await;
-                cleanup.destroy_slot(slot).await;
+                cleanup.push_remove_dir("workspace", target_workspace);
+                cleanup.push_destroy_slot(slot);
             }
             WorkspaceOwnership::Workspace(workspace) => {
                 if keep_workspace {
@@ -366,7 +464,7 @@ impl SandboxCreateTransaction {
                         "keeping workspace after failed COW rollback"
                     );
                 } else {
-                    cleanup.remove_dir("workspace", workspace).await;
+                    cleanup.push_remove_dir("workspace", workspace);
                 }
             }
         }
@@ -526,6 +624,16 @@ mod tests {
         NetnsLease::new_for_test("test-ns")
     }
 
+    struct RollbackTaskDropSignal(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for RollbackTaskDropSignal {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
     #[derive(Default)]
     struct RecordingCreateRollbackCleanup {
         events: Arc<Mutex<Vec<String>>>,
@@ -576,6 +684,34 @@ mod tests {
             self.events.lock().unwrap().push(event);
         }
 
+        fn record_filesystem_cleanup_step(&self, step: &CreateRollbackFilesystemCleanupStep) {
+            match step {
+                CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path } => {
+                    let name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("<unknown>");
+                    self.record(format!("remove_dir:{kind}:{name}"));
+                }
+                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
+                    self.record(format!("destroy_slot:{}", slot.id()));
+                }
+            }
+        }
+
+        fn run_filesystem_cleanup_step(&self, step: CreateRollbackFilesystemCleanupStep) {
+            match step {
+                CreateRollbackFilesystemCleanupStep::RemoveDir { path, .. } => {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
+                    crate::cow_pool::destroy_slot_sync(slot);
+                }
+            }
+            self.removed.fetch_add(1, Ordering::SeqCst);
+            self.removed_notify.notify_waiters();
+        }
+
         async fn wait_entered(&self, expected: usize) {
             loop {
                 let notified = self.entered_notify.notified();
@@ -624,32 +760,28 @@ mod tests {
             let _ = network.into_info_for_test();
         }
 
-        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
-            let name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("<unknown>");
-            self.record(format!("remove_dir:{kind}:{name}"));
-            self.entered.fetch_add(1, Ordering::SeqCst);
-            self.entered_notify.notify_waiters();
+        fn start_filesystem_cleanup(
+            &self,
+            cleanup: CreateRollbackFilesystemCleanup,
+        ) -> CreateRollbackFilesystemCleanupWaiter {
+            let runner = self.clone();
+            let task = tokio::spawn(async move {
+                let step_count = cleanup.steps.len();
+                for step in &cleanup.steps {
+                    runner.record_filesystem_cleanup_step(step);
+                }
+                runner.entered.fetch_add(step_count, Ordering::SeqCst);
+                runner.entered_notify.notify_waiters();
 
-            self.wait_until_released().await;
+                runner.wait_until_released().await;
 
-            let _ = tokio::fs::remove_dir_all(path).await;
-            self.removed.fetch_add(1, Ordering::SeqCst);
-            self.removed_notify.notify_waiters();
-        }
-
-        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id()));
-            self.entered.fetch_add(1, Ordering::SeqCst);
-            self.entered_notify.notify_waiters();
-
-            self.wait_until_released().await;
-
-            crate::cow_pool::destroy_slot_async(slot).await;
-            self.removed.fetch_add(1, Ordering::SeqCst);
-            self.removed_notify.notify_waiters();
+                for step in cleanup.steps {
+                    runner.run_filesystem_cleanup_step(step);
+                }
+            });
+            CreateRollbackFilesystemCleanupWaiter::new(async move {
+                let _ = task.await;
+            })
         }
     }
 
@@ -666,17 +798,11 @@ mod tests {
             ));
         }
 
-        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
-            let name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("<unknown>");
-            self.record(format!("remove_dir:{kind}:{name}"));
-        }
-
-        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id()));
-            crate::cow_pool::destroy_slot_async(slot).await;
+        fn start_filesystem_cleanup(
+            &self,
+            _cleanup: CreateRollbackFilesystemCleanup,
+        ) -> CreateRollbackFilesystemCleanupWaiter {
+            panic!("network release failure should keep filesystem cleanup in transaction");
         }
     }
 
@@ -692,18 +818,27 @@ mod tests {
             let _ = network.into_info_for_test();
         }
 
-        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
-            let name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("<unknown>");
-            self.record(format!("remove_dir:{kind}:{name}"));
-            let _ = tokio::fs::remove_dir_all(path).await;
-        }
-
-        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id()));
-            crate::cow_pool::destroy_slot_async(slot).await;
+        fn start_filesystem_cleanup(
+            &self,
+            cleanup: CreateRollbackFilesystemCleanup,
+        ) -> CreateRollbackFilesystemCleanupWaiter {
+            for step in cleanup.steps {
+                match step {
+                    CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path } => {
+                        let name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("<unknown>");
+                        self.record(format!("remove_dir:{kind}:{name}"));
+                        remove_create_rollback_dir_sync("sandbox", kind, path);
+                    }
+                    CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
+                        self.record(format!("destroy_slot:{}", slot.id()));
+                        crate::cow_pool::destroy_slot_sync(slot);
+                    }
+                }
+            }
+            CreateRollbackFilesystemCleanupWaiter::ready()
         }
     }
 
@@ -943,6 +1078,56 @@ mod tests {
         assert_eq!(
             cleanup.events(),
             vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_missing_dirs_are_best_effort() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("missing-workspace");
+        let sock_dir = tmp.path().join("missing-sock");
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
+        tx.track_sock_dir(sock_dir.clone());
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec![
+                "remove_dir:sock:missing-sock",
+                "remove_dir:workspace:missing-workspace"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_remove_dir_error_is_best_effort() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_file = tmp.path().join("sock-file");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::write(&sock_file, b"not a dir").await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
+        tx.track_sock_dir(sock_file.clone());
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(sock_file.exists());
+        assert!(!workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec![
+                "remove_dir:sock:sock-file",
+                "remove_dir:workspace:workspace"
+            ]
         );
     }
 
@@ -1272,6 +1457,56 @@ mod tests {
 
         assert!(!sock_dir.exists());
         assert!(!workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
+        tx.track_sock_dir(sock_dir.clone());
+
+        let cleanup = BlockingRemoveDirCleanup::default();
+        let cleanup_group = FactoryCleanupGroup::new();
+        let rollback_cleanup = cleanup.clone();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let rollback_waiter =
+            cleanup_group.spawn(FactoryCleanupTaskKind::Rollback, "sandbox", async move {
+                let _drop_signal = RollbackTaskDropSignal(Some(dropped_tx));
+                let mut tx = tx;
+                tx.rollback(&rollback_cleanup).await;
+            });
+        drop(rollback_waiter);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(2))
+            .await
+            .unwrap();
+        assert!(workspace.exists());
+        assert!(sock_dir.exists());
+
+        drop(cleanup_group);
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(workspace.exists());
+        assert!(sock_dir.exists());
+
+        cleanup.release();
+        cleanup.wait_removed(2).await;
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
         assert_eq!(
             cleanup.events(),
             vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]

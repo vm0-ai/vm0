@@ -151,6 +151,7 @@ import {
 } from "./connector-credential-status.service";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -281,11 +282,19 @@ interface DerivedPersistenceResult {
   readonly sandboxId?: string;
 }
 
-interface RunCallback {
+interface HttpRunCallback {
   readonly url: string;
   readonly secret: string;
   readonly payload: unknown;
 }
+
+interface InternalRunCallback {
+  readonly internalKind: InternalRunCallbackKind;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ResolvedModelProviderEnvironment {
   readonly id: string | null;
@@ -2973,7 +2982,9 @@ async function insertRunRecord(
       args.callbacks.map(async (callback) => {
         return {
           runId: run.id,
-          url: callback.url,
+          url: "url" in callback ? callback.url : null,
+          internalKind:
+            "internalKind" in callback ? callback.internalKind : null,
           encryptedSecret: await encryptPersistentSecretValue(
             callback.secret,
             args.featureSwitchContext,
@@ -3065,7 +3076,9 @@ async function insertQueuedRunRecord(
       args.callbacks.map(async (callback) => {
         return {
           runId: run.id,
-          url: callback.url,
+          url: "url" in callback ? callback.url : null,
+          internalKind:
+            "internalKind" in callback ? callback.internalKind : null,
           encryptedSecret: await encryptPersistentSecretValue(
             callback.secret,
             args.featureSwitchContext,

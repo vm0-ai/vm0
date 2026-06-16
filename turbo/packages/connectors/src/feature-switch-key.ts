@@ -57,6 +57,7 @@ export enum FeatureSwitchKey {
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
   ChatSlashSkillCommands = "chatSlashSkillCommands",
+  ChatAutomationSidebar = "chatAutomationSidebar",
   AssistantTextStreaming = "assistantTextStreaming",
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
