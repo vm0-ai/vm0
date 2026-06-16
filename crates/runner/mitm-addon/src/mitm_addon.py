@@ -273,6 +273,37 @@ def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
     _start_usage_flush_worker()
 
 
+def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("runner usage flush worker did not stop")
+
+        acquired = _usage_flush_signal_lock.acquire(timeout=remaining)
+        if not acquired:
+            raise AssertionError("runner usage flush worker did not stop")
+        try:
+            if not _usage_flush_requested.is_set():
+                return
+        finally:
+            _usage_flush_signal_lock.release()
+        _start_usage_flush_worker()
+
+
+def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
+    global _last_jsonl_flush_request_id
+
+    acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
+    if not acquired:
+        raise AssertionError("runner usage flush worker did not stop")
+    try:
+        _usage_flush_requested.clear()
+        _last_jsonl_flush_request_id = None
+    finally:
+        _usage_flush_signal_lock.release()
+
+
 def _start_usage_flush_worker() -> None:
     """Start one flush worker, coalescing repeated signals while active."""
     if not _usage_flush_signal_lock.acquire(blocking=False):
