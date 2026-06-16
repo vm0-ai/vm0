@@ -10,7 +10,7 @@
   },
   "cloudflare": {
     "https://api.cloudflare.com/client/v4/oauth/scopes": "279c7007f429bf74250073fb8d9addc1af9f76606fdca8e300b59daac6711291",
-    "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json": "4cf49dcf4c2e61c92d46a533f940849e12ebcf8c6b425f556c35882f3fff4ccd"
+    "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json": "1c7c89b0e8810871264c332f0c33dc179ee6ec270a598b73ecdb1839b12aade5"
   },
   "deel": {
     "https://developer.deel.com/openapi.json?api=11887c88-0ae7-4136-a89a-c7ec2a37111c": "2bacf3ebaf3cc6d13acb5a1c2c78b5fa638c66826bf4d0d808b24ef28729dc16",
