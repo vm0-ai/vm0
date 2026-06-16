@@ -164,13 +164,56 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         let mut close_before_reconnect = false;
         // Main message processing loop
         loop {
-            let Some(transport) = p.transport.as_mut() else {
+            let Some(transport) = p.transport.as_ref() else {
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
             };
             let idle_deadline = transport
                 .ws_read
                 .idle_deadline(p.session.max_idle_interval(), p.timing.heartbeat_margin);
+            let heartbeat_elapsed =
+                idle_deadline.is_some_and(|(deadline, _)| deadline <= Instant::now());
+
+            if !heartbeat_elapsed {
+                if let Some(attach_timed_out) = p.session.clear_elapsed_channel_operation_deadline(
+                    Instant::now(),
+                    p.timing.channel_retry_timeout,
+                ) {
+                    if attach_timed_out {
+                        tracing::warn!(
+                            timeout_ms = p.timing.realtime_request_timeout.as_millis(),
+                            "Channel attach timed out, entering suspended channel retry"
+                        );
+                    }
+                    continue;
+                }
+
+                if let Some(should_attach) = p.session.clear_elapsed_channel_retry(Instant::now()) {
+                    if should_attach
+                        && p.session
+                            .begin_channel_attach(p.timing.realtime_request_timeout)
+                    {
+                        match send_attach(&mut p, &mut close_rx).await {
+                            LoopAction::Stop => return,
+                            LoopAction::Reconnect { disconnected_event } => {
+                                record_reconnect_disconnected_event(
+                                    &mut disconnected_sent,
+                                    disconnected_event,
+                                );
+                                immediate_retry = true;
+                                break;
+                            }
+                            LoopAction::Continue => {}
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            let Some(transport) = p.transport.as_mut() else {
+                tracing::warn!("WebSocket transport missing before receive loop");
+                break;
+            };
 
             let event = tokio::select! {
                 biased;
