@@ -445,7 +445,7 @@ impl CowLayer {
             )))
         })?;
         let dir_fd = File::open(parent)?;
-        let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+        let tmp_path = bitmap_tmp_path_for(path);
         if let Err(e) = File::create(&tmp_path).and_then(|f| {
             f.write_all_at(&data, 0)?;
             f.sync_all()
@@ -516,6 +516,12 @@ pub fn bitmap_path_for(cow_path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
+pub(crate) fn bitmap_tmp_path_for(bitmap_path: &Path) -> PathBuf {
+    let mut name = bitmap_path.as_os_str().to_os_string();
+    name.push(".tmp");
+    PathBuf::from(name)
+}
+
 /// Validate that a dirty-bitmap sidecar matches the expected block count.
 pub fn validate_bitmap(path: &Path, expected_blocks: usize) -> Result<()> {
     CowLayer::load_bitmap(path, expected_blocks).map(drop)
@@ -570,7 +576,9 @@ pub fn validate_bitmap_cow_coverage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::io::Write as IoWrite;
+    use std::os::unix::ffi::OsStringExt;
     use tempfile::NamedTempFile;
 
     fn write_bitmap_file(path: &Path, blocks: u64, word: u64) {
@@ -961,6 +969,27 @@ mod tests {
         // guarantee by passing a degenerate path.
         let err = cow.save_bitmap(Path::new("/")).unwrap_err();
         assert!(matches!(err, NbdCowError::Io(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn bitmap_save_handles_non_utf8_parent_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let non_utf8_dir = tmp.path().join(PathBuf::from(OsString::from_vec(
+            b"bitmap-parent-\xff".to_vec(),
+        )));
+        std::fs::create_dir(&non_utf8_dir).unwrap();
+        let base_path = non_utf8_dir.join("base.img");
+        std::fs::write(&base_path, vec![0; 4096]).unwrap();
+        let cow_path = non_utf8_dir.join("cow.img");
+        let cow = CowLayer::new(&base_path, &cow_path, 4096, 4096, 1024 * 1024).unwrap();
+        let bitmap_path = bitmap_path_for(&cow_path);
+        let tmp_path = bitmap_tmp_path_for(&bitmap_path);
+
+        cow.save_bitmap(&bitmap_path).unwrap();
+
+        assert!(bitmap_path.exists());
+        assert!(!tmp_path.exists());
+        CowLayer::load_bitmap(&bitmap_path, 1).unwrap();
     }
 
     #[test]
