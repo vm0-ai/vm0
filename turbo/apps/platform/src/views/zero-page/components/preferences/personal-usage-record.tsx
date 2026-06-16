@@ -107,14 +107,14 @@ const ROW_CLASS =
   "relative px-5 py-3.5 [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
 
 // Dotted-underline link affordance for the title, mirroring the insights page
-// (network-insights-page.tsx): hover reveals a tooltip, click navigates.
-// leading-6 keeps the line box tall enough that the offset-4 underline isn't
-// clipped by `truncate`'s overflow-hidden. inline-block + max-w-full keeps the
-// hover fill hugging the title text (not the whole row), truncating long titles;
-// the -mx-1.5/px-1.5 pair adds chip padding while keeping the text aligned with
-// the breakdown bar below.
+// (network-insights-page.tsx): click navigates. leading-6 keeps the line box
+// tall enough that the offset-4 underline isn't clipped by `truncate`'s
+// overflow-hidden. inline-block + max-w-full keeps the hover fill hugging the
+// title text (not the whole row), truncating long titles; the chip padding /
+// negative margin are right-only (-mr-1.5/pr-1.5) so the hover chip's left edge
+// stays flush with the title text and the breakdown bar below.
 const TITLE_LINK_CLASS =
-  "inline-block max-w-full -mx-1.5 truncate rounded-md px-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
+  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
