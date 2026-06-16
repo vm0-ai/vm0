@@ -57,6 +57,7 @@ FIREWALL_MODULES = {
         "aws_31",
         "aws_32",
         "aws_33",
+        "aws_34",
     ),
     "axiom": ("axiom_0",),
     "base44": ("base44_0",),

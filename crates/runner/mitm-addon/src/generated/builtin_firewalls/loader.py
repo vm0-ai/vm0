@@ -112,6 +112,7 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import aws_31
         from . import aws_32
         from . import aws_33
+        from . import aws_34
 
         return (
             aws_0.JSON_PART,
@@ -148,6 +149,7 @@ def load_json_parts(name: str) -> tuple[str, ...]:
             aws_31.JSON_PART,
             aws_32.JSON_PART,
             aws_33.JSON_PART,
+            aws_34.JSON_PART,
         )
     if name == "axiom":
         from . import axiom_0

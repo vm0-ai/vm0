@@ -164,6 +164,12 @@ interface LoadedAwsServiceSource extends AwsServiceSource {
 }
 
 const AWS_OPERATION_ACTION_OVERRIDES = new Map<string, string>([
+  // These operations have multiple SAR AuthorizedActions, but their endpoint
+  // semantics have one auditable primary permission in this firewall model.
+  ["budgets:CreateBudget", "ModifyBudget"],
+  ["cloudfront:CreateDistributionWithTags", "CreateDistribution"],
+  ["cloudfront:UpdateDistributionWithStagingConfig", "UpdateDistribution"],
+  ["iotfleetwise:BatchCreateVehicle", "CreateVehicle"],
   // SAR AuthorizedActions order is not a primary-action signal. These S3 REST
   // operation names do not match their IAM action names, so pick the action
   // users expect to control the generated endpoint rule.
@@ -479,9 +485,42 @@ function primaryAuthorizedActionCandidates(
   return localCandidates.length > 0 ? localCandidates : candidates;
 }
 
+function caseInsensitiveExactCandidate(
+  operationName: string,
+  candidates: AwsAuthorizedActionCandidate[],
+): AwsAuthorizedActionCandidate | null {
+  const operationNameLower = operationName.toLowerCase();
+  const matches = candidates.filter((candidate) => {
+    return candidate.name.toLowerCase() === operationNameLower;
+  });
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function apiGatewayMethodActionCandidate(
+  service: AwsServiceSource,
+  operationHttpMethod: string | null,
+  candidates: AwsAuthorizedActionCandidate[],
+): AwsAuthorizedActionCandidate | null {
+  if (
+    service.key !== "apigateway" &&
+    service.key !== "apigatewayv2" &&
+    service.servicePrefix !== "apigateway"
+  ) {
+    return null;
+  }
+  if (!operationHttpMethod) {
+    return null;
+  }
+  const matches = candidates.filter((candidate) => {
+    return candidate.name === operationHttpMethod;
+  });
+  return matches.length === 1 ? matches[0]! : null;
+}
+
 function selectPrimaryAction(
   service: AwsServiceSource,
   operation: AwsOperationReference,
+  operationHttpMethod: string | null,
   actionsByName: Map<string, AwsAction>,
   actionsByService: Map<string, Map<string, AwsAction>>,
 ): SelectedAction | null {
@@ -498,29 +537,42 @@ function selectPrimaryAction(
   const exactAuthorizedCandidate = primaryCandidates.find((candidate) => {
     return candidate.name === operationName;
   });
+  const caseInsensitiveCandidate = caseInsensitiveExactCandidate(
+    operationName,
+    primaryCandidates,
+  );
+  const apiGatewayMethodCandidate = apiGatewayMethodActionCandidate(
+    service,
+    operationHttpMethod,
+    primaryCandidates,
+  );
   const overrideName = AWS_OPERATION_ACTION_OVERRIDES.get(
     `${service.servicePrefix}:${operationName}`,
   );
   const overrideAction = overrideName ? actionsByName.get(overrideName) : null;
   const selected = exactAuthorizedCandidate
     ? exactAuthorizedCandidate
-    : overrideName && overrideAction
-      ? {
-          servicePrefix: service.servicePrefix,
-          name: overrideName,
-          action: overrideAction,
-        }
-      : primaryCandidates.length === 1
-        ? primaryCandidates[0]!
-        : primaryCandidates.length > 1
-          ? null
-          : actionsByName.has(operationName)
-            ? {
-                servicePrefix: service.servicePrefix,
-                name: operationName,
-                action: actionsByName.get(operationName)!,
-              }
-            : null;
+    : caseInsensitiveCandidate
+      ? caseInsensitiveCandidate
+      : apiGatewayMethodCandidate
+        ? apiGatewayMethodCandidate
+        : overrideName && overrideAction
+          ? {
+              servicePrefix: service.servicePrefix,
+              name: overrideName,
+              action: overrideAction,
+            }
+          : primaryCandidates.length === 1
+            ? primaryCandidates[0]!
+            : primaryCandidates.length > 1
+              ? null
+              : actionsByName.has(operationName)
+                ? {
+                    servicePrefix: service.servicePrefix,
+                    name: operationName,
+                    action: actionsByName.get(operationName)!,
+                  }
+                : null;
   if (selected === null) {
     return null;
   }
@@ -539,6 +591,7 @@ function selectPrimaryAction(
 function selectActionForOperation(
   service: AwsServiceSource,
   operationName: string,
+  operationHttpMethod: string | null,
   operationsByName: Map<string, AwsOperationReference>,
   actionsByName: Map<string, AwsAction>,
   actionsByService: Map<string, Map<string, AwsAction>>,
@@ -548,6 +601,7 @@ function selectActionForOperation(
     return selectPrimaryAction(
       service,
       operation,
+      operationHttpMethod,
       actionsByName,
       actionsByService,
     );
@@ -570,6 +624,17 @@ function selectActionForOperation(
   const action = actionsByName.get(operationName);
   return action
     ? { servicePrefix: service.servicePrefix, name: operationName, action }
+    : null;
+}
+
+function operationHttpMethod(
+  model: BotocoreModel,
+  operationName: string,
+): string | null {
+  const rawOperation = loadBotocoreOperations(model)[operationName];
+  return isBotocoreOperation(rawOperation) &&
+    typeof rawOperation.http?.method === "string"
+    ? rawOperation.http.method
     : null;
 }
 
@@ -818,6 +883,7 @@ async function buildAwsPermissions(): Promise<BuildResult> {
       const selectedAction = selectActionForOperation(
         service,
         operationName,
+        operationHttpMethod(service.model, operationName),
         service.operationsByName,
         service.actionsByName,
         actionsByService,

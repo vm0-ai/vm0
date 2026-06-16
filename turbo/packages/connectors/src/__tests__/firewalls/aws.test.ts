@@ -178,13 +178,28 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "iot:StartCommandExecution")).toContain(
       "POST /command-executions AWS sigv4=iot-jobs-data",
     );
+    expect(rulesFor(permissions, "budgets:ModifyBudget")).toContain(
+      "POST / AWS sigv4=budgets target=AWSBudgetServiceGateway.CreateBudget",
+    );
+    expect(rulesFor(permissions, "cloudfront:CreateDistribution")).toContain(
+      "POST /2020-05-31/distribution?WithTags AWS sigv4=cloudfront",
+    );
+    expect(rulesFor(permissions, "cloudfront:UpdateDistribution")).toContain(
+      "PUT /2020-05-31/distribution/{Id}/promote-staging-config AWS sigv4=cloudfront",
+    );
+    expect(rulesFor(permissions, "iotfleetwise:CreateVehicle")).toContain(
+      "POST / AWS sigv4=iotfleetwise target=IoTAutobahnControlPlane.BatchCreateVehicle",
+    );
+    expect(rulesFor(permissions, "memorydb:CreateAcl")).toContain(
+      "POST / AWS sigv4=memorydb target=AmazonMemoryDB.CreateACL",
+    );
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys?mode=import AWS sigv4=apigateway",
     );
-    expect(rulesFor(permissions, "apigateway:POST")).not.toContain(
+    expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys AWS sigv4=apigateway",
     );
-    expect(rulesFor(permissions, "apigateway:PATCH")).not.toContain(
+    expect(rulesFor(permissions, "apigateway:PATCH")).toContain(
       "PATCH /restapis/{restapi_id} AWS sigv4=apigateway",
     );
   });
@@ -281,14 +296,14 @@ describe("aws firewall", () => {
       generatedServices: 418,
       unsupportedProtocolServices: 3,
       totalOperations: 18505,
-      mappedOperations: 18216,
+      mappedOperations: 18245,
       crossServiceAuthorizedActionMappings: 95,
       fallbackActionMappings: 0,
-      unmappedOperations: 289,
-      ambiguousOperations: 62,
+      unmappedOperations: 260,
+      ambiguousOperations: 33,
       unsupportedOperations: 0,
-      permissionCount: 17513,
-      ruleCount: 19723,
+      permissionCount: 17514,
+      ruleCount: 19752,
       s3VirtualHostedPermissionCount: 72,
       s3VirtualHostedRuleCount: 93,
     });
