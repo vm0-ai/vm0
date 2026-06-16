@@ -1,6 +1,7 @@
 """Shared fake upstream helpers for auth.base forwarder tests."""
 
 import contextlib
+import http.client as http_client
 import io
 from collections.abc import Callable, Iterator
 from unittest.mock import patch
@@ -32,12 +33,7 @@ def http_response(
     body: bytes = b"ok",
     headers: list[tuple[str, str]] | None = None,
 ) -> bytes:
-    reason = {
-        200: "OK",
-        201: "Created",
-        302: "Found",
-        429: "Too Many Requests",
-    }.get(status, "OK")
+    reason = http_client.responses.get(status, "OK")
     header_bytes = b"".join(f"{name}: {value}\r\n".encode() for name, value in (headers or []))
     return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
 
