@@ -41,9 +41,16 @@ class _FirewallApiEntry(NamedTuple):
     permission_count: int
 
 
+class _RuntimeFirewallApiEntry(NamedTuple):
+    base: str
+    auth: object
+    permissions: tuple[_FirewallPermission, ...]
+
+
 class _XFirewallCatalog(NamedTuple):
     name: str
     api_entries: tuple[_FirewallApiEntry, ...]
+    runtime_api_entries: tuple[_RuntimeFirewallApiEntry, ...]
     permissions: tuple[_FirewallPermission, ...]
 
 
@@ -122,6 +129,7 @@ def _parse_x_firewall_catalog(raw: object) -> _XFirewallCatalog:
         )
 
     api_entries: list[_FirewallApiEntry] = []
+    runtime_api_entries: list[_RuntimeFirewallApiEntry] = []
     permissions: list[_FirewallPermission] = []
     for index, entry in enumerate(raw_apis):
         if not isinstance(entry, dict):
@@ -140,11 +148,19 @@ def _parse_x_firewall_catalog(raw: object) -> _XFirewallCatalog:
         raw_permissions = entry.get("permissions", [])
         parsed_permissions = _parse_x_firewall_permissions(raw_permissions, base=base)
         api_entries.append(_FirewallApiEntry(base=base, permission_count=len(parsed_permissions)))
+        runtime_api_entries.append(
+            _RuntimeFirewallApiEntry(
+                base=base,
+                auth=entry.get("auth"),
+                permissions=parsed_permissions,
+            )
+        )
         permissions.extend(parsed_permissions)
 
     return _XFirewallCatalog(
         name=name,
         api_entries=tuple(api_entries),
+        runtime_api_entries=tuple(runtime_api_entries),
         permissions=tuple(permissions),
     )
 
@@ -168,11 +184,6 @@ def _compile_generated_x_firewall() -> matching.CompiledFirewallSet:
 @functools.lru_cache(maxsize=1)
 def _compile_generated_x_firewall_cached() -> matching.CompiledFirewallSet:
     catalog = _load_x_firewall_catalog()
-    permissions_by_base: dict[str, list[dict[str, object]]] = {}
-    for permission in catalog.permissions:
-        permissions_by_base.setdefault(permission.base, []).append(
-            {"name": permission.name, "rules": list(permission.rules)}
-        )
     compiled = matching.compile_firewalls(
         [
             {
@@ -180,9 +191,13 @@ def _compile_generated_x_firewall_cached() -> matching.CompiledFirewallSet:
                 "apis": [
                     {
                         "base": entry.base,
-                        "permissions": permissions_by_base.get(entry.base, []),
+                        "auth": entry.auth,
+                        "permissions": [
+                            {"name": permission.name, "rules": list(permission.rules)}
+                            for permission in entry.permissions
+                        ],
                     }
-                    for entry in catalog.api_entries
+                    for entry in catalog.runtime_api_entries
                 ],
             }
         ]
@@ -477,7 +492,7 @@ class TestFirewallConsistency:
         later, more specific generated rule under another permission.
         """
         compiled_firewall = _compile_generated_x_firewall()
-        shadows: list[tuple[str, str, str, str, str]] = []
+        mismatches: list[tuple[str, str, str, str, str]] = []
         for permission in _load_x_firewall_permissions():
             for rule in permission.rules:
                 method, pattern = rule.split(" ", 1)
@@ -488,18 +503,27 @@ class TestFirewallConsistency:
                     compiled_firewall,
                 )
                 if not isinstance(runtime_match, matching.FirewallAllow):
+                    mismatches.append(
+                        (
+                            permission.name,
+                            type(runtime_match).__name__,
+                            method,
+                            pattern,
+                            sample_path,
+                        )
+                    )
                     continue
 
                 runtime_permission = runtime_match.permission or ""
                 if runtime_permission != permission.name:
-                    shadows.append(
+                    mismatches.append(
                         (permission.name, runtime_permission, method, pattern, sample_path)
                     )
 
-        assert not shadows, (
-            "Generated X firewall rules are shadowed by another runtime "
-            f"permission: {shadows}.  Check path specificity handling before "
-            "expanding X firewall output."
+        assert not mismatches, (
+            "Generated X firewall rules do not resolve to their generated "
+            f"runtime permission: {mismatches}.  Check auth validity and path "
+            "specificity handling before expanding X firewall output."
         )
 
     # Firewall paths that deliberately take their scope's default bucket.
