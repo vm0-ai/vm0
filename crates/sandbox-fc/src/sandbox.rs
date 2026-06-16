@@ -26,7 +26,7 @@ use vsock_host::{
 };
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
-use crate::api::ApiError;
+use crate::api::{ApiError, BalloonStatistics};
 use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
@@ -2839,6 +2839,122 @@ const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
 /// production profiles are introduced, revisit whether this should scale with
 /// `target_mib` so tiny balloon targets are not fully swallowed by tolerance.
 const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
+const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
+const BYTES_PER_MIB: i64 = 1024 * 1024;
+
+#[derive(Debug)]
+struct BalloonSettleSummary {
+    requested_target_mib: u32,
+    started_at: tokio::time::Instant,
+    sample_count: u32,
+    first_observed_target_mib: Option<u32>,
+    last_observed_target_mib: Option<u32>,
+    target_observed: bool,
+    first_actual_mib: Option<u32>,
+    last_actual_mib: Option<u32>,
+    max_actual_mib: Option<u32>,
+    last_deficit_mib: Option<u32>,
+    last_free_memory_bytes: Option<i64>,
+    last_available_memory_bytes: Option<i64>,
+    last_total_memory_bytes: Option<i64>,
+}
+
+impl BalloonSettleSummary {
+    fn new(requested_target_mib: u32) -> Self {
+        Self {
+            requested_target_mib,
+            started_at: tokio::time::Instant::now(),
+            sample_count: 0,
+            first_observed_target_mib: None,
+            last_observed_target_mib: None,
+            target_observed: false,
+            first_actual_mib: None,
+            last_actual_mib: None,
+            max_actual_mib: None,
+            last_deficit_mib: None,
+            last_free_memory_bytes: None,
+            last_available_memory_bytes: None,
+            last_total_memory_bytes: None,
+        }
+    }
+
+    fn observe(&mut self, stats: &BalloonStatistics) -> u32 {
+        let deficit_mib = self.requested_target_mib.saturating_sub(stats.actual_mib);
+        self.sample_count = self.sample_count.saturating_add(1);
+        self.first_observed_target_mib
+            .get_or_insert(stats.target_mib);
+        self.last_observed_target_mib = Some(stats.target_mib);
+        self.target_observed |= stats.target_mib == self.requested_target_mib;
+        self.first_actual_mib.get_or_insert(stats.actual_mib);
+        self.last_actual_mib = Some(stats.actual_mib);
+        self.max_actual_mib = Some(
+            self.max_actual_mib
+                .map_or(stats.actual_mib, |max| max.max(stats.actual_mib)),
+        );
+        self.last_deficit_mib = Some(deficit_mib);
+        self.last_free_memory_bytes = stats.free_memory;
+        self.last_available_memory_bytes = stats.available_memory;
+        self.last_total_memory_bytes = stats.total_memory;
+        deficit_mib
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        let elapsed_ms = self.started_at.elapsed().as_millis();
+        u64::try_from(elapsed_ms).unwrap_or(u64::MAX)
+    }
+
+    fn actual_delta_mib(&self) -> Option<i64> {
+        match (self.first_actual_mib, self.last_actual_mib) {
+            (Some(first), Some(last)) => Some(i64::from(last) - i64::from(first)),
+            _ => None,
+        }
+    }
+
+    fn reported_free_mib(&self) -> Option<i64> {
+        self.last_free_memory_bytes
+            .map(|bytes| bytes / BYTES_PER_MIB)
+    }
+
+    fn reported_available_mib(&self) -> Option<i64> {
+        self.last_available_memory_bytes
+            .map(|bytes| bytes / BYTES_PER_MIB)
+    }
+
+    fn reported_total_mib(&self) -> Option<i64> {
+        self.last_total_memory_bytes
+            .map(|bytes| bytes / BYTES_PER_MIB)
+    }
+
+    fn reason(&self) -> &'static str {
+        if self.sample_count == 0 {
+            return "stats_unavailable";
+        }
+
+        if !self.target_observed {
+            return "target_not_observed";
+        }
+
+        if self
+            .last_deficit_mib
+            .is_some_and(|deficit| deficit >= self.severe_deficit_threshold_mib())
+        {
+            return "severe_deficit";
+        }
+
+        if matches!(
+            (self.first_actual_mib, self.last_actual_mib),
+            (Some(first), Some(last)) if last > first
+        ) {
+            return "actual_progressing_timeout";
+        }
+
+        "actual_stalled"
+    }
+
+    fn severe_deficit_threshold_mib(&self) -> u32 {
+        BALLOON_SEVERE_DEFICIT_MIN_MIB.max(self.requested_target_mib / 5)
+    }
+}
 
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
@@ -2850,11 +2966,11 @@ const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
-    let mut last_actual: Option<u32> = None;
+    let mut summary = BalloonSettleSummary::new(target_mib);
     loop {
         match client.get_balloon_statistics().await {
             Ok(stats) => {
-                let deficit_mib = target_mib.saturating_sub(stats.actual_mib);
+                let deficit_mib = summary.observe(&stats);
                 if deficit_mib == 0 {
                     info!(
                         id = %log_id,
@@ -2862,6 +2978,18 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                         target = target_mib,
                         deficit_mib,
                         tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        elapsed_ms = summary.elapsed_ms(),
+                        sample_count = summary.sample_count,
+                        requested_target_mib = summary.requested_target_mib,
+                        first_observed_target_mib = ?summary.first_observed_target_mib,
+                        observed_target_mib = ?summary.last_observed_target_mib,
+                        target_observed = summary.target_observed,
+                        first_actual_mib = ?summary.first_actual_mib,
+                        max_actual_mib = ?summary.max_actual_mib,
+                        actual_delta_mib = ?summary.actual_delta_mib(),
+                        reported_free_mib = ?summary.reported_free_mib(),
+                        reported_available_mib = ?summary.reported_available_mib(),
+                        reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
                     return;
@@ -2874,29 +3002,54 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                         target = target_mib,
                         deficit_mib,
                         tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        elapsed_ms = summary.elapsed_ms(),
+                        sample_count = summary.sample_count,
+                        requested_target_mib = summary.requested_target_mib,
+                        first_observed_target_mib = ?summary.first_observed_target_mib,
+                        observed_target_mib = ?summary.last_observed_target_mib,
+                        target_observed = summary.target_observed,
+                        first_actual_mib = ?summary.first_actual_mib,
+                        max_actual_mib = ?summary.max_actual_mib,
+                        actual_delta_mib = ?summary.actual_delta_mib(),
+                        reported_free_mib = ?summary.reported_free_mib(),
+                        reported_available_mib = ?summary.reported_available_mib(),
+                        reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
                     return;
                 }
 
-                last_actual = Some(stats.actual_mib);
                 trace!(
                     id = %log_id,
                     actual = stats.actual_mib,
                     target = target_mib,
                     deficit_mib,
                     tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    observed_target_mib = stats.target_mib,
+                    sample_count = summary.sample_count,
                     "waiting for balloon"
                 );
             }
             Err(e) => {
-                let deficit_mib = last_actual.map(|actual| target_mib.saturating_sub(actual));
                 warn!(
                     id = %log_id,
-                    actual = ?last_actual,
+                    actual = ?summary.last_actual_mib,
                     target = target_mib,
-                    deficit_mib = ?deficit_mib,
+                    deficit_mib = ?summary.last_deficit_mib,
                     tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    elapsed_ms = summary.elapsed_ms(),
+                    sample_count = summary.sample_count,
+                    requested_target_mib = summary.requested_target_mib,
+                    first_observed_target_mib = ?summary.first_observed_target_mib,
+                    observed_target_mib = ?summary.last_observed_target_mib,
+                    target_observed = summary.target_observed,
+                    first_actual_mib = ?summary.first_actual_mib,
+                    max_actual_mib = ?summary.max_actual_mib,
+                    actual_delta_mib = ?summary.actual_delta_mib(),
+                    reported_free_mib = ?summary.reported_free_mib(),
+                    reported_available_mib = ?summary.reported_available_mib(),
+                    reported_total_mib = ?summary.reported_total_mib(),
+                    reason = summary.reason(),
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
@@ -2904,13 +3057,25 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
             }
         }
         if tokio::time::Instant::now() >= deadline {
-            let deficit_mib = last_actual.map(|actual| target_mib.saturating_sub(actual));
             warn!(
                 id = %log_id,
-                actual = ?last_actual,
+                actual = ?summary.last_actual_mib,
                 target = target_mib,
-                deficit_mib = ?deficit_mib,
+                deficit_mib = ?summary.last_deficit_mib,
                 tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                elapsed_ms = summary.elapsed_ms(),
+                sample_count = summary.sample_count,
+                requested_target_mib = summary.requested_target_mib,
+                first_observed_target_mib = ?summary.first_observed_target_mib,
+                observed_target_mib = ?summary.last_observed_target_mib,
+                target_observed = summary.target_observed,
+                first_actual_mib = ?summary.first_actual_mib,
+                max_actual_mib = ?summary.max_actual_mib,
+                actual_delta_mib = ?summary.actual_delta_mib(),
+                reported_free_mib = ?summary.reported_free_mib(),
+                reported_available_mib = ?summary.reported_available_mib(),
+                reported_total_mib = ?summary.reported_total_mib(),
+                reason = summary.reason(),
                 "balloon inflate incomplete after {}s, pausing anyway",
                 BALLOON_SETTLE_TIMEOUT.as_secs()
             );
@@ -3078,6 +3243,9 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;
     use tokio::time::Instant;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
     use vsock_proto::{
         Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
         MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
@@ -6309,6 +6477,103 @@ mod tests {
         body: String,
     }
 
+    #[derive(Debug, Clone)]
+    struct MockBalloonStats {
+        target_mib: u32,
+        actual_mib: u32,
+        free_memory: Option<i64>,
+        available_memory: Option<i64>,
+        total_memory: Option<i64>,
+    }
+
+    impl MockBalloonStats {
+        fn new(target_mib: u32, actual_mib: u32) -> Self {
+            Self {
+                target_mib,
+                actual_mib,
+                free_memory: None,
+                available_memory: None,
+                total_memory: None,
+            }
+        }
+
+        fn with_memory(
+            mut self,
+            free_memory: i64,
+            available_memory: i64,
+            total_memory: i64,
+        ) -> Self {
+            self.free_memory = Some(free_memory);
+            self.available_memory = Some(available_memory);
+            self.total_memory = Some(total_memory);
+            self
+        }
+
+        fn to_json(&self) -> String {
+            serde_json::json!({
+                "target_mib": self.target_mib,
+                "actual_mib": self.actual_mib,
+                "target_pages": u64::from(self.target_mib) * 256,
+                "actual_pages": u64::from(self.actual_mib) * 256,
+                "free_memory": self.free_memory,
+                "available_memory": self.available_memory,
+                "total_memory": self.total_memory,
+            })
+            .to_string()
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    enum MockBalloonStatsReply {
+        Ok(MockBalloonStats),
+        Status(u16),
+    }
+
+    #[derive(Debug)]
+    struct MockBalloonStatsSequence {
+        replies: std::collections::VecDeque<MockBalloonStatsReply>,
+        last: MockBalloonStatsReply,
+    }
+
+    impl MockBalloonStatsSequence {
+        fn new(replies: std::collections::VecDeque<MockBalloonStatsReply>) -> Self {
+            let last = replies
+                .back()
+                .cloned()
+                .unwrap_or_else(|| MockBalloonStatsReply::Ok(MockBalloonStats::new(0, 99999)));
+            Self { replies, last }
+        }
+
+        fn next(&mut self) -> MockBalloonStatsReply {
+            if let Some(reply) = self.replies.pop_front() {
+                self.last = reply.clone();
+                reply
+            } else {
+                self.last.clone()
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    enum MockBalloonStatsSource {
+        DynamicActual(Option<Arc<AtomicU32>>),
+        Sequence(Arc<TokioMutex<MockBalloonStatsSequence>>),
+    }
+
+    impl MockBalloonStatsSource {
+        async fn next(&self) -> MockBalloonStatsReply {
+            match self {
+                Self::DynamicActual(balloon_actual) => {
+                    let actual_mib = balloon_actual
+                        .as_ref()
+                        .map_or(99999, |actual| actual.load(Ordering::Relaxed));
+                    MockBalloonStatsReply::Ok(MockBalloonStats::new(0, actual_mib))
+                }
+                Self::Sequence(sequence) => sequence.lock().await.next(),
+            }
+        }
+    }
+
     /// Spawn a mock FC API server on a temporary Unix socket.
     ///
     /// - PATCH requests: status consumed FIFO from `responses` (defaults to
@@ -6322,6 +6587,38 @@ mod tests {
     async fn spawn_mock_fc_api(
         responses: std::collections::VecDeque<u16>,
         balloon_actual: Option<Arc<AtomicU32>>,
+    ) -> (
+        PathBuf,
+        Arc<TokioMutex<Vec<MockRequest>>>,
+        tempfile::TempDir,
+    ) {
+        spawn_mock_fc_api_with_stats_source(
+            responses,
+            MockBalloonStatsSource::DynamicActual(balloon_actual),
+        )
+        .await
+    }
+
+    async fn spawn_mock_fc_api_with_stats(
+        responses: std::collections::VecDeque<u16>,
+        balloon_stats: std::collections::VecDeque<MockBalloonStatsReply>,
+    ) -> (
+        PathBuf,
+        Arc<TokioMutex<Vec<MockRequest>>>,
+        tempfile::TempDir,
+    ) {
+        spawn_mock_fc_api_with_stats_source(
+            responses,
+            MockBalloonStatsSource::Sequence(Arc::new(TokioMutex::new(
+                MockBalloonStatsSequence::new(balloon_stats),
+            ))),
+        )
+        .await
+    }
+
+    async fn spawn_mock_fc_api_with_stats_source(
+        responses: std::collections::VecDeque<u16>,
+        balloon_stats_source: MockBalloonStatsSource,
     ) -> (
         PathBuf,
         Arc<TokioMutex<Vec<MockRequest>>>,
@@ -6345,7 +6642,7 @@ mod tests {
                 };
                 let reqs_inner = Arc::clone(&requests_clone);
                 let responses = Arc::clone(&responses);
-                let balloon_actual = balloon_actual.clone();
+                let balloon_stats_source = balloon_stats_source.clone();
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 8192];
                     let n = stream.read(&mut buf).await.unwrap_or(0);
@@ -6373,16 +6670,23 @@ mod tests {
                     // PATCH: consume next entry from the FIFO response queue.
                     // Other methods: 204 (no queue consumption).
                     if method == "GET" && path == "/balloon/statistics" {
-                        let actual = balloon_actual
-                            .as_ref()
-                            .map_or(99999, |a| a.load(Ordering::Relaxed));
-                        let stats = format!(
-                            r#"{{"target_mib":0,"actual_mib":{actual},"target_pages":0,"actual_pages":0}}"#
-                        );
-                        let resp = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{stats}",
-                            stats.len()
-                        );
+                        let reply = balloon_stats_source.next().await;
+                        let resp = match reply {
+                            MockBalloonStatsReply::Ok(stats) => {
+                                let body = stats.to_json();
+                                format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                                    body.len()
+                                )
+                            }
+                            MockBalloonStatsReply::Status(status) => {
+                                let body = r#"{"fault_message":"test"}"#;
+                                format!(
+                                    "HTTP/1.1 {status} Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
+                                    body.len()
+                                )
+                            }
+                        };
                         let _ = stream.write_all(resp.as_bytes()).await;
                     } else if method == "PATCH" {
                         let status = responses.lock().await.pop_front().unwrap_or(204);
@@ -6417,6 +6721,243 @@ mod tests {
     fn mock_request_body_json(request: &MockRequest) -> serde_json::Value {
         serde_json::from_str(&request.body)
             .unwrap_or_else(|error| panic!("invalid JSON body: {error}; request: {request:?}"))
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
+        events.iter().any(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+    }
+
+    fn mib(value: i64) -> i64 {
+        value * BYTES_PER_MIB
+    }
+
+    fn balloon_statistics(target_mib: u32, actual_mib: u32) -> BalloonStatistics {
+        BalloonStatistics {
+            target_mib,
+            actual_mib,
+            target_pages: u64::from(target_mib) * 256,
+            actual_pages: u64::from(actual_mib) * 256,
+            free_memory: None,
+            available_memory: None,
+            total_memory: None,
+            swap_in: None,
+            swap_out: None,
+            major_faults: None,
+            minor_faults: None,
+            disk_caches: None,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
+        let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+                target_mib,
+                target_mib - 39,
+            ))]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "near-target")).await;
+
+        assert!(!has_captured_event(
+            &events,
+            "balloon inflate incomplete after 10s, pausing anyway"
+        ));
+        let event = captured_event(
+            &events,
+            "balloon inflated within tolerance, proceeding to pause",
+        );
+        assert_eq!(event.level, Level::INFO);
+        assert_event_field(event, "actual", "3545");
+        assert_event_field(event, "target", "3584");
+        assert_event_field(event, "deficit_mib", "39");
+        assert_event_field(event, "sample_count", "1");
+        assert_event_field(event, "requested_target_mib", "3584");
+        assert_event_field(event, "target_observed", "true");
+        assert_event_field(event, "observed_target_mib", "Some(3584)");
+        assert_event_field(event, "first_actual_mib", "Some(3545)");
+        assert_event_field(event, "max_actual_mib", "Some(3545)");
+        assert_event_field(event, "actual_delta_mib", "Some(0)");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+                target_mib, 1300,
+            ))]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "stalled")).await;
+
+        let event = captured_event(
+            &events,
+            "balloon inflate incomplete after 10s, pausing anyway",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "actual", "Some(1300)");
+        assert_event_field(event, "target", "1536");
+        assert_event_field(event, "deficit_mib", "Some(236)");
+        assert_event_field(event, "requested_target_mib", "1536");
+        assert_event_field(event, "target_observed", "true");
+        assert_event_field(event, "observed_target_mib", "Some(1536)");
+        assert_event_field(event, "first_actual_mib", "Some(1300)");
+        assert_event_field(event, "max_actual_mib", "Some(1300)");
+        assert_event_field(event, "actual_delta_mib", "Some(0)");
+        assert_event_field(event, "reason", "actual_stalled");
+    }
+
+    #[test]
+    fn balloon_settle_summary_classifies_progressing_timeout() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let mut summary = BalloonSettleSummary::new(target_mib);
+
+        summary.observe(&balloon_statistics(target_mib, 1200));
+        summary.observe(&balloon_statistics(target_mib, 1300));
+
+        assert_eq!(summary.reason(), "actual_progressing_timeout");
+        assert_eq!(summary.last_actual_mib, Some(1300));
+        assert_eq!(summary.last_deficit_mib, Some(236));
+        assert_eq!(summary.first_actual_mib, Some(1200));
+        assert_eq!(summary.max_actual_mib, Some(1300));
+        assert_eq!(summary.actual_delta_mib(), Some(100));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+                1024, 1300,
+            ))]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "stale-target")).await;
+
+        let event = captured_event(
+            &events,
+            "balloon inflate incomplete after 10s, pausing anyway",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "target_observed", "false");
+        assert_event_field(event, "observed_target_mib", "Some(1024)");
+        assert_event_field(event, "reason", "target_not_observed");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let stats =
+            MockBalloonStats::new(target_mib, 900).with_memory(mib(128), mib(256), mib(2048));
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "severe")).await;
+
+        let event = captured_event(
+            &events,
+            "balloon inflate incomplete after 10s, pausing anyway",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "actual", "Some(900)");
+        assert_event_field(event, "deficit_mib", "Some(636)");
+        assert_event_field(event, "reported_free_mib", "Some(128)");
+        assert_event_field(event, "reported_available_mib", "Some(256)");
+        assert_event_field(event, "reported_total_mib", "Some(2048)");
+        assert_event_field(event, "reason", "severe_deficit");
+    }
+
+    #[tokio::test]
+    async fn park_pauses_when_balloon_stats_are_unavailable() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::Status(500)]),
+        )
+        .await;
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+
+        let (result, events) = capture_async_log_events(park_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            "stats-error",
+        ))
+        .await;
+        result.unwrap();
+
+        assert!(is_parked);
+        let event = captured_event(&events, "balloon stats unavailable, proceeding to pause");
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "actual", "None");
+        assert_event_field(event, "deficit_mib", "None");
+        assert_event_field(event, "sample_count", "0");
+        assert_event_field(event, "reason", "stats_unavailable");
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
     }
 
     #[tokio::test]
