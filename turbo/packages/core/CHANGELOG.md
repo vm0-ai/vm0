@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.345.0](https://github.com/vm0-ai/vm0/compare/core-v8.344.1...core-v8.345.0) (2026-06-16)
+
+
+### Features
+
+* roll out chat automation sidebar to staff org ([#17921](https://github.com/vm0-ai/vm0/issues/17921)) ([53a8678](https://github.com/vm0-ai/vm0/commit/53a8678d29cd4b8d149687986945d3d74952025f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/connectors bumped to 1.82.0
+
 ## [8.344.1](https://github.com/vm0-ai/vm0/compare/core-v8.344.0...core-v8.344.1) (2026-06-16)
 
 

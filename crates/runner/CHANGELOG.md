@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.118.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.8...runner-rs-v0.118.9) (2026-06-16)
+
+
+### Bug Fixes
+
+* add Google Maps OAuth firewall hosts ([#17926](https://github.com/vm0-ai/vm0/issues/17926)) ([03e786e](https://github.com/vm0-ai/vm0/commit/03e786eeb2dc1fadade13cb6058d319f9ac73cc6))
+
+
+### Refactoring
+
+* **runner:** clarify firecracker discovery state ([#17923](https://github.com/vm0-ai/vm0/issues/17923)) ([2e6c582](https://github.com/vm0-ai/vm0/commit/2e6c582d8c9db60ceae54c805cf2e9e600bc415f))
+* **runner:** split workspace image cache module ([#17916](https://github.com/vm0-ai/vm0/issues/17916)) ([208652f](https://github.com/vm0-ai/vm0/commit/208652fa8b444b45a121d7340c1ccc1d7324b5bb))
+* split r2 cache tests by behavior ([#17922](https://github.com/vm0-ai/vm0/issues/17922)) ([9e2c775](https://github.com/vm0-ai/vm0/commit/9e2c775d10c13a0e6bb098bd6d4c7aa741ad824c))
+
 ## [0.118.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.7...runner-rs-v0.118.8) (2026-06-16)
 
 
