@@ -49,12 +49,12 @@ describe("presentation template items", () => {
   it("keeps the picker catalog separate from the legacy catalog", () => {
     expect(
       PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "tomorrow-lab-playful-deck";
+        return candidate.slug === "playful-editorial-deck";
       }),
     ).toBe(false);
 
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-      return candidate.slug === "tomorrow-lab-playful-deck";
+      return candidate.slug === "playful-editorial-deck";
     });
 
     expect(item).toBeDefined();

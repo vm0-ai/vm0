@@ -768,7 +768,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
     id: "template:html-ppt-aplocoto",
     kind: "template",
-    name: "HTML PPT Aplocoto",
+    name: "Playful Editorial Presentation",
     description:
       "15-slot HTML presentation structure with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
     source: {
