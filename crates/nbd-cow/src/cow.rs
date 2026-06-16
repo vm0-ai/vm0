@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::Read;
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
@@ -465,34 +466,31 @@ impl CowLayer {
     /// Returns an error if the block count doesn't match `expected_blocks`
     /// or if the file is truncated.
     fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
-        let data = std::fs::read(path)?;
-        if data.len() < 8 {
+        let mut file = File::open(path)?;
+        let file_len = file.metadata()?.len();
+        if file_len < 8 {
             return Err(NbdCowError::Io(std::io::Error::other(
                 "bitmap file too short for header",
             )));
         }
-        let header: [u8; 8] = data
-            .get(..8)
-            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap header too short")))?
-            .try_into()
-            .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap header parse error")))?;
+        let mut header = [0u8; 8];
+        file.read_exact(&mut header)?;
         let num_blocks = u64::from_le_bytes(header) as usize;
         if num_blocks != expected_blocks {
             return Err(NbdCowError::Io(std::io::Error::other(format!(
                 "bitmap block count mismatch: file has {num_blocks}, expected {expected_blocks}"
             ))));
         }
-        let bitmap_bytes = data
-            .get(8..)
-            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap data missing")))?;
         let expected_words = num_blocks.div_ceil(64);
         let expected_data_len = expected_words * 8;
-        if bitmap_bytes.len() < expected_data_len {
+        let bitmap_data_len = file_len.saturating_sub(8);
+        if bitmap_data_len < expected_data_len as u64 {
             return Err(NbdCowError::Io(std::io::Error::other(format!(
-                "bitmap data truncated: got {} bytes, expected {expected_data_len}",
-                bitmap_bytes.len()
+                "bitmap data truncated: got {bitmap_data_len} bytes, expected {expected_data_len}",
             ))));
         }
+        let mut bitmap_bytes = vec![0u8; expected_data_len];
+        file.read_exact(&mut bitmap_bytes)?;
         let mut words: Vec<usize> = Vec::with_capacity(expected_words);
         for i in 0..expected_words {
             let offset = i * 8;
@@ -516,6 +514,11 @@ pub fn bitmap_path_for(cow_path: &Path) -> PathBuf {
     let mut name = cow_path.as_os_str().to_os_string();
     name.push(".bitmap");
     PathBuf::from(name)
+}
+
+/// Validate that a dirty-bitmap sidecar matches the expected block count.
+pub fn validate_bitmap(path: &Path, expected_blocks: usize) -> Result<()> {
+    CowLayer::load_bitmap(path, expected_blocks).map(drop)
 }
 
 #[cfg(test)]
@@ -848,6 +851,19 @@ mod tests {
 
         let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_load_ignores_extra_tail_bytes() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+        let mut data = 1u64.to_le_bytes().to_vec();
+        data.extend_from_slice(&0u64.to_le_bytes());
+        data.extend_from_slice(&[0xAA; 16]);
+        std::fs::write(bitmap_file.path(), data).unwrap();
+
+        let loaded = CowLayer::load_bitmap(bitmap_file.path(), 1).unwrap();
+
+        assert_eq!(loaded.count_ones(), 0);
     }
 
     #[test]

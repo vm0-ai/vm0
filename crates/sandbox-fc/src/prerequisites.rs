@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use nix::unistd::{AccessFlags, access};
+use nix::unistd::{AccessFlags, eaccess};
 use sandbox::SandboxError;
 
 use crate::config::SnapshotConfig;
@@ -104,16 +104,15 @@ fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
 fn check_artifact_prerequisites(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
     check_executable_file(config.binary_path, "firecracker binary", errors);
     check_readable_file(config.kernel_path, "kernel", errors);
-    if let Some(metadata) = check_readable_file(config.rootfs_path, "rootfs", errors) {
-        check_rootfs_size(config.rootfs_path, metadata.len(), errors);
-    }
+    let rootfs_blocks = check_readable_file(config.rootfs_path, "rootfs", errors)
+        .and_then(|metadata| check_rootfs_size(config.rootfs_path, metadata.len(), errors));
 
     if let Some(snapshot) = config.mode.snapshot() {
         check_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
         check_readable_file(&snapshot.memory_path, "snapshot memory", errors);
         check_readable_file(&snapshot.cow_path, "snapshot cow", errors);
         let bitmap_path = nbd_cow::cow::bitmap_path_for(&snapshot.cow_path);
-        check_readable_file(&bitmap_path, "snapshot cow bitmap", errors);
+        check_bitmap_file(&bitmap_path, "snapshot cow bitmap", rootfs_blocks, errors);
     }
 }
 
@@ -155,7 +154,7 @@ fn check_executable(path: &Path, label: &str, metadata: &Metadata, errors: &mut 
         errors.push(format!("{label} is not executable: {}", path.display()));
         return;
     }
-    if let Err(e) = access(path, AccessFlags::X_OK) {
+    if let Err(e) = eaccess(path, AccessFlags::X_OK) {
         errors.push(format!(
             "{label} is not executable: {}: {e}",
             path.display()
@@ -163,10 +162,10 @@ fn check_executable(path: &Path, label: &str, metadata: &Metadata, errors: &mut 
     }
 }
 
-fn check_rootfs_size(path: &Path, size: u64, errors: &mut Vec<String>) {
+fn check_rootfs_size(path: &Path, size: u64, errors: &mut Vec<String>) -> Option<usize> {
     if size == 0 {
         errors.push(format!("rootfs is empty: {}", path.display()));
-        return;
+        return None;
     }
 
     let block_size = nbd_cow::BLOCK_SIZE as u64;
@@ -175,6 +174,32 @@ fn check_rootfs_size(path: &Path, size: u64, errors: &mut Vec<String>) {
             "rootfs size {size} is not a multiple of {block_size} bytes: {}",
             path.display()
         ));
+        return None;
+    }
+
+    match usize::try_from(size / block_size) {
+        Ok(blocks) => Some(blocks),
+        Err(_) => {
+            errors.push(format!(
+                "rootfs block count is too large: {}",
+                path.display()
+            ));
+            None
+        }
+    }
+}
+
+fn check_bitmap_file(
+    path: &Path,
+    label: &str,
+    expected_blocks: Option<usize>,
+    errors: &mut Vec<String>,
+) {
+    if check_readable_file(path, label, errors).is_some()
+        && let Some(expected_blocks) = expected_blocks
+        && let Err(e) = nbd_cow::cow::validate_bitmap(path, expected_blocks)
+    {
+        errors.push(format!("{label} is invalid: {}: {e}", path.display()));
     }
 }
 
@@ -257,7 +282,7 @@ mod tests {
             write_sized_file(&snapshot_path, 1);
             write_sized_file(&memory_path, 1);
             write_sized_file(&cow_path, nbd_cow::BLOCK_SIZE as u64);
-            write_sized_file(&bitmap_path, 8);
+            write_bitmap_file(&bitmap_path, 1, 0);
 
             Self {
                 _dir: dir,
@@ -313,6 +338,13 @@ mod tests {
         let file = File::create(path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
         file.set_len(size)
             .unwrap_or_else(|e| panic!("set size {}: {e}", path.display()));
+    }
+
+    fn write_bitmap_file(path: &Path, blocks: u64, word: u64) {
+        let mut data = blocks.to_le_bytes().to_vec();
+        data.extend_from_slice(&word.to_le_bytes());
+        std::fs::write(path, data)
+            .unwrap_or_else(|e| panic!("write bitmap {}: {e}", path.display()));
     }
 
     fn replace_file_with_dir(path: &Path) {
@@ -467,6 +499,15 @@ mod tests {
     }
 
     #[test]
+    fn valid_restore_artifacts_pass() {
+        let fixture = ArtifactFixture::new();
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_no_errors(&errors);
+    }
+
+    #[test]
     fn artifact_prerequisites_reject_directory_artifacts() {
         let fixture = ArtifactFixture::new();
         let bitmap_path = fixture.bitmap_path();
@@ -588,5 +629,27 @@ mod tests {
         assert_no_errors(&fresh_errors);
         assert_no_errors(&snapshot_create_errors);
         assert_error_contains(&restore_errors, "snapshot cow bitmap not found");
+    }
+
+    #[test]
+    fn restore_mode_rejects_mismatched_snapshot_cow_bitmap() {
+        let fixture = ArtifactFixture::new();
+        write_bitmap_file(&fixture.bitmap_path(), 2, 0);
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_error_contains(&errors, "snapshot cow bitmap is invalid");
+        assert_error_contains(&errors, "bitmap block count mismatch");
+    }
+
+    #[test]
+    fn restore_mode_rejects_truncated_snapshot_cow_bitmap() {
+        let fixture = ArtifactFixture::new();
+        std::fs::write(fixture.bitmap_path(), 1u64.to_le_bytes()).expect("write bitmap");
+
+        let errors = artifact_errors(fixture.restore_config());
+
+        assert_error_contains(&errors, "snapshot cow bitmap is invalid");
+        assert_error_contains(&errors, "bitmap data truncated");
     }
 }
