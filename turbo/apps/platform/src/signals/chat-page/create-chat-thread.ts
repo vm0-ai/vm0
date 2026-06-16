@@ -664,13 +664,11 @@ function createComputerUseHostSelection(
         dirty: true,
       });
 
-      try {
-        await set(
-          dataSource.patchComputerUseHost$,
-          { threadId, computerUseHostId },
-          signal,
-        );
-      } catch (error) {
+      await set(
+        dataSource.patchComputerUseHost$,
+        { threadId, computerUseHostId },
+        signal,
+      ).catch((error: unknown) => {
         if (!signal.aborted) {
           set(internalUserOverride$, {
             kind: "set",
@@ -679,7 +677,7 @@ function createComputerUseHostSelection(
           });
         }
         throw error;
-      }
+      });
       signal.throwIfAborted();
       set(internalUserOverride$, {
         kind: "set",
@@ -2429,9 +2427,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps,
-    QueueMessageDeps,
-    RecallMessageDeps {}
+  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
