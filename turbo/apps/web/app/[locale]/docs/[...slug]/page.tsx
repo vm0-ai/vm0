@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../../lib/static-assets";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -77,7 +78,7 @@ export async function generateMetadata({
       url: `${getDocsBaseUrl()}/${locale}/docs/${page.path}`,
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: page.title,
@@ -88,7 +89,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: page.title,
       description: page.description,
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },
@@ -157,7 +158,7 @@ export default async function DocsPage({
       name: "VM0",
       logo: {
         "@type": "ImageObject",
-        url: "https://www.vm0.ai/assets/vm0-logo.svg",
+        url: webStaticAssetUrl("assets/vm0-logo.svg"),
       },
     },
   };

@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import type { Metadata } from "next";
 import { Fraunces } from "next/font/google";
 import type { Locale } from "../../../i18n";
@@ -40,7 +41,7 @@ export async function generateMetadata({
       type: "website",
       images: [
         {
-          url: "/og-image.png",
+          url: webStaticAssetUrl("og-image.png"),
           width: 1200,
           height: 630,
           alt: "VM0 Illustration",
@@ -51,7 +52,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title,
       description,
-      images: ["/og-image.png"],
+      images: [webStaticAssetUrl("og-image.png")],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },

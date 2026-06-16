@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -331,7 +332,7 @@ a[class*="resendCode"] {
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
   background-color: transparent !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("/checkmark-primary.svg") !important;
+  background-image: url("${webStaticAssetUrl("checkmark-primary.svg")}") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: 70% !important;
@@ -422,22 +423,24 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <Image
             src={
               theme === "dark"
-                ? "/assets/vm0-logo.svg"
-                : "/assets/vm0-logo-dark.svg"
+                ? webStaticAssetUrl("assets/vm0-logo.svg")
+                : webStaticAssetUrl("assets/vm0-logo-dark.svg")
             }
             alt="VM0"
             width={82}
             height={20}
             priority
             className="dark:hidden"
+            unoptimized
           />
           <Image
-            src="/assets/vm0-logo.svg"
+            src={webStaticAssetUrl("assets/vm0-logo.svg")}
             alt="VM0"
             width={82}
             height={20}
             priority
             className="hidden dark:block"
+            unoptimized
           />
         </Link>
 

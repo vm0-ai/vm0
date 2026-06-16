@@ -132,6 +132,7 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
         width={26}
         height={26}
         className="nav-popover-icon"
+        unoptimized
       />
       <span className="nav-popover-text">
         <span className="nav-popover-title-row">

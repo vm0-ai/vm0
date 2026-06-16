@@ -29,6 +29,7 @@ function ConnectorBadge({ connector }: { connector: ConnectorRef }) {
         width={20}
         height={20}
         className={`uc-connector-icon${connector.dark ? " landing-icon-invert" : ""}${connector.looseViewBox ? " scale-[2.2]" : ""}`}
+        unoptimized
       />
     </span>
   );
@@ -71,6 +72,7 @@ function ScreenshotCarousel({
           height={450}
           className="uc-screenshot-img"
           priority
+          unoptimized
         />
       </div>
       {showControls && (
@@ -287,6 +289,7 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                               width={32}
                               height={32}
                               className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
+                              unoptimized
                             />
                           </div>
                         )}

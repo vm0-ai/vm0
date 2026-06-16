@@ -161,6 +161,7 @@ runs:
           user_artifacts_access_key_id="$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)"
           user_artifacts_secret_access_key="$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)"
           public_artifacts_base_url="$(repo_var PUBLIC_ARTIFACTS_BASE_URL)"
+          static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_PROD)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.vm0.io")"
           atom_url="$(repo_var ATOM_URL)"
           machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         else
@@ -180,6 +181,7 @@ runs:
           user_artifacts_access_key_id="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)" "$(repo_secret R2_ACCESS_KEY_ID)")"
           user_artifacts_secret_access_key="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)" "$(repo_secret R2_SECRET_ACCESS_KEY)")"
           public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL_DEV)" "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm7.io")"
+          static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_DEV)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.vm7.io")"
           atom_url="https://tunnel-yuma-atom-api.vm7.ai"
           machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         fi
@@ -220,6 +222,10 @@ runs:
         add_env R2_USER_ARTIFACTS_ACCESS_KEY_ID "$user_artifacts_access_key_id"
         add_env R2_USER_ARTIFACTS_SECRET_ACCESS_KEY "$user_artifacts_secret_access_key"
         add_env PUBLIC_ARTIFACTS_BASE_URL "$public_artifacts_base_url"
+        add_env STATIC_ASSETS_BASE_URL "$static_assets_base_url"
+        if [[ "$INPUT_APP" == "web" ]]; then
+          add_env NEXT_PUBLIC_STATIC_ASSETS_BASE_URL "$static_assets_base_url"
+        fi
         add_var R2_HOSTED_SITES_BUCKET_NAME R2_HOSTED_SITES_BUCKET_NAME
         add_secret R2_HOSTED_SITES_ACCESS_KEY_ID R2_HOSTED_SITES_ACCESS_KEY_ID
         add_secret R2_HOSTED_SITES_SECRET_ACCESS_KEY R2_HOSTED_SITES_SECRET_ACCESS_KEY

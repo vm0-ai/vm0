@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
@@ -25,10 +26,9 @@ const ROLE_FILTERS: RoleFilter[] = [
   "compliance",
 ];
 
-const AVATAR_BASE = "/assets/avatar";
-
 function AgentAvatar({ config, size }: { config: AvatarConfig; size: number }) {
   const cls = "absolute inset-0 h-full w-full";
+  const avatarBase = webStaticAssetUrl("assets/avatar");
   return (
     <div
       className="relative overflow-hidden rounded-full"
@@ -37,19 +37,19 @@ function AgentAvatar({ config, size }: { config: AvatarConfig; size: number }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt=""
-        src={`${AVATAR_BASE}/head-r${config.rotation}-s${config.skin}.png`}
+        src={`${avatarBase}/head-r${config.rotation}-s${config.skin}.png`}
         className={cls}
       />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt=""
-        src={`${AVATAR_BASE}/hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.png`}
+        src={`${avatarBase}/hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.png`}
         className={cls}
       />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt=""
-        src={`${AVATAR_BASE}/face-r${config.rotation}-f${config.expression}-${config.intensity}.png`}
+        src={`${avatarBase}/face-r${config.rotation}-f${config.expression}-${config.intensity}.png`}
         className={cls}
       />
     </div>
@@ -70,6 +70,7 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
         width={20}
         height={20}
         className={`object-contain${connector.dark ? " landing-icon-invert" : ""}${connector.looseViewBox ? " scale-[2.2]" : ""}`}
+        unoptimized
       />
     </div>
   );

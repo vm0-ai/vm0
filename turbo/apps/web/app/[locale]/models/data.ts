@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../lib/static-assets";
 import {
   VM0_MODEL_CREDIT_MULTIPLIER,
   type SupportedRunModel,
@@ -22,13 +23,13 @@ import {
 // ---------------------------------------------------------------------------
 
 const VENDOR_ICONS: Readonly<Record<string, string>> = {
-  Anthropic: "/assets/connectors/anthropic.svg",
-  OpenAI: "/assets/connectors/openai.svg",
-  Google: "/assets/connectors/gemini.svg",
-  "Z.AI": "/assets/connectors/chatglm.svg",
-  Moonshot: "/assets/connectors/kimi.svg",
-  DeepSeek: "/assets/connectors/deepseek.svg",
-  MiniMax: "/assets/connectors/minimax.svg",
+  Anthropic: webStaticAssetUrl("assets/connectors/anthropic.svg"),
+  OpenAI: webStaticAssetUrl("assets/connectors/openai.svg"),
+  Google: webStaticAssetUrl("assets/connectors/gemini.svg"),
+  "Z.AI": webStaticAssetUrl("assets/connectors/chatglm.svg"),
+  Moonshot: webStaticAssetUrl("assets/connectors/kimi.svg"),
+  DeepSeek: webStaticAssetUrl("assets/connectors/deepseek.svg"),
+  MiniMax: webStaticAssetUrl("assets/connectors/minimax.svg"),
 };
 
 export function vendorIconPath(vendor: string): string | null {
