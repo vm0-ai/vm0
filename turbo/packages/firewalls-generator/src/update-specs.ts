@@ -23,6 +23,7 @@ import {
   CLOUDFLARE_OAUTH_SCOPES_URL,
   CLOUDFLARE_OPENAPI_URL,
 } from "./cloudflare-sources";
+import { CLERK_OPENAPI_URL } from "./clerk";
 import {
   GOOGLE_CLOUD_DISCOVERY_URLS,
   GOOGLE_CLOUD_PERMISSION_DOC_URLS,
@@ -286,9 +287,7 @@ const cloudflareUpdater: Updater = {
 
 const UPDATERS: Updater[] = [
   // Static generators
-  staticUpdater("clerk", [
-    "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml",
-  ]),
+  staticUpdater("clerk", [CLERK_OPENAPI_URL]),
   cloudflareUpdater,
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",
