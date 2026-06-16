@@ -208,9 +208,6 @@ async fn unresolved_firecracker_resolution_if_present(pid: u32) -> FirecrackerCa
         return FirecrackerCandidateResolution::NotPresent;
     };
     let argv = read_cmdline(pid).await;
-    if !should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
-        return FirecrackerCandidateResolution::NotPresent;
-    }
     unresolved_firecracker_resolution(pid, &stat, argv.as_deref(), read_ppid(pid).await)
 }
 
