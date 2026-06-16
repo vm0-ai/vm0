@@ -208,14 +208,13 @@ fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
 async fn load_cli_service_secrets(
     cli: &Cli,
 ) -> error::RunnerResult<service_secrets::ServiceSecrets> {
-    let service_secrets = match &cli.command {
-        Command::Start(args) => {
-            service_secrets::load_start_service_secrets(args.service_secrets_file.as_deref())
-                .await?
-        }
-        _ => service_secrets::ServiceSecrets::default(),
-    };
-    Ok(service_secrets.with_env_fallback())
+    match &cli.command {
+        Command::Start(args) => match args.service_secrets_file.as_deref() {
+            Some(path) => service_secrets::load_start_service_secrets(Some(path)).await,
+            None => Ok(service_secrets::ServiceSecrets::default().with_env_fallback()),
+        },
+        _ => Ok(service_secrets::ServiceSecrets::default().with_env_fallback()),
+    }
 }
 
 #[tokio::main]
@@ -235,8 +234,9 @@ async fn main() -> ExitCode {
     };
 
     // Initialize Sentry panic reporting after CLI parsing so `runner start`
-    // can source service DSNs from --service-secrets-file. Disabled (zero
-    // overhead) when neither the service secret nor SENTRY_DSN is set.
+    // can source service DSNs from --service-secrets-file. When a service
+    // secrets file is present, it is authoritative; direct/non-service runs
+    // still use process-env fallback.
     let _sentry_guard = sentry::init((
         service_secrets.sentry_dsn().unwrap_or_default().to_string(),
         sentry::ClientOptions {
@@ -248,7 +248,7 @@ async fn main() -> ExitCode {
     ));
 
     // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
-    // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
+    // the selected service-secret/env source lacks token or dataset suffix.
     let (axiom_layer, axiom_guard) = match axiom_layer::init_with_values(
         service_secrets.axiom_token_telemetry().map(str::to_owned),
         service_secrets.axiom_dataset_suffix().map(str::to_owned),
@@ -328,6 +328,57 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    use tokio::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+    const SERVICE_SECRET_ENV_KEYS: &[&str] = &[
+        "SENTRY_DSN",
+        "AXIOM_TOKEN_TELEMETRY",
+        "AXIOM_DATASET_SUFFIX",
+        "VERCEL_AUTOMATION_BYPASS_SECRET",
+    ];
+
+    struct EnvRestore {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn set(vars: &[(&'static str, &str)]) -> Self {
+            let saved = SERVICE_SECRET_ENV_KEYS
+                .iter()
+                .map(|key| (*key, std::env::var(key).ok()))
+                .collect();
+
+            // SAFETY: tests that mutate these process-wide environment keys
+            // hold ENV_LOCK for the full lifetime of EnvRestore.
+            unsafe {
+                for key in SERVICE_SECRET_ENV_KEYS {
+                    std::env::remove_var(key);
+                }
+                for (key, value) in vars {
+                    std::env::set_var(key, value);
+                }
+            }
+
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            // SAFETY: tests that mutate these process-wide environment keys
+            // hold ENV_LOCK for the full lifetime of EnvRestore.
+            unsafe {
+                for (key, value) in &self.saved {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn sanitize_name_passthrough() {
         assert_eq!(sanitize_name("my-runner_01"), "my-runner_01");
@@ -383,6 +434,67 @@ mod tests {
         assert!(
             Cli::try_parse_from(["runner", "gc-workspace-image-cache", "--dry-run"]).is_err(),
             "old top-level gc-workspace-image-cache command should not be accepted"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_with_service_secrets_file_does_not_fall_back_to_env() {
+        let _guard = ENV_LOCK.lock().await;
+        let _env = EnvRestore::set(&[
+            ("SENTRY_DSN", "env-sentry"),
+            ("AXIOM_TOKEN_TELEMETRY", "env-token"),
+            ("AXIOM_DATASET_SUFFIX", "prod"),
+            ("VERCEL_AUTOMATION_BYPASS_SECRET", "env-bypass"),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let service_secrets_file = dir.path().join("service-secrets.env");
+        tokio::fs::write(
+            &service_secrets_file,
+            "VERCEL_AUTOMATION_BYPASS_SECRET=file-bypass\n",
+        )
+        .await
+        .unwrap();
+
+        let cli = Cli::try_parse_from([
+            "runner",
+            "start",
+            "--config",
+            "/tmp/runner.yaml",
+            "--service-secrets-file",
+            &service_secrets_file.display().to_string(),
+        ])
+        .unwrap();
+
+        let secrets = load_cli_service_secrets(&cli).await.unwrap();
+
+        assert_eq!(secrets.sentry_dsn(), None);
+        assert_eq!(secrets.axiom_token_telemetry(), None);
+        assert_eq!(secrets.axiom_dataset_suffix(), None);
+        assert_eq!(
+            secrets.vercel_automation_bypass_secret(),
+            Some("file-bypass")
+        );
+    }
+
+    #[tokio::test]
+    async fn start_without_service_secrets_file_uses_env_fallback() {
+        let _guard = ENV_LOCK.lock().await;
+        let _env = EnvRestore::set(&[
+            ("SENTRY_DSN", "env-sentry"),
+            ("AXIOM_TOKEN_TELEMETRY", "env-token"),
+            ("AXIOM_DATASET_SUFFIX", "prod"),
+            ("VERCEL_AUTOMATION_BYPASS_SECRET", "env-bypass"),
+        ]);
+        let cli = Cli::try_parse_from(["runner", "start", "--config", "/tmp/runner.yaml"]).unwrap();
+
+        let secrets = load_cli_service_secrets(&cli).await.unwrap();
+
+        assert_eq!(secrets.sentry_dsn(), Some("env-sentry"));
+        assert_eq!(secrets.axiom_token_telemetry(), Some("env-token"));
+        assert_eq!(secrets.axiom_dataset_suffix(), Some("prod"));
+        assert_eq!(
+            secrets.vercel_automation_bypass_secret(),
+            Some("env-bypass")
         );
     }
 }
