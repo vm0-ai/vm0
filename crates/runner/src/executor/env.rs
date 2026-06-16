@@ -6,8 +6,8 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use super::session_restore::canonical_codex_thread_id;
 use super::storage::format_guest_exec_failure;
 use super::{
-    DEFAULT_EXEC_TIMEOUT, GUEST_AGENT_TUNING_ENV_KEYS, GUEST_USER_ENV_DIR_NAME,
-    GUEST_USER_ENV_FILENAME, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path,
+    DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
+    RunnerResult, guest_runtime_dir, guest_runtime_path,
 };
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -489,7 +489,7 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in GUEST_AGENT_TUNING_ENV_KEYS {
+    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
         if let Some(value) = user_env.get(*key) {
             env.insert((*key).into(), value.clone());
         }
