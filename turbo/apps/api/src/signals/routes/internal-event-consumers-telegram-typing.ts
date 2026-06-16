@@ -18,6 +18,7 @@ import {
 } from "../external/telegram-official";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { internalRunCallbackKindForRecord } from "../services/internal-run-callback";
 import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
@@ -53,6 +54,7 @@ const refreshTelegramTypingForRun$ = command(
     const callbacks = await db
       .select({
         url: agentRunCallbacks.url,
+        internalKind: agentRunCallbacks.internalKind,
         payload: agentRunCallbacks.payload,
       })
       .from(agentRunCallbacks)
@@ -65,7 +67,7 @@ const refreshTelegramTypingForRun$ = command(
 
     const targets = new Map<string, TelegramTypingTarget>();
     for (const callback of callbacks) {
-      if (!callback.url?.endsWith("/api/internal/callbacks/telegram")) {
+      if (internalRunCallbackKindForRecord(callback) !== "telegram") {
         continue;
       }
       const target = parseTelegramTypingTarget(callback.payload);

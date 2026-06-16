@@ -4,6 +4,7 @@ export const internalRunCallbackKinds = [
   "agent",
   "github:issues",
   "slack:org",
+  "telegram",
   "trigger:cron",
   "trigger:loop",
 ] as const;
@@ -37,6 +38,7 @@ function isInternalRunCallbackKind(
     case "agent":
     case "github:issues":
     case "slack:org":
+    case "telegram":
     case "trigger:cron":
     case "trigger:loop": {
       return true;
@@ -73,6 +75,9 @@ function legacyInternalRunCallbackKind(
     }
     case "/api/internal/callbacks/slack/org": {
       return "slack:org";
+    }
+    case "/api/internal/callbacks/telegram": {
+      return "telegram";
     }
     case "/api/internal/callbacks/trigger/cron": {
       return "trigger:cron";

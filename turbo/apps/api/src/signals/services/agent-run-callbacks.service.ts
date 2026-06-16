@@ -12,6 +12,7 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
 import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
+import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -69,6 +70,19 @@ export const dispatchProgressCallbacks$ = command(
         if (internalKind === "slack:org") {
           await set(
             handleSlackOrgInternalCallback$,
+            {
+              callbackId: callback.id,
+              runId,
+              status: "progress",
+              payload: callback.payload,
+            },
+            signal,
+          );
+          return;
+        }
+        if (internalKind === "telegram") {
+          await set(
+            handleTelegramInternalCallback$,
             {
               callbackId: callback.id,
               runId,

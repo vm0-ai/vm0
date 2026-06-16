@@ -32,7 +32,6 @@ import {
   escapeHtml,
 } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -1753,7 +1752,7 @@ const runAgentForTelegram$ = command(
         selectedModelOverride: args.modelRoute?.selectedModel,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/telegram`,
+            internalKind: "telegram",
             secret: generateCallbackSecret(),
             payload: args.callbackPayload,
           },

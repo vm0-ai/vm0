@@ -175,6 +175,10 @@ async function waitForExpectation(assertion: () => void): Promise<void> {
 }
 
 async function readSlackOrgCallback(runId: string) {
+  return await readRunCallback(runId);
+}
+
+async function readRunCallback(runId: string) {
   const [callback] = await db()
     .select({
       url: agentRunCallbacks.url,
@@ -3227,12 +3231,6 @@ describe("INT-02: Telegram integration", () => {
         },
       ),
     );
-    // Terminal dispatch of the run's Telegram callback settles its row
-    // (capture answers 500) instead of hitting an unhandled MSW route.
-    webhooks.captureInternalCallbackDeliveries(
-      "/api/internal/callbacks/telegram",
-    );
-
     context.mocks.telegram.getMe.mockResolvedValue({
       id: typingBotId,
       username: "bdd_typing_bot",
@@ -3304,6 +3302,16 @@ describe("INT-02: Telegram integration", () => {
       runnerGroup,
       "Expected the Telegram DM to dispatch a run",
     );
+    await expect
+      .poll(async () => {
+        return await readRunCallback(runId);
+      })
+      .toMatchObject({
+        url: null,
+        internalKind: "telegram",
+        status: "pending",
+        attempts: 0,
+      });
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
     }

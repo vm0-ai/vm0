@@ -14,7 +14,6 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { env } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import {
   buildTelegramErrorResponse,
@@ -32,6 +31,10 @@ import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 const L = logger("TelegramDispatch");
 const PENDING_TELEGRAM_USER_ID = "pending";
 const MAX_CONTEXT_MESSAGES = 10;
+
+function createCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
+}
 
 interface TelegramUser {
   readonly id: number;
@@ -910,8 +913,8 @@ const runAgentForTelegram$ = command(
         userInfoExtras: args.userInfoExtras,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/telegram`,
-            secret: randomBytes(32).toString("hex"),
+            internalKind: "telegram",
+            secret: createCallbackSecret(),
             payload: args.callbackPayload,
           },
         ],
