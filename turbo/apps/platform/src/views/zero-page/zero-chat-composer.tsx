@@ -1151,7 +1151,7 @@ function TemplatePreview({
 
   return (
     <div
-      className="relative h-44 shrink-0 overflow-hidden bg-muted"
+      className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         preloadPresentationPreviewImages(slideImages);
         detach(
@@ -1429,7 +1429,7 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
