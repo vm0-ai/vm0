@@ -2005,6 +2005,162 @@ jobs:
           echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "Total capacity across all hosts: ${TOTAL}"
 
+  runner-local-submit-env-smoke:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: runner-local-submit-env-smoke-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, deploy-runner-prepare]
+    if: |
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test local submit environment forwarding
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
+          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
+        run: |
+          set -euo pipefail
+
+          HOST="$(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | head -n 1)"
+          if [ -z "$HOST" ]; then
+            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
+            exit 1
+          fi
+
+          ROOTFS_HASH="$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h] // empty')"
+          SNAPSHOT_HASH="$(echo "$SNAPSHOT_HASH_MAP" | jq -r --arg h "$HOST" '.[$h] // empty')"
+          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+            echo "::error::No rootfs/snapshot hash found for ${HOST}"
+            exit 1
+          fi
+
+          REMOTE="${METAL_USER}@${HOST}"
+          ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$ROOTFS_HASH" \
+            "$SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          BIN_DIR=$1
+          JOB_REF=$2
+          ROOTFS_HASH=$3
+          SNAPSHOT_HASH=$4
+          OFFICIAL_RUNNER_SECRET=$5
+
+          SVC="${JOB_REF}-local-env"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
+          GROUP="vm0/local-env-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-env-${JOB_REF}"
+
+          fail() {
+            echo "FAIL: $1" >&2
+            exit 1
+          }
+
+          print_service_logs() {
+            echo "--- ${SVC} service logs ---"
+            sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 200 || true
+          }
+
+          cleanup() {
+            echo "--- Cleanup local env smoke runner ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            sudo rm -rf "$GROUP_DIR"
+          }
+          trap cleanup EXIT
+
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          sudo rm -rf "$GROUP_DIR"
+
+          echo "--- Generating local runner config ---"
+          sudo "$BIN_DIR/runner" config \
+            --profile vm0/default \
+            --rootfs-hash "$ROOTFS_HASH" \
+            --snapshot-hash "$SNAPSHOT_HASH" \
+            --name "$SVC" \
+            --group "$GROUP" \
+            --runner-dirname "$SVC" \
+            --max-concurrent 1 \
+            --api-url https://not-a-real-server.test \
+            --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "--- Starting local runner ---"
+          sudo "$BIN_DIR/runner" service start \
+            --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" \
+            --local \
+            --env USE_MOCK_CLAUDE=true \
+            --env USE_MOCK_CODEX=true
+
+          PROMPT="$(cat <<'PROMPT_SCRIPT'
+          set -euo pipefail
+          printf "LOCAL_SUBMIT_VISIBLE=%s\n" "${LOCAL_SUBMIT_VISIBLE:-missing}"
+          printf "LOCAL_SUBMIT_EMPTY=%s\n" "${LOCAL_SUBMIT_EMPTY:-}"
+          printf "VM0_STUCK_TOOL_TIMEOUT_SECS=%s\n" "${VM0_STUCK_TOOL_TIMEOUT_SECS:-missing}"
+          printf "ANTHROPIC_API_KEY=%s\n" "${ANTHROPIC_API_KEY:-missing}"
+          PROMPT_SCRIPT
+          )"
+
+          echo "--- Submitting env smoke job ---"
+          if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+            --group "$GROUP" \
+            --timeout 180 \
+            --env LOCAL_SUBMIT_VISIBLE=visible-from-env \
+            --env LOCAL_SUBMIT_EMPTY= \
+            --env VM0_STUCK_TOOL_TIMEOUT_SECS=3 \
+            --secret-env ANTHROPIC_API_KEY=sk-local-submit-env-smoke \
+            --prompt "$PROMPT" 2>&1); then
+            echo "$SUBMIT_OUTPUT"
+            print_service_logs
+            fail "local submit env smoke failed"
+          fi
+          echo "$SUBMIT_OUTPUT"
+
+          RUN_ID="$(echo "$SUBMIT_OUTPUT" | jq -r '.run_id // empty')"
+          [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
+          STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
+
+          for _ in $(seq 1 20); do
+            if sudo test -s "$STREAM_LOG" \
+              && sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG"; then
+              break
+            fi
+            sleep 1
+          done
+
+          echo "--- Forwarded env lines from guest stdout ---"
+          sudo grep -E 'LOCAL_SUBMIT_VISIBLE=|LOCAL_SUBMIT_EMPTY=|VM0_STUCK_TOOL_TIMEOUT_SECS=|ANTHROPIC_API_KEY=' "$STREAM_LOG" || true
+
+          sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG" \
+            || fail "ordinary --env value was not visible to the guest CLI"
+          sudo grep -q 'LOCAL_SUBMIT_EMPTY=' "$STREAM_LOG" \
+            || fail "empty --env value was not visible to the guest CLI"
+          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=3' "$STREAM_LOG" \
+            || fail "guest-agent tuning env was not visible to the guest CLI"
+          sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" \
+            || fail "--secret-env value was not visible to the guest CLI"
+
+          echo "PASS: local submit forwarded env and secret-env to the guest CLI"
+          REMOTE_SCRIPT
+
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)
   e2e-runner-bootstrap:
@@ -2097,6 +2253,7 @@ jobs:
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
+        runner-local-submit-env-smoke,
         e2e-runner-bootstrap,
       ]
     if: |
@@ -2355,6 +2512,7 @@ jobs:
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
+      - runner-local-submit-env-smoke
       - e2e-runner-bootstrap
       - cli-e2e-03-runner
       - lighthouse-web
@@ -2438,6 +2596,7 @@ jobs:
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "runner-local-submit-env-smoke" "${{ needs.runner-local-submit-env-smoke.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           # Informational: any result is acceptable (not a merge blocker)
