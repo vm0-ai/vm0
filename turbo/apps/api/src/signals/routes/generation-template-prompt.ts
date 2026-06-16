@@ -59,6 +59,30 @@ export function buildGenerationTemplatePrompt(
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
 }
 
+// Shared framing for every artifact-template block, kept in one place so the
+// three builders cannot drift. It balances two jobs that pull in opposite
+// directions:
+//   1. The user *deliberately* selected this template — a strong signal, so it is
+//      the default style for that artifact, and the agent must not re-ask for an
+//      already-selected style (vm0-ai/vm0#17525).
+//   2. The selection must not hijack unrelated turns. This block is injected on
+//      every run while the template is thread-sticky (see resolveThread-
+//      GenerationTemplatePrompt), including messages that have nothing to do with
+//      generation, so the "does not force you to generate" boundary is load-
+//      bearing, not decorative.
+// State the facts and hand back the decision, rather than naming a step ("resolve
+// from the registry") without the facts needed to act on it.
+function templateFraming(artifactNoun: string): readonly string[] {
+  return [
+    "# Artifact Template Context",
+    "",
+    `- The user deliberately selected this artifact template for the chat — treat it as the default style for any ${artifactNoun} you produce here, including in follow-up messages.`,
+    `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
+    "- Other artifact templates, files, or attachments may also be present.",
+    "",
+  ];
+}
+
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
@@ -86,18 +110,18 @@ function buildPresentationGenerationTemplatePrompt(
   return {
     status: "resolved",
     prompt: [
-      "# Generation Template",
-      "Use the following registered resources for this run.",
-      `Type: ${generationTemplate.type}`,
-      `Design system ID: ${designSystem.id}`,
-      `Design system name: ${designSystem.name}`,
-      `Template ID: ${template.id}`,
-      `Template name: ${template.name}`,
+      ...templateFraming("a presentation"),
+      "Selected presentation style:",
+      `- Artifact type: ${generationTemplate.type}`,
+      `- Design system: ${designSystem.name} (${designSystem.id})`,
+      `- Design system description: ${designSystem.description}`,
+      `- Template: ${template.name} (${template.id})`,
+      `- Template description: ${template.description}`,
       "",
-      "Instructions:",
-      "- Resolve the design system and template from the resource registry.",
-      "- Apply them as generation constraints for the artifact.",
-      "- Keep the user's prompt as the source of the requested content.",
+      "When you produce a presentation from the user's request:",
+      `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
+      "- Follow the returned authoring packet. For a static HTML presentation, publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
+      "- If a flag above no longer applies, run `zero generate presentation -h` to discover the current options.",
     ].join("\n"),
   };
 }
@@ -120,24 +144,24 @@ function buildVideoGenerationTemplatePrompt(
   return {
     status: "resolved",
     prompt: [
-      "# Video Template Preset",
-      `- Preset ID: ${preset.id}`,
-      `- Preset name: ${preset.nameEn}`,
+      ...templateFraming("a video"),
+      "Selected video style preset:",
+      "- Artifact type: video",
+      `- Preset: ${preset.nameEn} (${preset.id})`,
+      `- Visual tone: ${describeSlug(preset.dimensions.visualTone)}`,
+      `- Camera style: ${describeSlug(preset.dimensions.cameraStyle)}`,
+      `- Editing pace: ${describeSlug(preset.dimensions.editingPace)}`,
+      `- Narrative mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
+      `- Production type: ${describeSlug(preset.dimensions.productionType)}`,
+      `- Emotional tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
+      `- Style reference: ${describeSlug(preset.dimensions.styleReference)}`,
+      `- Prompt style notes: ${preset.promptConstraints}`,
       "",
-      "- Apply all dimensions and constraints below as hard generation constraints.",
-      "- Keep the user's prompt as the source of the requested content.",
-      `- Visual Tone: ${describeSlug(preset.dimensions.visualTone)}`,
-      `- Camera Style: ${describeSlug(preset.dimensions.cameraStyle)}`,
-      `- Editing Pace: ${describeSlug(preset.dimensions.editingPace)}`,
-      `- Narrative Mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
-      `- Production Type: ${describeSlug(preset.dimensions.productionType)}`,
-      `- Emotional Tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
-      `- Style Reference: ${describeSlug(preset.dimensions.styleReference)}`,
-      "",
-      `- Style constraints (inject into the video prompt): ${preset.promptConstraints}`,
-      "",
-      `- In the final video prompt, reflect every dimension and constraint above for the style ${preset.nameEn}.`,
-      "- End the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content",
+      "When you produce a video from the user's request:",
+      "- Reflect the style dimensions and prompt notes above in the final video prompt.",
+      "- Always end the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content.",
+      `- Run: zero generate video --provider built-in --prompt "<user request, plus the style dimensions and the safety line above>" — or follow connector guidance when a connector/provider is requested.`,
+      "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
     ].join("\n"),
   };
 }
@@ -152,18 +176,18 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
 
-  // Context, not control: state the facts (which style is attached, that it
-  // persists, how it reaches image generation) and let the agent act on them.
-  // Replaces the earlier "Resolve the image style from the resource registry"
-  // instruction, which named a step without the facts to do it, so when unsure
-  // the agent re-asked for an already-selected style (vm0-ai/vm0#17525).
   return {
     status: "resolved",
     prompt: [
-      "# Attached illustration style",
+      ...templateFraming("an illustration or image"),
+      "Selected illustration style:",
+      "- Artifact type: illustration",
+      `- Style: ${imageStyle.name} (${imageStyle.id})`,
+      `- Style description: ${imageStyle.description}`,
       "",
-      `"${imageStyle.name}" (${imageStyle.id}), attached to this chat and persisting across follow-up messages.`,
-      `Apply it with \`zero generate image --style ${imageStyle.id}\`.`,
+      "When you produce an illustration or image from the user's request:",
+      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>"`,
+      "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };
 }
