@@ -315,12 +315,12 @@ Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insi
 
 ### HOOK-01: Signed internal callbacks
 
-Given signed internal callback requests are constructed for agent, chat, schedule, Slack org, Telegram, and GitHub issue flows
+Given signed internal callback requests are constructed for chat, schedule, Slack org, Telegram, and GitHub issue flows
 When valid callback payloads are posted
 Then response bodies and follow-up run/chat/integration/status APIs expose the side effect.
 Then invalid signatures, expired timestamps, malformed payloads, missing callbacks, missing installs, and provider failures return expected responses.
 
-Coverage: `callback-route`, `internal-callbacks-agent`, `internal-callbacks-chat`, `internal-callbacks-trigger`, `internal-callbacks-slack-org`, `internal-callbacks-telegram`, `internal-callbacks-github-issues`.
+Coverage: `callback-route`, `internal-callbacks-chat`, `internal-callbacks-trigger`, `internal-callbacks-slack-org`, `internal-callbacks-telegram`, `internal-callbacks-github-issues`.
 
 ### HOOK-02: External webhooks
 
@@ -543,7 +543,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `zero-chat-messages.test.ts` | CHAT-02/RUN-01/CHAIN-CHAT/FILE-03 chains CM-A..P in `chat-messages.bdd.test.ts` | same |
 | `zero-runs-create.test.ts` (remaining vm0-managed-key, agent-provider-pin, custom-skill-volume, and nested trigger-agent DB-seeded arms deleted and listed below) | RUN-01/02 chains in `run-lifecycle.bdd.test.ts` | targeted RUN-01/02 + docs exception |
 
-| `internal-callbacks-agent.test.ts`, `internal-event-consumers.test.ts`, `internal-event-consumers-telegram-typing.test.ts`; `internal-callbacks-trigger.test.ts` remains alive | HOOK-01 replayed-delivery agent and SCHED-CB reschedule chains, CHAT-02 codex/thread-less extensions, WHCB-04 axiom consumer cases, and the INT-02 typing chain across `run-lifecycle.bdd.test.ts`, `runs-schedules.bdd.test.ts`, `webhooks-callbacks.bdd.test.ts`, `integrations.bdd.test.ts` | same |
+| `agent-run-callback.service.test.ts`, `internal-event-consumers.test.ts`, `internal-event-consumers-telegram-typing.test.ts`; `internal-callbacks-trigger.test.ts` remains alive | Agent callback typed/legacy dispatch coverage in `agent-run-callback.service.test.ts`, SCHED-CB reschedule chains, CHAT-02 codex/thread-less extensions, WHCB-04 axiom consumer cases, and the INT-02 typing chain across `runs-schedules.bdd.test.ts`, `webhooks-callbacks.bdd.test.ts`, `integrations.bdd.test.ts` | same |
 
 | `zero-chat-threads{,-create,-list,-delete,-patch,-mark-read,-messages,-model-selection}.test.ts`, `zero-chat-search.test.ts`, `zero-chat-threads-github-prs.test.ts`, `zero-chat-threads-artifacts.test.ts`, `zero-chat-threads-artifacts-sync.test.ts`, `chat-threads-v1.test.ts` | CHAT-01/03 chains in `chat-threads.bdd.test.ts`, the CHAT-01 mutation chain in `chat-files.bdd.test.ts`, and the CHAT-02 queued-attachment case in `chat-messages.bdd.test.ts`; legacy artifact-row sync arms listed below | targeted CHAT-03 + docs exception |
 | 9 compose legacy files (`agent-composes-*`, `zero-composes-*`) | COMPOSE-01 chains in `composes.bdd.test.ts` plus the lifecycle chain in `auth-org-agents.bdd.test.ts` | same |
