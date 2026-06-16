@@ -477,6 +477,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         } else {
             None
         };
+        let mut resource_diagnostics = None;
         if should_collect_agent_abnormal_exit_diagnostics(
             wait_cancelled,
             &exit,
@@ -493,7 +494,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 &env_diagnostics,
                 &env_key_diagnostics,
             );
-            collect_agent_abnormal_exit_diagnostics(
+            resource_diagnostics = collect_agent_abnormal_exit_diagnostics(
                 sandbox,
                 context.run_id,
                 sandbox.id(),
@@ -519,8 +520,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 t.elapsed(),
                 exit.guest_duration_ms,
             )
+            .with_resource_diagnostics(resource_diagnostics)
         } else {
             ExecutionFailure::new(failure_exit_code, error, failure_diagnostic)
+                .with_resource_diagnostics(resource_diagnostics)
         })
     } else {
         None

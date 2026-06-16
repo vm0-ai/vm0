@@ -23,8 +23,9 @@ use super::super::sandbox_run::{
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
-    NewSandboxDispatch, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
-    SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
+    NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_LIMIT_MARKER,
+    STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job,
+    execute_job_reuse,
 };
 use super::support::{
     CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_storage,
@@ -1199,15 +1200,48 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-agent-binary".to_string(),
+        exit_code: 0,
+        stdout: b"/dev/root       7.8G  7.4G   20K 100% /\n/dev/vdb         16G   24K   15G   1% /home/user/workspace\nMem:            3934        3310         255           0         552         624\n".to_vec(),
+        stderr: Vec::new(),
+    });
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
 
-    let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
-            .await
-            .unwrap();
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
 
-    assert_eq!(exit_code, 126);
-    assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 126);
+    assert_eq!(failure.error, "Agent exited with code 126");
+    let resource_diagnostics = failure
+        .resource_diagnostics
+        .expect("expected resource diagnostics");
+    assert_eq!(
+        resource_diagnostics.failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
+    assert_eq!(resource_diagnostics.guest_root_fs_used_percent, Some(100));
+    assert_eq!(resource_diagnostics.guest_root_fs_available_kb, Some(20));
+    assert_eq!(
+        resource_diagnostics.guest_workspace_fs_used_percent,
+        Some(1)
+    );
+    assert_eq!(resource_diagnostics.guest_memory_available_mb, Some(624));
     let calls = overrides.exec_calls();
     let diagnostic_calls: Vec<&sandbox_mock::ExecCall> = calls
         .iter()
@@ -1235,6 +1269,10 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
             .any(|line| line == "env" || line.starts_with("env ")),
         "diagnostic command must not collect raw environment output"
     );
+    assert!(active_diagnostic_cmd.contains("df -P -k / /home/user/workspace"));
+    assert!(active_diagnostic_cmd.contains("section rootfs-usage"));
+    assert!(active_diagnostic_cmd.contains("du -sxh -- \"$path\""));
+    assert!(!active_diagnostic_cmd.contains("  /home/user/workspace \\"));
     assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
     assert!(call.env_keys.is_empty());
     assert!(call.sudo);

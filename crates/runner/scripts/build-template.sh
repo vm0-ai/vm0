@@ -30,7 +30,7 @@
 #     --debootstrap-dir /path/to/cache \
 #     --debootstrap-lock /path/to/cache/.lock \
 #     --hash <input-hash> \
-#     --rootfs-disk-mb 8192 \
+#     --rootfs-disk-mb 16384 \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail

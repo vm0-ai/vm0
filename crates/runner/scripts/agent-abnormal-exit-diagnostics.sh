@@ -29,6 +29,11 @@ fi
 section resources
 ulimit -a 2>&1
 df -h 2>&1
+if [ -e /home/user/workspace ]; then
+  df -P -k / /home/user/workspace 2>&1
+else
+  df -P -k / 2>&1
+fi
 if command -v free >/dev/null 2>&1; then
   free -m 2>&1
 elif [ -r /proc/meminfo ]; then
@@ -41,6 +46,24 @@ if [ -r /proc/sys/fs/file-nr ]; then
 else
   echo "/proc/sys/fs/file-nr: unavailable"
 fi
+
+section rootfs-usage
+for path in \
+  /home/user \
+  /home/user/.codex \
+  /home/user/.claude \
+  /home/user/.cache \
+  /home/user/.npm \
+  /home/user/.vm0 \
+  /tmp \
+  /var/tmp \
+  /var/log; do
+  if [ -e "$path" ]; then
+    du -sxh -- "$path" 2>&1
+  else
+    echo "$path: missing"
+  fi
+done
 
 section processes
 if command -v ps >/dev/null 2>&1; then
