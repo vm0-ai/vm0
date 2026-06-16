@@ -359,6 +359,13 @@ impl SubmitPlan {
                     "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
                 )));
             }
+            if guest_contracts::env::is_runner_owned_env_key(key)
+                && !guest_contracts::env::is_guest_agent_tuning_env_key(key)
+            {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
+                )));
+            }
             if map.insert(key.to_owned(), value.to_owned()).is_some() {
                 return Err(RunnerError::Config(format!("duplicate {flag} key '{key}'")));
             }
@@ -874,6 +881,7 @@ mod tests {
             "URL=https://example.test/path?a=1&b=2".into(),
             "EMPTY=".into(),
             "MULTILINE=line1\nline2".into(),
+            "VM0_STUCK_TOOL_TIMEOUT_SECS=3".into(),
         ];
         args.secret_env = vec![
             "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
@@ -895,6 +903,12 @@ mod tests {
         assert_eq!(
             environment.get("MULTILINE").map(String::as_str),
             Some("line1\nline2")
+        );
+        assert_eq!(
+            environment
+                .get("VM0_STUCK_TOOL_TIMEOUT_SECS")
+                .map(String::as_str),
+            Some("3")
         );
         assert_eq!(
             secret_environment
@@ -937,6 +951,16 @@ mod tests {
                 Vec::new(),
                 vec!["KEY=with\0nul".to_string()],
                 "NUL characters",
+            ),
+            (
+                vec!["VM0_PROMPT=value".to_string()],
+                Vec::new(),
+                "runner-owned environment variables",
+            ),
+            (
+                Vec::new(),
+                vec!["CLI_AGENT_TYPE=codex".to_string()],
+                "runner-owned environment variables",
             ),
             (
                 vec!["FOO=1".to_string(), "FOO=2".to_string()],

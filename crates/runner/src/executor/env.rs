@@ -529,17 +529,10 @@ pub(super) fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFrame
     }
 }
 
-const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
-    guest_contracts::env::CLI_AGENT_TYPE_ENV,
-    guest_contracts::env::USE_MOCK_CLAUDE_ENV,
-    guest_contracts::env::USE_MOCK_CODEX_ENV,
-    guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-];
-
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     // The entire VM0_ namespace is runner-owned, including retired keys such
     // as VM0_WORKING_DIR. Non-VM0 keys must stay explicit.
-    key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    guest_contracts::env::is_runner_owned_env_key(key)
 }
 
 pub(super) fn scrub_runner_owned_env(env: &mut HashMap<String, String>) {

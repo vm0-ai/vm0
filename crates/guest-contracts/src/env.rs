@@ -34,6 +34,19 @@ pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
 /// boundary.
 pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 
+pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
+    STUCK_TOOL_TIMEOUT_SECS_ENV,
+    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+];
+
+const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+    CLI_AGENT_TYPE_ENV,
+    USE_MOCK_CLAUDE_ENV,
+    USE_MOCK_CODEX_ENV,
+    VERCEL_PROTECTION_BYPASS_ENV,
+];
+
 const USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
 /// Returns whether `key` is supported by vm0 guest shell exec env injection.
@@ -50,6 +63,14 @@ pub fn is_shell_identifier_env_key(key: &str) -> bool {
         return false;
     }
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
+    GUEST_AGENT_TUNING_ENV_KEYS.contains(&key)
+}
+
+pub fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 pub fn sanitize_user_env_key_for_diagnostic(key: &str) -> String {
@@ -115,5 +136,32 @@ mod tests {
         assert!(diagnostic.starts_with(r"BAD\n"));
         assert!(diagnostic.ends_with("..."));
         assert!(!diagnostic.contains('\n'));
+    }
+
+    #[test]
+    fn runner_owned_key_detection_covers_bootstrap_namespaces() {
+        for key in [
+            API_URL_ENV,
+            WORKING_DIR_ENV,
+            CLI_AGENT_TYPE_ENV,
+            USE_MOCK_CLAUDE_ENV,
+            USE_MOCK_CODEX_ENV,
+            VERCEL_PROTECTION_BYPASS_ENV,
+        ] {
+            assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
+        }
+        assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
+    }
+
+    #[test]
+    fn guest_agent_tuning_keys_are_explicit() {
+        assert!(is_guest_agent_tuning_env_key(STUCK_TOOL_TIMEOUT_SECS_ENV));
+        assert!(is_guest_agent_tuning_env_key(
+            POST_RESULT_SIGTERM_GRACE_SECS_ENV
+        ));
+        assert!(is_guest_agent_tuning_env_key(
+            POST_RESULT_SIGKILL_GRACE_SECS_ENV
+        ));
+        assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
     }
 }
