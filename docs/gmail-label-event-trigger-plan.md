@@ -29,8 +29,9 @@ The following requirements come from Google's Gmail and Pub/Sub documentation:
 
 - Gmail push notifications require a Cloud Pub/Sub topic.
 - The topic must be in the same Google developer project that executes the
-  `users.watch` request. For VM0, the OAuth client project observed in Cloud
-  Console is `vm0-web`, so the topic must be under `projects/vm0-web/...`.
+  `users.watch` request. For VM0, the OAuth client project confirmed in Cloud
+  Console is `vm0-ai-488909`, so the topic must be under
+  `projects/vm0-ai-488909/...`.
 - Gmail publishes only a lightweight payload containing `emailAddress` and
   `historyId`; the API must call `users.history.list` with the stored user
   Gmail token to resolve the actual label/message changes.
@@ -59,21 +60,22 @@ References:
 
 ## GCP Resources To Configure
 
-Use the OAuth client project, not the separate `vm0-ai` project.
+Use the OAuth client project, not `vm0-web` or the separate `vm0-ai` project.
 
 Observed project:
 
-- Project ID: `vm0-web`
-- Project number: `656833730258`
-- Existing OAuth clients in this project include the VM0 web OAuth client.
+- Project ID: `vm0-ai-488909`
+- Project number: `662642595011`
+- Existing OAuth clients in this project include the `VM0` and `VM0 TEST` web
+  OAuth clients.
 - Gmail API is enabled in this project.
-- Pub/Sub API was enabled while inspecting the project.
+- Pub/Sub API was enabled while configuring the project.
 
 Required resources:
 
 1. Pub/Sub topic
 
-   - Name: `projects/vm0-web/topics/gmail-label-events`
+   - Name: `projects/vm0-ai-488909/topics/gmail-label-events`
    - IAM: grant `roles/pubsub.publisher` on the topic to:
      `serviceAccount:gmail-api-push@system.gserviceaccount.com`
    - Organization policy note: Gmail push setup requires this Google-managed
@@ -85,7 +87,7 @@ Required resources:
 
 2. Push auth service account
 
-   - Name: `gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`
+   - Name: `gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com`
    - Purpose: OIDC identity used by Pub/Sub push requests to VM0.
    - This service account does not need application data permissions for the
      webhook use case. It is an identity for token signing and verification.
@@ -93,7 +95,7 @@ Required resources:
 3. Pub/Sub service agent permission
 
    - Principal:
-     `service-656833730258@gcp-sa-pubsub.iam.gserviceaccount.com`
+     `service-662642595011@gcp-sa-pubsub.iam.gserviceaccount.com`
    - Grant on the push auth service account:
      `roles/iam.serviceAccountTokenCreator`
 
@@ -101,18 +103,18 @@ Required resources:
 
    - Whoever creates or updates the push subscription needs
      `iam.serviceAccounts.actAs` on
-     `gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`.
+     `gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com`.
    - If a human operator creates it, grant that operator
      `roles/iam.serviceAccountUser` on the push auth service account.
 
 5. Push subscription
 
-   - Name: `projects/vm0-web/subscriptions/gmail-label-events-push`
-   - Topic: `projects/vm0-web/topics/gmail-label-events`
+   - Name: `projects/vm0-ai-488909/subscriptions/gmail-label-events-push`
+   - Topic: `projects/vm0-ai-488909/topics/gmail-label-events`
    - Push endpoint:
      `https://<api-origin>/api/webhooks/gmail`
    - OIDC service account:
-     `gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`
+     `gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com`
    - OIDC audience:
      `https://<api-origin>/api/webhooks/gmail`, or a stable explicit
      audience value stored in env.
@@ -120,13 +122,41 @@ Required resources:
 Do not create the push subscription until the API endpoint URL and expected
 audience are finalized and deployed.
 
+## GCP Configuration Status
+
+The `vm0-ai-488909` project has been partially configured for production push
+delivery:
+
+- Required APIs enabled: Pub/Sub, IAM, and Gmail.
+- Pub/Sub topic created:
+  `projects/vm0-ai-488909/topics/gmail-label-events`.
+- Push auth service account created:
+  `gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com`.
+- Pub/Sub service agent granted token minting permission on the push auth
+  service account:
+  `service-662642595011@gcp-sa-pubsub.iam.gserviceaccount.com` has
+  `roles/iam.serviceAccountTokenCreator`.
+- Push subscription created:
+  `projects/vm0-ai-488909/subscriptions/gmail-label-events-push`.
+- Push endpoint and OIDC audience configured as:
+  `https://api.vm0.ai/api/webhooks/gmail`.
+- Subscription ack deadline configured as 60 seconds.
+
+The remaining GCP blocker is the Gmail system publisher IAM binding. Granting
+`serviceAccount:gmail-api-push@system.gserviceaccount.com` the
+`roles/pubsub.publisher` role on the topic currently fails with
+`constraints/iam.allowedPolicyMemberDomains` because that Google-managed
+service account is not in the permitted organization. An organization policy
+administrator must allow this principal, or provide an equivalent exception, so
+Gmail can publish `users.watch` notifications to the topic.
+
 ## Runtime Environment
 
 Add explicit API env vars for the Gmail push integration:
 
-- `GMAIL_PUBSUB_TOPIC_NAME=projects/vm0-web/topics/gmail-label-events`
+- `GMAIL_PUBSUB_TOPIC_NAME=projects/vm0-ai-488909/topics/gmail-label-events`
 - `GMAIL_PUBSUB_PUSH_AUDIENCE=https://api.vm0.ai/api/webhooks/gmail`
-- `GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=gmail-pubsub-push@vm0-web.iam.gserviceaccount.com`
+- `GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com`
 
 The API does not need a GCP service account to receive Pub/Sub push messages or
 to call `users.watch`. `users.watch` is a Gmail API call made with the user's

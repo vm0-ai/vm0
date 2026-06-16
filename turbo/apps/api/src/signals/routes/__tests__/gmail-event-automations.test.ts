@@ -48,10 +48,10 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const SESSION_HEADERS = { authorization: "Bearer clerk-session" } as const;
-const TOPIC_NAME = "projects/vm0-web/topics/gmail-label-events";
+const TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-label-events";
 const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const PUSH_SERVICE_ACCOUNT =
-  "gmail-pubsub-push@vm0-web.iam.gserviceaccount.com";
+  "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const CRON_SECRET = "gmail-renew-cron-secret";
 const GMAIL_EMAIL = "user@example.test";
 const GMAIL_ACCESS_TOKEN = "gmail-access-token";
@@ -315,7 +315,8 @@ function pubSubPushBody(args: {
         "utf8",
       ).toString("base64"),
     },
-    subscription: "projects/vm0-web/subscriptions/gmail-label-events-push",
+    subscription:
+      "projects/vm0-ai-488909/subscriptions/gmail-label-events-push",
   });
 }
 
