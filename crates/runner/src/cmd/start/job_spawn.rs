@@ -732,6 +732,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                 FailureReason::InsufficientCredits
                     | FailureReason::InvalidApiKey
                     | FailureReason::InvalidCredentials
+                    | FailureReason::ProviderOverloaded
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
             )
@@ -895,13 +896,14 @@ mod tests {
             FailureReason::InsufficientCredits,
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
             let diagnostic = job_failure_diagnostic(Some(reason));
             let failure = executor::ExecutionFailure::new(
                 1,
-                format!("quota failure: {}", reason.as_str()),
+                format!("classified failure: {}", reason.as_str()),
                 Some(diagnostic),
             );
 
@@ -950,6 +952,7 @@ mod tests {
         for reason in [
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {

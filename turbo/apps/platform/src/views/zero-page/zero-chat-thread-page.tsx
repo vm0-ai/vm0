@@ -268,6 +268,7 @@ import {
   navigateToAdjacentThread$,
   scrollCurrentThread$,
   setChatKeyboardScrollRoot$,
+  setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
@@ -2138,9 +2139,11 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
 function ChatThread({
   thread,
   onKeyDown,
+  onFocusFallbackRef,
 }: {
   thread: ChatThreadSignals;
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
+  onFocusFallbackRef?: (el: HTMLElement | null) => void;
 }) {
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -2161,6 +2164,7 @@ function ChatThread({
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
       onKeyDown={handleKeyDown}
+      ref={onFocusFallbackRef}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
@@ -2275,6 +2279,9 @@ function ChatThreadArea({
   presentationEditor: ReactNode;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
+  const setMainThreadKeyboardFocusRef = useSet(
+    setMainChatThreadKeyboardFocusRef$,
+  );
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
@@ -2298,6 +2305,7 @@ function ChatThreadArea({
               key={leftThread.threadId}
               thread={leftThread}
               onKeyDown={makeChatThreadKeyDown(leftThread)}
+              onFocusFallbackRef={setMainThreadKeyboardFocusRef}
             />
           )}
           {rightThread && (

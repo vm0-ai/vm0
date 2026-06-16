@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.32](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.31...sandbox-fc-v0.37.32) (2026-06-16)
+
+
+### Performance Improvements
+
+* offload create rollback filesystem cleanup ([#17845](https://github.com/vm0-ai/vm0/issues/17845)) ([0ad9766](https://github.com/vm0-ai/vm0/commit/0ad97663123ba90c1ecb4f9a175a59ab5c9140ac))
+
 ## [0.37.31](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.30...sandbox-fc-v0.37.31) (2026-06-16)
 
 ## [0.37.30](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.29...sandbox-fc-v0.37.30) (2026-06-15)

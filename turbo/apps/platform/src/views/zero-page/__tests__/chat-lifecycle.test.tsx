@@ -7,6 +7,7 @@ import {
   chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  chatThreadRenameContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
   type ModelSelectionRequest,
@@ -304,6 +305,9 @@ function mockKeyboardNavigationThreads(): void {
       });
     },
   );
+  context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
+    return respond(204);
+  });
 }
 
 function mockActiveRunThread(threadId: string): void {
@@ -3274,6 +3278,65 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
       "Current keyboard thread",
     );
+  });
+
+  it("returns document focus to the main chat thread after rename", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    await fill(
+      within(dialog).getByPlaceholderText("Chat title"),
+      "Renamed keyboard thread",
+    );
+    click(buttonByText("Rename"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Rename chat" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const previousBodyTabIndex = document.body.getAttribute("tabindex");
+    try {
+      document.body.tabIndex = -1;
+      document.body.focus();
+      await waitFor(() => {
+        expect(document.activeElement).toBe(threadRegion);
+      });
+    } finally {
+      if (previousBodyTabIndex === null) {
+        document.body.removeAttribute("tabindex");
+      } else {
+        document.body.setAttribute("tabindex", previousBodyTabIndex);
+      }
+    }
+
+    await user.keyboard("{F2}");
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Rename chat",
+    });
+    expect(
+      within(reopenedDialog).getByPlaceholderText("Chat title"),
+    ).toHaveValue("Current keyboard thread");
   });
 
   it("opens run logs from assistant message actions", async () => {
