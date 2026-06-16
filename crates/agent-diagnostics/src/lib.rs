@@ -13,7 +13,6 @@ pub struct FailureDiagnostic {
     pub cli_exit_code: Option<i32>,
     pub claude_num_turns: Option<u64>,
     pub failure_detail_source: Option<FailureDetailSource>,
-    #[serde(default, deserialize_with = "deserialize_optional_failure_reason")]
     pub failure_reason: Option<FailureReason>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
@@ -128,39 +127,6 @@ impl FailureReason {
             Self::UsageLimit => "usage_limit",
         }
     }
-
-    #[must_use]
-    pub fn from_wire_value(value: &str) -> Option<Self> {
-        match value {
-            "insufficient_credits" => Some(Self::InsufficientCredits),
-            "invalid_api_key" => Some(Self::InvalidApiKey),
-            "invalid_credentials" => Some(Self::InvalidCredentials),
-            "provider_overloaded" => Some(Self::ProviderOverloaded),
-            "reconnect_required" => Some(Self::ReconnectRequired),
-            "usage_limit" => Some(Self::UsageLimit),
-            _ => None,
-        }
-    }
-}
-
-fn deserialize_optional_failure_reason<'de, D>(
-    deserializer: D,
-) -> Result<Option<FailureReason>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum WireValue {
-        String(String),
-        Other(serde::de::IgnoredAny),
-    }
-
-    let value = Option::<WireValue>::deserialize(deserializer)?;
-    Ok(match value {
-        Some(WireValue::String(value)) => FailureReason::from_wire_value(&value),
-        Some(WireValue::Other(_)) | None => None,
-    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,10 +364,6 @@ mod tests {
             FailureReason::ProviderOverloaded.as_str(),
             "provider_overloaded"
         );
-        assert_eq!(
-            FailureReason::from_wire_value("provider_overloaded"),
-            Some(FailureReason::ProviderOverloaded)
-        );
 
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -452,46 +414,6 @@ mod tests {
         let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
 
         assert_eq!(diagnostic.failure_detail_source, None);
-        assert_eq!(diagnostic.failure_reason, None);
-    }
-
-    #[test]
-    fn failure_diagnostic_deserializes_unknown_failure_reason_as_none() {
-        let json = serde_json::json!({
-            "schemaVersion": 1,
-            "failureClass": "cli_nonzero",
-            "framework": "claude_code",
-            "cliExitCode": 1,
-            "claudeNumTurns": 1,
-            "failureReason": "future_reason",
-            "sessionHistoryStatus": "present",
-            "promptShape": "plain",
-            "promptBytes": 13,
-            "firstLineBytes": 13
-        });
-
-        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
-
-        assert_eq!(diagnostic.failure_reason, None);
-    }
-
-    #[test]
-    fn failure_diagnostic_deserializes_non_string_failure_reason_as_none() {
-        let json = serde_json::json!({
-            "schemaVersion": 1,
-            "failureClass": "cli_nonzero",
-            "framework": "claude_code",
-            "cliExitCode": 1,
-            "claudeNumTurns": 1,
-            "failureReason": 123,
-            "sessionHistoryStatus": "present",
-            "promptShape": "plain",
-            "promptBytes": 13,
-            "firstLineBytes": 13
-        });
-
-        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
-
         assert_eq!(diagnostic.failure_reason, None);
     }
 }
