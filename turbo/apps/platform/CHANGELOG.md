@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.461.0](https://github.com/vm0-ai/vm0/compare/app-v0.460.1...app-v0.461.0) (2026-06-16)
+
+
+### Features
+
+* polish chat feedback UI (translucent toolbar + right-facing quote) ([#17911](https://github.com/vm0-ai/vm0/issues/17911)) ([ca385fc](https://github.com/vm0-ai/vm0/commit/ca385fcb75ed970c09132bcf9de8b7a93e415d97))
+* register playful editorial presentation template ([#17919](https://github.com/vm0-ai/vm0/issues/17919)) ([c967214](https://github.com/vm0-ai/vm0/commit/c967214afe7108fea84d31c64a846b54a6fefc45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/connectors bumped to 1.83.0
+    * @vm0/core bumped to 8.346.0
+
 ## [0.460.1](https://github.com/vm0-ai/vm0/compare/app-v0.460.0...app-v0.460.1) (2026-06-16)
 
 
