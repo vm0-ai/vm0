@@ -3364,6 +3364,9 @@ describe("chat lifecycle", () => {
 
   it("shows linked automations from the chat header", async () => {
     mockAutomationThread();
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
 
     detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
 
@@ -3375,12 +3378,38 @@ describe("chat lifecycle", () => {
     click(screen.getByLabelText("Automations"));
 
     await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-      expect(screen.getByText(/Next run/u)).toBeInTheDocument();
-      expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-      expect(screen.getByText("Automation inactive")).toBeInTheDocument();
-      expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
-      expect(screen.getByText("No upcoming run")).toBeInTheDocument();
+      expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
+    });
+
+    const sidebar = screen.getByTestId("automation-sidebar");
+    expect(within(sidebar).getByText("Launch review")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("Paused launch audit"),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("Manual launch reminder"),
+    ).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Rule")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Edit")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
+    expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText(/linked to this chat/u),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText(/active.*paused/u),
+    ).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("searchbox")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Open artifacts"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("automation-sidebar"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -3395,7 +3424,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Launch review"));
+    click(
+      within(screen.getByTestId("automation-sidebar")).getAllByText("Edit")[0]!,
+    );
 
     await waitFor(() => {
       expect(
