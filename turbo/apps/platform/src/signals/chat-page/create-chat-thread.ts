@@ -7,7 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import { onRef, resetSignal, setLoop } from "../utils.ts";
+import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
@@ -664,20 +664,22 @@ function createComputerUseHostSelection(
         dirty: true,
       });
 
-      await set(
-        dataSource.patchComputerUseHost$,
-        { threadId, computerUseHostId },
-        signal,
-      ).catch((error: unknown) => {
-        if (!signal.aborted) {
-          set(internalUserOverride$, {
-            kind: "set",
-            value: computerUseHostId,
-            dirty: false,
-          });
-        }
-        throw error;
-      });
+      await onRejection(
+        set(
+          dataSource.patchComputerUseHost$,
+          { threadId, computerUseHostId },
+          signal,
+        ),
+        () => {
+          if (!signal.aborted) {
+            set(internalUserOverride$, {
+              kind: "set",
+              value: computerUseHostId,
+              dirty: false,
+            });
+          }
+        },
+      );
       signal.throwIfAborted();
       set(internalUserOverride$, {
         kind: "set",
