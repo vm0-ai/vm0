@@ -1468,16 +1468,26 @@ function PptCard({
 
 function IllustrationTemplateHero({
   item,
+  images,
+  activeIndex,
   source,
-  navigable,
-  onNavigate,
+  onVariantChange,
 }: {
   item: IllustrationTemplateItem;
+  images: readonly string[];
+  activeIndex: number;
   source: string;
-  navigable: boolean;
-  onNavigate: (direction: -1 | 1) => void;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
   const heroImage = illustrationHeroImageUrl(source);
+  const navigable = images.length > 1;
+  const variantAt = (direction: -1 | 1): number => {
+    return (activeIndex + direction + images.length) % images.length;
+  };
+  const preloadNeighbors = (): void => {
+    preloadIllustrationVariant(images, variantAt(1));
+    preloadIllustrationVariant(images, variantAt(-1));
+  };
 
   return (
     <div
@@ -1495,13 +1505,23 @@ function IllustrationTemplateHero({
         loading="lazy"
         decoding="async"
         fetchPriority="low"
+        onMouseEnter={navigable ? preloadNeighbors : undefined}
         onClick={
           navigable
             ? (event) => {
                 // Navigate by clicking the image halves instead of overlay
                 // buttons, so the native context menu (copy image) stays usable.
                 const rect = event.currentTarget.getBoundingClientRect();
-                onNavigate(event.clientX - rect.left < rect.width / 2 ? -1 : 1);
+                const direction =
+                  event.clientX - rect.left < rect.width / 2 ? -1 : 1;
+                selectIllustrationVariant({
+                  card: event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  ),
+                  index: variantAt(direction),
+                  item,
+                  onVariantChange,
+                });
               }
             : undefined
         }
@@ -1666,6 +1686,58 @@ async function selectDecodedIllustrationVariant({
   }
 }
 
+function selectIllustrationVariant({
+  card,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement | null;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): void {
+  const image = item.previewImages[index];
+  if (image === undefined) {
+    return;
+  }
+
+  const imageUrl = illustrationHeroImageUrl(image);
+  // Swap immediately only when the target hero is already decoded; otherwise
+  // decode it off-screen first so the hero never flashes a blank/loading frame.
+  if (card === null || illustrationPreviewImageDecoded(imageUrl)) {
+    onVariantChange(item.slug, index);
+    return;
+  }
+
+  card.dataset.targetVariantIndex = String(index);
+  detach(
+    selectDecodedIllustrationVariant({
+      card,
+      imageUrl,
+      index,
+      item,
+      onVariantChange,
+    }),
+    Reason.DomCallback,
+  );
+}
+
+function preloadIllustrationVariant(
+  images: readonly string[],
+  index: number,
+): void {
+  const image = images[index];
+  if (image === undefined) {
+    return;
+  }
+
+  detach(
+    decodeIllustrationPreviewImage(illustrationHeroImageUrl(image)),
+    Reason.DomCallback,
+  );
+}
+
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
 ): void {
@@ -1702,14 +1774,10 @@ function IllustrationTemplateCard({
     >
       <IllustrationTemplateHero
         item={item}
+        images={images}
+        activeIndex={safeIndex}
         source={heroSource}
-        navigable={hasMultipleVariants}
-        onNavigate={(direction) => {
-          onVariantChange(
-            item.slug,
-            (safeIndex + direction + images.length) % images.length,
-          );
-        }}
+        onVariantChange={onVariantChange}
       />
       {hasMultipleVariants && (
         <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1744,30 +1812,14 @@ function IllustrationTemplateCard({
                   );
                 }}
                 onClick={(event) => {
-                  const imageUrl = illustrationHeroImageUrl(image);
-                  const card = event.currentTarget.closest<HTMLElement>(
-                    "[data-illustration-template-card]",
-                  );
-                  if (
-                    card === null ||
-                    index === safeIndex ||
-                    illustrationPreviewImageDecoded(imageUrl)
-                  ) {
-                    onVariantChange(item.slug, index);
-                    return;
-                  }
-
-                  card.dataset.targetVariantIndex = String(index);
-                  detach(
-                    selectDecodedIllustrationVariant({
-                      card,
-                      imageUrl,
-                      index,
-                      item,
-                      onVariantChange,
-                    }),
-                    Reason.DomCallback,
-                  );
+                  selectIllustrationVariant({
+                    card: event.currentTarget.closest<HTMLElement>(
+                      "[data-illustration-template-card]",
+                    ),
+                    index,
+                    item,
+                    onVariantChange,
+                  });
                 }}
               >
                 <img
