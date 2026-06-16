@@ -202,6 +202,18 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "apigateway:PATCH")).toContain(
       "PATCH /restapis/{restapi_id} AWS sigv4=apigateway",
     );
+    expect(rulesFor(permissions, "apigateway:PUT")).toContain(
+      "PUT /restapis/{restapi_id} AWS sigv4=apigateway",
+    );
+    expect(rulesFor(permissions, "apigateway:DELETE")).toContain(
+      "DELETE /domainnames/{domain_name} AWS sigv4=apigateway",
+    );
+    expect(rulesFor(permissions, "apigateway:PUT")).toContain(
+      "PUT /v2/apis AWS sigv4=apigateway",
+    );
+    expect(rulesFor(permissions, "apigateway:POST")).toContain(
+      "POST /v2/tags/{resource-arn} AWS sigv4=apigateway",
+    );
   });
 
   it("maps S3 operation selectors to the right IAM permissions", () => {
