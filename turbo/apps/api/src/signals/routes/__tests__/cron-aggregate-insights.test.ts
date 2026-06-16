@@ -258,6 +258,8 @@ describe("GET /api/cron/aggregate-insights", () => {
       context.signal,
     );
     context.mocks.axiom.query.mockResolvedValue([
+      null,
+      "not-a-row",
       {
         _time: completedAt.toISOString(),
         runId: "not-a-uuid",

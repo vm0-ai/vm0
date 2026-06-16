@@ -36,14 +36,7 @@ interface AgentInfo {
   credits: number;
 }
 
-interface AxiomNetworkRow {
-  readonly _time?: unknown;
-  readonly runId?: unknown;
-  readonly host?: unknown;
-  readonly firewall_name?: unknown;
-  readonly firewall_permission?: unknown;
-  readonly action?: unknown;
-}
+type AxiomNetworkRow = Readonly<Record<string, unknown>>;
 
 interface UserNetworkData {
   readonly serviceMap: Map<string, { calls: number; agentNames: Set<string> }>;
@@ -411,6 +404,10 @@ function axiomRunId(value: unknown): string | undefined {
     return undefined;
   }
   return value;
+}
+
+function isAxiomNetworkRow(value: unknown): value is AxiomNetworkRow {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildUserInsight(args: BuildUserInsightArgs): InsightData {
@@ -1027,11 +1024,11 @@ function queryWindowNetworkData(
 
     const axiomResult = await settle(
       (async (): Promise<AxiomNetworkRow[]> => {
-        return [
-          ...((await get(
-            queryAxiom(apl),
-          )) as unknown as readonly AxiomNetworkRow[]),
-        ];
+        const rows = (await get(queryAxiom(apl))) as unknown;
+        if (!Array.isArray(rows)) {
+          throw new Error("Axiom network query returned non-array result");
+        }
+        return rows.filter(isAxiomNetworkRow);
       })(),
     );
     const networkRows = axiomResult.ok ? axiomResult.value : [];
