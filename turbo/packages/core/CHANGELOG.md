@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.342.0](https://github.com/vm0-ai/vm0/compare/core-v8.341.2...core-v8.342.0) (2026-06-16)
+
+
+### Features
+
+* persist computer use host selection ([#17818](https://github.com/vm0-ai/vm0/issues/17818)) ([f59cc04](https://github.com/vm0-ai/vm0/commit/f59cc044090b287c09b3e42ad5c2cc57351e1f7b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.0
+
 ## [8.341.2](https://github.com/vm0-ai/vm0/compare/core-v8.341.1...core-v8.341.2) (2026-06-16)
 
 

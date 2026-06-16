@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.118.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.2...runner-rs-v0.118.3) (2026-06-16)
+
+
+### Bug Fixes
+
+* log claude provider overloads as info ([#17813](https://github.com/vm0-ai/vm0/issues/17813)) ([b13b8a6](https://github.com/vm0-ai/vm0/commit/b13b8a69fea42d20ea45b1ab87e5048fda3661de))
+
 ## [0.118.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.1...runner-rs-v0.118.2) (2026-06-16)
 
 
