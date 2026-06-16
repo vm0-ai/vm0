@@ -1,19 +1,64 @@
-use futures_util::StreamExt;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Duration;
+
+use futures_util::{Stream, StreamExt};
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
+use super::state::idle_deadline;
 use crate::Error;
 use crate::types::redact_access_token;
 
 type WsStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-pub(crate) type WsRead = futures_util::stream::SplitStream<WsStream>;
+type WsSplitRead = futures_util::stream::SplitStream<WsStream>;
 pub(crate) type WsWrite = futures_util::stream::SplitSink<WsStream, tungstenite::Message>;
+
+pub(crate) struct WsRead {
+    inner: WsSplitRead,
+    last_inbound_activity_at: Instant,
+}
+
+impl WsRead {
+    fn new(inner: WsSplitRead) -> Self {
+        Self {
+            inner,
+            last_inbound_activity_at: Instant::now(),
+        }
+    }
+
+    pub(super) fn idle_deadline(
+        &self,
+        max_idle_interval: Option<Duration>,
+        heartbeat_margin: Duration,
+    ) -> Option<(Instant, Duration)> {
+        idle_deadline(
+            self.last_inbound_activity_at,
+            max_idle_interval,
+            heartbeat_margin,
+        )
+    }
+}
+
+impl Stream for WsRead {
+    type Item = Result<tungstenite::Message, tungstenite::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let result = Pin::new(&mut self.inner).poll_next(cx);
+        if matches!(&result, Poll::Ready(Some(Ok(_)))) {
+            self.last_inbound_activity_at = Instant::now();
+        }
+        result
+    }
+}
 
 pub(super) async fn connect_and_split(url: &str) -> Result<(WsWrite, WsRead), Error> {
     let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
-    Ok(ws.split())
+    let (ws_write, ws_read) = ws.split();
+    Ok((ws_write, WsRead::new(ws_read)))
 }
 
 pub(crate) struct WsTransport {
