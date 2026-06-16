@@ -1428,7 +1428,7 @@ describe("RUN-04: agent run telemetry families", () => {
             runId,
             userId: actor.userId,
             type: "tcp",
-            action: null,
+            action: "MAYBE",
             host: null,
             port: 0,
             method: null,
@@ -1440,6 +1440,19 @@ describe("RUN-04: agent run telemetry families", () => {
             firewall_params: null,
             auth_resolved_secrets: null,
             error: null,
+          },
+          {
+            _time: "2026-06-10T10:32:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.com",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.com/v1/connect",
+            status: 424,
+            firewall_error: "connector_not_configured",
           },
         ],
       },
@@ -1638,6 +1651,7 @@ describe("RUN-04: agent run telemetry families", () => {
       throw new Error("Expected the network log read to succeed");
     }
     expect(networkPage.body.hasMore).toBeFalsy();
+    expect(networkPage.body.networkLogs).toHaveLength(3);
     expect(networkPage.body.networkLogs[0]).toMatchObject({
       timestamp: "2026-06-10T10:30:00Z",
       action: "ALLOW",
@@ -1660,6 +1674,12 @@ describe("RUN-04: agent run telemetry families", () => {
       port: 0,
       status: 0,
       latency_ms: 0,
+    });
+    expect(networkPage.body.networkLogs[2]).toMatchObject({
+      timestamp: "2026-06-10T10:32:00Z",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      firewall_error: "connector_not_configured",
     });
 
     // Telemetry families hide other users' runs without leaking existence.
