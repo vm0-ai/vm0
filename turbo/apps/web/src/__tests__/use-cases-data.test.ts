@@ -21,6 +21,31 @@ describe("use cases data", () => {
     }
     expect(invalid).toEqual([]);
   });
+
+  it("uses avatar PNG variants that exist in the static CDN asset set", () => {
+    const invalid: string[] = [];
+
+    for (const uc of USE_CASES) {
+      const { expression, hairColor, hairStyle, rotation, skin } = uc.avatar;
+      if (rotation < 1 || rotation > 5) {
+        invalid.push(`${uc.slug} :: rotation ${rotation}`);
+      }
+      if (skin < 1 || skin > 5) {
+        invalid.push(`${uc.slug} :: skin ${skin}`);
+      }
+      if (hairStyle < 1 || hairStyle > 5) {
+        invalid.push(`${uc.slug} :: hairStyle ${hairStyle}`);
+      }
+      if (hairColor < 1 || hairColor > 5) {
+        invalid.push(`${uc.slug} :: hairColor ${hairColor}`);
+      }
+      if (expression < 1 || expression > 5) {
+        invalid.push(`${uc.slug} :: expression ${expression}`);
+      }
+    }
+
+    expect(invalid).toEqual([]);
+  });
 });
 
 type MessagesShape = {

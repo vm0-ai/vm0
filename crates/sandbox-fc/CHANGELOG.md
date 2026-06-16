@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.33](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.32...sandbox-fc-v0.37.33) (2026-06-16)
+
+
+### Refactoring
+
+* **sandbox-fc:** extract control server test fixtures ([#17854](https://github.com/vm0-ai/vm0/issues/17854)) ([ab068cd](https://github.com/vm0-ai/vm0/commit/ab068cdf879a8bbd95a00d7abb9a55e164819bd2))
+
 ## [0.37.32](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.31...sandbox-fc-v0.37.32) (2026-06-16)
 
 

@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.459.0](https://github.com/vm0-ai/vm0/compare/app-v0.458.1...app-v0.459.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Bug Fixes
+
+* **platform:** align template tab focus ring to the tab bar ([#17880](https://github.com/vm0-ai/vm0/issues/17880)) ([9f70373](https://github.com/vm0-ai/vm0/commit/9f70373957efc7d91cc6cecc7946cdab106a9b02)), closes [#17769](https://github.com/vm0-ai/vm0/issues/17769)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+    * @vm0/core bumped to 8.344.0
+
+## [0.458.1](https://github.com/vm0-ai/vm0/compare/app-v0.458.0...app-v0.458.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+* keep selected illustration thumbnail in view and add hero click navigation ([#17863](https://github.com/vm0-ai/vm0/issues/17863)) ([3f06b52](https://github.com/vm0-ai/vm0/commit/3f06b526eb831bdf4f19cb5bf34c81f6fb68932b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.2
+    * @vm0/core bumped to 8.343.1
+
+## [0.458.0](https://github.com/vm0-ai/vm0/compare/app-v0.457.0...app-v0.458.0) (2026-06-16)
+
+
+### Features
+
+* add chat automation sidebar ([#17851](https://github.com/vm0-ai/vm0/issues/17851)) ([6e03396](https://github.com/vm0-ai/vm0/commit/6e03396f303243421317a4a7ebef3ddf7296beb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.1
+    * @vm0/connectors bumped to 1.80.0
+    * @vm0/core bumped to 8.343.0
+
 ## [0.457.0](https://github.com/vm0-ai/vm0/compare/app-v0.456.2...app-v0.457.0) (2026-06-16)
 
 

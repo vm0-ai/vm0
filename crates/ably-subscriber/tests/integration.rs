@@ -143,6 +143,40 @@ async fn expect_websocket_close_frame(ws: &mut WsStream) -> Result<(), Box<dyn s
     Ok(())
 }
 
+async fn expect_websocket_close_frame_while_ignoring_attach(
+    ws: &mut WsStream,
+) -> Result<(), Box<dyn std::error::Error>> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let frame = ws
+                .next()
+                .await
+                .ok_or_else(|| std::io::Error::other("websocket closed before close frame"))??;
+            match frame {
+                tungstenite::Message::Close(_) => return Ok(()),
+                tungstenite::Message::Binary(data) => {
+                    let msg = decode_msg(&data)?;
+                    if msg.action != action::ATTACH {
+                        return Err(std::io::Error::other(format!(
+                            "expected ATTACH or close frame, got action {}",
+                            msg.action
+                        ))
+                        .into());
+                    }
+                }
+                other => {
+                    return Err(std::io::Error::other(format!(
+                        "expected ATTACH or close frame, got {other:?}"
+                    ))
+                    .into());
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| std::io::Error::other("timed out waiting for websocket close frame"))?
+}
+
 async fn expect_websocket_closed(ws: &mut WsStream) -> Result<(), Box<dyn std::error::Error>> {
     let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
         .await
@@ -2874,6 +2908,119 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
         .unwrap();
     match event {
         Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-channel-retry")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    max_idle_interval_ms: 80,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for reattach")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for retry attach")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+
+        expect_websocket_close_frame_while_ignoring_attach(&mut conn)
+            .await
+            .unwrap();
+
+        let mut conn2 = ws.accept_and_handshake("ch", "conn-2").await.unwrap();
+        send_message(
+            &mut conn2,
+            "ch",
+            "after-channel-retry-heartbeat",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.heartbeat_margin = Duration::from_millis(40);
+    timing.realtime_request_timeout = Duration::from_millis(30);
+    timing.channel_retry_timeout = Duration::from_millis(30);
+    timing.disconnected_retry_timeout = Duration::from_millis(10);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Connected after heartbeat reconnect")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Connected),
+        "expected Connected after heartbeat reconnect, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after heartbeat reconnect")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-channel-retry-heartbeat"));
+        }
         other => panic!("expected Message, got {other:?}"),
     }
 

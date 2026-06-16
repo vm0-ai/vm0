@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.147.0](https://github.com/vm0-ai/vm0/compare/api-v1.146.2...api-v1.147.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Bug Fixes
+
+* clarify custom skill persistence guidance ([#17828](https://github.com/vm0-ai/vm0/issues/17828)) ([b8ca919](https://github.com/vm0-ai/vm0/commit/b8ca9198b31ef855ec5bbaea379fdde149ccedfe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+    * @vm0/core bumped to 8.344.0
+    * @vm0/db bumped to 1.53.0
+
+## [1.146.2](https://github.com/vm0-ai/vm0/compare/api-v1.146.1...api-v1.146.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* handle blocked network log uploads ([#17822](https://github.com/vm0-ai/vm0/issues/17822)) ([19b1b37](https://github.com/vm0-ai/vm0/commit/19b1b373a3669064fb7ddc1067692f820f34cdb6))
+
+
+### Refactoring
+
+* dispatch agent callbacks through ccstate ([#17836](https://github.com/vm0-ai/vm0/issues/17836)) ([cb45a3d](https://github.com/vm0-ai/vm0/commit/cb45a3d154b37f43e4d8d3a4f15913745618d3ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.2
+    * @vm0/core bumped to 8.343.1
+    * @vm0/db bumped to 1.52.7
+
+## [1.146.1](https://github.com/vm0-ai/vm0/compare/api-v1.146.0...api-v1.146.1) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.96.1
+    * @vm0/connectors bumped to 1.80.0
+    * @vm0/core bumped to 8.343.0
+    * @vm0/db bumped to 1.52.6
+
 ## [1.146.0](https://github.com/vm0-ai/vm0/compare/api-v1.145.1...api-v1.146.0) (2026-06-16)
 
 

@@ -104,7 +104,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(79.758deg);
-  background-image: url("/assets/cta-ellipse.webp");
+  background-image: var(--vm0-web-cta-ellipse);
   background-size: cover;
   opacity: 0.3;
   filter: blur(60px);

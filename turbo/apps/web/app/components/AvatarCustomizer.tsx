@@ -1,5 +1,6 @@
 "use client";
 
+import { webStaticAssetUrl } from "../lib/static-assets";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -44,7 +45,6 @@ const INTENSITY_LABEL_KEYS: Record<Intensity, string> = {
   h: "hyped",
 };
 
-const AVATAR_SVG_BASE = "/assets/avatar-svg";
 const DEFAULT_SELECTED_INDEX = 2;
 const CENTER_AVATAR_POSITION = 2;
 const CENTER_AVATAR_SIZE = 112;
@@ -114,7 +114,7 @@ function getClampedPopoverAnchor(target: HTMLButtonElement) {
 }
 
 function avatarSvgAssetSrc(filename: string) {
-  return `${AVATAR_SVG_BASE}/${filename}`;
+  return `${webStaticAssetUrl("assets/avatar-svg")}/${filename}`;
 }
 
 function serializeAvatarSvgConfig(config: AvatarSvgConfig) {

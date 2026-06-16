@@ -1471,12 +1471,26 @@ function PptCard({
 
 function IllustrationTemplateHero({
   item,
+  images,
+  activeIndex,
   source,
+  onVariantChange,
 }: {
   item: IllustrationTemplateItem;
+  images: readonly string[];
+  activeIndex: number;
   source: string;
+  onVariantChange: (slug: string, index: number) => void;
 }) {
   const heroImage = illustrationHeroImageUrl(source);
+  const navigable = images.length > 1;
+  const variantAt = (direction: -1 | 1): number => {
+    return (activeIndex + direction + images.length) % images.length;
+  };
+  const preloadNeighbors = (): void => {
+    preloadIllustrationVariant(images, variantAt(1));
+    preloadIllustrationVariant(images, variantAt(-1));
+  };
 
   return (
     <div
@@ -1487,10 +1501,33 @@ function IllustrationTemplateHero({
         key={source}
         src={heroImage}
         alt={`${item.title} illustration preview`}
-        className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        className={cn(
+          "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          navigable && "cursor-pointer",
+        )}
         loading="lazy"
         decoding="async"
         fetchPriority="low"
+        onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onClick={
+          navigable
+            ? (event) => {
+                // Navigate by clicking the image halves instead of overlay
+                // buttons, so the native context menu (copy image) stays usable.
+                const rect = event.currentTarget.getBoundingClientRect();
+                const direction =
+                  event.clientX - rect.left < rect.width / 2 ? -1 : 1;
+                selectIllustrationVariant({
+                  card: event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  ),
+                  index: variantAt(direction),
+                  item,
+                  onVariantChange,
+                });
+              }
+            : undefined
+        }
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
@@ -1652,6 +1689,64 @@ async function selectDecodedIllustrationVariant({
   }
 }
 
+function selectIllustrationVariant({
+  card,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement | null;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): void {
+  const image = item.previewImages[index];
+  if (image === undefined) {
+    return;
+  }
+
+  const imageUrl = illustrationHeroImageUrl(image);
+  // Swap immediately only when the target hero is already decoded; otherwise
+  // decode it off-screen first so the hero never flashes a blank/loading frame.
+  if (card === null || illustrationPreviewImageDecoded(imageUrl)) {
+    onVariantChange(item.slug, index);
+    return;
+  }
+
+  card.dataset.targetVariantIndex = String(index);
+  detach(
+    selectDecodedIllustrationVariant({
+      card,
+      imageUrl,
+      index,
+      item,
+      onVariantChange,
+    }),
+    Reason.DomCallback,
+  );
+}
+
+function preloadIllustrationVariant(
+  images: readonly string[],
+  index: number,
+): void {
+  const image = images[index];
+  if (image === undefined) {
+    return;
+  }
+
+  detach(
+    decodeIllustrationPreviewImage(illustrationHeroImageUrl(image)),
+    Reason.DomCallback,
+  );
+}
+
+function scrollIllustrationThumbnailIntoView(
+  node: HTMLButtonElement | null,
+): void {
+  node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 function IllustrationTemplateCard({
   item,
   selected,
@@ -1668,6 +1763,7 @@ function IllustrationTemplateCard({
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
   const heroSource = images[safeIndex] ?? item.previewImage;
+  const hasMultipleVariants = images.length > 1;
 
   return (
     <div
@@ -1679,8 +1775,14 @@ function IllustrationTemplateCard({
           : "border-border hover:border-muted-foreground/30",
       )}
     >
-      <IllustrationTemplateHero item={item} source={heroSource} />
-      {images.length > 1 && (
+      <IllustrationTemplateHero
+        item={item}
+        images={images}
+        activeIndex={safeIndex}
+        source={heroSource}
+        onVariantChange={onVariantChange}
+      />
+      {hasMultipleVariants && (
         <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {images.map((image, index) => {
             const active = index === safeIndex;
@@ -1692,6 +1794,10 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
+                // Keep the selected thumbnail fully in view when the active
+                // variant changes (e.g. via hero navigation), so later
+                // thumbnails past the clipped strip edge stay reachable.
+                ref={active ? scrollIllustrationThumbnailIntoView : undefined}
                 aria-label={`Show variant ${index + 1}`}
                 aria-pressed={active}
                 className={cn(
@@ -1709,30 +1815,14 @@ function IllustrationTemplateCard({
                   );
                 }}
                 onClick={(event) => {
-                  const imageUrl = illustrationHeroImageUrl(image);
-                  const card = event.currentTarget.closest<HTMLElement>(
-                    "[data-illustration-template-card]",
-                  );
-                  if (
-                    card === null ||
-                    index === safeIndex ||
-                    illustrationPreviewImageDecoded(imageUrl)
-                  ) {
-                    onVariantChange(item.slug, index);
-                    return;
-                  }
-
-                  card.dataset.targetVariantIndex = String(index);
-                  detach(
-                    selectDecodedIllustrationVariant({
-                      card,
-                      imageUrl,
-                      index,
-                      item,
-                      onVariantChange,
-                    }),
-                    Reason.DomCallback,
-                  );
+                  selectIllustrationVariant({
+                    card: event.currentTarget.closest<HTMLElement>(
+                      "[data-illustration-template-card]",
+                    ),
+                    index,
+                    item,
+                    onVariantChange,
+                  });
                 }}
               >
                 <img
@@ -1819,7 +1909,7 @@ function TemplatePickerTabs({
           <TabsTrigger
             value="slides"
             className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
               selectedCategory === "slides"
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -1841,7 +1931,7 @@ function TemplatePickerTabs({
           <TabsTrigger
             value="illustration"
             className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
               selectedCategory === "illustration"
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -1863,7 +1953,7 @@ function TemplatePickerTabs({
           <TabsTrigger
             value="video"
             className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
               selectedCategory === "video"
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",

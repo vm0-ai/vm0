@@ -56,6 +56,26 @@ function entryType(entry: NetworkLogEntry): string {
   return entry.type ? entry.type.toUpperCase() : "HTTP";
 }
 
+function nonEmptyLogField(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function hostPortTarget(entry: NetworkLogEntry): string | undefined {
+  const host = nonEmptyLogField(entry.host);
+  if (!host) {
+    return undefined;
+  }
+  return entry.port !== undefined ? `${host}:${entry.port}` : host;
+}
+
+function networkTarget(entry: NetworkLogEntry, isHttp: boolean): string {
+  if (isHttp) {
+    return nonEmptyLogField(entry.url) ?? hostPortTarget(entry) ?? "—";
+  }
+  return `${nonEmptyLogField(entry.host) ?? "unknown"}:${entry.port ?? 0}`;
+}
+
 function typeBadgeColor(type: string): BadgeColor {
   if (type === "HTTP") {
     return "blue";
@@ -104,11 +124,16 @@ function latencyColor(ms: number | undefined | null): string {
 
 function TypeBadge({
   type,
-  denied = false,
+  action,
 }: {
   type: string;
-  denied?: boolean;
+  action?: NetworkLogEntry["action"];
 }) {
+  if (action === "BLOCK") {
+    return <InlineBadge color="warning">BLOCK</InlineBadge>;
+  }
+
+  const denied = action === "DENY";
   return (
     <InlineBadge color={denied ? "red" : typeBadgeColor(type)}>
       <span className={denied ? "line-through" : undefined}>{type}</span>
@@ -518,9 +543,7 @@ function NetworkLogRow({
   const type = entryType(entry);
   const isHttp = type === "HTTP";
 
-  const target = isHttp
-    ? (entry.url ?? "—")
-    : `${entry.host ?? "unknown"}:${entry.port ?? 0}`;
+  const target = networkTarget(entry, isHttp);
 
   return (
     <>
@@ -534,7 +557,7 @@ function NetworkLogRow({
           {formatTime(entry.timestamp)}
         </TableCell>
         <TableCell>
-          <TypeBadge type={type} denied={entry.action === "DENY"} />
+          <TypeBadge type={type} action={entry.action} />
         </TableCell>
         <TableCell className="font-mono text-xs whitespace-nowrap">
           {isHttp ? (entry.method ?? "—") : "—"}

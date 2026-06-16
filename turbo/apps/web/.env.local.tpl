@@ -5,6 +5,9 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 # Required: Web app URL
 APP_URL=https://app.vm7.ai:8443
 
+# Optional: Static assets CDN
+STATIC_ASSETS_BASE_URL=https://static.vm7.io
+
 # Required: API URL for web-owned server fetches
 VM0_API_URL=https://api.vm7.ai:8443
 

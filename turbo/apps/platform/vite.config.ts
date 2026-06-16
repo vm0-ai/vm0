@@ -13,6 +13,15 @@ const DEV_ARTIFACT_FETCH_PROXY_HEADERS = [
   "content-type",
   "etag",
 ] as const;
+const STATIC_ASSETS_BASE_URL =
+  process.env.VITE_STATIC_ASSETS_BASE_URL ||
+  process.env.STATIC_ASSETS_BASE_URL ||
+  (process.env.VITE_VERCEL_ENV === "production" ||
+  process.env.VERCEL_ENV === "production"
+    ? "https://static.vm0.io"
+    : "https://static.vm7.io");
+
+process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   if (url.protocol !== "https:") {

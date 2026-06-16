@@ -545,6 +545,7 @@ function mockGithubPrTrackingThread(): void {
       externalEmail: null,
       oauthScopes: ["repo"],
       connectionStatus: "connected",
+      reconnectReason: null,
       tokenExpiresAt: null,
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z",
@@ -3425,10 +3426,13 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows linked automations from the chat header", async () => {
+  it("keeps the linked automation dropdown when the sidebar switch is off", async () => {
     mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
@@ -3439,18 +3443,82 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
-      expect(screen.getByText(/Next run/u)).toBeInTheDocument();
-      expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-      expect(screen.getByText("Automation inactive")).toBeInTheDocument();
-      expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
-      expect(screen.getByText("No upcoming run")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
+    expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
+    expect(screen.getByText("Automation inactive")).toBeInTheDocument();
+    expect(screen.queryByTestId("automation-sidebar")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Close automations"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("shows linked automations from the chat header sidebar", async () => {
+    mockAutomationThread();
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Automations"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
+    });
+
+    const sidebar = screen.getByTestId("automation-sidebar");
+    expect(within(sidebar).getByText("Launch review")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("Paused launch audit"),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("Manual launch reminder"),
+    ).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Rule")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Edit")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
+    expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText(/linked to this chat/u),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText(/active.*paused/u),
+    ).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("searchbox")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Open artifacts"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("automation-sidebar"),
+      ).not.toBeInTheDocument();
     });
   });
 
   it("opens a linked automation detail from the chat header", async () => {
     mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
+    });
 
     click(await screen.findByLabelText("Automations"));
 
@@ -3458,7 +3526,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Launch review"));
+    click(
+      within(screen.getByTestId("automation-sidebar")).getAllByText("Edit")[0]!,
+    );
 
     await waitFor(() => {
       expect(

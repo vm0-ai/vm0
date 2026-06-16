@@ -443,13 +443,21 @@ const agentEventsResponseSchema = z.object({
 });
 
 /**
+ * Network log action semantics:
+ * ALLOW means the request was allowed to continue.
+ * DENY means network policy denied the request.
+ * BLOCK means vm0/proxy/auth/preconditions blocked the request locally.
+ */
+const networkLogActionSchema = z.enum(["ALLOW", "DENY", "BLOCK"]);
+
+/**
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
 const networkLogEntrySchema = z.object({
   timestamp: z.string(),
   type: z.string().optional(),
-  action: z.enum(["ALLOW", "DENY"]).optional(),
+  action: networkLogActionSchema.optional(),
   host: z.string().optional(),
   port: z.number().optional(),
   method: z.string().optional(),
@@ -801,6 +809,7 @@ export {
   systemLogResponseSchema,
   metricsResponseSchema,
   agentEventsResponseSchema,
+  networkLogActionSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
   searchResultSchema,
@@ -827,6 +836,7 @@ export type TelemetryResponse = z.infer<typeof telemetryResponseSchema>;
 export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
 export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
+export type NetworkLogAction = z.infer<typeof networkLogActionSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
 /**

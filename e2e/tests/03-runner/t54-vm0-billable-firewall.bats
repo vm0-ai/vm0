@@ -47,7 +47,7 @@ teardown_file() {
     for thread_id in $THREAD_IDS; do
         zero_curl "/api/zero/chat-threads/$thread_id" -X DELETE >/dev/null 2>&1 || true
     done
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" 2>/dev/null || true
+    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y 2>/dev/null || true
 }
 
 @test "t54-0: BYOK provider — firewall not billable" {

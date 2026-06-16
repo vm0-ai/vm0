@@ -1,3 +1,4 @@
+import { webStaticAssetUrl } from "../../../../lib/static-assets";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
@@ -179,7 +180,7 @@ export default async function BlogPostPage({
       name: "VM0",
       logo: {
         "@type": "ImageObject",
-        url: "https://www.vm0.ai/assets/vm0-logo.svg",
+        url: webStaticAssetUrl("assets/vm0-logo.svg"),
       },
     },
   };
