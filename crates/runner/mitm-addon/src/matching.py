@@ -273,6 +273,7 @@ class _CompiledRule(NamedTuple):
     raw: str
     path: CompiledPathPattern
     query_requirements: tuple[tuple[str, str | None], ...]
+    aws_query_selector_keys: frozenset[str]
     aws_predicates: Mapping[str, str] | None
     specificity: _PathSpecificity
 
@@ -1367,9 +1368,69 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
         rule_str,
         pattern,
         query_requirements,
+        frozenset(),
         aws_predicates,
         _path_specificity(pattern),
     )
+
+
+def _aws_query_selector_signature(
+    rule: _CompiledRule,
+) -> tuple[str, tuple[ParsedSegment, ...], str] | None:
+    predicates = rule.aws_predicates
+    if predicates is None:
+        return None
+    if "action" in predicates or "target" in predicates:
+        return None
+    return rule.method, rule.path.segments, predicates["sigv4"]
+
+
+def _with_aws_query_selector_keys(
+    rule: _CompiledRule,
+    selector_keys: frozenset[str],
+) -> _CompiledRule:
+    return _CompiledRule(
+        rule.method,
+        rule.raw,
+        rule.path,
+        rule.query_requirements,
+        selector_keys,
+        rule.aws_predicates,
+        rule.specificity,
+    )
+
+
+def _attach_aws_query_selector_keys(
+    permissions: list[_CompiledPermission],
+) -> tuple[_CompiledPermission, ...]:
+    selector_keys_by_signature: dict[
+        tuple[str, tuple[ParsedSegment, ...], str],
+        set[str],
+    ] = {}
+    for permission in permissions:
+        for rule in permission.rules:
+            signature = _aws_query_selector_signature(rule)
+            if signature is None or not rule.query_requirements:
+                continue
+            selector_keys = selector_keys_by_signature.setdefault(signature, set())
+            selector_keys.update(key for key, _value in rule.query_requirements)
+
+    if not selector_keys_by_signature:
+        return tuple(permissions)
+
+    compiled_permissions: list[_CompiledPermission] = []
+    for permission in permissions:
+        compiled_rules: list[_CompiledRule] = []
+        for rule in permission.rules:
+            signature = _aws_query_selector_signature(rule)
+            selector_keys = (
+                frozenset(selector_keys_by_signature.get(signature, ()))
+                if signature is not None
+                else frozenset()
+            )
+            compiled_rules.append(_with_aws_query_selector_keys(rule, selector_keys))
+        compiled_permissions.append(_CompiledPermission(permission.name, tuple(compiled_rules)))
+    return tuple(compiled_permissions)
 
 
 # Compiled matcher contract
@@ -1501,7 +1562,7 @@ def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None
                 _CompiledApi(
                     api_entry,
                     base,
-                    tuple(compiled_permissions),
+                    _attach_aws_query_selector_keys(compiled_permissions),
                     base_malformed,
                     auth_malformed,
                     has_malformed_rules,
@@ -1728,15 +1789,33 @@ def _query_has_only_required_or_ignored_aws_keys(
     )
 
 
+def _query_has_no_extra_aws_selector_keys(
+    query_pairs: list[tuple[str, str]],
+    required_keys: set[str],
+    selector_keys: frozenset[str],
+) -> bool:
+    if not selector_keys:
+        return True
+    return all(key in required_keys or key not in selector_keys for key, _value in query_pairs)
+
+
 def _aws_query_requirements_match(
     query_requirements: tuple[tuple[str, str | None], ...],
     *,
     query_pairs: list[tuple[str, str]],
+    selector_keys: frozenset[str],
+    strict_extra_keys: bool,
 ) -> bool:
-    if not query_requirements:
-        return _query_has_only_ignored_aws_keys(query_pairs)
-
     required_keys = {key for key, _value in query_requirements}
+    if not query_requirements:
+        if strict_extra_keys:
+            return _query_has_only_ignored_aws_keys(query_pairs)
+        return _query_has_no_extra_aws_selector_keys(
+            query_pairs,
+            required_keys,
+            selector_keys,
+        )
+
     for key, expected_value in query_requirements:
         values = _query_values(query_pairs, key)
         if len(values) != 1:
@@ -1748,7 +1827,13 @@ def _aws_query_requirements_match(
         if values[0] != expected_value:
             return False
 
-    return _query_has_only_required_or_ignored_aws_keys(query_pairs, required_keys)
+    if strict_extra_keys:
+        return _query_has_only_required_or_ignored_aws_keys(query_pairs, required_keys)
+    return _query_has_no_extra_aws_selector_keys(
+        query_pairs,
+        required_keys,
+        selector_keys,
+    )
 
 
 def _aws_predicates_match(
@@ -1780,12 +1865,13 @@ def _aws_predicates_match(
             headers=context.headers if context is not None else None,
         )
 
-    if predicates["sigv4"] == "s3" and _has_header(
+    is_s3 = predicates["sigv4"] == "s3"
+    if is_s3 and _has_header(
         context.headers if context is not None else None,
         _AWS_S3_COPY_SOURCE_HEADER,
     ):
         return False
-    if predicates["sigv4"] == "s3" and _has_ambiguous_s3_permission_header(
+    if is_s3 and _has_ambiguous_s3_permission_header(
         context.headers if context is not None else None,
         rule.query_requirements,
     ):
@@ -1794,6 +1880,8 @@ def _aws_predicates_match(
     return _aws_query_requirements_match(
         rule.query_requirements,
         query_pairs=query_pairs,
+        selector_keys=rule.aws_query_selector_keys,
+        strict_extra_keys=is_s3,
     )
 
 

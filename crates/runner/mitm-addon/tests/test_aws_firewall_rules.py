@@ -560,11 +560,15 @@ def test_s3_subresource_rejects_ambiguous_extra_subresource():
 def test_rest_query_value_distinguishes_permissions():
     firewalls = _aws_firewall(
         firewall_permission(
+            "apigateway:POST",
+            "POST /apikeys AWS sigv4=apigateway",
+        ),
+        firewall_permission(
             "apigateway:ImportApiKeys",
             "POST /apikeys?mode=import AWS sigv4=apigateway",
-        )
+        ),
     )
-    policies = {"aws": network_policy(unknown_policy="deny")}
+    policies = {"aws": network_policy(deny=["apigateway:ImportApiKeys"], unknown_policy="deny")}
 
     import_api_keys = match_compiled_firewalls(
         "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import",
@@ -573,8 +577,19 @@ def test_rest_query_value_distinguishes_permissions():
         method="POST",
         request_context=_sigv4_context("apigateway"),
     )
-    assert isinstance(import_api_keys, matching.FirewallAllow)
-    assert import_api_keys.permission == "apigateway:ImportApiKeys"
+    assert isinstance(import_api_keys, matching.FirewallBlock)
+    assert import_api_keys.reason == "permission_denied"
+    assert import_api_keys.permissions == ("apigateway:ImportApiKeys",)
+
+    create_api_key_with_input_query = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?stage=dev",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(create_api_key_with_input_query, matching.FirewallAllow)
+    assert create_api_key_with_input_query.permission == "apigateway:POST"
 
     wrong_mode = match_compiled_firewalls(
         "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=export",
@@ -586,15 +601,34 @@ def test_rest_query_value_distinguishes_permissions():
     assert isinstance(wrong_mode, matching.FirewallBlock)
     assert wrong_mode.reason == "unknown_endpoint"
 
-    extra_operation_query = match_compiled_firewalls(
-        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&operation=delete",
+    duplicate_selector_query = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&mode=export",
         firewalls,
         policies,
         method="POST",
         request_context=_sigv4_context("apigateway"),
     )
-    assert isinstance(extra_operation_query, matching.FirewallBlock)
-    assert extra_operation_query.reason == "unknown_endpoint"
+    assert isinstance(duplicate_selector_query, matching.FirewallBlock)
+    assert duplicate_selector_query.reason == "unknown_endpoint"
+
+
+def test_rest_rules_allow_normal_query_parameters():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "apigateway:GET",
+            "GET /apikeys AWS sigv4=apigateway",
+        )
+    )
+    result = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?limit=10&includeValues=true",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("apigateway"),
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "apigateway:GET"
 
 
 def test_aws_predicate_rule_requires_matching_sigv4_service():
