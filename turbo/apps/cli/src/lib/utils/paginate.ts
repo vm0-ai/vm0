@@ -47,24 +47,30 @@ export async function paginate<T>(options: PaginateOptions<T>): Promise<T[]> {
   while (hasMore) {
     const response = await fetchPage(since);
 
-    // Append items to collection
+    if (response.items.length === 0) {
+      break;
+    }
+
+    const lastItem = response.items[response.items.length - 1]!;
+    const nextSince = getTimestamp(lastItem);
+    if (
+      since !== undefined &&
+      (!Number.isFinite(nextSince) || nextSince === since)
+    ) {
+      break;
+    }
+
     collected.push(...response.items);
     hasMore = response.hasMore;
 
-    // Check if we've reached target count
     if (targetCount !== "all" && collected.length >= targetCount) {
-      // Trim to exact target count and stop
       return collected.slice(0, targetCount);
     }
 
-    // Update cursor for next page
-    if (response.items.length > 0) {
-      const lastItem = response.items[response.items.length - 1]!;
-      since = getTimestamp(lastItem);
-    } else {
-      // No items returned, stop pagination
-      hasMore = false;
+    if (!Number.isFinite(nextSince)) {
+      break;
     }
+    since = nextSince;
   }
 
   return collected;
