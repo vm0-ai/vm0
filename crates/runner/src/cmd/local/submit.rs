@@ -336,9 +336,9 @@ impl SubmitPlan {
 
         let mut map = HashMap::new();
         for entry in entries {
-            if entry.contains(['\n', '\r', '\0']) {
+            if entry.contains('\0') {
                 return Err(RunnerError::Config(format!(
-                    "invalid {flag} value: newline or NUL characters are not allowed"
+                    "invalid {flag} value: NUL characters are not allowed"
                 )));
             }
             let Some(eq_pos) = entry.find('=') else {
@@ -873,8 +873,12 @@ mod tests {
             "FOO=bar".into(),
             "URL=https://example.test/path?a=1&b=2".into(),
             "EMPTY=".into(),
+            "MULTILINE=line1\nline2".into(),
         ];
-        args.secret_env = vec!["ANTHROPIC_API_KEY=sk-ant-local-secret".into()];
+        args.secret_env = vec![
+            "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
+            "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
+        ];
 
         let code = run_submit_with_home(args, home).await.unwrap();
         let request = watcher.await.unwrap();
@@ -889,10 +893,18 @@ mod tests {
         );
         assert_eq!(environment.get("EMPTY").map(String::as_str), Some(""));
         assert_eq!(
+            environment.get("MULTILINE").map(String::as_str),
+            Some("line1\nline2")
+        );
+        assert_eq!(
             secret_environment
                 .get("ANTHROPIC_API_KEY")
                 .map(String::as_str),
             Some("sk-ant-local-secret")
+        );
+        assert_eq!(
+            secret_environment.get("PRIVATE_KEY").map(String::as_str),
+            Some("-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----")
         );
     }
 
@@ -901,11 +913,6 @@ mod tests {
         let cases = vec![
             (vec!["FOO".to_string()], Vec::new(), "expected KEY=VALUE"),
             (vec!["=VALUE".to_string()], Vec::new(), "expected KEY=VALUE"),
-            (
-                vec!["KEY=line1\nline2".to_string()],
-                Vec::new(),
-                "newline or NUL",
-            ),
             (
                 vec!["BAD-KEY=value".to_string()],
                 Vec::new(),
@@ -928,13 +935,8 @@ mod tests {
             ),
             (
                 Vec::new(),
-                vec!["KEY=foo\rbar".to_string()],
-                "newline or NUL",
-            ),
-            (
-                Vec::new(),
                 vec!["KEY=with\0nul".to_string()],
-                "newline or NUL",
+                "NUL characters",
             ),
             (
                 vec!["FOO=1".to_string(), "FOO=2".to_string()],
