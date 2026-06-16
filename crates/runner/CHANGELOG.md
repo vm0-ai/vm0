@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.118.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.0...runner-rs-v0.118.1) (2026-06-15)
+
+
+### Refactoring
+
+* **mitm-addon:** split compiled firewall precedence tests ([#17760](https://github.com/vm0-ai/vm0/issues/17760)) ([97c6bbd](https://github.com/vm0-ai/vm0/commit/97c6bbd60570fdac156ca775c0e6d95ab0dba274))
+
 ## [0.118.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.2...runner-rs-v0.118.0) (2026-06-15)
 
 
