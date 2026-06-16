@@ -1,5 +1,7 @@
 use super::*;
 
+use std::future::Future;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{NormalOperationFenceRejection, VsockHost};
@@ -13,7 +15,100 @@ use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
 };
 
-fn test_gate(guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>) -> GuestOperationStartGate {
+type GuestState = Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>;
+
+struct ControlServerFixture {
+    _dir: tempfile::TempDir,
+    sock_path: PathBuf,
+}
+
+impl ControlServerFixture {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        Self {
+            _dir: dir,
+            sock_path,
+        }
+    }
+
+    fn bind_default(&self) -> io::Result<BoundControlServer> {
+        bind_test_server(self.sock_path.clone(), test_gate(empty_guest()))
+    }
+
+    fn bind_with_termination(
+        &self,
+        termination: ProcessTerminationHandle,
+    ) -> io::Result<BoundControlServer> {
+        bind_server(
+            self.sock_path.clone(),
+            test_gate(empty_guest()),
+            termination,
+        )
+    }
+
+    fn spawn_default(&self, shutdown: CancellationToken) -> ControlServerHandle {
+        self.bind_default().unwrap().spawn(shutdown)
+    }
+}
+
+struct VsockExecFixture {
+    _dir: tempfile::TempDir,
+    sock_path: PathBuf,
+    vsock: Arc<VsockHost>,
+    coordinator: ParkCoordinator,
+    handle: ControlServerHandle,
+    guest_task: tokio::task::JoinHandle<()>,
+}
+
+impl VsockExecFixture {
+    async fn spawn<F, Fut>(mock_guest: F) -> Self
+    where
+        F: FnOnce(PathBuf) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let guest_task = tokio::spawn(mock_guest(vsock_base));
+        let vsock = Arc::new(host_task.await.unwrap().unwrap());
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
+        let (gate, coordinator) = test_gate_with_coordinator(guest);
+        let handle = bind_test_server(sock_path.clone(), gate)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        Self {
+            _dir: dir,
+            sock_path,
+            vsock,
+            coordinator,
+            handle,
+            guest_task,
+        }
+    }
+}
+
+fn empty_guest() -> GuestState {
+    Arc::new(tokio::sync::Mutex::new(None))
+}
+
+fn exec_request(command: &str) -> ExecRequest {
+    ExecRequest {
+        command: command.into(),
+        timeout_secs: 5,
+        sudo: false,
+    }
+}
+
+fn test_gate(guest: GuestState) -> GuestOperationStartGate {
     GuestOperationStartGate::new(guest, ParkCoordinator::new())
 }
 
@@ -48,9 +143,7 @@ fn bind_test_server(
     bind_server(sock_path, guest_operations, test_termination_handle())
 }
 
-fn test_gate_with_coordinator(
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-) -> (GuestOperationStartGate, ParkCoordinator) {
+fn test_gate_with_coordinator(guest: GuestState) -> (GuestOperationStartGate, ParkCoordinator) {
     let coordinator = ParkCoordinator::new();
     (
         GuestOperationStartGate::new(guest, coordinator.clone()),
@@ -67,24 +160,15 @@ async fn recv_termination_request(
         .expect("terminate request should notify process monitor")
 }
 
+// Basic client/server behavior.
+
 #[tokio::test]
 async fn client_server_no_guest() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
+    let fixture = ControlServerFixture::new();
+    let mut handle = fixture.spawn_default(CancellationToken::new());
+    let request = exec_request("ps aux");
 
-    // Server with no guest connected.
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-    let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
-        .unwrap()
-        .spawn(CancellationToken::new());
-
-    let request = ExecRequest {
-        command: "ps aux".into(),
-        timeout_secs: 5,
-        sudo: false,
-    };
-
-    let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -98,22 +182,19 @@ async fn client_server_no_guest() {
     handle.shutdown().await;
 }
 
+// Terminate protocol behavior.
+
 #[tokio::test]
 async fn client_server_terminate_accepted() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
-    let mut handle = bind_server(
-        sock_path.clone(),
-        test_gate(guest),
-        ProcessTerminationHandle::new(kill_tx),
-    )
-    .unwrap()
-    .spawn(CancellationToken::new());
+    let mut handle = fixture
+        .bind_with_termination(ProcessTerminationHandle::new(kill_tx))
+        .unwrap()
+        .spawn(CancellationToken::new());
 
     let client = tokio::spawn({
-        let sock_path = sock_path.clone();
+        let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
@@ -135,23 +216,18 @@ async fn client_server_terminate_accepted() {
 
 #[tokio::test]
 async fn client_server_terminate_already_stopped() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let (kill_tx, kill_rx) = mpsc::channel(1);
     drop(kill_rx);
-    let mut handle = bind_server(
-        sock_path.clone(),
-        test_gate(guest),
-        ProcessTerminationHandle::new(kill_tx),
-    )
-    .unwrap()
-    .spawn(CancellationToken::new());
+    let mut handle = fixture
+        .bind_with_termination(ProcessTerminationHandle::new(kill_tx))
+        .unwrap()
+        .spawn(CancellationToken::new());
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
     };
-    let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+    let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -167,22 +243,20 @@ async fn client_server_terminate_already_stopped() {
 
 #[tokio::test]
 async fn client_server_terminate_refuses_idle_sandbox() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
-    let mut handle = bind_server(
-        sock_path.clone(),
-        test_gate(guest),
-        ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator()),
-    )
-    .unwrap()
-    .spawn(CancellationToken::new());
+    let mut handle = fixture
+        .bind_with_termination(ProcessTerminationHandle::with_park_coordinator(
+            kill_tx,
+            parked_coordinator(),
+        ))
+        .unwrap()
+        .spawn(CancellationToken::new());
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
     };
-    let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+    let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -202,21 +276,16 @@ async fn client_server_terminate_refuses_idle_sandbox() {
 
 #[tokio::test]
 async fn terminate_response_survives_shutdown_after_request_is_queued() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let shutdown = CancellationToken::new();
-    let mut handle = bind_server(
-        sock_path.clone(),
-        test_gate(guest),
-        ProcessTerminationHandle::new(kill_tx),
-    )
-    .unwrap()
-    .spawn(shutdown.clone());
+    let mut handle = fixture
+        .bind_with_termination(ProcessTerminationHandle::new(kill_tx))
+        .unwrap()
+        .spawn(shutdown.clone());
 
     let client = tokio::spawn({
-        let sock_path = sock_path.clone();
+        let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
@@ -238,6 +307,8 @@ async fn terminate_response_survives_shutdown_after_request_is_queued() {
     );
     handle.shutdown().await;
 }
+
+// ProcessTerminationHandle behavior.
 
 #[tokio::test]
 async fn termination_handle_waits_behind_full_channel() {
@@ -324,131 +395,100 @@ async fn termination_handle_refuses_when_parked_without_queueing() {
     assert_eq!(kill_rx.len(), 0);
 }
 
+// Bound control server socket lifecycle.
+
 #[tokio::test]
 async fn bound_control_server_close_removes_socket() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
 
-    let server = bind_test_server(sock_path.clone(), test_gate(guest)).unwrap();
-    assert!(sock_path.exists());
+    let server = fixture.bind_default().unwrap();
+    assert!(fixture.sock_path.exists());
 
     server.close();
 
-    assert!(!sock_path.exists());
+    assert!(!fixture.sock_path.exists());
 }
 
 #[tokio::test]
 async fn bound_control_server_drop_removes_socket() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
 
     {
-        let _server = bind_test_server(sock_path.clone(), test_gate(guest)).unwrap();
-        assert!(sock_path.exists());
+        let _server = fixture.bind_default().unwrap();
+        assert!(fixture.sock_path.exists());
     }
 
-    assert!(!sock_path.exists());
+    assert!(!fixture.sock_path.exists());
 }
 
 #[tokio::test]
 async fn control_server_shutdown_removes_socket() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-    let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
-        .unwrap()
-        .spawn(CancellationToken::new());
+    let fixture = ControlServerFixture::new();
+    let mut handle = fixture.spawn_default(CancellationToken::new());
 
-    assert!(sock_path.exists());
+    assert!(fixture.sock_path.exists());
 
     handle.shutdown().await;
     handle.shutdown().await;
 
-    assert!(!sock_path.exists());
-    let err = UnixStream::connect(&sock_path).await.unwrap_err();
+    assert!(!fixture.sock_path.exists());
+    let err = UnixStream::connect(&fixture.sock_path).await.unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
 #[tokio::test]
 async fn control_server_cancel_removes_socket() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let shutdown = CancellationToken::new();
-    let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
-        .unwrap()
-        .spawn(shutdown.clone());
+    let mut handle = fixture.spawn_default(shutdown.clone());
 
     shutdown.cancel();
-    wait_for_socket_removed(&sock_path).await;
+    wait_for_socket_removed(&fixture.sock_path).await;
 
     handle.shutdown().await;
-    assert!(!sock_path.exists());
+    assert!(!fixture.sock_path.exists());
 }
 
 #[tokio::test]
 async fn control_server_cancel_cancels_pending_connection() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
     let shutdown = CancellationToken::new();
-    let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
-        .unwrap()
-        .spawn(shutdown.clone());
-    let mut stream = UnixStream::connect(&sock_path).await.unwrap();
+    let mut handle = fixture.spawn_default(shutdown.clone());
+    let mut stream = UnixStream::connect(&fixture.sock_path).await.unwrap();
     stream.write_u32(1024).await.unwrap();
 
     shutdown.cancel();
-    wait_for_socket_removed(&sock_path).await;
+    wait_for_socket_removed(&fixture.sock_path).await;
 
     tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
         .await
         .unwrap();
-    assert!(!sock_path.exists());
+    assert!(!fixture.sock_path.exists());
 }
 
 #[tokio::test]
 async fn control_server_shutdown_cancels_pending_connection() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-    let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
-        .unwrap()
-        .spawn(CancellationToken::new());
-    let mut stream = UnixStream::connect(&sock_path).await.unwrap();
+    let fixture = ControlServerFixture::new();
+    let mut handle = fixture.spawn_default(CancellationToken::new());
+    let mut stream = UnixStream::connect(&fixture.sock_path).await.unwrap();
     stream.write_u32(1024).await.unwrap();
 
     tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
         .await
         .unwrap();
 
-    assert!(!sock_path.exists());
+    assert!(!fixture.sock_path.exists());
 }
+
+// Vsock-backed control exec lifecycle.
 
 #[tokio::test]
 async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
-    let dir = tempfile::tempdir().unwrap();
-    let vsock_base = dir.path().join("vsock");
-    let host_task = {
-        let vsock_base = vsock_base.display().to_string();
-        tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
-        })
-    };
     let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
-    let guest_task = tokio::spawn(mock_guest_holds_exec(vsock_base, exec_seen_tx));
-    let vsock = Arc::new(host_task.await.unwrap().unwrap());
-
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
-    let (gate, coordinator) = test_gate_with_coordinator(guest);
-    let mut handle = bind_test_server(sock_path.clone(), gate)
-        .unwrap()
-        .spawn(CancellationToken::new());
+    let mut fixture =
+        VsockExecFixture::spawn(|vsock_base| mock_guest_holds_exec(vsock_base, exec_seen_tx)).await;
     let client = tokio::spawn({
-        let sock_path = sock_path.clone();
+        let sock_path = fixture.sock_path.clone();
         async move {
             let request = ExecRequest {
                 command: "sleep 30".into(),
@@ -463,7 +503,7 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         .await
         .unwrap()
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
+    tokio::time::timeout(Duration::from_secs(1), fixture.handle.shutdown())
         .await
         .unwrap();
 
@@ -472,49 +512,31 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         .unwrap()
         .unwrap();
     assert!(client_result.is_err());
-    assert_eq!(coordinator.state(), CoordinatorState::Open);
+    assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
     assert!(
         matches!(
-            vsock.try_fence_normal_operations(),
+            fixture.vsock.try_fence_normal_operations(),
             Err(NormalOperationFenceRejection::NotParkable | NormalOperationFenceRejection::Closed)
         ),
         "cancelled in-flight control exec should leave vsock-host not parkable"
     );
 
-    guest_task.abort();
-    let _ = guest_task.await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
 }
 
 #[tokio::test]
 async fn control_exec_rejects_when_policy_gate_is_closing() {
-    let dir = tempfile::tempdir().unwrap();
-    let vsock_base = dir.path().join("vsock");
-    let host_task = {
-        let vsock_base = vsock_base.display().to_string();
-        tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
-        })
-    };
     let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
-    let guest_task = tokio::spawn(mock_guest_records_exec(vsock_base, exec_seen_tx));
-    let vsock = host_task.await.unwrap().unwrap();
-
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-    let (gate, coordinator) = test_gate_with_coordinator(guest);
-    let attempt = coordinator
+    let mut fixture =
+        VsockExecFixture::spawn(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
+            .await;
+    let attempt = fixture
+        .coordinator
         .begin_prepare_park()
         .expect("gate should enter closing state");
-    let mut handle = bind_test_server(sock_path.clone(), gate)
-        .unwrap()
-        .spawn(CancellationToken::new());
-
-    let request = ExecRequest {
-        command: "echo should-not-run".into(),
-        timeout_secs: 5,
-        sudo: false,
-    };
-    let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+    let request = exec_request("echo should-not-run");
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -532,38 +554,20 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
         "control exec should not send a guest command while the gate is closing"
     );
 
-    handle.shutdown().await;
-    coordinator.abort_prepare_park(&attempt).unwrap();
-    guest_task.abort();
-    let _ = guest_task.await;
+    fixture.handle.shutdown().await;
+    fixture.coordinator.abort_prepare_park(&attempt).unwrap();
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
 }
 
 #[tokio::test]
 async fn control_exec_terminal_guest_error_completes_vsock_operation() {
-    let dir = tempfile::tempdir().unwrap();
-    let vsock_base = dir.path().join("vsock");
-    let host_task = {
-        let vsock_base = vsock_base.display().to_string();
-        tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
-        })
-    };
-    let guest_task = tokio::spawn(mock_guest_errors_exec(vsock_base, "guest refused exec"));
-    let vsock = Arc::new(host_task.await.unwrap().unwrap());
-
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
-    let (gate, coordinator) = test_gate_with_coordinator(guest);
-    let mut handle = bind_test_server(sock_path.clone(), gate)
-        .unwrap()
-        .spawn(CancellationToken::new());
-
-    let request = ExecRequest {
-        command: "exit-before-start".into(),
-        timeout_secs: 5,
-        sudo: false,
-    };
-    let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+    let mut fixture = VsockExecFixture::spawn(|vsock_base| {
+        mock_guest_errors_exec(vsock_base, "guest refused exec")
+    })
+    .await;
+    let request = exec_request("exit-before-start");
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -576,44 +580,26 @@ async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         }
         ExecResponse::Success { .. } => panic!("expected guest error"),
     }
-    assert!(vsock.try_fence_normal_operations().is_ok());
-    let attempt = coordinator
+    assert!(fixture.vsock.try_fence_normal_operations().is_ok());
+    let attempt = fixture
+        .coordinator
         .begin_prepare_park()
         .expect("terminal guest error should leave park policy open");
-    coordinator.abort_prepare_park(&attempt).unwrap();
+    fixture.coordinator.abort_prepare_park(&attempt).unwrap();
 
-    handle.shutdown().await;
-    guest_task.abort();
-    let _ = guest_task.await;
+    fixture.handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
 }
 
 #[tokio::test]
 async fn control_exec_transport_error_makes_vsock_not_parkable() {
-    let dir = tempfile::tempdir().unwrap();
-    let vsock_base = dir.path().join("vsock");
-    let host_task = {
-        let vsock_base = vsock_base.display().to_string();
-        tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
-        })
-    };
     let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
-    let guest_task = tokio::spawn(mock_guest_records_exec(vsock_base, exec_seen_tx));
-    let vsock = Arc::new(host_task.await.unwrap().unwrap());
-
-    let sock_path = dir.path().join("control.sock");
-    let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
-    let (gate, coordinator) = test_gate_with_coordinator(guest);
-    let mut handle = bind_test_server(sock_path.clone(), gate)
-        .unwrap()
-        .spawn(CancellationToken::new());
-
-    let request = ExecRequest {
-        command: "disconnect-after-start".into(),
-        timeout_secs: 5,
-        sudo: false,
-    };
-    let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+    let mut fixture =
+        VsockExecFixture::spawn(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
+            .await;
+    let request = exec_request("disconnect-after-start");
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
         .unwrap();
 
@@ -627,33 +613,33 @@ async fn control_exec_transport_error_makes_vsock_not_parkable() {
         }
         ExecResponse::Success { .. } => panic!("expected transport error"),
     }
-    assert_eq!(coordinator.state(), CoordinatorState::Open);
+    assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
     assert!(
         matches!(
-            vsock.try_fence_normal_operations(),
+            fixture.vsock.try_fence_normal_operations(),
             Err(NormalOperationFenceRejection::NotParkable | NormalOperationFenceRejection::Closed)
         ),
         "transport error after command write should leave vsock-host not parkable"
     );
 
-    handle.shutdown().await;
-    guest_task.await.unwrap();
+    fixture.handle.shutdown().await;
+    fixture.guest_task.await.unwrap();
 }
+
+// Bind failure behavior.
 
 #[tokio::test]
 async fn bind_server_reports_bind_failure() {
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("control.sock");
-    let _existing = UnixListener::bind(&sock_path).unwrap();
-    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let fixture = ControlServerFixture::new();
+    let _existing = UnixListener::bind(&fixture.sock_path).unwrap();
 
-    let result = bind_test_server(sock_path.clone(), test_gate(guest));
+    let result = fixture.bind_default();
 
     let Err(err) = result else {
         panic!("binding an occupied control socket should fail");
     };
     assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
-    assert!(sock_path.exists());
+    assert!(fixture.sock_path.exists());
 }
 
 async fn wait_for_socket_removed(sock_path: &Path) {
