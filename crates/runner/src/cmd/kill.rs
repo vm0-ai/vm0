@@ -437,10 +437,9 @@ fn discovered_has_same_or_unidentified_firecracker(
     initial: &KillTarget,
     discovered: &DiscoveredProcesses,
 ) -> bool {
-    discovered
-        .firecrackers
-        .iter()
-        .any(|process| process.sandbox_id == initial.sandbox_id || process.base_dir.is_none())
+    discovered.firecrackers.iter().any(|process| {
+        process.sandbox_id == initial.sandbox_id || process.workspace_identity_incomplete()
+    })
 }
 
 /// Resolve a `--run` prefix to a single Firecracker process.
