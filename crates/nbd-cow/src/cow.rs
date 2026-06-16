@@ -6,7 +6,7 @@
 //! materialized when snapshots are kept.
 
 use std::collections::BTreeMap;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
@@ -453,10 +453,20 @@ impl CowLayer {
         })?;
         let dir_fd = File::open(parent)?;
         let tmp_path = bitmap_tmp_path_for(path);
-        if let Err(e) = File::create(&tmp_path).and_then(|f| {
-            f.write_all_at(&data, 0)?;
-            f.sync_all()
-        }) {
+        match std::fs::remove_file(&tmp_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        if let Err(e) = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .and_then(|f| {
+                f.write_all_at(&data, 0)?;
+                f.sync_all()
+            })
+        {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(e.into());
         }
@@ -1002,6 +1012,32 @@ mod tests {
 
         assert!(bitmap_path.exists());
         assert!(!tmp_path.exists());
+        CowLayer::load_bitmap(&bitmap_path, 1).unwrap();
+    }
+
+    #[test]
+    fn bitmap_save_replaces_stale_tmp_symlink_without_following() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base_path = tmp.path().join("base.img");
+        std::fs::write(&base_path, vec![0; 4096]).unwrap();
+        let cow_path = tmp.path().join("cow.img");
+        let cow = CowLayer::new(&base_path, &cow_path, 4096, 4096, 1024 * 1024).unwrap();
+        let bitmap_path = bitmap_path_for(&cow_path);
+        let tmp_path = bitmap_tmp_path_for(&bitmap_path);
+        let symlink_target = tmp.path().join("tmp-symlink-target");
+        std::fs::write(&symlink_target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&symlink_target, &tmp_path).unwrap();
+
+        cow.save_bitmap(&bitmap_path).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&bitmap_path)
+                .unwrap()
+                .file_type()
+                .is_file()
+        );
+        assert!(!tmp_path.exists());
+        assert_eq!(std::fs::read(&symlink_target).unwrap(), b"keep");
         CowLayer::load_bitmap(&bitmap_path, 1).unwrap();
     }
 
