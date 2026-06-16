@@ -2,6 +2,7 @@ import { safeUrlParse } from "../utils";
 
 export const internalRunCallbackKinds = [
   "agent",
+  "agentphone",
   "github:issues",
   "slack:org",
   "telegram",
@@ -36,6 +37,7 @@ function isInternalRunCallbackKind(
 ): value is InternalRunCallbackKind {
   switch (value) {
     case "agent":
+    case "agentphone":
     case "github:issues":
     case "slack:org":
     case "telegram":
@@ -69,6 +71,9 @@ function legacyInternalRunCallbackKind(
   switch (path) {
     case "/api/internal/callbacks/agent": {
       return "agent";
+    }
+    case "/api/internal/callbacks/agentphone": {
+      return "agentphone";
     }
     case "/api/internal/callbacks/github/issues": {
       return "github:issues";
