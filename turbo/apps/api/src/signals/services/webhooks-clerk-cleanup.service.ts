@@ -37,6 +37,7 @@ import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { deleteS3Objects, listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
@@ -50,6 +51,7 @@ import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
 const L = logger("WebhookClerkCleanup");
+const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
 
 async function publishCancelBestEffort(
   runnerGroup: string | null,
@@ -113,9 +115,9 @@ async function cancelLastAdminOrgsStripeSubscriptions(
       );
 
     if ((result?.adminCount ?? 0) <= 1) {
-      await tapError(cancelStripeSubscription(db, orgId), (error) => {
+      await tapError(markStripeSubscriptionsNonRenewing(db, orgId), (error) => {
         L.warn(
-          "failed to cancel stripe subscription for org with banned last admin",
+          "failed to mark stripe subscriptions non-renewing for org with banned last admin",
           { userId, orgId, error },
         );
       });
@@ -172,9 +174,13 @@ async function cleanupWorkspaceInstallation(
     .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
 }
 
-async function cancelStripeSubscription(db: Db, orgId: string): Promise<void> {
+async function markStripeSubscriptionsNonRenewing(
+  db: Db,
+  orgId: string,
+): Promise<void> {
   const [meta] = await db
     .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
     })
@@ -182,11 +188,58 @@ async function cancelStripeSubscription(db: Db, orgId: string): Promise<void> {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  if (!meta?.stripeSubscriptionId || meta.subscriptionStatus === "canceled") {
+  if (!meta?.stripeCustomerId && !meta?.stripeSubscriptionId) {
     return;
   }
 
-  await getStripeClient().subscriptions.cancel(meta.stripeSubscriptionId);
+  const stripe = getStripeClient();
+  const renewingSubscriptionIds = new Set<string>();
+  const nonRenewingSubscriptionIds = new Set<string>();
+
+  if (meta.stripeCustomerId) {
+    let startingAfter: string | undefined;
+
+    while (true) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: meta.stripeCustomerId,
+        status: "all",
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+
+      for (const subscription of subscriptions.data) {
+        if (
+          subscription.status === "canceled" ||
+          subscription.cancel_at_period_end
+        ) {
+          nonRenewingSubscriptionIds.add(subscription.id);
+        } else {
+          renewingSubscriptionIds.add(subscription.id);
+        }
+      }
+
+      const lastSubscription =
+        subscriptions.data[subscriptions.data.length - 1];
+      if (!subscriptions.has_more || !lastSubscription) {
+        break;
+      }
+      startingAfter = lastSubscription.id;
+    }
+  }
+
+  if (
+    meta.stripeSubscriptionId &&
+    meta.subscriptionStatus !== "canceled" &&
+    !nonRenewingSubscriptionIds.has(meta.stripeSubscriptionId)
+  ) {
+    renewingSubscriptionIds.add(meta.stripeSubscriptionId);
+  }
+
+  for (const subscriptionId of renewingSubscriptionIds) {
+    await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+  }
 }
 
 async function deregisterOrgTelegramWebhooks(
@@ -331,9 +384,9 @@ const cleanupOrgExternalServices$ = command(
       readonly run: () => Promise<void>;
     }[] = [
       {
-        name: "stripe subscription",
+        name: "stripe subscriptions",
         run: () => {
-          return cancelStripeSubscription(db, orgId);
+          return markStripeSubscriptionsNonRenewing(db, orgId);
         },
       },
       {
@@ -392,6 +445,91 @@ const cleanupUserExternalServices$ = command(
     }
   },
 );
+
+async function emptyOrgIdsAfterDeletingUser(
+  db: Db,
+  clerk: ReturnType<typeof clerk$.read>,
+  userId: string,
+  signal: AbortSignal,
+): Promise<readonly string[]> {
+  const membershipRows = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId));
+  const createdRows = await db
+    .select({ orgId: orgCache.orgId })
+    .from(orgCache)
+    .where(eq(orgCache.createdBy, userId));
+
+  const candidateOrgIds = new Set<string>();
+  for (const row of membershipRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+  for (const row of createdRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+
+  const emptyOrgIds: string[] = [];
+  for (const orgId of candidateOrgIds) {
+    if (await isClerkOrgEmptyAfterDeletingUser(clerk, orgId, userId, signal)) {
+      emptyOrgIds.push(orgId);
+    }
+  }
+
+  return emptyOrgIds;
+}
+
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+async function isClerkOrgEmptyAfterDeletingUser(
+  clerk: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  userId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  for (let offset = 0; ; offset += CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+    const memberships = await settle(
+      clerk.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: CLERK_ORG_MEMBERSHIP_PAGE_SIZE,
+        offset,
+      }),
+    );
+    signal.throwIfAborted();
+
+    if (!memberships.ok) {
+      if (isClerkNotFound(memberships.error)) {
+        return true;
+      }
+      L.warn("failed to query Clerk organization memberships for deletion", {
+        orgId,
+        userId,
+        error: memberships.error,
+      });
+      return false;
+    }
+
+    for (const membership of memberships.value.data) {
+      const memberUserId = membership.publicUserData?.userId;
+      if (!memberUserId || memberUserId !== userId) {
+        return false;
+      }
+    }
+
+    if (memberships.value.data.length < CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+      return true;
+    }
+  }
+}
 
 function deleteObjectsForPrefixes(
   bucket: string,
@@ -634,11 +772,34 @@ export const cleanupClerkDeletedOrg$ = command(
 export const cleanupClerkDeletedUser$ = command(
   async ({ get, set }, userId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
+    const emptyOrgIds = await emptyOrgIdsAfterDeletingUser(
+      db,
+      get(clerk$),
+      userId,
+      signal,
+    );
+    signal.throwIfAborted();
+
     await set(cleanupUserExternalServices$, db, userId, signal);
     signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await set(cleanupOrgExternalServices$, db, orgId, signal);
+      signal.throwIfAborted();
+    }
+
     await get(deleteUserS3Data(db, userId));
     signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await get(deleteOrgS3Data(db, orgId));
+      signal.throwIfAborted();
+    }
+
     await deleteUserData(db, userId);
+    signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await deleteOrgData(db, orgId);
+      signal.throwIfAborted();
+    }
   },
 );
 

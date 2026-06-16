@@ -57,9 +57,9 @@ import {
   setNewThreadComputerUseHostId$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
-  onlineComputerUseHosts$,
-  reloadOnlineComputerUseHosts$,
-  selectedOnlineComputerUseHostId,
+  computerUseHosts$,
+  selectedComputerUseHostId as resolveSelectedComputerUseHostId,
+  visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -422,18 +422,20 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
 function useNewThreadComputerUse() {
   const features = useLastResolved(featureSwitch$);
   const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
-  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
-  const lastResolvedComputerUseHosts =
-    useLastResolved(onlineComputerUseHosts$) ?? [];
+  const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
+  const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : lastResolvedComputerUseHosts;
   const storedComputerUseHostId = useGet(newThreadComputerUseHostId$);
-  const reloadComputerUseHosts = useSet(reloadOnlineComputerUseHosts$);
-  const selectedComputerUseHostId = selectedOnlineComputerUseHostId(
+  const selectedComputerUseHostId = resolveSelectedComputerUseHostId(
     computerUseHosts,
     storedComputerUseHostId,
+  );
+  const visibleHosts = visibleComputerUseHosts(
+    computerUseHosts,
+    selectedComputerUseHostId,
   );
   const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
 
@@ -446,13 +448,12 @@ function useNewThreadComputerUse() {
     },
     computerUse: computerUseEnabled
       ? {
-          hosts: computerUseHosts,
+          hosts: visibleHosts,
           loading:
             computerUseHostsLoadable.state === "loading" &&
             computerUseHosts.length === 0,
           selectedHostId: selectedComputerUseHostId,
           onChange: setComputerUseHostId,
-          onRefresh: reloadComputerUseHosts,
           downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
         }
       : undefined,
@@ -497,7 +498,9 @@ export function AgentChatPage() {
             prompt: message,
             modelSelection,
             generationTemplate: selectedGenerationTemplate,
-            computerUseHostId: selectedComputerUseHostId,
+            ...(selectedComputerUseHostId
+              ? { computerUseHostId: selectedComputerUseHostId }
+              : {}),
           },
           rootSignal,
         );

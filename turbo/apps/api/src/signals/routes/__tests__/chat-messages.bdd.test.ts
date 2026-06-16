@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, like, or } from "drizzle-orm";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -22,6 +22,7 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { secrets } from "@vm0/db/schema/secret";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { describe, expect, it } from "vitest";
@@ -376,6 +377,21 @@ async function updateFeatureSwitches(
 
 async function disableComputerUse(actor: ApiTestUser): Promise<void> {
   await updateFeatureSwitches(actor, { [FeatureSwitchKey.ComputerUse]: false });
+}
+
+async function readThreadComputerUseHostId(
+  threadId: string,
+): Promise<string | null> {
+  const db = store.set(writeDb$);
+  const [thread] = await db
+    .select({ computerUseHostId: chatThreads.computerUseHostId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!thread) {
+    throw new Error("Expected chat thread to exist");
+  }
+  return thread.computerUseHostId;
 }
 
 /**
@@ -1329,6 +1345,18 @@ describe("CHAT-02: explicit provider pins", () => {
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
     const writeDb = store.set(writeDb$);
 
+    await writeDb
+      .delete(vm0ApiKeys)
+      .where(
+        and(
+          eq(vm0ApiKeys.vendor, "openrouter"),
+          eq(vm0ApiKeys.model, "z-ai/glm-5.1"),
+          or(
+            like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
+            like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
+          ),
+        ),
+      );
     await writeDb.insert(vm0ApiKeys).values([
       {
         vendor: "openrouter",
@@ -1393,7 +1421,14 @@ describe("CHAT-02: explicit provider pins", () => {
     await writeDb
       .delete(vm0ApiKeys)
       .where(
-        or(eq(vm0ApiKeys.apiKey, fakeKey), eq(vm0ApiKeys.apiKey, devSeedKey)),
+        and(
+          eq(vm0ApiKeys.vendor, "openrouter"),
+          eq(vm0ApiKeys.model, "z-ai/glm-5.1"),
+          or(
+            like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
+            like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
+          ),
+        ),
       );
   }, 90_000);
 
@@ -2177,7 +2212,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 });
 
 describe("CHAT-02/FILE-03: computer-use host grants", () => {
-  it("grants computer-use capability only for a selected online host", async () => {
+  it("grants computer-use capability only for a selected host", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
     await cu.enableComputerUse(actor);
@@ -2214,6 +2249,12 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       prompt: "open the remote browser",
       computerUseHostId: hostId,
     });
+    const grantedRun = await api.readRun(actor, granted.runId);
+    expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
+    expect(grantedRun.appendSystemPrompt).toContain(
+      "Computer Use is enabled for this run on Zero Desktop.",
+    );
+    expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
@@ -2251,6 +2292,26 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     await cancelChatRun(actor, cleared.runId);
+
+    mockNow(now() + 91_000);
+    const staleGranted = await sendChatRun(actor, {
+      agentId,
+      threadId: granted.threadId,
+      prompt: "use the computer after it went offline",
+      computerUseHostId: hostId,
+    });
+    const staleRun = await api.readRun(actor, staleGranted.runId);
+    expect(staleRun.appendSystemPrompt).toContain(
+      "Computer Use is enabled for this run on Zero Desktop.",
+    );
+    clearMockNow();
+    const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
+    await cu.heartbeatComputerUseHost(hostToken);
+    await cu.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(staleClaim.claim) },
+      [200],
+    );
+    await cancelChatRun(actor, staleGranted.runId);
   }, 120_000);
 
   it("rejects unusable computer-use host selections", async () => {
@@ -2289,9 +2350,24 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expect(unknownHost.body.error.message).toBe("Computer-use host not found");
 
     // Stopping a host revokes it, so an explicit selection reports it as
-    // missing rather than offline.
+    // missing rather than offline, and clears any thread binding immediately.
     const stopped = await cu.startComputerUseHost(actor);
+    const stoppedPinned = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin the host before stopping it",
+        computerUseHostId: stopped.hostId,
+      },
+      [201],
+    );
+    if (stoppedPinned.status !== 201) {
+      throw new Error("Expected the stopped-host pin send to be accepted");
+    }
     await cu.stopComputerUseHost(stopped.hostToken);
+    await expect(
+      readThreadComputerUseHostId(stoppedPinned.body.threadId),
+    ).resolves.toBeNull();
     const revokedHost = await chat.requestSendMessage(
       actor,
       {
@@ -2322,6 +2398,9 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     expect(pinned.body.runId).toBeNull();
     await cu.deleteComputerUseHost(actor, sticky.hostId);
+    await expect(
+      readThreadComputerUseHostId(pinned.body.threadId),
+    ).resolves.toBeNull();
     const clearedSend = await chat.requestSendMessage(
       actor,
       {
@@ -2363,26 +2442,22 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     await cu.enableComputerUse(actor);
 
     // A host that stopped heartbeating goes stale-offline (status still
-    // online, not revoked), which is the explicit-selection conflict arm.
-    // Only one host can be online per user, so the surviving host is aged
-    // past the heartbeat window instead of starting another one.
+    // online, not revoked), but explicit selections are still accepted so the
+    // run can use the host if it reconnects while running.
     mockNow(now() + 91_000);
-    const offlineHost = await chat.requestSendMessage(
+    const offlineHostSend = await chat.requestSendMessage(
       actor,
       {
         agentId: agent.agentId,
         prompt: "use a stale host",
         computerUseHostId: survivor.hostId,
       },
-      [409],
+      [201],
     );
-    expectApiError(offlineHost.body);
-    expect(offlineHost.body.error.message).toBe(
-      "Selected computer-use host is offline",
-    );
+    expect(offlineHostSend.body).toMatchObject({ runId: null });
 
-    // The sticky-host fallthrough tolerates a stale host instead of failing:
-    // a send without the field on the pinned thread is still accepted.
+    // The sticky-host fallthrough also tolerates a stale host instead of
+    // failing: a send without the field on the pinned thread is accepted.
     const staleStickySend = await chat.requestSendMessage(
       actor,
       {

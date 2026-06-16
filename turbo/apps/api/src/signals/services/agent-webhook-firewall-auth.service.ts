@@ -93,6 +93,7 @@ const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
+const MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH = 128;
 const refreshTimeoutMsForTests = testOverride<number | undefined>(() => {
   return undefined;
 });
@@ -736,6 +737,36 @@ function classifyRefreshFailure(
     errorCode: refreshErrorCodeFromError(error, refreshTimedOut),
     failureReason: refreshFailureReasonFromError(error, refreshTimedOut),
   };
+}
+
+function oauthRefreshFailureLogFields(error: unknown): {
+  readonly oauthError?: string;
+  readonly oauthErrorSubtype?: string;
+  readonly oauthStatus?: number;
+} {
+  if (!isOAuthProviderHttpError(error)) {
+    return {};
+  }
+  return {
+    ...(error.oauthError
+      ? { oauthError: oauthRefreshFailureLogField(error.oauthError) }
+      : {}),
+    ...(error.oauthErrorSubtype
+      ? {
+          oauthErrorSubtype: oauthRefreshFailureLogField(
+            error.oauthErrorSubtype,
+          ),
+        }
+      : {}),
+    oauthStatus: error.status,
+  };
+}
+
+function oauthRefreshFailureLogField(value: string): string {
+  if (value.length <= MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH - 3)}...`;
 }
 
 function isFetchNetworkError(error: unknown): boolean {
@@ -1950,6 +1981,7 @@ async function markAndReturnRefreshFailure(
     userId: args.userId,
     errorCode,
     failureReason,
+    ...oauthRefreshFailureLogFields(error),
   });
   await markRefreshFailure(args, context, errorCode, failureReason);
   return refreshFailedResult(failureReason);

@@ -141,6 +141,7 @@ import {
   googleCloudCategories,
   googleCloudCategoryOrder,
   googleCloudDefaultAllowed,
+  googleCloudDefaultUnknownPolicy,
   googleCloudFirewall,
 } from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
@@ -832,6 +833,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   Record<FirewallConnectorType, FirewallPolicyValue>
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
+  "google-cloud": googleCloudDefaultUnknownPolicy,
 };
 
 /**

@@ -19,15 +19,18 @@ import {
   computerUseCommands,
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
+const COMPUTER_USE_HOSTS_CHANGED_TOPIC = "computerUseHostsChanged";
 const L = logger("ZeroComputerUse");
 
 const COMPUTER_USE_READ_COMMANDS = [
@@ -158,13 +161,55 @@ function normalizeCapabilities(capabilities: readonly string[]): string[] {
     .slice(0, 50);
 }
 
-export function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
+function sameStringArray(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => {
+      return value === right[index];
+    })
+  );
+}
+
+function samePermissions(
+  left: ComputerUseHostRow["permissions"],
+  right: ComputerUseHostRow["permissions"],
+): boolean {
+  return (
+    left.accessibility === right.accessibility &&
+    left.screenRecording === right.screenRecording
+  );
+}
+
+function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
   return (
     host.status === "online" &&
     host.revokedAt === null &&
     now.getTime() - host.lastSeenAt.getTime() <=
       COMPUTER_USE_HOST_CLOSED_AFTER_MS
   );
+}
+
+async function publishComputerUseHostsChanged(userId: string): Promise<void> {
+  await publishUserSignal([userId], COMPUTER_USE_HOSTS_CHANGED_TOPIC);
+}
+
+async function clearComputerUseHostThreadBindings(params: {
+  readonly tx: ComputerUseTx;
+  readonly userId: string;
+  readonly hostId: string;
+}): Promise<void> {
+  await params.tx
+    .update(chatThreads)
+    .set({ computerUseHostId: null, updatedAt: nowDate() })
+    .where(
+      and(
+        eq(chatThreads.userId, params.userId),
+        eq(chatThreads.computerUseHostId, params.hostId),
+      ),
+    );
 }
 
 function hostSupportsCommand(
@@ -710,6 +755,8 @@ export const startComputerUseHost$ = command(
       return { status: "started" as const, hostId: host.id, hostToken };
     });
     signal.throwIfAborted();
+    await publishComputerUseHostsChanged(params.userId);
+    signal.throwIfAborted();
     return result;
   },
 );
@@ -732,31 +779,59 @@ export const heartbeatComputerUseHost$ = command(
   ): Promise<HeartbeatComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
-    const result = await db.transaction(async (tx) => {
-      const lockedHost = await hostFromToken(tx, params.hostToken, signal);
-      if (!lockedHost) {
-        return { status: "invalid_token" as const };
-      }
+    const { result, publishChanged, userId } = await db.transaction(
+      async (tx) => {
+        const lockedHost = await hostFromToken(tx, params.hostToken, signal);
+        if (!lockedHost) {
+          return {
+            result: { status: "invalid_token" as const },
+            publishChanged: false,
+            userId: null,
+          };
+        }
+        const displayName = normalizeHostName(params.hostName);
+        const appVersion = normalizeVersion(params.appVersion);
+        const osVersion = normalizeOsVersion(params.osVersion);
+        const supportedCapabilities = normalizeCapabilities(
+          params.supportedCapabilities,
+        );
+        const publishChanged =
+          !hostIsOnline(lockedHost, now) ||
+          lockedHost.displayName !== displayName ||
+          lockedHost.appVersion !== appVersion ||
+          lockedHost.osVersion !== osVersion ||
+          !sameStringArray(
+            lockedHost.supportedCapabilities,
+            supportedCapabilities,
+          ) ||
+          !samePermissions(lockedHost.permissions, params.permissions);
 
-      await tx
-        .update(computerUseHosts)
-        .set({
-          displayName: normalizeHostName(params.hostName),
-          appVersion: normalizeVersion(params.appVersion),
-          osVersion: normalizeOsVersion(params.osVersion),
-          supportedCapabilities: normalizeCapabilities(
-            params.supportedCapabilities,
-          ),
-          permissions: params.permissions,
-          status: "online",
-          lastSeenAt: now,
-          updatedAt: now,
-        })
-        .where(eq(computerUseHosts.id, lockedHost.id));
-      signal.throwIfAborted();
-      return { status: "ok" as const, hostId: lockedHost.id };
-    });
+        await tx
+          .update(computerUseHosts)
+          .set({
+            displayName,
+            appVersion,
+            osVersion,
+            supportedCapabilities,
+            permissions: params.permissions,
+            status: "online",
+            lastSeenAt: now,
+            updatedAt: now,
+          })
+          .where(eq(computerUseHosts.id, lockedHost.id));
+        signal.throwIfAborted();
+        return {
+          result: { status: "ok" as const, hostId: lockedHost.id },
+          publishChanged,
+          userId: lockedHost.userId,
+        };
+      },
+    );
     signal.throwIfAborted();
+    if (result.status === "ok" && publishChanged && userId) {
+      await publishComputerUseHostsChanged(userId);
+      signal.throwIfAborted();
+    }
     return result;
   },
 );
@@ -771,20 +846,35 @@ export const stopComputerUseHost$ = command(
   ): Promise<StopComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
-    const result = await db.transaction(async (tx) => {
+    const { result, userId } = await db.transaction(async (tx) => {
       const host = await hostFromToken(tx, params.hostToken, signal);
       if (!host) {
-        return { status: "invalid_token" as const };
+        return {
+          result: { status: "invalid_token" as const },
+          userId: null,
+        };
       }
 
       await tx
         .update(computerUseHosts)
         .set({ status: "offline", revokedAt: now, updatedAt: now })
         .where(eq(computerUseHosts.id, host.id));
+      await clearComputerUseHostThreadBindings({
+        tx,
+        userId: host.userId,
+        hostId: host.id,
+      });
       signal.throwIfAborted();
-      return { status: "stopped" as const, hostId: host.id };
+      return {
+        result: { status: "stopped" as const, hostId: host.id },
+        userId: host.userId,
+      };
     });
     signal.throwIfAborted();
+    if (userId) {
+      await publishComputerUseHostsChanged(userId);
+      signal.throwIfAborted();
+    }
     return result;
   },
 );
@@ -831,20 +921,35 @@ export const deleteComputerUseHost$ = command(
   > => {
     const db = set(writeDb$);
     const now = nowDate();
-    const [host] = await db
-      .update(computerUseHosts)
-      .set({ status: "offline", revokedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(computerUseHosts.id, params.hostId),
-          eq(computerUseHosts.orgId, params.orgId),
-          eq(computerUseHosts.userId, params.userId),
-          isNull(computerUseHosts.revokedAt),
-        ),
-      )
-      .returning({ id: computerUseHosts.id });
+    const result = await db.transaction(async (tx) => {
+      const [host] = await tx
+        .update(computerUseHosts)
+        .set({ status: "offline", revokedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(computerUseHosts.id, params.hostId),
+            eq(computerUseHosts.orgId, params.orgId),
+            eq(computerUseHosts.userId, params.userId),
+            isNull(computerUseHosts.revokedAt),
+          ),
+        )
+        .returning({ id: computerUseHosts.id });
+      if (!host) {
+        return { status: "not_found" as const };
+      }
+      await clearComputerUseHostThreadBindings({
+        tx,
+        userId: params.userId,
+        hostId: host.id,
+      });
+      return { status: "deleted" as const };
+    });
     signal.throwIfAborted();
-    return host ? { status: "deleted" } : { status: "not_found" };
+    if (result.status === "deleted") {
+      await publishComputerUseHostsChanged(params.userId);
+      signal.throwIfAborted();
+    }
+    return result;
   },
 );
 

@@ -25,8 +25,13 @@ Notes:
     withErrorHandler(
       async (options: { to: string; agentId?: string; text?: string }) => {
         let text = options.text;
-        if (!text && process.stdin.isTTY === false) {
-          text = readFileSync("/dev/stdin", "utf8").trim();
+        if (!text && !process.stdin.isTTY) {
+          try {
+            text = readFileSync("/dev/stdin", "utf8").trim();
+          } catch {
+            // stdin not readable (e.g. test runner with no piped input);
+            // fall through to the missing-text validation below.
+          }
         }
 
         if (!text) {

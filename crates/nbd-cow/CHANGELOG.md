@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.39](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.38...nbd-cow-v0.4.39) (2026-06-15)
+
+
+### Bug Fixes
+
+* guard nbd cooldown deadline overflow ([#17740](https://github.com/vm0-ai/vm0/issues/17740)) ([56e6826](https://github.com/vm0-ai/vm0/commit/56e6826569514eb8e98df69dd00eead4ba19a962))
+
+
+### Refactoring
+
+* **nbd-cow:** rebuild netlink wire messages by append ([#17741](https://github.com/vm0-ai/vm0/issues/17741)) ([c658603](https://github.com/vm0-ai/vm0/commit/c658603d2db8328a00f444243002b39e1d3f0972))
+
 ## [0.4.38](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.37...nbd-cow-v0.4.38) (2026-06-15)
 
 

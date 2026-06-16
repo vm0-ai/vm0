@@ -64,6 +64,14 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.policies["account-waf.write"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
+
+  it("should default Google Cloud unknown endpoints to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-cloud");
+
+    expect(policy.policies["compute.instances.get"]).toBe("allow");
+    expect(policy.policies["compute.instances.create"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
 });
 
 describe("resolveFirewallPolicies", () => {
@@ -118,8 +126,12 @@ describe("resolveFirewallPolicies", () => {
   });
 
   it("should use connector-specific unknownPolicy defaults when not stored", () => {
-    const resolved = resolveFirewallPolicies(null, ["cloudflare"]);
+    const resolved = resolveFirewallPolicies(null, [
+      "cloudflare",
+      "google-cloud",
+    ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
   });
 
   it("should preserve stored unknownPolicy override over connector-specific defaults", () => {

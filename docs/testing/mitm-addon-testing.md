@@ -56,13 +56,16 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_compiled_firewall_authority_normalization.py` | Compiled firewall runtime URL, authority, and port normalization |
 | `test_compiled_firewall_idna_matching.py` | Compiled firewall IDNA authority matching and compatibility-alias rejection |
 | `test_compiled_firewall_unknown_policy.py` | Compiled firewall unknown-policy and unsafe-path behavior |
-| `test_compiled_firewall_precedence.py` | Compiled firewall precedence, specificity, and permission ordering |
+| `test_compiled_firewall_base_specificity_precedence.py` | Compiled firewall base specificity precedence |
+| `test_compiled_firewall_cross_firewall_precedence.py` | Compiled firewall cross-firewall and permission ordering precedence |
 | `test_compiled_firewall_malformed_auth.py` | Compiled firewall malformed auth config behavior |
 | `test_compiled_firewall_malformed_base.py` | Compiled firewall malformed base and base-scope behavior |
 | `test_compiled_firewall_malformed_permissions.py` | Compiled firewall malformed permission behavior |
 | `test_compiled_firewall_malformed_policies.py` | Compiled firewall malformed policy and payload-shape behavior |
-| `test_compiled_firewall_malformed_precedence.py` | Compiled firewall malformed config precedence and interaction behavior |
+| `test_compiled_firewall_malformed_precedence.py` | Compiled firewall malformed config and malformed network-policy precedence |
 | `test_compiled_firewall_malformed_rules.py` | Compiled firewall malformed rule and rule-shape behavior |
+| `test_compiled_firewall_permission_aggregation.py` | Compiled firewall denied-permission aggregation and deduplication |
+| `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence |
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
 | `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
 | `test_firewall_rewrite_success.py` | Firewall auth URL rewrite success behavior |

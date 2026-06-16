@@ -54,10 +54,15 @@ Notes:
           });
         }
 
-        // Read from stdin if text not provided and stdin is explicitly piped
-        // (isTTY is false when piped, undefined when no TTY context e.g. tests)
-        if (!text && process.stdin.isTTY === false) {
-          text = readFileSync("/dev/stdin", "utf8").trim();
+        // Read from stdin if text not provided and stdin is not a TTY
+        // (isTTY is true only for an interactive terminal, undefined when piped).
+        if (!text && !process.stdin.isTTY) {
+          try {
+            text = readFileSync("/dev/stdin", "utf8").trim();
+          } catch {
+            // stdin not readable (e.g. test runner with no piped input);
+            // fall through to the missing-text validation below.
+          }
         }
 
         // Parse blocks JSON if provided

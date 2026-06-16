@@ -41,7 +41,7 @@ export interface AppendQueuedMessageArgs {
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
   generationTemplate: GenerationTemplateRequest | undefined;
-  computerUseHostId: string | null;
+  computerUseHostId?: string | null;
 }
 
 export interface RecallMessageArgs {

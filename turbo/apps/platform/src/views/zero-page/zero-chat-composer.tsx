@@ -17,7 +17,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
@@ -50,6 +49,7 @@ import {
   CardContent,
   Input,
   Popover,
+  PopoverClose,
   PopoverContent,
   PopoverTrigger,
   Skeleton,
@@ -145,9 +145,7 @@ import {
   setPendingConnectType$,
   composerSavingType$,
   setComposerSavingType$,
-  clearComputerUsePopoverCloseSuppression$,
   computerUseDownloadDialogOpen$,
-  computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
   popoverSearch$,
@@ -171,7 +169,6 @@ import {
   setTemplatePickerPreviewSlideIndex$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
-  setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
   type TemplatePickerVideoGroup,
@@ -282,7 +279,6 @@ interface ZeroChatComposerProps {
     loading: boolean;
     selectedHostId: string | null;
     onChange: (hostId: string | null) => void;
-    onRefresh: () => void;
     downloadUrl: string;
   };
   /** When true, render a skeleton in the model picker slot. */
@@ -328,6 +324,7 @@ interface ComposerComputerUseHost {
   id: string;
   hostName: string;
   displayName: string;
+  status: "online" | "offline";
 }
 
 type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
@@ -2487,15 +2484,17 @@ function ComposerTemplatePickerSlot({
 
 function ConnectorTriggerIcons({
   connectors,
+  hasComputerUse,
 }: {
   connectors: ComposerConnectorItem[];
+  hasComputerUse: boolean;
 }) {
   const enabled = connectors
     .filter((c) => {
       return c.authorized;
     })
     .slice(0, 3);
-  if (enabled.length === 0) {
+  if (enabled.length === 0 && !hasComputerUse) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
@@ -2509,6 +2508,13 @@ function ConnectorTriggerIcons({
           </span>
         );
       })}
+      {hasComputerUse && (
+        <span className="relative shrink-0">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+            <IconDeviceDesktop size={16} stroke={1.5} />
+          </span>
+        </span>
+      )}
     </span>
   );
 }
@@ -2606,16 +2612,104 @@ function AddConnectorsDialog({
   );
 }
 
+function ComputerUseConnectorMenuSection({
+  computerUse,
+  onOpenDownloadDialog,
+}: {
+  computerUse: ComposerComputerUse;
+  onOpenDownloadDialog: () => void;
+}) {
+  return (
+    <div className="border-t border-border/50 py-1">
+      <PopoverClose asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
+          onClick={onOpenDownloadDialog}
+        >
+          <IconPlug
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          Connect my computer
+        </button>
+      </PopoverClose>
+      {computerUse.loading ? (
+        <div className="flex flex-col animate-pulse">
+          {Array.from({ length: 2 }, (_, i) => {
+            return (
+              <div key={i} className="flex items-center gap-2 px-3 py-2">
+                <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                <span className="h-3 w-6 rounded-full bg-muted/50" />
+              </div>
+            );
+          })}
+        </div>
+      ) : computerUse.hosts.length > 0 ? (
+        <div
+          className="flex max-h-[108px] flex-col overflow-y-auto"
+          role="group"
+          aria-label="Computer Use hosts"
+        >
+          {computerUse.hosts.map((host) => {
+            const checked = computerUse.selectedHostId === host.id;
+            return (
+              <div
+                key={host.id}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 transition-colors",
+                  checked ? "bg-primary/5" : "hover:bg-muted/50",
+                )}
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                  <IconDeviceDesktop size={16} stroke={1.5} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-foreground">
+                    {host.displayName}
+                  </span>
+                  {host.status === "offline" && (
+                    <span className="block text-[11px] leading-3 text-muted-foreground">
+                      Offline
+                    </span>
+                  )}
+                </span>
+                <LoadingSwitch
+                  checked={checked}
+                  onCheckedChange={onDomEventFn((nextChecked) => {
+                    computerUse.onChange(nextChecked ? host.id : null);
+                  })}
+                  loading={false}
+                  ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                  size="sm"
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="px-3 py-2 text-sm text-muted-foreground">
+          No online computers
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectorsPopoverButton({
   agentConnectors,
   connectorsLoading,
   savingType,
+  computerUse,
   onOpenAddDialog,
   onToggle,
 }: {
   agentConnectors: ComposerConnectorItem[];
   connectorsLoading: boolean;
   savingType: string | null;
+  computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
 }) {
@@ -2623,6 +2717,8 @@ function ConnectorsPopoverButton({
   const setSearch = useSet(setPopoverSearch$);
   const sortOrder = useGet(popoverSortOrder$);
   const setSortOrder = useSet(setPopoverSortOrder$);
+  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const showSearch = agentConnectors.length > 20;
 
   // Use snapshot order if available, otherwise sort by added status
@@ -2671,7 +2767,10 @@ function ConnectorsPopoverButton({
                 className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
                 aria-label="Connectors"
               >
-                <ConnectorTriggerIcons connectors={agentConnectors} />
+                <ConnectorTriggerIcons
+                  connectors={agentConnectors}
+                  hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                />
               </button>
             </TooltipTrigger>
           </PopoverTrigger>
@@ -2738,13 +2837,15 @@ function ConnectorsPopoverButton({
             )}
           </div>
         )}
-        <div
-          className={cn(
-            "p-1 flex flex-col",
-            (agentConnectors.length > 0 || connectorsLoading) &&
-              "border-t border-border/50",
-          )}
-        >
+        {computerUse && (
+          <ComputerUseConnectorMenuSection
+            computerUse={computerUse}
+            onOpenDownloadDialog={() => {
+              setDownloadDialogOpen(true);
+            }}
+          />
+        )}
+        <div className="border-t border-border/50 p-1 flex flex-col">
           <button
             type="button"
             className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
@@ -2761,153 +2862,14 @@ function ConnectorsPopoverButton({
           </button>
         </div>
       </PopoverContent>
+      {computerUse && (
+        <ComputerUseDownloadDialog
+          open={downloadDialogOpen}
+          onOpenChange={setDownloadDialogOpen}
+          downloadUrl={computerUse.downloadUrl}
+        />
+      )}
     </Popover>
-  );
-}
-
-function ComputerUsePopoverButton({
-  computerUse,
-}: {
-  computerUse: ComposerComputerUse;
-}) {
-  const active = computerUse.selectedHostId !== null;
-  const open = useGet(computerUsePopoverOpen$);
-  const setOpen = useSet(setComputerUsePopoverOpen$);
-  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
-  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
-  const clearCloseSuppression = useSet(
-    clearComputerUsePopoverCloseSuppression$,
-  );
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen) {
-      setOpen(true);
-      computerUse.onRefresh();
-      window.setTimeout(() => {
-        clearCloseSuppression();
-      }, 300);
-      return;
-    }
-
-    setOpen(false);
-  };
-
-  return (
-    <>
-      <Popover open={open} onOpenChange={handleOpenChange}>
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <PopoverTrigger asChild>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
-                    active && "text-primary",
-                  )}
-                  aria-label="Computer Use"
-                >
-                  <IconDeviceDesktop size={18} stroke={1.5} />
-                </button>
-              </TooltipTrigger>
-            </PopoverTrigger>
-            <TooltipContent side="top" className="text-xs">
-              Computer
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <PopoverContent
-          side="top"
-          align="start"
-          className="w-72 p-0 rounded-lg"
-        >
-          <div className="py-1">
-            {computerUse.loading ? (
-              <div className="flex flex-col animate-pulse">
-                {Array.from({ length: 2 }, (_, i) => {
-                  return (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2">
-                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                      <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
-                      <span className="h-3 w-6 rounded-full bg-muted/50" />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : computerUse.hosts.length > 0 ? (
-              <div
-                className="flex max-h-72 flex-col overflow-y-auto"
-                role="radiogroup"
-                aria-label="Computer Use host"
-              >
-                {computerUse.hosts.map((host) => {
-                  const checked = computerUse.selectedHostId === host.id;
-                  return (
-                    <button
-                      key={host.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={checked}
-                      onClick={() => {
-                        computerUse.onChange(checked ? null : host.id);
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-                        checked ? "bg-primary/5" : "hover:bg-muted/50",
-                      )}
-                    >
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                        <IconDeviceDesktop size={16} stroke={1.5} />
-                      </span>
-                      <span className="text-sm flex-1 truncate text-foreground">
-                        {host.hostName}
-                      </span>
-                      <span
-                        className={cn(
-                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                          checked
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border text-transparent",
-                        )}
-                        aria-hidden="true"
-                      >
-                        {checked && <IconCheck size={11} stroke={3} />}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="px-3 py-2 text-sm text-muted-foreground">
-                No online computers
-              </div>
-            )}
-          </div>
-          <div className="border-t border-border/50 p-1">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-              onClick={() => {
-                setOpen(false);
-                setDownloadDialogOpen(true);
-              }}
-            >
-              <IconPlug
-                size={18}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
-              Connect my computer
-            </button>
-          </div>
-        </PopoverContent>
-      </Popover>
-      <ComputerUseDownloadDialog
-        open={downloadDialogOpen}
-        onOpenChange={setDownloadDialogOpen}
-        downloadUrl={computerUse.downloadUrl}
-      />
-    </>
   );
 }
 
@@ -3896,14 +3858,12 @@ export function ZeroChatComposer({
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
                     savingType={savingType}
+                    computerUse={computerUse}
                     onOpenAddDialog={() => {
                       return setShowAddDialog(true);
                     }}
                     onToggle={handleToggle}
                   />
-                  {computerUse && (
-                    <ComputerUsePopoverButton computerUse={computerUse} />
-                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
