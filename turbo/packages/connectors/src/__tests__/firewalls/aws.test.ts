@@ -123,11 +123,14 @@ describe("aws firewall", () => {
           "ec2:RunInstances",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
+          "dynamodb:RestoreTableToPointInTime",
           "iam:CreateRole",
           "lambda:CreateFunction",
           "s3:GetObject",
+          "s3:GetObjectAttributes",
           "s3:GetObjectTagging",
           "s3:PutBucketAcl",
+          "sagemaker:InvokeEndpointWithResponseStream",
           "sts:GetCallerIdentity",
         ]),
       );
@@ -140,6 +143,7 @@ describe("aws firewall", () => {
         expect.arrayContaining([
           "s3:GetBucketAcl",
           "s3:GetObject",
+          "s3:GetObjectAttributes",
           "s3:GetObjectTagging",
           "s3:PutBucketAcl",
           "s3:PutObject",
@@ -159,6 +163,11 @@ describe("aws firewall", () => {
     ]);
     expect(rulesFor(permissions, "dynamodb:GetItem")).toContain(
       "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem",
+    );
+    expect(
+      rulesFor(permissions, "dynamodb:RestoreTableToPointInTime"),
+    ).toContain(
+      "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.RestoreTableToPointInTime",
     );
     expect(rulesFor(permissions, "iam:CreateRole")).toContain(
       "POST / AWS sigv4=iam action=CreateRole",
@@ -193,6 +202,22 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "memorydb:CreateAcl")).toContain(
       "POST / AWS sigv4=memorydb target=AmazonMemoryDB.CreateACL",
     );
+    expect(
+      rulesFor(permissions, "lex:CreateResourcePolicyStatement"),
+    ).toContain("POST /policy/{resourceArn}/statements/ AWS sigv4=lex");
+    expect(
+      rulesFor(permissions, "lex:DeleteResourcePolicyStatement"),
+    ).toContain(
+      "DELETE /policy/{resourceArn}/statements/{statementId}/ AWS sigv4=lex",
+    );
+    expect(
+      rulesFor(permissions, "sagemaker:InvokeEndpointWithResponseStream"),
+    ).toContain(
+      "POST /endpoints/{EndpointName}/invocations-response-stream AWS sigv4=sagemaker",
+    );
+    expect(rulesFor(permissions, "waf-regional:DisassociateWebACL")).toContain(
+      "POST / AWS sigv4=waf-regional target=AWSWAF_Regional_20161128.DisassociateWebACL",
+    );
     expect(rulesFor(permissions, "apigateway:POST")).toContain(
       "POST /apikeys?mode=import AWS sigv4=apigateway",
     );
@@ -222,6 +247,9 @@ describe("aws firewall", () => {
 
     expect(rulesFor(standardPermissions, "s3:GetObjectTagging")).toContain(
       "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+    );
+    expect(rulesFor(standardPermissions, "s3:GetObjectAttributes")).toContain(
+      "GET /{Bucket}/{Key+}?attributes AWS sigv4=s3",
     );
     expect(
       rulesFor(standardPermissions, "s3:GetLifecycleConfiguration"),
@@ -308,16 +336,16 @@ describe("aws firewall", () => {
       generatedServices: 418,
       unsupportedProtocolServices: 3,
       totalOperations: 18505,
-      mappedOperations: 18245,
+      mappedOperations: 18251,
       crossServiceAuthorizedActionMappings: 95,
       fallbackActionMappings: 0,
-      unmappedOperations: 260,
-      ambiguousOperations: 33,
+      unmappedOperations: 254,
+      ambiguousOperations: 27,
       unsupportedOperations: 0,
-      permissionCount: 17514,
-      ruleCount: 19752,
-      s3VirtualHostedPermissionCount: 72,
-      s3VirtualHostedRuleCount: 93,
+      permissionCount: 17520,
+      ruleCount: 19758,
+      s3VirtualHostedPermissionCount: 73,
+      s3VirtualHostedRuleCount: 94,
     });
     expect(awsGenerationStats.permissionCount).toBe(standardPermissions.length);
     expect(awsGenerationStats.ruleCount).toBe(countRules(standardPermissions));

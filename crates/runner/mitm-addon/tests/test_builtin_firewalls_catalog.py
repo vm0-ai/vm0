@@ -3,6 +3,14 @@
 import generated.builtin_firewalls as builtin_firewalls
 
 
+def _rules_for_builtin_permission(firewall: dict, permission_name: str) -> list[str]:
+    for api in firewall["apis"]:
+        for permission in api["permissions"]:
+            if permission["name"] == permission_name:
+                return permission["rules"]
+    raise AssertionError(f"missing builtin permission: {permission_name}")
+
+
 def test_get_existing_builtin_firewall():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
 
@@ -42,6 +50,21 @@ def test_builtin_firewalls_cache_loaded_values():
 
     assert first is second
     assert builtin_firewalls.BUILTIN_FIREWALLS["github"] is first
+
+
+def test_aws_builtin_firewall_includes_same_name_override_rules():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["aws"]
+
+    assert (
+        "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.RestoreTableToPointInTime"
+        in _rules_for_builtin_permission(
+            firewall,
+            "dynamodb:RestoreTableToPointInTime",
+        )
+    )
+    assert "GET /{Bucket}/{Key+}?attributes AWS sigv4=s3" in (
+        _rules_for_builtin_permission(firewall, "s3:GetObjectAttributes")
+    )
 
 
 def test_builtin_firewalls_mapping_is_read_only():

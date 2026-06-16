@@ -171,6 +171,17 @@ const AWS_OPERATION_ACTION_OVERRIDES = new Map<string, string>([
   ["cloudfront:CreateDistributionWithTags", "CreateDistribution"],
   ["cloudfront:UpdateDistributionWithStagingConfig", "UpdateDistribution"],
   ["iotfleetwise:BatchCreateVehicle", "CreateVehicle"],
+  // Some service reference AuthorizedActions list supporting permissions but
+  // omit the same-name IAM action that represents the API operation itself.
+  ["dynamodb:RestoreTableToPointInTime", "RestoreTableToPointInTime"],
+  ["lex:CreateResourcePolicyStatement", "CreateResourcePolicyStatement"],
+  ["lex:DeleteResourcePolicyStatement", "DeleteResourcePolicyStatement"],
+  ["s3:GetObjectAttributes", "GetObjectAttributes"],
+  [
+    "sagemaker:InvokeEndpointWithResponseStream",
+    "InvokeEndpointWithResponseStream",
+  ],
+  ["waf-regional:DisassociateWebACL", "DisassociateWebACL"],
   // SAR AuthorizedActions order is not a primary-action signal. These S3 REST
   // operation names do not match their IAM action names, so pick the action
   // users expect to control the generated endpoint rule.
@@ -551,6 +562,7 @@ function selectPrimaryAction(
     `${service.servicePrefix}:${operationName}`,
   );
   const overrideAction = overrideName ? actionsByName.get(overrideName) : null;
+  const localSameNameAction = actionsByName.get(operationName);
   const selected = exactAuthorizedCandidate
     ? exactAuthorizedCandidate
     : caseInsensitiveCandidate
@@ -567,11 +579,11 @@ function selectPrimaryAction(
             ? primaryCandidates[0]!
             : primaryCandidates.length > 1
               ? null
-              : actionsByName.has(operationName)
+              : localSameNameAction
                 ? {
                     servicePrefix: service.servicePrefix,
                     name: operationName,
-                    action: actionsByName.get(operationName)!,
+                    action: localSameNameAction,
                   }
                 : null;
   if (selected === null) {
