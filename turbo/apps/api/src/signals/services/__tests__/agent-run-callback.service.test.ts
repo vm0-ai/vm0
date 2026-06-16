@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { testContext } from "../../../__tests__/test-helpers";
@@ -34,6 +35,10 @@ interface AgentCallbackRunFixture extends UsageInsightFixture {
   readonly runId: string;
 }
 
+interface Vm0ProviderKeyFixture {
+  readonly label: string;
+}
+
 interface OpenRouterRequest {
   readonly messages: readonly {
     readonly role: string;
@@ -44,6 +49,13 @@ interface OpenRouterRequest {
 const trackFixture = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
+
+const trackVm0ProviderKey = createFixtureTracker<Vm0ProviderKeyFixture>(
+  async (fixture) => {
+    const db = store.set(writeDb$);
+    await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.label));
+  },
+);
 
 async function seedAgentCallbackRun(): Promise<AgentCallbackRunFixture> {
   const fixture = await trackFixture(
@@ -135,6 +147,20 @@ async function readSummary(runId: string): Promise<string | null | undefined> {
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return row?.summary;
+}
+
+async function seedVm0ProviderKey(
+  label: string,
+): Promise<Vm0ProviderKeyFixture> {
+  const db = store.set(writeDb$);
+  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, label));
+  await db.insert(vm0ApiKeys).values({
+    vendor: "anthropic",
+    model: "claude-sonnet-4-6",
+    apiKey: `vm0-key-agent-callback-${label}`,
+    label,
+  });
+  return { label };
 }
 
 describe("dispatchRunCallbacks$ agent internal dispatch", () => {
@@ -281,6 +307,7 @@ describe("dispatchRunCallbacks$ agent internal dispatch", () => {
       },
       context.signal,
     );
+    await trackVm0ProviderKey(seedVm0ProviderKey(composeId));
     const db = store.set(writeDb$);
 
     const response = await store.set(
