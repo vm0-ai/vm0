@@ -11,7 +11,7 @@ import {
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
-  cronUtcToLocalTime,
+  cronTimeInTimezone,
   atTimeInTimezone,
   type AutomationFormBody,
   type CronTimeOption,
@@ -86,7 +86,7 @@ function automationToTimeString(
   }
 
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression, tz);
+    return cronToTimeString(s.cronExpression, s.timezone ?? "UTC", tz);
   }
 
   return "Upcoming";
@@ -110,14 +110,23 @@ function triggerKindLabel(
   return "No trigger";
 }
 
-function cronToTimeString(cron: string, timezone = "UTC"): string {
+function cronToTimeString(
+  cron: string,
+  sourceTimezone = "UTC",
+  displayTimezone = sourceTimezone,
+): string {
   const parts = cron.split(" ");
   const rawMinute = Number(parts[0]);
   const rawHour = Number(parts[1]);
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
 
-  const { hour, minute } = cronUtcToLocalTime(rawHour, rawMinute, timezone);
+  const { hour, minute } = cronTimeInTimezone(
+    rawHour,
+    rawMinute,
+    sourceTimezone,
+    displayTimezone,
+  );
 
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;

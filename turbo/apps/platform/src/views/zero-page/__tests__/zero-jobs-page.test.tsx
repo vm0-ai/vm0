@@ -159,6 +159,7 @@ function mockAgentDetailStory(): string {
       updatedAt: "2026-03-10T00:00:00Z",
     },
   ]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
   context.mocks.data.automations([
     createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000301",
@@ -575,7 +576,7 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Every week on Wednesday at 10:15 PM")[0],
+        screen.getAllByText("Every week on Wednesday at 4:45 PM")[0],
       ).toBeInTheDocument();
       expect(capturedUpdateBody).toMatchObject({
         instruction: "Summarize launch risks",
