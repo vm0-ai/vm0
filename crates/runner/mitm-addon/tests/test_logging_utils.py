@@ -1,11 +1,16 @@
 """Tests for mitm addon logging utilities."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import flow_metadata_keys as metadata_keys
 import logging_utils
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
+
+
+def _read_jsonl_entries_without_flush(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
 class TestLogNetworkEntry:
@@ -219,8 +224,8 @@ class TestJsonlWriterBehavior:
         logging_utils.log_proxy_entry(str(proxy_path), "info", "proxy ready")
         logging_utils.flush_all_logs()
 
-        [network_entry] = read_jsonl_entries_after_flush(network_path)
-        [proxy_entry] = read_jsonl_entries_after_flush(proxy_path)
+        [network_entry] = _read_jsonl_entries_without_flush(network_path)
+        [proxy_entry] = _read_jsonl_entries_without_flush(proxy_path)
         assert network_entry["action"] == "ALLOW"
         assert proxy_entry["level"] == "info"
         assert proxy_entry["message"] == "proxy ready"
@@ -231,7 +236,7 @@ class TestJsonlWriterBehavior:
         logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
         logging_utils.shutdown_log_writer()
 
-        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        [entry] = _read_jsonl_entries_without_flush(proxy_path)
         assert entry["level"] == "info"
         assert entry["message"] == "before shutdown"
 
@@ -241,13 +246,13 @@ class TestJsonlWriterBehavior:
 
         logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
         logging_utils.shutdown_log_writer()
-        before_entries = read_jsonl_entries_after_flush(proxy_path)
+        before_entries = _read_jsonl_entries_without_flush(proxy_path)
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
             logging_utils.log_proxy_entry(str(proxy_path), "warn", "after shutdown")
 
         log.warn.assert_called_once_with("Skipping proxy log write after JSONL writer shutdown")
-        after_entries = read_jsonl_entries_after_flush(proxy_path)
+        after_entries = _read_jsonl_entries_without_flush(proxy_path)
         assert after_entries == before_entries
 
 
