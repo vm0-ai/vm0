@@ -2089,6 +2089,23 @@ class _FirewallDecisionState:
             self.denied_match = match
 
 
+def _aws_blocked_permissions_by_rule(
+    candidates: list[_CompiledRuleCandidate],
+    policy: _CompiledNetworkPolicy | None,
+) -> dict[str, list[str]]:
+    if policy is None:
+        return {}
+
+    blocked: dict[str, list[str]] = {}
+    for candidate in candidates:
+        if (
+            _AWS_RULE_SEPARATOR in candidate.rule
+            and candidate.permission in policy.blocked_permissions
+        ):
+            blocked.setdefault(candidate.rule, []).append(candidate.permission)
+    return blocked
+
+
 def _resolve_firewall_decision(
     state: _FirewallDecisionState,
     *,
@@ -2294,8 +2311,15 @@ def match_compiled_firewall_request(
             if not candidates:
                 continue
 
+            aws_blocked_permissions = _aws_blocked_permissions_by_rule(candidates, policy)
             for candidate in candidates:
                 if not decision.accept_rule_candidate(candidate):
+                    continue
+
+                blocked_aws_permissions = aws_blocked_permissions.get(candidate.rule)
+                if blocked_aws_permissions is not None:
+                    for permission in blocked_aws_permissions:
+                        decision.record_denied_rule(block_match, permission)
                     continue
 
                 if policy is None or candidate.permission not in policy.blocked_permissions:

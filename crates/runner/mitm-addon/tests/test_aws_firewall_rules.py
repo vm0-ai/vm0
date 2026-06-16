@@ -710,6 +710,32 @@ def test_rest_rules_allow_normal_query_parameters():
     assert result.permission == "apigateway:GET"
 
 
+def test_aws_duplicate_rule_denied_permission_takes_priority():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "lex:ListImports",
+            "POST /imports/ AWS sigv4=lex",
+        ),
+        firewall_permission(
+            "lex:StartImport",
+            "POST /imports/ AWS sigv4=lex",
+            "PUT /imports/ AWS sigv4=lex",
+        ),
+    )
+
+    result = match_compiled_firewalls(
+        "https://models-v2-lex.us-east-1.amazonaws.com/imports/",
+        firewalls,
+        {"aws": network_policy(deny=["lex:StartImport"], unknown_policy="deny")},
+        method="POST",
+        request_context=_sigv4_context("lex"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "permission_denied"
+    assert result.permissions == ("lex:StartImport",)
+
+
 def test_aws_predicate_rule_requires_matching_sigv4_service():
     firewalls = _aws_firewall(
         firewall_permission(
