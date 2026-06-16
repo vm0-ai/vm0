@@ -97,6 +97,160 @@ class TestLogNetworkEntry:
         assert not log_path.exists()
 
 
+class TestLogProxyEntry:
+    def test_writes_jsonl(self, tmp_path):
+        proxy_path = str(tmp_path / "proxy-test.jsonl")
+        logging_utils.log_proxy_entry(proxy_path, "warn", "test message", extra_field="value")
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy-test.jsonl")
+        assert entry["level"] == "warn"
+        assert entry["message"] == "test message"
+        assert entry["extra_field"] == "value"
+        assert_utc_millisecond_timestamp(entry["timestamp"])
+
+    def test_sanitizes_structured_url_field(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        raw_url = "https://user:pass@example.com/v1/search?token=secret#fragment"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+            raw_url_copy=raw_url,
+        )
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert entry["message"] == "url diagnostic"
+        assert entry["url"] == "https://example.com/v1/search"
+        assert entry["raw_url_copy"] == raw_url
+
+    def test_appends_multiple_entries(self, tmp_path):
+        proxy_path = str(tmp_path / "proxy-test.jsonl")
+        logging_utils.log_proxy_entry(proxy_path, "info", "first")
+        logging_utils.log_proxy_entry(proxy_path, "warn", "second")
+        entries = read_jsonl_entries_after_flush(tmp_path / "proxy-test.jsonl")
+        assert len(entries) == 2
+        assert entries[0]["message"] == "first"
+        assert entries[1]["message"] == "second"
+
+    def test_empty_path_no_op(self, tmp_path):
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                "", "warn", "should not write", payload={"body": b"binary"}
+            )
+
+        log.warn.assert_not_called()
+        assert not list(tmp_path.iterdir())
+
+    def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                str(tmp_path / "missing" / "proxy.jsonl"), "warn", "message"
+            )
+            logging_utils.flush_log_path(str(tmp_path / "missing" / "proxy.jsonl"))
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "FileNotFoundError" in warning
+
+    def test_directory_path_warns_and_does_not_raise(self, tmp_path):
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
+            logging_utils.flush_log_path(str(tmp_path))
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "IsADirectoryError" in warning
+
+    def test_non_serializable_extra_warns_without_creating_file(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                str(proxy_path), "warn", "message", payload={"body": b"binary"}
+            )
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Failed to encode proxy log: TypeError:" in warning
+        logging_utils.flush_log_path(str(proxy_path))
+        assert not proxy_path.exists()
+
+    def test_extra_cannot_override_reserved_fields(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        extra = {
+            "proxy_log_path": "caller-proxy-log-path",
+            "timestamp": "caller-timestamp",
+            "level": "caller-level",
+            "message": "caller-message",
+            "log_level": "caller-log-level",
+            "log_message": "caller-log-message",
+            "extra_field": "value",
+        }
+
+        logging_utils.log_proxy_entry(str(proxy_path), "warn", "logger-message", **extra)
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert_utc_millisecond_timestamp(entry["timestamp"])
+        assert entry["timestamp"] != "caller-timestamp"
+        assert entry["level"] == "warn"
+        assert entry["message"] == "logger-message"
+        assert entry["proxy_log_path"] == "caller-proxy-log-path"
+        assert entry["log_level"] == "caller-log-level"
+        assert entry["log_message"] == "caller-log-message"
+        assert entry["extra_field"] == "value"
+
+
+class TestJsonlWriterBehavior:
+    def test_flush_all_logs_flushes_multiple_paths(self, tmp_path):
+        network_path = tmp_path / "network.jsonl"
+        proxy_path = tmp_path / "proxy.jsonl"
+
+        logging_utils.log_network_entry(str(network_path), {"action": "ALLOW"})
+        logging_utils.log_proxy_entry(str(proxy_path), "info", "proxy ready")
+        logging_utils.flush_all_logs()
+
+        [network_entry] = read_jsonl_entries_after_flush(network_path)
+        [proxy_entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert network_entry["action"] == "ALLOW"
+        assert proxy_entry["level"] == "info"
+        assert proxy_entry["message"] == "proxy ready"
+
+    def test_shutdown_log_writer_drains_accepted_writes(self, tmp_path):
+        proxy_path = tmp_path / "proxy.jsonl"
+
+        logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
+        logging_utils.shutdown_log_writer()
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert entry["level"] == "info"
+        assert entry["message"] == "before shutdown"
+
+    def test_write_after_shutdown_warns_without_appending(self, tmp_path):
+        proxy_path = tmp_path / "proxy.jsonl"
+        log = MagicMock()
+
+        logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
+        logging_utils.shutdown_log_writer()
+        before_entries = read_jsonl_entries_after_flush(proxy_path)
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(str(proxy_path), "warn", "after shutdown")
+
+        log.warn.assert_called_once_with("Skipping proxy log write after JSONL writer shutdown")
+        after_entries = read_jsonl_entries_after_flush(proxy_path)
+        assert after_entries == before_entries
+
+
 class TestAddFirewallMetadata:
     def test_copies_valid_firewall_error_metadata(self, real_flow):
         flow = real_flow(with_response=False)

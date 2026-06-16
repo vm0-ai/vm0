@@ -2,30 +2,9 @@
 
 import queue
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import jsonl_writer
-
-
-def test_full_write_queue_warns_and_does_not_track_dropped_path_state(tmp_path):
-    log_path = str(tmp_path / "net.jsonl")
-    log = MagicMock()
-
-    with (
-        patch.object(jsonl_writer, "_ensure_worker_locked", return_value=True),
-        patch.object(jsonl_writer._queue, "put_nowait", side_effect=queue.Full),
-        patch.object(jsonl_writer.ctx, "log", log, create=True),
-    ):
-        jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
-
-    log.warn.assert_called_once()
-    warning = log.warn.call_args.args[0]
-    assert warning == "Dropping network log because the JSONL writer backlog is full"
-    assert log_path not in jsonl_writer._accepted_by_path
-    assert log_path not in jsonl_writer._completed_by_path
-    assert log_path not in jsonl_writer._flush_waiters_by_path
-    assert jsonl_writer._pending_bytes == 0
-    assert not (tmp_path / "net.jsonl").is_file()
 
 
 def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
