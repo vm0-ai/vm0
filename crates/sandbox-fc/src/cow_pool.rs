@@ -836,6 +836,7 @@ fn create_cow_file(
     std::fs::create_dir_all(workspace).map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
     match &config.golden_cow {
         Some(golden) => {
+            let expected_blocks = validate_base_size(config.base_size)?;
             sparse_copy(golden, cow_file)?;
             ensure_owner_read_write(cow_file)?;
             let cow_file_len = std::fs::metadata(cow_file)
@@ -845,9 +846,10 @@ fn create_cow_file(
             let golden_bitmap = nbd_cow::cow::bitmap_path_for(golden);
             let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
             sparse_copy(&golden_bitmap, &cow_bitmap)?;
-            validate_cow_bitmap(&cow_bitmap, cow_file_len, config.base_size)?;
+            validate_cow_bitmap(&cow_bitmap, cow_file_len, expected_blocks)?;
         }
         None => {
+            validate_base_size(config.base_size)?;
             let f = std::fs::File::create(cow_file)
                 .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
             f.set_len(config.base_size)
@@ -860,8 +862,18 @@ fn create_cow_file(
 fn validate_cow_bitmap(
     bitmap_path: &Path,
     cow_file_len: u64,
-    base_size: u64,
+    expected_blocks: usize,
 ) -> Result<(), CowPoolError> {
+    nbd_cow::cow::validate_bitmap_cow_coverage(
+        bitmap_path,
+        cow_file_len,
+        nbd_cow::BLOCK_SIZE,
+        expected_blocks,
+    )
+    .map_err(|e| CowPoolError::CowFileCreation(format!("invalid COW bitmap: {e}")))
+}
+
+fn validate_base_size(base_size: u64) -> Result<usize, CowPoolError> {
     if base_size == 0 {
         return Err(CowPoolError::CowFileCreation(
             "base image size is empty".to_string(),
@@ -878,13 +890,7 @@ fn validate_cow_bitmap(
     let expected_blocks = usize::try_from(base_size / block_size).map_err(|_| {
         CowPoolError::CowFileCreation("base image block count is too large".to_string())
     })?;
-    nbd_cow::cow::validate_bitmap_cow_coverage(
-        bitmap_path,
-        cow_file_len,
-        nbd_cow::BLOCK_SIZE,
-        expected_blocks,
-    )
-    .map_err(|e| CowPoolError::CowFileCreation(format!("invalid COW bitmap: {e}")))
+    Ok(expected_blocks)
 }
 
 fn ensure_owner_read_write(path: &Path) -> Result<(), CowPoolError> {
@@ -2036,6 +2042,46 @@ mod tests {
         let meta = std::fs::metadata(&cow_file).unwrap();
         assert_eq!(meta.len(), 64 * 1024 * 1024);
         destroy_slot_sync(slot);
+    }
+
+    #[test]
+    fn create_slot_fresh_mode_rejects_empty_base_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: 0,
+            golden_cow: None,
+        };
+
+        let err = create_slot(&config).unwrap_err();
+
+        assert!(
+            err.to_string().contains("base image size is empty"),
+            "expected empty base size error, got {err}"
+        );
+        let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
+        assert_eq!(entries.len(), 0);
+    }
+
+    #[test]
+    fn create_slot_fresh_mode_rejects_unaligned_base_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: nbd_cow::BLOCK_SIZE as u64 + 1,
+            golden_cow: None,
+        };
+
+        let err = create_slot(&config).unwrap_err();
+
+        assert!(
+            err.to_string().contains("not a multiple"),
+            "expected unaligned base size error, got {err}"
+        );
+        let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
+        assert_eq!(entries.len(), 0);
     }
 
     #[test]
