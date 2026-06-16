@@ -468,15 +468,29 @@ function loadBotocoreShapes(model: BotocoreModel): Record<string, unknown> {
   return assertObject(model.shapes, "Botocore shapes");
 }
 
-function botocoreProtocol(model: BotocoreModel): string {
+function botocoreProtocols(model: BotocoreModel): string[] {
   const protocols = model.metadata?.protocols;
-  if (Array.isArray(protocols) && typeof protocols[0] === "string") {
-    return protocols[0];
+  if (Array.isArray(protocols)) {
+    const parsed = protocols.filter((protocol): protocol is string => {
+      return typeof protocol === "string" && protocol !== "";
+    });
+    if (parsed.length > 0) {
+      return sortedUnique(parsed);
+    }
   }
-  if (typeof model.metadata?.protocol === "string") {
-    return model.metadata.protocol;
+  if (
+    typeof model.metadata?.protocol === "string" &&
+    model.metadata.protocol !== ""
+  ) {
+    return [model.metadata.protocol];
   }
   throw new Error("Botocore model is missing protocol metadata");
+}
+
+function supportedBotocoreProtocols(model: BotocoreModel): string[] {
+  return botocoreProtocols(model).filter((protocol) => {
+    return SUPPORTED_AWS_PROTOCOLS.has(protocol);
+  });
 }
 
 function botocoreTargetPrefix(model: BotocoreModel): string {
@@ -943,46 +957,60 @@ function rulesForOperation(
     return null;
   }
 
-  const protocol = botocoreProtocol(model);
-  if (protocol === "ec2" || protocol === "query") {
-    return queryRules(requestUri, sigv4Service, operationName);
-  }
-  if (protocol === "json") {
-    return jsonRules(
-      requestUri,
-      sigv4Service,
-      botocoreTargetPrefix(model),
-      operationName,
-    );
-  }
-  if (protocol === "smithy-rpc-v2-cbor") {
-    return smithyRpcV2CborRules(
-      method,
-      botocoreTargetPrefix(model),
-      sigv4Service,
-      operationName,
-    );
-  }
-  if (protocol === "rest-xml" || protocol === "rest-json") {
-    const requestUriWithRequiredQuery = appendQueryRequirements(
-      requestUri,
-      requiredQuerystringRequirements(model, rawOperation),
-    );
-    if (hasUnsupportedGreedyPathSegment(requestUriWithRequiredQuery)) {
-      return null;
+  const rules: string[] = [];
+  for (const protocol of supportedBotocoreProtocols(model)) {
+    if (protocol === "ec2" || protocol === "query") {
+      rules.push(...queryRules(requestUri, sigv4Service, operationName));
+      continue;
     }
-    if (options?.s3VirtualHosted) {
-      const virtualHostedRequestUri = s3VirtualHostedRequestUri(
-        requestUriWithRequiredQuery,
+    if (protocol === "json") {
+      rules.push(
+        ...jsonRules(
+          requestUri,
+          sigv4Service,
+          botocoreTargetPrefix(model),
+          operationName,
+        ),
       );
-      if (service.key !== "s3" || virtualHostedRequestUri === null) {
-        return null;
-      }
-      return restRules(method, virtualHostedRequestUri, sigv4Service);
+      continue;
     }
-    return restRules(method, requestUriWithRequiredQuery, sigv4Service);
+    if (protocol === "smithy-rpc-v2-cbor") {
+      rules.push(
+        ...smithyRpcV2CborRules(
+          method,
+          botocoreTargetPrefix(model),
+          sigv4Service,
+          operationName,
+        ),
+      );
+      continue;
+    }
+    if (protocol === "rest-xml" || protocol === "rest-json") {
+      const requestUriWithRequiredQuery = appendQueryRequirements(
+        requestUri,
+        requiredQuerystringRequirements(model, rawOperation),
+      );
+      if (hasUnsupportedGreedyPathSegment(requestUriWithRequiredQuery)) {
+        continue;
+      }
+      if (options?.s3VirtualHosted) {
+        const virtualHostedRequestUri = s3VirtualHostedRequestUri(
+          requestUriWithRequiredQuery,
+        );
+        if (service.key !== "s3" || virtualHostedRequestUri === null) {
+          continue;
+        }
+        rules.push(...restRules(method, virtualHostedRequestUri, sigv4Service));
+        continue;
+      }
+      rules.push(
+        ...restRules(method, requestUriWithRequiredQuery, sigv4Service),
+      );
+      continue;
+    }
+    throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
   }
-  throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
+  return rules.length > 0 ? sortedUnique(rules) : null;
 }
 
 async function loadJson<T>(url: string, label: string): Promise<T> {
@@ -1117,8 +1145,7 @@ async function buildAwsPermissions(): Promise<BuildResult> {
       stats.unsupportedProtocolServices += 1;
       continue;
     }
-    const protocol = botocoreProtocol(service.model);
-    if (!SUPPORTED_AWS_PROTOCOLS.has(protocol)) {
+    if (supportedBotocoreProtocols(service.model).length === 0) {
       stats.unsupportedProtocolServices += 1;
       continue;
     }

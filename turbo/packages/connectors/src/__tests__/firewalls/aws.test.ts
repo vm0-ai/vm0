@@ -205,6 +205,14 @@ describe("aws firewall", () => {
     expect(rulesFor(permissions, "cloudfront:UpdateDistribution")).toContain(
       "PUT /2020-05-31/distribution/{Id}/promote-staging-config AWS sigv4=cloudfront",
     );
+    expect(rulesFor(permissions, "cloudwatch:PutMetricData")).toEqual(
+      expect.arrayContaining([
+        "GET / AWS sigv4=monitoring action=PutMetricData",
+        "POST / AWS sigv4=monitoring action=PutMetricData",
+        "POST / AWS sigv4=monitoring target=GraniteServiceVersion20100801.PutMetricData",
+        "POST /service/GraniteServiceVersion20100801/operation/PutMetricData AWS sigv4=monitoring",
+      ]),
+    );
     expect(rulesFor(permissions, "cloudsearch:document")).toContain(
       "POST /2013-01-01/documents/batch?format=sdk AWS sigv4=cloudsearch",
     );
@@ -418,7 +426,7 @@ describe("aws firewall", () => {
       ambiguousOperations: 27,
       unsupportedOperations: 23,
       permissionCount: 17509,
-      ruleCount: 19766,
+      ruleCount: 20159,
       s3VirtualHostedPermissionCount: 81,
       s3VirtualHostedRuleCount: 114,
     });
