@@ -1,11 +1,11 @@
 import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
 } from "@vm0/core";
 
 export type PresentationItem = PresentationTemplateItem;
 
-export const PRESENTATION_ITEMS = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+export const PRESENTATION_ITEMS = PRESENTATION_TEMPLATE_ITEMS;
 
 const PRESENTATION_ATTRIBUTION_PARAM = "vm0_source";
 const PRESENTATION_ATTRIBUTION_VALUE = "presentation";

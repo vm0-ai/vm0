@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
@@ -29,6 +30,29 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
+    expect(result.prompt).toContain(`(${item.designSystemId})`);
+    expect(result.prompt).toContain(`(${item.templateId})`);
+    expect(result.prompt).toContain(
+      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
+    );
+  });
+
+  it("builds presentation template guidance for the switched picker catalog", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Playful Editorial");
     expect(result.prompt).toContain(`(${item.designSystemId})`);
     expect(result.prompt).toContain(`(${item.templateId})`);
     expect(result.prompt).toContain(

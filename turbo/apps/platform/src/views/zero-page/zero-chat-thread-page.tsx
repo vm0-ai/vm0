@@ -73,6 +73,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
@@ -5635,6 +5636,11 @@ function formatTemplateIdLabel(templateId: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+const ALL_PRESENTATION_TEMPLATE_ITEMS = [
+  ...PRESENTATION_TEMPLATE_ITEMS,
+  ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
+];
+
 function generationTemplateLabel(
   value: GenerationTemplateRequest | undefined,
 ): string | null {
@@ -5657,7 +5663,7 @@ function generationTemplateLabel(
       item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
     );
   }
-  const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+  const item = ALL_PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
       candidate.templateId === value.selection.templateId
