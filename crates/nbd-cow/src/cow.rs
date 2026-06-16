@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufReader, Read};
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
@@ -466,15 +466,16 @@ impl CowLayer {
     /// Returns an error if the block count doesn't match `expected_blocks`
     /// or if the file is truncated.
     fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
-        let mut file = File::open(path)?;
+        let file = File::open(path)?;
         let file_len = file.metadata()?.len();
         if file_len < 8 {
             return Err(NbdCowError::Io(std::io::Error::other(
                 "bitmap file too short for header",
             )));
         }
+        let mut reader = BufReader::new(file);
         let mut header = [0u8; 8];
-        file.read_exact(&mut header)?;
+        reader.read_exact(&mut header)?;
         let num_blocks = u64::from_le_bytes(header) as usize;
         if num_blocks != expected_blocks {
             return Err(NbdCowError::Io(std::io::Error::other(format!(
@@ -489,16 +490,15 @@ impl CowLayer {
                 "bitmap data truncated: got {bitmap_data_len} bytes, expected {expected_data_len}",
             ))));
         }
-        let mut bitmap_bytes = vec![0u8; expected_data_len];
-        file.read_exact(&mut bitmap_bytes)?;
-        let mut words: Vec<usize> = Vec::with_capacity(expected_words);
-        for i in 0..expected_words {
-            let offset = i * 8;
-            let word_bytes: [u8; 8] = bitmap_bytes
-                .get(offset..offset + 8)
-                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap word out of bounds")))?
-                .try_into()
-                .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap word parse error")))?;
+        let mut words: Vec<usize> = Vec::new();
+        words.try_reserve_exact(expected_words).map_err(|e| {
+            NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap word allocation failed: {e}"
+            )))
+        })?;
+        for _ in 0..expected_words {
+            let mut word_bytes = [0u8; 8];
+            reader.read_exact(&mut word_bytes)?;
             words.push(u64::from_le_bytes(word_bytes) as usize);
         }
         let mut bv = BitVec::from_vec(words);
