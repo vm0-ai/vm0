@@ -48,6 +48,11 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ChatAutomationSidebar, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
@@ -63,6 +68,11 @@ describe("isFeatureEnabled", () => {
     ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ChatAutomationSidebar, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -116,6 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatAutomationSidebar]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
 
@@ -125,6 +136,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatAutomationSidebar]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });

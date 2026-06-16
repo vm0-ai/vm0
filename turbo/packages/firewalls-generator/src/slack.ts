@@ -181,7 +181,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 // ── Scope categories (from slack.categories.ts, now generated) ──────────
 
 const SCOPE_CATEGORIES: Record<string, string> = {
-  // Admin (25)
+  // Admin (26)
   admin: "Admin",
   "admin.analytics:read": "Admin",
   "admin.app_activities:read": "Admin",
@@ -209,7 +209,7 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "conversations.connect:manage": "Admin",
   "team.billing:read": "Admin",
 
-  // Read (35)
+  // Read (38)
   "app_configurations:read": "Read",
   "bookmarks:read": "Read",
   "calls:read": "Read",
