@@ -803,6 +803,16 @@ function appendQueryRequirements(
   return `${requestUri}${requestUri.includes("?") ? "&" : "?"}${missingRequirements.join("&")}`;
 }
 
+function hasUnsupportedGreedyPathSegment(requestUri: string): boolean {
+  const queryIndex = requestUri.indexOf("?");
+  const path = queryIndex === -1 ? requestUri : requestUri.slice(0, queryIndex);
+  const segments = path.split("/");
+  const lastSegmentIndex = segments.length - 1;
+  return segments.some((segment, index) => {
+    return index !== lastSegmentIndex && /\{[^{}]+\+\}/.test(segment);
+  });
+}
+
 function smithyRpcV2CborRules(
   method: string,
   targetPrefix: string,
@@ -873,6 +883,9 @@ function rulesForOperation(
       requestUri,
       requiredQuerystringRequirements(model, rawOperation),
     );
+    if (hasUnsupportedGreedyPathSegment(requestUriWithRequiredQuery)) {
+      return null;
+    }
     if (options?.s3VirtualHosted) {
       const virtualHostedRequestUri = s3VirtualHostedRequestUri(
         requestUriWithRequiredQuery,

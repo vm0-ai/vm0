@@ -66,6 +66,9 @@ function jsonPartFromModule(file: PythonBuiltinFirewallCatalogFile): string {
   if (literal.startsWith('r"""') && literal.endsWith('"""')) {
     return literal.slice(4, -3);
   }
+  if (literal.startsWith("r'''") && literal.endsWith("'''")) {
+    return literal.slice(4, -3);
+  }
 
   const value: unknown = JSON.parse(literal);
   if (typeof value !== "string") {
@@ -197,12 +200,16 @@ describe("builtin firewall catalog", () => {
       maxJsonChunkLength: 25,
     });
     const manifest = findGeneratedFile(files, "manifest.py").content;
+    const loader = findGeneratedFile(files, "loader.py").content;
     const partFiles = files.filter((file) => {
       return file.path.startsWith("chunky_");
     });
 
     expect(partFiles.length).toBeGreaterThan(1);
-    expect(manifest).toContain('"chunky": (');
+    expect(manifest).toContain('"chunky": (\n        "chunky_0",');
+    expect(loader).toContain(
+      "        return (\n            chunky_0.JSON_PART,",
+    );
     for (const file of partFiles) {
       expect(file.content).toContain("JSON_PART = ");
     }

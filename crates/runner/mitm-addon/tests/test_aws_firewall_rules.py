@@ -680,6 +680,16 @@ def test_rest_query_value_distinguishes_permissions():
     assert isinstance(missing_format, matching.FirewallBlock)
     assert missing_format.reason == "unknown_endpoint"
 
+    empty_format = match_compiled_firewalls(
+        "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&format=",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context("apigateway"),
+    )
+    assert isinstance(empty_format, matching.FirewallBlock)
+    assert empty_format.reason == "unknown_endpoint"
+
     duplicate_selector_query = match_compiled_firewalls(
         "https://apigateway.us-east-1.amazonaws.com/apikeys?mode=import&mode=export&format=csv",
         firewalls,

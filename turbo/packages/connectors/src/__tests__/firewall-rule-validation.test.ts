@@ -17,6 +17,16 @@ interface FirewallBaseEntry {
 
 const FIREWALL_BASE_SAMPLE_VALUES = ["api", "foo", "bar", "v1", "me", "123"];
 const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
+  // AWS standard and S3 virtual-hosted endpoints share the same SigV4 connector auth.
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[10] https://{Bucket+}.s3-accelerate.amazonaws.com",
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[11] https://{Bucket+}.s3-accelerate.dualstack.amazonaws.com",
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[3] https://{Bucket+}.s3.amazonaws.com",
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[4] https://{Bucket+}.s3.{Region}.amazonaws.com",
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[5] https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com",
+  "aws[0] https://{awsHost+}.amazonaws.com <-> aws[6] https://{Bucket+}.s3-fips.{Region}.amazonaws.com",
+  "aws[1] https://{awsHost+}.amazonaws.com.cn <-> aws[7] https://{Bucket+}.s3.{Region}.amazonaws.com.cn",
+  "aws[1] https://{awsHost+}.amazonaws.com.cn <-> aws[8] https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com.cn",
+  "aws[1] https://{awsHost+}.amazonaws.com.cn <-> aws[9] https://{Bucket+}.s3-fips.{Region}.amazonaws.com.cn",
   // `{network}` currently also matches `api`; avoid adding more Alchemy overlaps.
   "alchemy[0] https://{network}.g.alchemy.com <-> alchemy[1] https://api.g.alchemy.com",
   // Meta and Instagram share the Facebook Graph API origin.

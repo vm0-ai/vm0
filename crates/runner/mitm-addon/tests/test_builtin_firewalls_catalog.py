@@ -1,6 +1,7 @@
 """Generated builtin firewall catalog tests."""
 
 import generated.builtin_firewalls as builtin_firewalls
+import matching
 
 
 def _rules_for_builtin_permission(firewall: dict, permission_name: str) -> list[str]:
@@ -76,6 +77,19 @@ def test_aws_builtin_firewall_includes_same_name_override_rules():
     assert "GET /{Bucket}/{Key+}?uploadId=* AWS sigv4=s3" in _rules_for_builtin_permission(
         firewall, "s3:ListMultipartUploadParts"
     )
+
+
+def test_aws_builtin_firewall_rules_compile_without_malformed_config():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["aws"]
+    malformed_rules = [
+        (api["base"], permission["name"], rule)
+        for api in firewall["apis"]
+        for permission in api["permissions"]
+        for rule in permission["rules"]
+        if matching._compile_rule(rule) is None
+    ]
+
+    assert malformed_rules == []
 
 
 def test_builtin_firewalls_mapping_is_read_only():

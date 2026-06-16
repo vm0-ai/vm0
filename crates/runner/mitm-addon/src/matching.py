@@ -1839,7 +1839,7 @@ def _aws_query_requirements_match(
     for key, expected_value in query_requirements:
         values = _query_values(query_pairs, key)
         if expected_value == "*":
-            if not values:
+            if not values or any(value == "" for value in values):
                 return False
             continue
         if len(values) != 1:

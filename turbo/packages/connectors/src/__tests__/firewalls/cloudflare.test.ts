@@ -195,16 +195,16 @@ describe("cloudflare firewall", () => {
       return count + (api.permissions?.length ?? 0);
     }, 0);
 
-    expect(cloudflareGenerationStats.totalOperations).toBe(3145);
-    expect(cloudflareGenerationStats.operationsWithApiTokenGroup).toBe(2646);
+    expect(cloudflareGenerationStats.totalOperations).toBe(3150);
+    expect(cloudflareGenerationStats.operationsWithApiTokenGroup).toBe(2655);
     expect(cloudflareGenerationStats.operationsWithCfPermissionsRequired).toBe(
-      702,
+      703,
     );
-    expect(cloudflareGenerationStats.mappedOperations).toBe(2646);
-    expect(cloudflareGenerationStats.unmappedOperations).toBe(499);
+    expect(cloudflareGenerationStats.mappedOperations).toBe(2655);
+    expect(cloudflareGenerationStats.unmappedOperations).toBe(495);
     expect(cloudflareGenerationStats.ambiguousOperations).toBe(0);
-    expect(cloudflareGenerationStats.multiGroupOperations).toBe(1676);
-    expect(cloudflareGenerationStats.permissionCount).toBe(251);
+    expect(cloudflareGenerationStats.multiGroupOperations).toBe(1673);
+    expect(cloudflareGenerationStats.permissionCount).toBe(255);
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });
 
@@ -259,7 +259,7 @@ describe("cloudflare firewall", () => {
     expect([...cloudflareDefaultAllowed].sort()).toStrictEqual(
       readOnlyPermissions.sort(),
     );
-    expect(cloudflareDefaultAllowed).toHaveLength(123);
+    expect(cloudflareDefaultAllowed).toHaveLength(125);
     expect(cloudflareDefaultAllowed).toContain("dns-firewall.read");
     expect(cloudflareDefaultAllowed).toContain("account-waf.read");
     expect(cloudflareDefaultAllowed).toContain("zone-waf.read");
