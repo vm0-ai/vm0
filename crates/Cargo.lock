@@ -1300,6 +1300,7 @@ version = "0.2.9"
 dependencies = [
  "chrono",
  "guest-contracts",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
