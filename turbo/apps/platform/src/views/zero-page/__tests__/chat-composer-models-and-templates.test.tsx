@@ -105,7 +105,7 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
     if (original) {
       Object.defineProperty(navigator, "userAgent", original);
     } else {
-      delete (navigator as Navigator & { userAgent?: string }).userAgent;
+      delete (navigator as { userAgent?: string }).userAgent;
     }
   };
 }
