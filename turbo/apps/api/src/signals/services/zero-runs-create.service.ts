@@ -245,7 +245,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission. For enable requests, pass `--duration 1h|24h|7d|always`: default to `--duration 1h` for one-off work, use `24h` or `7d` for longer user-approved work, and use `always` only when the user explicitly asks for persistent access.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
-    "- Manage org custom skills with `zero skill --help`. To create or update synced skill content, use `zero skill create|edit <name> --dir <path>`; do not edit mounted runtime copies under `/home/user/.codex/skills` or `/home/user/.claude/skills`, because those changes do not sync back or affect future runs.",
+    "- Manage org custom skills with `zero skill --help`. Local changes or newly-created skill folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs. To create or update a durable custom skill, use `zero skill create|edit <name> --dir <path>`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }

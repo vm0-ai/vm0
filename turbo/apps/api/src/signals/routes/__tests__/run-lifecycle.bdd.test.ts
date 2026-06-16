@@ -1613,8 +1613,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero skill --help",
-      "do not edit mounted runtime copies",
-      "do not sync back or affect future runs",
+      "Local changes or newly-created skill folders",
+      "runtime-only and will not persist, sync back, or affect future runs",
+      "zero skill create|edit <name> --dir <path>",
       "zero developer-support --help",
       "zero maps --help",
     ]) {
