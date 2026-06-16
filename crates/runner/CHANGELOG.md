@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.118.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.7...runner-rs-v0.118.8) (2026-06-16)
+
+
+### Bug Fixes
+
+* preserve guest logs after runner timeout ([#17909](https://github.com/vm0-ai/vm0/issues/17909)) ([741ea2c](https://github.com/vm0-ai/vm0/commit/741ea2cee65a007fab5b574e3e371a73d20ea842))
+
+## [0.118.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.6...runner-rs-v0.118.7) (2026-06-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** block cleartext firewall credential injection ([#17864](https://github.com/vm0-ai/vm0/issues/17864)) ([cf9e4fa](https://github.com/vm0-ai/vm0/commit/cf9e4fa26cc46368c37c3df5fc42a62ea26748c7))
+
 ## [0.118.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.5...runner-rs-v0.118.6) (2026-06-16)
 
 

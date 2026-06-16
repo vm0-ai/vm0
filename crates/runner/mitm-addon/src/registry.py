@@ -5,13 +5,18 @@ import json
 import os
 import re
 import stat
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from mitmproxy import ctx
 
 import matching
-from auth import evict_all_cache_keys, evict_stale_cache_keys
+from auth import (
+    auth_config_injects_credentials,
+    evict_all_cache_keys,
+    evict_stale_cache_keys,
+)
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 VmContext = tuple[
@@ -170,6 +175,21 @@ def _resolve_base_url_template(
     return resolved
 
 
+def _validate_credentialed_builtin_base(
+    *,
+    firewall_name: str,
+    base: str,
+    auth_config: object,
+) -> None:
+    if not auth_config_injects_credentials(auth_config):
+        return
+    scheme = urllib.parse.urlsplit(base).scheme.lower()
+    if scheme != "https":
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" credentialed base URL must use https'
+        )
+
+
 def _resolve_builtin_firewall_entry(entry: dict) -> dict:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
@@ -197,11 +217,17 @@ def _resolve_builtin_firewall_entry(entry: dict) -> dict:
             raise _FirewallEntryResolutionError(
                 f'builtin firewall "{raw_name}" api base must be a string'
             )
-        api["base"] = _resolve_base_url_template(
+        resolved_base = _resolve_base_url_template(
             firewall_name=raw_name,
             base=raw_base,
             vars_map=vars_map,
         )
+        _validate_credentialed_builtin_base(
+            firewall_name=raw_name,
+            base=resolved_base,
+            auth_config=api.get("auth"),
+        )
+        api["base"] = resolved_base
 
     return firewall
 

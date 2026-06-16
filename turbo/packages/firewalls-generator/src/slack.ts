@@ -11,10 +11,10 @@
  * Each method JSON file contains:
  *   { "scope": { "bot": ["chat:write"], "user": ["chat:write"] }, ... }
  *
- * We group methods by scope (bot and user union) to generate firewall
- * permission groups. Methods with no scope (like auth.test, oauth.*)
- * are included in a "no_scopes_required" group since they still require
- * a valid token.
+ * We group methods by scope across every token type listed by the source
+ * data to generate firewall permission groups. Methods with no scope
+ * (like auth.test, oauth.*) are included in a "no_scopes_required" group
+ * since they still require a valid token.
  */
 
 import {
@@ -71,6 +71,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "View workflow builder workflows in an Enterprise organization",
   "admin.workflows:write":
     "Manage workflow builder workflows in an Enterprise organization",
+  apps: "Manage Slack app collaborators",
   "channels:manage":
     "Manage public channels that the app has been added to and create new ones",
   "conversations.connect:manage":
@@ -78,6 +79,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "team.billing:read": "View billing information for a workspace",
 
   // Read
+  "app_configurations:read":
+    "Read app configuration info via App Manifest APIs",
   "bookmarks:read": "List bookmarks in channels",
   "calls:read": "View information about ongoing and past calls",
   "canvases:read": "Access contents of canvases created inside Slack",
@@ -129,6 +132,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "users:read.email": "View email addresses of people in a workspace",
 
   // Write
+  "app_configurations:write":
+    "Write app configuration info and create apps via App Manifest APIs",
   "bookmarks:write": "Create, edit, and remove bookmarks",
   "calls:write": "Start and manage calls in a workspace",
   "canvases:write": "Create and edit canvases",
@@ -176,7 +181,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 // ── Scope categories (from slack.categories.ts, now generated) ──────────
 
 const SCOPE_CATEGORIES: Record<string, string> = {
-  // Admin (25)
+  // Admin (26)
   admin: "Admin",
   "admin.analytics:read": "Admin",
   "admin.app_activities:read": "Admin",
@@ -199,11 +204,13 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "admin.users:write": "Admin",
   "admin.workflows:read": "Admin",
   "admin.workflows:write": "Admin",
+  apps: "Admin",
   "channels:manage": "Admin",
   "conversations.connect:manage": "Admin",
   "team.billing:read": "Admin",
 
-  // Read (34)
+  // Read (38)
+  "app_configurations:read": "Read",
   "bookmarks:read": "Read",
   "calls:read": "Read",
   "canvases:read": "Read",
@@ -242,7 +249,8 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "users:read": "Read",
   "users:read.email": "Read",
 
-  // Write (23)
+  // Write (24)
+  "app_configurations:write": "Write",
   "bookmarks:write": "Write",
   "calls:write": "Write",
   "canvases:write": "Write",
@@ -290,11 +298,8 @@ const CATEGORY_ORDER = ["Read", "Write", "Send", "Admin", "Misc"];
 // ── Data loading ─────────────────────────────────────────────────────────
 
 interface SlackMethodData {
-  scope?: {
-    bot?: string[];
-    user?: string[];
-  };
-  http_method?: string;
+  scope?: unknown;
+  http_method?: unknown;
 }
 
 function loadMethods(): Map<string, SlackMethodData> {
@@ -307,9 +312,10 @@ function loadMethods(): Map<string, SlackMethodData> {
     // key is "methods/{name}.json"
     const methodName = key.replace(/^methods\//, "").replace(/\.json$/, "");
     const parsed = JSON.parse(content) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      methods.set(methodName, parsed as SlackMethodData);
+    if (!isRecord(parsed)) {
+      throw new Error(`Method "${methodName}" spec is not an object`);
     }
+    methods.set(methodName, parsed);
   }
 
   console.error(`  ${methods.size} methods`);
@@ -318,22 +324,55 @@ function loadMethods(): Map<string, SlackMethodData> {
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function collectScopes(
+  methodName: string,
+  scope: Record<string, unknown>,
+): Set<string> {
+  const allScopes = new Set<string>();
+
+  for (const [tokenType, scopes] of Object.entries(scope)) {
+    if (!Array.isArray(scopes)) {
+      throw new Error(
+        `Method "${methodName}" scope "${tokenType}" is not an array`,
+      );
+    }
+
+    for (const s of scopes) {
+      if (typeof s !== "string") {
+        throw new Error(
+          `Method "${methodName}" scope "${tokenType}" contains a non-string value`,
+        );
+      }
+      allScopes.add(s);
+    }
+  }
+
+  return allScopes;
+}
+
 function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
 
   for (const [methodName, data] of methods) {
     const scope = data.scope;
-    if (typeof scope !== "object" || scope === null) continue;
-
-    const botScopes = scope.bot ?? [];
-    const userScopes = scope.user ?? [];
-    const allScopes = new Set([...botScopes, ...userScopes]);
-
     const httpMethod = data.http_method;
-    if (!httpMethod) {
+    if (typeof httpMethod !== "string" || httpMethod.length === 0) {
       throw new Error(`Method "${methodName}" missing http_method`);
     }
     const rule = `${httpMethod.toUpperCase()} /${methodName}`;
+
+    let allScopes: Set<string>;
+    if (scope === "none") {
+      allScopes = new Set();
+    } else if (isRecord(scope)) {
+      allScopes = collectScopes(methodName, scope);
+    } else {
+      throw new Error(`Method "${methodName}" has invalid scope`);
+    }
 
     if (allScopes.size === 0) {
       let ruleSet = groups.get("no_scopes_required");

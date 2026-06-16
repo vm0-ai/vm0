@@ -25,7 +25,7 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
-import noConnectorImg from "../../assets/no-connector.webp";
+import { noConnectorImg } from "../../platform-assets.ts";
 
 function CustomConnectorRow({
   connector,

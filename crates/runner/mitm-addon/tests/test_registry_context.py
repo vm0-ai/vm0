@@ -153,6 +153,95 @@ class TestGetVmContext:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
+    def test_credentialed_builtin_firewall_entry_rejects_http_dynamic_base(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-strapi",
+                            "firewalls": [
+                                {
+                                    "kind": "builtin",
+                                    "name": "strapi",
+                                    "baseUrlVars": {
+                                        "STRAPI_BASE_URL": "http://strapi.example.test"
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "credentialed base URL must use https" in invalid_vm.message
+
+    def test_credentialed_builtin_firewall_entry_accepts_https_dynamic_base(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-strapi",
+                            "firewalls": [
+                                {
+                                    "kind": "builtin",
+                                    "name": "strapi",
+                                    "baseUrlVars": {
+                                        "STRAPI_BASE_URL": "https://strapi.example.test"
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://strapi.example.test")
+
+    def test_inline_firewall_entry_allows_http_base(self, tmp_path):
+        path = tmp_path / "registry.json"
+        write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        firewall = data["vms"]["10.200.0.1"]["firewalls"][0]["firewall"]
+        firewall["apis"][0]["base"] = "http://api.example.com"
+        path.write_text(json.dumps(data))
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "http://api.example.com"
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "http://api.example.com/items",
+                "GET",
+                compiled_firewalls,
+                compiled_network_policies,
+            ),
+            matching.FirewallAllow,
+        )
+
     def test_builtin_firewall_entry_missing_dynamic_var_rejects_vm(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(

@@ -43,7 +43,7 @@ import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
-import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/run-error-format.service";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
 

@@ -17,7 +17,6 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -1133,7 +1132,7 @@ const runAgentForGitHub$ = command(
         selectedModelOverride: args.modelRoute?.selectedModel,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/github/issues`,
+            internalKind: "github:issues",
             secret: generateCallbackSecret(),
             payload: args.callbackPayload,
           },

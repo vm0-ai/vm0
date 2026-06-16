@@ -512,34 +512,6 @@ export function proxyGithubIssuesCallbackToApp(context: TestContext): void {
 }
 
 /**
- * Like {@link proxyGithubIssuesCallbackToApp} but also records every signed
- * delivery (raw body plus signature headers) so tests can replay it later
- * under mutated server state.
- */
-export function captureGithubIssuesCallbackDeliveries(
-  context: TestContext,
-): RecordedCallbackDelivery[] {
-  const deliveries: RecordedCallbackDelivery[] = [];
-  server.use(
-    http.post(GITHUB_ISSUES_CALLBACK_URL, async ({ request }) => {
-      const body = await request.text();
-      deliveries.push({
-        body,
-        signature: request.headers.get("x-vm0-signature"),
-        timestamp: request.headers.get("x-vm0-timestamp"),
-      });
-      const app = createApp({ signal: context.signal });
-      return await app.request(GITHUB_ISSUES_CALLBACK_PATH, {
-        method: "POST",
-        headers: request.headers,
-        body,
-      });
-    }),
-  );
-  return deliveries;
-}
-
-/**
  * Record signed chat-callback deliveries without proxying them, so a chat
  * run's delivery can be replayed against the GitHub issues callback route
  * (per-callback signature verifies, payload schema does not).

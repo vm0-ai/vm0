@@ -46,9 +46,9 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+import { formatRunErrorForRunOwner$ } from "../services/run-error-format.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
 import {
-  formatRunErrorForRunOwner$,
   insertAssistantEventMessages$,
   resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,

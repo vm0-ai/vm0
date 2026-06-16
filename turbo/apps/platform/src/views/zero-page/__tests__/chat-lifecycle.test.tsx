@@ -736,16 +736,6 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
-function presentationTemplateLabel(
-  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
-): string {
-  const label = item.templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
 function queryButtonByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("button").find((candidate) => {
@@ -3981,7 +3971,7 @@ describe("chat lifecycle", () => {
   it("sends inline feedback with selected template and draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const templateChipLabel = presentationTemplateLabel(template);
+    const templateChipLabel = template.title;
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];
 

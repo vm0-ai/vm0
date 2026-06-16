@@ -41,9 +41,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@vm0/ui/components/ui/dialog";
-import planFreeImg from "./assets/plan-free.webp";
-import planProImg from "./assets/plan-pro.webp";
-import planTeamImg from "./assets/plan-team.webp";
+import { planFreeImg, planProImg, planTeamImg } from "../../platform-assets.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
 import { BuyCreditsSection } from "./buy-credits-section.tsx";

@@ -450,16 +450,6 @@ async function selectTemplate(
   });
 }
 
-function templateLabel(
-  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
-): string {
-  const label = item.templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
 function chatClipboardHtml(payload: {
   text: string;
   attachments: {
@@ -1429,11 +1419,11 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+    click(screen.getByLabelText(`Remove template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1441,7 +1431,7 @@ describe("chat composer templates", () => {
         "false",
       );
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
   });
@@ -1719,7 +1709,7 @@ describe("chat composer templates", () => {
         "false",
       );
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
   });
@@ -1762,10 +1752,10 @@ describe("chat composer templates", () => {
         "true",
       );
       expect(
-        screen.getByLabelText(`Remove template ${templateLabel(nextTemplate)}`),
+        screen.getByLabelText(`Remove template ${nextTemplate.title}`),
       ).toBeInTheDocument();
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
   });
@@ -1855,11 +1845,7 @@ describe("chat composer templates", () => {
 
     await selectTemplate(user, template);
 
-    click(
-      await screen.findByLabelText(
-        `Preview template ${templateLabel(template)}`,
-      ),
-    );
+    click(await screen.findByLabelText(`Preview template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -1947,7 +1933,7 @@ describe("chat composer templates", () => {
 
     await selectTemplate(user, template);
 
-    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+    click(screen.getByLabelText(`Remove template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1957,7 +1943,7 @@ describe("chat composer templates", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+      screen.queryByLabelText(`Preview template ${template.title}`),
     ).not.toBeInTheDocument();
   });
 });

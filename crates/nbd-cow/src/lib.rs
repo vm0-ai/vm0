@@ -1694,7 +1694,7 @@ mod tests {
             let base = tmp.path().join("base.img");
             let cow_file = tmp.path().join("cow.img");
             let bitmap_file = cow::bitmap_path_for(&cow_file);
-            let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+            let bitmap_tmp_path = cow::bitmap_tmp_path_for(&bitmap_file);
             let lock_dir = tmp.path().join("locks");
             std::fs::create_dir(&lock_dir).expect("create lock dir");
             create_test_base_image(&base);

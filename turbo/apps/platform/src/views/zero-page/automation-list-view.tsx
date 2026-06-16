@@ -18,7 +18,7 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import type { AutomationEntry } from "./automation-utils";
-import emptyAutomationImg from "./assets/empty-automation.webp";
+import { emptyAutomationImg } from "./platform-assets.ts";
 
 // ---------------------------------------------------------------------------
 // Row component (extracted to stay under ESLint complexity limit)
