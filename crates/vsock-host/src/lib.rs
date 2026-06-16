@@ -147,16 +147,35 @@ impl Default for FrameWriteObserver {
 /// requests are rejected by the host-side operation tracker.
 /// Lifecycle requests such as quiesce/resume are not normal operations and can
 /// still be sent while the guard is held.
+#[must_use = "normal operations are fenced only while this guard is held"]
 #[derive(Debug)]
 pub struct NormalOperationFence {
     _inner: operation_tracker::NormalOperationFence,
 }
 
+/// Reason why [`VsockHost::try_fence_normal_operations`] could not acquire a
+/// [`NormalOperationFence`].
+///
+/// The variants identify caller-visible recovery paths for normal-operation
+/// fencing without exposing the internal operation tracker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NormalOperationFenceRejection {
+    /// A normal operation is currently in flight.
+    ///
+    /// Callers may retry after outstanding normal operations have drained.
     Busy,
+    /// Another [`NormalOperationFence`] is already held.
+    ///
+    /// Coordinate with the holder of the existing fence instead of treating the
+    /// connection as failed.
     AlreadyFenced,
+    /// The connection is no longer safe to park or reuse for future normal
+    /// operations.
+    ///
+    /// Callers should discard this connection instead of retrying normal
+    /// operations on it.
     NotParkable,
+    /// The connection has closed.
     Closed,
 }
 
@@ -1032,9 +1051,15 @@ impl VsockHost {
     /// Try to fence new normal guest operations on this connection.
     ///
     /// The returned guard keeps normal operations fenced until it is dropped.
+    /// Bind it to a local variable for as long as the fence is needed; ignoring
+    /// the guard releases the fence immediately.
     /// Lifecycle requests such as [`quiesce_operations`](Self::quiesce_operations)
     /// and [`resume_operations`](Self::resume_operations) remain available while
     /// the guard is held.
+    ///
+    /// If the fence cannot be acquired, [`NormalOperationFenceRejection`]
+    /// describes whether the caller can retry later, should coordinate with an
+    /// existing fence, or should discard/handle the connection.
     pub fn try_fence_normal_operations(
         &self,
     ) -> Result<NormalOperationFence, NormalOperationFenceRejection> {
