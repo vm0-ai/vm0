@@ -401,7 +401,17 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
         let detail = &normalized[index + MARKER.len()..];
         let detail = detail
             .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'));
-        detail.starts_with("overloaded") || contains_overloaded_error_type(detail)
+        starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
+    })
+}
+
+fn starts_with_overloaded_word(detail: &str) -> bool {
+    const TOKEN: &str = "overloaded";
+    detail.strip_prefix(TOKEN).is_some_and(|remaining| {
+        remaining
+            .chars()
+            .next()
+            .is_none_or(|c| !is_error_type_char(c))
     })
 }
 
@@ -1319,6 +1329,16 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             r#"API Error: 529 {"type":"error","error":{"type":"not_overloaded_error"}}"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_overloaded_prefix_word() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 529 overloadedness check failed",
         );
 
         assert_eq!(reason, None);
