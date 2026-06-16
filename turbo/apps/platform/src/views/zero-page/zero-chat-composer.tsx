@@ -1174,7 +1174,6 @@ function TemplatePreview({
           <img
             src={previewImage}
             alt=""
-            title={`${item.title} card preview slide 1`}
             className="absolute inset-0 h-full w-full object-cover"
             loading="lazy"
             onLoad={(event) => {
@@ -1196,9 +1195,6 @@ function TemplatePreview({
                   key={imageUrl}
                   src={imageUrl}
                   alt=""
-                  title={`${item.title} card preview slide ${
-                    isHovering ? imageIndex + 1 : 1
-                  }`}
                   className={cn(
                     "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
                     active && "data-[loaded=true]:opacity-100",
@@ -1436,7 +1432,10 @@ function PptCard({
       <TemplatePreview item={item} onPreview={onPreview} />
       <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
+          <p
+            className="truncate text-sm font-semibold text-foreground"
+            title={item.title}
+          >
             {item.title}
           </p>
           <p className="mt-1 truncate text-xs text-muted-foreground">
