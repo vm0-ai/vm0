@@ -16,7 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
@@ -3569,7 +3569,7 @@ describe("chat lifecycle", () => {
 
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
-    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const videoTemplate = VIDEO_STYLE_PRESETS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 
@@ -3642,7 +3642,7 @@ describe("chat lifecycle", () => {
 
   it("hides historical template labels behind picker feature switches", async () => {
     const threadId = "template-message-history-gated";
-    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 
     mockChatLifecycle(context, {
@@ -3970,7 +3970,7 @@ describe("chat lifecycle", () => {
 
   it("sends inline feedback with selected template and draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const templateChipLabel = template.title;
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];

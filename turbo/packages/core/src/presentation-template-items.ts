@@ -1802,3 +1802,36 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
       templateId: "template:html-ppt-zhangzara-8-bit-orbit",
     },
   ];
+
+export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
+  [
+    {
+      slug: "tomorrow-lab-playful-deck",
+      title: "Aplocoto",
+      prompt:
+        "/gen presentation with design system `playful-editorial` and template `html-ppt-aplocoto`, create a 15-slide Tomorrow Lab brand deck for a playful learning studio. Cover, agenda, about, vision, team, services, process, gallery, stats, testimonials, pricing, and contact. Make it feel saturated, editorial, joyful, and structured.",
+      embedUrl:
+        "https://aplocoto-playful-editorial-showcase-715f6d07-f857b882.sites.vm0.io",
+      previewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a16403d7-505b-41a0-9f87-36d1d912d09d/slide-01.png",
+      previewImages: [
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a16403d7-505b-41a0-9f87-36d1d912d09d/slide-01.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b1a355c5-b35b-484e-b98a-295c1316dfd5/slide-02.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ed1baf7-fd83-4d26-9457-5d1ba61bb1a7/slide-03.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b8eeb01c-bd2a-4b65-9ef2-e9bd2cc7ad0b/slide-04.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7fc89534-6aa2-4251-8eb7-1abe7569c1a4/slide-05.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/787668e8-4879-466f-aad8-9ea35a36d24a/slide-06.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ad66eba-80d0-4bae-bd3f-16e2db7aa691/slide-07.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d1e63068-0272-454e-b71f-592b9423d634/slide-08.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/13b850d4-f205-45bb-b8cf-d7fd76e68274/slide-09.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e414ffb-18bb-4c20-ba39-cd86dcb01869/slide-10.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1551240c-6b26-453c-9775-bd92002c0e43/slide-11.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7bb3948c-3e12-463a-b835-5de3b60bd3cd/slide-12.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5ca303f8-3d86-4c4f-bceb-6129875fcd38/slide-13.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/34dc6338-b3c6-4e73-9765-8e243a134c36/slide-14.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c15b0fc-4209-4f6e-a966-76e83d704ac8/slide-15.png",
+      ],
+      designSystemId: "design-system:playful-editorial",
+      templateId: "template:html-ppt-aplocoto",
+    },
+  ];

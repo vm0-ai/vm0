@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { PRESENTATION_TEMPLATE_ITEMS } from "../presentation-template-items";
+import {
+  PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "../presentation-template-items";
 import { findDesignSystem, findTemplate } from "../resource-registry";
 
 function stripRegistryPrefix(id: string, prefix: string): string {
@@ -8,8 +11,13 @@ function stripRegistryPrefix(id: string, prefix: string): string {
 }
 
 describe("presentation template items", () => {
+  const allPresentationItems = [
+    ...PRESENTATION_TEMPLATE_ITEMS,
+    ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  ];
+
   it("resolve every design system and template against the resource registry", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       const designSystem = findDesignSystem(item.designSystemId);
       const template = findTemplate(item.templateId);
 
@@ -20,7 +28,7 @@ describe("presentation template items", () => {
   });
 
   it("keeps prompt references aligned with structured ids", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       const promptDesignSystem = stripRegistryPrefix(
         item.designSystemId,
         "design-system:",
@@ -33,13 +41,19 @@ describe("presentation template items", () => {
   });
 
   it("defines explicit preview image arrays", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       expect(Array.isArray(item.previewImages)).toBe(true);
     }
   });
 
-  it("exposes the aplocoto playful-editorial showcase", () => {
-    const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+  it("keeps the picker catalog separate from the legacy catalog", () => {
+    expect(
+      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
+        return candidate.slug === "tomorrow-lab-playful-deck";
+      }),
+    ).toBe(false);
+
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "tomorrow-lab-playful-deck";
     });
 
