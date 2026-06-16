@@ -74,6 +74,20 @@ _AWS_PREDICATE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 _AWS_QUERY_KEY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
 _AWS_QUERY_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:{}-]+$")
 _AWS_S3_COPY_SOURCE_HEADER = "x-amz-copy-source"
+_AWS_S3_PERMISSION_HEADER_QUERY_KEYS = MappingProxyType(
+    {
+        "x-amz-acl": frozenset(("acl",)),
+        "x-amz-grant-full-control": frozenset(("acl",)),
+        "x-amz-grant-read": frozenset(("acl",)),
+        "x-amz-grant-read-acp": frozenset(("acl",)),
+        "x-amz-grant-write": frozenset(("acl",)),
+        "x-amz-grant-write-acp": frozenset(("acl",)),
+        "x-amz-object-lock-legal-hold": frozenset(("legal-hold",)),
+        "x-amz-object-lock-mode": frozenset(("retention",)),
+        "x-amz-object-lock-retain-until-date": frozenset(("retention",)),
+        "x-amz-tagging": frozenset(("tagging",)),
+    }
+)
 # SigV4 query auth keys and S3 REST operation parameters that do not select a
 # different S3 subresource or version-specific IAM operation.
 _AWS_IGNORED_QUERY_KEYS = frozenset(
@@ -1632,6 +1646,21 @@ def _has_header(headers: tuple[tuple[str, str], ...] | None, name: str) -> bool:
     return any(header_name.lower() == name for header_name, _value in headers)
 
 
+def _has_ambiguous_s3_permission_header(
+    headers: tuple[tuple[str, str], ...] | None,
+    query_requirements: tuple[tuple[str, str | None], ...],
+) -> bool:
+    if headers is None:
+        return False
+
+    required_query_keys = {key for key, _value in query_requirements}
+    for header_name, _value in headers:
+        allowed_query_keys = _AWS_S3_PERMISSION_HEADER_QUERY_KEYS.get(header_name.lower())
+        if allowed_query_keys is not None and allowed_query_keys.isdisjoint(required_query_keys):
+            return True
+    return False
+
+
 def _query_values(query_pairs: list[tuple[str, str]], name: str) -> list[str]:
     return [value for key, value in query_pairs if key == name]
 
@@ -1754,6 +1783,11 @@ def _aws_predicates_match(
     if predicates["sigv4"] == "s3" and _has_header(
         context.headers if context is not None else None,
         _AWS_S3_COPY_SOURCE_HEADER,
+    ):
+        return False
+    if predicates["sigv4"] == "s3" and _has_ambiguous_s3_permission_header(
+        context.headers if context is not None else None,
+        rule.query_requirements,
     ):
         return False
 

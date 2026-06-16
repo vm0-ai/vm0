@@ -409,6 +409,116 @@ def test_s3_copy_source_header_uses_unknown_policy():
     assert copy_object.reason == "unknown_endpoint"
 
 
+def test_s3_permission_headers_use_unknown_policy():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:PutObject",
+            "PUT /{Bucket}/{Key+} AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:PutObjectAcl",
+            "PUT /{Bucket}/{Key+}?acl AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:PutObjectLegalHold",
+            "PUT /{Bucket}/{Key+}?legal-hold AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:PutObjectRetention",
+            "PUT /{Bucket}/{Key+}?retention AWS sigv4=s3",
+        ),
+        firewall_permission(
+            "s3:PutObjectTagging",
+            "PUT /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+        ),
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    metadata_only = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context(
+            "s3",
+            headers=(("x-amz-meta-origin", "agent"),),
+        ),
+    )
+    assert isinstance(metadata_only, matching.FirewallAllow)
+    assert metadata_only.permission == "s3:PutObject"
+
+    for header_name, header_value in (
+        ("x-amz-acl", "public-read"),
+        ("x-amz-grant-full-control", 'id="canonical-user-id"'),
+        ("x-amz-grant-write", 'id="canonical-user-id"'),
+        ("X-Amz-Tagging", "project=vm0"),
+        ("x-amz-object-lock-legal-hold", "ON"),
+        ("x-amz-object-lock-mode", "GOVERNANCE"),
+        ("x-amz-object-lock-retain-until-date", "2030-01-01T00:00:00Z"),
+    ):
+        result = match_compiled_firewalls(
+            "https://s3.amazonaws.com/my-bucket/my-key",
+            firewalls,
+            policies,
+            method="PUT",
+            request_context=_sigv4_context(
+                "s3",
+                headers=((header_name, header_value),),
+            ),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
+
+    acl = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?acl",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context("s3", headers=(("x-amz-acl", "public-read"),)),
+    )
+    assert isinstance(acl, matching.FirewallAllow)
+    assert acl.permission == "s3:PutObjectAcl"
+
+    tagging = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?tagging",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context(
+            "s3",
+            headers=(("x-amz-tagging", "project=vm0"),),
+        ),
+    )
+    assert isinstance(tagging, matching.FirewallAllow)
+    assert tagging.permission == "s3:PutObjectTagging"
+
+    legal_hold = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?legal-hold",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context(
+            "s3",
+            headers=(("x-amz-object-lock-legal-hold", "ON"),),
+        ),
+    )
+    assert isinstance(legal_hold, matching.FirewallAllow)
+    assert legal_hold.permission == "s3:PutObjectLegalHold"
+
+    retention = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?retention",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context(
+            "s3",
+            headers=(("x-amz-object-lock-mode", "GOVERNANCE"),),
+        ),
+    )
+    assert isinstance(retention, matching.FirewallAllow)
+    assert retention.permission == "s3:PutObjectRetention"
+
+
 def test_s3_unknown_subresource_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(
