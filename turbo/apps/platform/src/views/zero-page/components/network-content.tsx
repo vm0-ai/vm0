@@ -56,6 +56,26 @@ function entryType(entry: NetworkLogEntry): string {
   return entry.type ? entry.type.toUpperCase() : "HTTP";
 }
 
+function nonEmptyLogField(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function hostPortTarget(entry: NetworkLogEntry): string | undefined {
+  const host = nonEmptyLogField(entry.host);
+  if (!host) {
+    return undefined;
+  }
+  return entry.port !== undefined ? `${host}:${entry.port}` : host;
+}
+
+function networkTarget(entry: NetworkLogEntry, isHttp: boolean): string {
+  if (isHttp) {
+    return nonEmptyLogField(entry.url) ?? hostPortTarget(entry) ?? "—";
+  }
+  return `${nonEmptyLogField(entry.host) ?? "unknown"}:${entry.port ?? 0}`;
+}
+
 function typeBadgeColor(type: string): BadgeColor {
   if (type === "HTTP") {
     return "blue";
@@ -523,9 +543,7 @@ function NetworkLogRow({
   const type = entryType(entry);
   const isHttp = type === "HTTP";
 
-  const target = isHttp
-    ? (entry.url ?? "—")
-    : `${entry.host ?? "unknown"}:${entry.port ?? 0}`;
+  const target = networkTarget(entry, isHttp);
 
   return (
     <>

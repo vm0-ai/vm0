@@ -679,8 +679,9 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       type: "http",
       action: "BLOCK",
       host: "blocked.service.test",
+      port: 443,
       method: "POST",
-      url: "https://blocked.service.test/v1/connect",
+      url: "",
       status: 424,
       latency_ms: 4,
       request_size: 0,
@@ -1574,9 +1575,7 @@ describe("activity detail polling", () => {
 
     await waitFor(() => {
       expect(screen.getByText("BLOCK")).toBeInTheDocument();
-      expect(
-        screen.getByText("https://blocked.service.test/v1/connect"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("blocked.service.test:443")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Type filter"));

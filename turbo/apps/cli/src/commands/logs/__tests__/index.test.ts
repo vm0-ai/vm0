@@ -1304,7 +1304,9 @@ describe("logs command", () => {
                   method: "POST",
                   status: 424,
                   latency_ms: 4,
-                  url: "https://api.example.com/connect",
+                  host: "api.example.com",
+                  port: 443,
+                  url: "",
                   firewall_name: "example",
                   firewall_error: "connector_not_configured",
                 },
@@ -1320,7 +1322,7 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("BLOCK");
       expect(logCalls).toContain("POST");
-      expect(logCalls).toContain("https://api.example.com/connect");
+      expect(logCalls).toContain("api.example.com:443");
       expect(logCalls).toContain("[example]");
       expect(logCalls).toContain("connector_not_configured");
       expect(logCalls).not.toContain("424");
