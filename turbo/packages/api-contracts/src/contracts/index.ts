@@ -1380,10 +1380,6 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  internalCallbacksAgentContract,
-  type InternalCallbacksAgentContract,
-} from "./internal-callbacks-agent";
-export {
   githubIssuesCallbackPayloadSchema,
   internalCallbacksGithubIssuesContract,
   type GitHubIssuesCallbackPayload,

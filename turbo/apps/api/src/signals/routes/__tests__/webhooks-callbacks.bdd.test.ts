@@ -993,20 +993,6 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
 });
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
-  it("rejects malformed callback bodies before callback lookup", async () => {
-    const invalidJson = await api.requestInvalidAgentCallbackBody(
-      "not-json",
-      [400],
-    );
-    expect(invalidJson.body).toStrictEqual({ error: "Invalid JSON body" });
-
-    const missingRunId = await api.requestAgentCallback(
-      { status: "completed", payload: {} },
-      [400],
-    );
-    expect(missingRunId.body).toStrictEqual({ error: "Missing runId" });
-  });
-
   it("rejects event consumers with missing auth or invalid bodies", async () => {
     const body = {
       runId: randomUUID(),
@@ -1032,14 +1018,6 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
       [401],
     );
     expect(invalidBody.body).toStrictEqual({ error: "Invalid JSON body" });
-  });
-
-  it("rejects agent callbacks whose runId-fallback lookup finds no callback row", async () => {
-    const missingCallback = await api.requestAgentCallback(
-      { runId: randomUUID(), status: "completed", payload: {} },
-      [404],
-    );
-    expect(missingCallback.body).toStrictEqual({ error: "Callback not found" });
   });
 
   it("ingests signed axiom event batches and surfaces axiom outages as 503", async () => {

@@ -1,7 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { internalCallbacksAgentContract } from "@vm0/api-contracts/contracts/internal-callbacks-agent";
-import type { InternalCallbackBody } from "@vm0/api-contracts/contracts/internal-callbacks-shared";
 import {
   internalEventConsumerAxiomContract,
   internalEventConsumerChatAssistantContract,
@@ -467,32 +465,6 @@ export function createWebhookCallbackApi(context: TestContext) {
           body: args.body as string,
         }),
         args.statuses,
-      );
-    },
-
-    async requestAgentCallback(
-      body: InternalCallbackBody,
-      statuses: readonly (200 | 400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(internalCallbacksAgentContract).post({
-          headers: {},
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestInvalidAgentCallbackBody(
-      body: string,
-      statuses: readonly (400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(internalCallbacksAgentContract).post({
-          headers: {},
-          body: body as unknown as InternalCallbackBody,
-        }),
-        statuses,
       );
     },
 

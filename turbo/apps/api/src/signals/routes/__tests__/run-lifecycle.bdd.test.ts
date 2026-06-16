@@ -5,24 +5,19 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import {
   createBddApi,
@@ -39,7 +34,6 @@ import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /**
@@ -51,12 +45,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  */
 
 const context = testContext();
-const store = createStore();
-
-interface SignedInternalCallbackDelivery {
-  readonly body: string;
-  readonly headers: Record<string, string>;
-}
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
@@ -135,46 +123,6 @@ async function waitForRunQueueLength(
     })
     .toBe(length);
   return await api.readRunQueue(actor);
-}
-
-async function signedCallbackDeliveryForRun(args: {
-  readonly runId: string;
-  readonly status: "completed" | "failed" | "progress";
-  readonly payload: unknown;
-  readonly error?: string;
-}): Promise<SignedInternalCallbackDelivery> {
-  const secret = `signed-callback-${args.runId}`;
-  const db = store.set(writeDb$);
-  const [callback] = await db
-    .select({ id: agentRunCallbacks.id })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, args.runId))
-    .limit(1);
-  if (!callback) {
-    throw new Error("Expected a callback row");
-  }
-
-  await db
-    .update(agentRunCallbacks)
-    .set({ encryptedSecret: encryptSecretForTests(secret) })
-    .where(eq(agentRunCallbacks.id, callback.id));
-
-  const body = JSON.stringify({
-    callbackId: callback.id,
-    runId: args.runId,
-    status: args.status,
-    ...(args.error === undefined ? {} : { error: args.error }),
-    payload: args.payload,
-  });
-  const timestamp = Math.floor(now() / 1000);
-  return {
-    body,
-    headers: {
-      "content-type": "application/json",
-      "x-vm0-signature": computeHmacSignature(body, secret, timestamp),
-      "x-vm0-timestamp": timestamp.toString(),
-    },
-  };
 }
 
 function base64UrlEncode(input: string): string {
@@ -2208,152 +2156,6 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     expect(cancelNote.runLifecycleEvent).toBe("cancelled");
     expect(cancelNote.content).toStrictEqual(expect.any(String));
     expect(routeRequests).toBe(0);
-  });
-});
-
-describe("HOOK-01: agent callback summaries through replayed deliveries", () => {
-  const AGENT_CALLBACK_PATH = "/api/internal/callbacks/agent";
-  const OPENROUTER_COMPLETIONS_URL =
-    "https://openrouter.ai/api/v1/chat/completions";
-
-  it("summarizes completed runs replayed through the agent callback route", async () => {
-    const api = createRunsAutomationsApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    const openRouterRequests: {
-      readonly messages: readonly {
-        readonly role: string;
-        readonly content: string;
-      }[];
-    }[] = [];
-    server.use(
-      http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
-        openRouterRequests.push(
-          (await request.json()) as (typeof openRouterRequests)[number],
-        );
-        return HttpResponse.json({
-          choices: [{ message: { content: "Agent delegated the task." } }],
-        });
-      }),
-    );
-
-    const { runId } = await sendChatRunMessage(actor, {
-      agentId,
-      prompt: "Summarize the delegated research task.",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(runId);
-    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
-
-    // Replaying a progress callback hits the agent route's non-completed early
-    // return without touching Axiom.
-    await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    const progressDelivery = await signedCallbackDeliveryForRun({
-      runId,
-      status: "progress",
-      payload: { triggerAgentId: agentId },
-    });
-    const queryCallsBeforeProgress =
-      context.mocks.axiom.query.mock.calls.length;
-    const progressReplay = await webhooks.replayInternalCallback(
-      AGENT_CALLBACK_PATH,
-      progressDelivery,
-    );
-    expect(progressReplay.status).toBe(200);
-    await expect(progressReplay.json()).resolves.toStrictEqual({
-      success: true,
-    });
-    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
-      queryCallsBeforeProgress,
-    );
-
-    const historyHash = createHash("sha256")
-      .update(`bdd session history ${runId}`)
-      .digest("hex");
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-agent-cb-cli-${runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      sandboxHeaders,
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId, exitCode: 0, lastEventSequence: 0 },
-      sandboxHeaders,
-      [200],
-    );
-    const completed = await api.readRun(actor, runId);
-    expect(completed.status).toBe("completed");
-    const completedDelivery = await signedCallbackDeliveryForRun({
-      runId,
-      status: "completed",
-      payload: { triggerAgentId: agentId },
-    });
-
-    // The agent route reads the run output back through the Axiom boundary.
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-      const apl = typeof args[0] === "string" ? args[0] : "";
-      return Promise.resolve(
-        apl.includes("agent-run-events")
-          ? [
-              {
-                sequenceNumber: 0,
-                eventType: "result",
-                eventData: { result: "Delegated task finished cleanly." },
-              },
-            ]
-          : [],
-      );
-    });
-
-    // Without an OpenRouter key the summary generation is skipped silently.
-    const noKeyReplay = await webhooks.replayInternalCallback(
-      AGENT_CALLBACK_PATH,
-      completedDelivery,
-    );
-    expect(noKeyReplay.status).toBe(200);
-    await expect(noKeyReplay.json()).resolves.toStrictEqual({ success: true });
-    expect(openRouterRequests).toHaveLength(0);
-
-    // With a key the replay produces exactly one agent summarize completion call
-    // carrying the agent trigger source and the run output. Chat callbacks in
-    // the same flow can also generate chat title/follow-up completions.
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    const summaryReplay = await webhooks.replayInternalCallback(
-      AGENT_CALLBACK_PATH,
-      completedDelivery,
-    );
-    expect(summaryReplay.status).toBe(200);
-    await expect(summaryReplay.json()).resolves.toStrictEqual({
-      success: true,
-    });
-    const agentSummaryRequests = openRouterRequests.filter((request) => {
-      return request.messages[0]?.content.includes(
-        "Summarize the result of this agent agent run",
-      );
-    });
-    expect(agentSummaryRequests).toHaveLength(1);
-    expect(agentSummaryRequests[0]?.messages[0]?.content).toContain(
-      "Summarize the result of this agent agent run",
-    );
-    expect(agentSummaryRequests[0]?.messages[1]?.content).toContain(
-      "Delegated task finished cleanly.",
-    );
-
-    const tamperedReplay = await webhooks.replayInternalCallback(
-      AGENT_CALLBACK_PATH,
-      completedDelivery,
-      { signature: webhooks.tamperedSignature(completedDelivery) },
-    );
-    expect(tamperedReplay.status).toBe(401);
-
-    context.mocks.axiom.query.mockReset();
-    context.mocks.axiom.query.mockResolvedValue([]);
   });
 });
 
