@@ -502,6 +502,8 @@ fn install_produced_artifact(
 
     let target_file = open_setup_file_for_identity(target, "installed setup artifact")?;
     let target_stat = setup_file_stat(&target_file, target, "installed setup artifact")?;
+    // The write-time SHA belongs to the held fd, not to a path string. After
+    // the path-based rename, prove the target still resolves to that fd's inode.
     validate_same_setup_file_identity(
         &chmod_stat,
         &target_stat,
