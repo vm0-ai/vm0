@@ -367,7 +367,10 @@ function aggregateNetworkDataPerUser(
       continue;
     }
 
-    const firewallPermission = row.firewall_permission ?? "";
+    const firewallPermission =
+      typeof row.firewall_permission === "string"
+        ? row.firewall_permission
+        : "";
     if (row.action === "ALLOW" && firewallPermission.length === 0) {
       continue;
     }

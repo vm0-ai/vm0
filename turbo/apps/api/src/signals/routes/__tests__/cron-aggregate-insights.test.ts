@@ -585,6 +585,14 @@ describe("GET /api/cron/aggregate-insights", () => {
         runId,
         host: "api.github.com",
         firewall_name: "github",
+        firewall_permission: null,
+        action: "DENY",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
         action: "DENY",
       },
       {
@@ -613,7 +621,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(githubDeny).toMatchObject({
       connectorType: "github",
-      denied: 2,
+      denied: 3,
     });
     const repoRead = data?.permissions.find((permission) => {
       return permission.label.includes("repo-read");
