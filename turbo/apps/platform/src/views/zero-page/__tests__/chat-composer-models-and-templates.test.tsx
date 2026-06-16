@@ -95,6 +95,21 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function mockNavigatorUserAgent(userAgent: string): () => void {
+  const original = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  Object.defineProperty(navigator, "userAgent", {
+    configurable: true,
+    value: userAgent,
+  });
+  return () => {
+    if (original) {
+      Object.defineProperty(navigator, "userAgent", original);
+    } else {
+      delete (navigator as { userAgent?: string }).userAgent;
+    }
+  };
+}
+
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -488,6 +503,32 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+function placeCaretAfterText(root: HTMLElement, text: string): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const content = node.textContent ?? "";
+    const index = content.indexOf(text);
+    if (index === -1) {
+      continue;
+    }
+
+    const range = document.createRange();
+    range.setStart(node, index + text.length);
+    range.collapse(true);
+    root.focus();
+    const selection = window.getSelection();
+    if (!selection) {
+      throw new Error("Selection API is not available");
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    return;
+  }
+  throw new Error(`${text} text node not found`);
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -695,6 +736,52 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
+  });
+
+  it("keeps Shift+Enter and Mac Ctrl+A/Ctrl+E scoped to composer lines", async () => {
+    const restoreUserAgent = mockNavigatorUserAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    );
+    try {
+      const user = userEvent.setup({ delay: null });
+      mockOrgModelRoutes("kimi-k2.7-code");
+      mockAgent({ customSkills: [] });
+      context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+        return respond(200, []);
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+        featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+      });
+
+      const editor = await findComposerEditor();
+      await user.click(editor);
+      await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+      await user.keyboard("{Control>}a{/Control}X");
+
+      await waitFor(() => {
+        expect(editor.innerHTML).toContain(
+          "<p>first line</p><p>Xsecond line</p>",
+        );
+        expect(editor.innerHTML).not.toContain("<br>");
+      });
+
+      placeCaretAfterText(editor, "Xsecond line");
+      await user.keyboard("{Shift>}{Enter}{/Shift}third line");
+      placeCaretAfterText(editor, "Xsecond line");
+      await user.keyboard("{Control>}e{/Control}Y");
+
+      await waitFor(() => {
+        expect(editor.innerHTML).toContain(
+          "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
+        );
+        expect(editor.innerHTML).not.toContain("<br>");
+      });
+    } finally {
+      restoreUserAgent();
+    }
   });
 
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
