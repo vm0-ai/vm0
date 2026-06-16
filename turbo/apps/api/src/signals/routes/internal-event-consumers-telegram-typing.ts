@@ -65,7 +65,7 @@ const refreshTelegramTypingForRun$ = command(
 
     const targets = new Map<string, TelegramTypingTarget>();
     for (const callback of callbacks) {
-      if (!callback.url.endsWith("/api/internal/callbacks/telegram")) {
+      if (!callback.url?.endsWith("/api/internal/callbacks/telegram")) {
         continue;
       }
       const target = parseTelegramTypingTarget(callback.payload);

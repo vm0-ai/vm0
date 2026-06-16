@@ -14,7 +14,7 @@ import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { tapError } from "../utils";
-import { dispatchRunCallbacks } from "./agent-run-callback.service";
+import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
@@ -384,12 +384,15 @@ export const dispatchCompleteSideEffects$ = command(
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
     await tapError(
-      dispatchRunCallbacks(
-        db,
-        input.runId,
-        callbackStatus,
-        undefined,
-        input.error,
+      set(
+        dispatchRunCallbacks$,
+        {
+          db,
+          runId: input.runId,
+          status: callbackStatus,
+          error: input.error,
+        },
+        signal,
       ),
       (error) => {
         L.error("Failed to dispatch terminal callbacks", {

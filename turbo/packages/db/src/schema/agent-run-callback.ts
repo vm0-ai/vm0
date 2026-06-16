@@ -28,7 +28,8 @@ export const agentRunCallbacks = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    url: text("url").notNull(),
+    url: text("url"),
+    internalKind: varchar("internal_kind", { length: 64 }),
     // Secret encrypted with the persistent-secret KMS rollout envelope.
     encryptedSecret: text("encrypted_secret").notNull(),
     // Arbitrary JSON payload to include in callback (e.g., Slack context)
