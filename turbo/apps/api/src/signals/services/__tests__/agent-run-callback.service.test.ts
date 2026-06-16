@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -10,6 +12,9 @@ import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
@@ -24,6 +29,7 @@ import {
   captureGithubIssueApi,
   mockGithubAppEnv,
 } from "../../routes/__tests__/helpers/api-bdd-github";
+import { encryptSecretForTests } from "../../routes/__tests__/helpers/encrypt-secret";
 import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgConnection$,
@@ -57,6 +63,8 @@ const GITHUB_ISSUES_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/github/issues";
 const SLACK_ORG_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/slack/org";
+const TELEGRAM_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/telegram";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
@@ -74,6 +82,13 @@ interface OpenRouterRequest {
     readonly role: string;
     readonly content: string;
   }[];
+}
+
+interface TelegramSendMessageBody {
+  readonly chat_id: string;
+  readonly text: string;
+  readonly parse_mode?: string;
+  readonly reply_parameters?: { readonly message_id: number };
 }
 
 const trackSlackIntegration = createFixtureTracker<SlackIntegrationFixture>(
@@ -278,6 +293,26 @@ async function readSlackThreadSession(args: {
   return row;
 }
 
+async function readTelegramThreadSession(args: {
+  readonly userLinkId: string;
+  readonly chatId: string;
+  readonly rootMessageId: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId),
+        eq(telegramThreadSessions.chatId, args.chatId),
+        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
 async function seedSlackCallbackContext(
   fixture: AgentCallbackRunFixture,
 ): Promise<{
@@ -324,6 +359,51 @@ async function seedSlackCallbackContext(
   };
 }
 
+async function seedTelegramCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly installationId: string;
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly messageId: string;
+  readonly userLinkId: string;
+  readonly agentId: string;
+}> {
+  const db = store.set(writeDb$);
+  const installationId = `bot-${randomUUID()}`;
+  const botToken = `123456:${fixture.runId.slice(0, 8)}`;
+  await db.insert(telegramInstallations).values({
+    telegramBotId: installationId,
+    botUsername: `bot_${installationId.slice(4, 12)}`,
+    encryptedBotToken: encryptSecretForTests(botToken),
+    webhookSecret: `whs_${randomUUID()}`,
+    defaultComposeId: fixture.composeId,
+    ownerUserId: fixture.userId,
+    orgId: fixture.orgId,
+  });
+  const [userLink] = await db
+    .insert(telegramUserLinks)
+    .values({
+      installationId,
+      telegramUserId: `tg-${randomUUID()}`,
+      telegramUsername: "alice",
+      telegramDisplayName: "Alice",
+      vm0UserId: fixture.userId,
+    })
+    .returning({ id: telegramUserLinks.id });
+  if (!userLink) {
+    throw new Error("Failed to seed Telegram user link");
+  }
+  return {
+    installationId,
+    botToken,
+    chatId: "77001",
+    messageId: "42",
+    userLinkId: userLink.id,
+    agentId: fixture.composeId,
+  };
+}
+
 function mockSlackApi(): void {
   context.mocks.slack.chat.postMessage.mockResolvedValue({
     ok: true,
@@ -333,6 +413,58 @@ function mockSlackApi(): void {
   context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
     ok: true,
   });
+}
+
+function mockTelegramApi(
+  token: string,
+  options: {
+    readonly sendMessageStatus?: number;
+    readonly sendMessageDescription?: string;
+  } = {},
+): {
+  readonly chatActions: unknown[];
+  readonly sentMessages: TelegramSendMessageBody[];
+} {
+  const chatActions: unknown[] = [];
+  const sentMessages: TelegramSendMessageBody[] = [];
+  let nextMessageId = 900;
+
+  server.use(
+    http.post(
+      `https://api.telegram.org/bot${token}/sendChatAction`,
+      async ({ request }) => {
+        chatActions.push(await request.json());
+        return HttpResponse.json({ ok: true, result: true });
+      },
+    ),
+    http.post(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      async ({ request }) => {
+        const body = (await request.json()) as TelegramSendMessageBody;
+        sentMessages.push(body);
+        if (options.sendMessageStatus !== undefined) {
+          return HttpResponse.json(
+            {
+              ok: false,
+              description:
+                options.sendMessageDescription ?? "Bad Request: chat not found",
+            },
+            { status: options.sendMessageStatus },
+          );
+        }
+        return HttpResponse.json({
+          ok: true,
+          result: {
+            message_id: nextMessageId++,
+            chat: { id: Number(body.chat_id) || 123 },
+            text: body.text,
+          },
+        });
+      },
+    ),
+  );
+
+  return { chatActions, sentMessages };
 }
 
 async function seedGithubInstallation(
@@ -1012,6 +1144,208 @@ describe("dispatchRunCallbacks$ Slack org internal dispatch", () => {
         text: "Non-ccstate Slack output.",
       }),
     );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ Telegram internal dispatch", () => {
+  it("dispatches typed Telegram callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    mockRunOutput("Telegram callback finished.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(1);
+    expect(telegramApi.sentMessages[0]).toMatchObject({
+      chat_id: payload.chatId,
+      text: "Telegram callback finished.",
+      parse_mode: "HTML",
+    });
+    expect(telegramApi.sentMessages[0]?.reply_parameters).toBeUndefined();
+    await expect(
+      readTelegramThreadSession({
+        userLinkId: payload.userLinkId,
+        chatId: payload.chatId,
+        rootMessageId: "dm",
+      }),
+    ).resolves.toMatchObject({
+      agentSessionId: expect.any(String),
+      lastProcessedMessageId: payload.messageId,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed Telegram progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy Telegram callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken, {
+      sendMessageStatus: 400,
+      sendMessageDescription: "Bad Request: chat not found",
+    });
+    mockRunOutput("Undelivered Telegram output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: TELEGRAM_CALLBACK_URL,
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Telegram API error: Bad Request: chat not found",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(1);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: TELEGRAM_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "Telegram API error: Bad Request: chat not found",
+    });
+  });
+
+  it("dispatches typed Telegram callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    mockRunOutput("Non-ccstate Telegram output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.sentMessages[0]).toMatchObject({
+      chat_id: payload.chatId,
+      text: "Non-ccstate Telegram output.",
+    });
     await expect(readCallback(callbackId)).resolves.toMatchObject({
       status: "delivered",
       attempts: 1,
