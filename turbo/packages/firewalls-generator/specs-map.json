@@ -59,7 +59,7 @@
     "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta": "bda7ec8f3c4fb3a4910ea1a1109732eaea852547b464a49393bf603ad98a0540"
   },
   "google-calendar": {
-    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest": "82c6b1d76456fe79c561f4c3f2f21a8306591347a9d8974fba3f5f27e4b6567d"
+    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest": "3a1a565554caa7eb9d1c0e2964715041c9d4a7052724b695d73271c54b683419"
   },
   "google-cloud": {
     "https://appengine.googleapis.com/$discovery/rest?version=v1": "26289a7aa0a738f88196d495afb268e6e6306984ac32a98c3400c940cfa75866",
