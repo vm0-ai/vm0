@@ -2,6 +2,7 @@ import { safeUrlParse } from "../utils";
 
 export const internalRunCallbackKinds = [
   "agent",
+  "github:issues",
   "trigger:cron",
   "trigger:loop",
 ] as const;
@@ -33,6 +34,7 @@ function isInternalRunCallbackKind(
 ): value is InternalRunCallbackKind {
   switch (value) {
     case "agent":
+    case "github:issues":
     case "trigger:cron":
     case "trigger:loop": {
       return true;
@@ -63,6 +65,9 @@ function legacyInternalRunCallbackKind(
   switch (path) {
     case "/api/internal/callbacks/agent": {
       return "agent";
+    }
+    case "/api/internal/callbacks/github/issues": {
+      return "github:issues";
     }
     case "/api/internal/callbacks/trigger/cron": {
       return "trigger:cron";

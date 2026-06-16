@@ -32,7 +32,7 @@ import {
 } from "../external/telegram-official";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
-import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/run-error-format.service";
 import {
   saveTelegramThreadSession,
   storeTelegramBotMessage,

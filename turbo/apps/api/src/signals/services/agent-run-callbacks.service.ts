@@ -67,6 +67,7 @@ export const dispatchProgressCallbacks$ = command(
         const internalKind = internalRunCallbackKindForRecord(callback);
         if (
           internalKind === "agent" ||
+          internalKind === "github:issues" ||
           internalKind === "trigger:cron" ||
           internalKind === "trigger:loop"
         ) {

@@ -23,7 +23,7 @@ import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
-import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/run-error-format.service";
 import {
   formatAgentPhoneAuditLink,
   isAgentPhoneChannel,
