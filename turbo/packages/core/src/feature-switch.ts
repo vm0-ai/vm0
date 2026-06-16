@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatNewPresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the new curated presentation template catalog in the Zero chat composer. While off, the presentation picker keeps the legacy catalog.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.VideoTemplatePicker]: {
     maintainer: "bingjie@vm0.ai",
     description:

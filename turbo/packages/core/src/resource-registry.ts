@@ -766,6 +766,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["presentation"],
   },
   {
+    id: "template:html-ppt-playful-editorial",
+    kind: "template",
+    name: "Playful Editorial Presentation",
+    description:
+      "15-slot HTML presentation structure with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-template/aplocoto",
+    },
+    targets: ["presentation"],
+  },
+  {
     id: "template:html-ppt-zhangzara-retro-zine",
     kind: "template",
     name: "Zhangzara Retro Zine",
@@ -2495,6 +2508,18 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Paper-textured, print-inspired design with minimal colors, clean serif/sans typography, and tactile surface qualities.",
     source: { path: "design-systems/paper" },
+  },
+  {
+    id: "design-system:playful-editorial",
+    kind: "design-system",
+    name: "Playful Editorial",
+    description:
+      "Carnival editorial look with saturated color fields, scalloped burst badges, pill chips, Archivo headlines, and Manrope body.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-design-system/playful-editorial",
+    },
   },
   {
     id: "design-system:perplexity",

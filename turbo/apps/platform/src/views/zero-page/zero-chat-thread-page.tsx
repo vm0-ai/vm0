@@ -74,6 +74,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
@@ -5657,12 +5658,19 @@ function generationTemplateLabel(
       item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
     );
   }
-  const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-    return (
-      candidate.designSystemId === value.selection.designSystemId &&
-      candidate.templateId === value.selection.templateId
-    );
-  });
+  const item =
+    PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    });
   return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
 }
 

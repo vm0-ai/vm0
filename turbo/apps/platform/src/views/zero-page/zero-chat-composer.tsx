@@ -102,6 +102,7 @@ import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
@@ -683,6 +684,14 @@ function toPresentationGenerationTemplate(
   };
 }
 
+function presentationTemplatePickerItems(
+  useNewPresentationTemplates: boolean,
+): readonly PresentationTemplateItem[] {
+  return useNewPresentationTemplates
+    ? PRESENTATION_TEMPLATE_PICKER_ITEMS
+    : PRESENTATION_TEMPLATE_ITEMS;
+}
+
 function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
@@ -701,9 +710,14 @@ function selectedPresentationTemplateItem(
   if (value?.type !== "presentation") {
     return undefined;
   }
-  return PRESENTATION_TEMPLATE_ITEMS.find((item) => {
-    return isSelectedPresentationTemplate(item, value);
-  });
+  return (
+    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    })
+  );
 }
 
 function isSelectedIllustrationTemplate(
@@ -1274,7 +1288,6 @@ function TemplatePreviewPage({
     ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
     : selectedSlideImage;
   const hasMultipleSlides = slideImages.length > 1;
-  const kind = formatPresentationTemplateKind(item.templateId);
 
   const changeSlide = (direction: -1 | 1) => {
     if (!hasMultipleSlides) {
@@ -1374,41 +1387,25 @@ function TemplatePreviewPage({
             })}
           </div>
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border bg-background p-5">
-            <h3 className="text-lg font-semibold text-foreground">
+        <div className="flex flex-col lg:sticky lg:top-0">
+          <div className="rounded-lg border border-border bg-background p-5 shadow-sm">
+            <h3 className="text-xl font-semibold text-foreground">
               {item.title}
             </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {kind} · {slideImages.length} preview slides
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {slideImages.length} slides
             </p>
+            <button
+              type="button"
+              aria-label={`Select template ${item.title}`}
+              className="mt-5 h-12 w-full rounded-lg bg-[#ff7a1a] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#f06c12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2"
+              onClick={() => {
+                onSelect(item);
+              }}
+            >
+              Use this template
+            </button>
           </div>
-          <div className="rounded-lg border border-border bg-background p-5">
-            <h3 className="text-sm font-semibold text-muted-foreground">
-              Dials
-            </h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {slideImages.length} preview slides
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Confident tone
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Dark theme
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            className="h-11 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onSelect(item);
-            }}
-          >
-            Use this template
-          </button>
         </div>
       </div>
     </>
@@ -2037,6 +2034,7 @@ function TemplatePickerDialog({
   onChange,
   onClose,
   hasPptTab,
+  presentationItems,
   hasIllustrationTab,
   hasVideoTab,
 }: {
@@ -2044,6 +2042,7 @@ function TemplatePickerDialog({
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
   hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
@@ -2060,7 +2059,7 @@ function TemplatePickerDialog({
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
-    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+    presentationItems.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
   const isPreviewing = Boolean(previewItem);
@@ -2072,7 +2071,7 @@ function TemplatePickerDialog({
     "[&>button[aria-label=Close]]:top-[7px]",
     isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
-  const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
+  const filteredPptItems = presentationItems.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
@@ -2496,11 +2495,13 @@ function SelectedTemplateChipSlot({
 function TemplatePickerButton({
   picker,
   hasPptTab,
+  presentationItems,
   hasIllustrationTab,
   hasVideoTab,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
@@ -2549,6 +2550,7 @@ function TemplatePickerButton({
             setOpen(false);
           }}
           hasPptTab={hasPptTab}
+          presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
         />
@@ -2569,6 +2571,12 @@ function ComposerTemplatePickerSlot({
   const hasPptTab = hasChatTemplatePicker;
   const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  const useNewPresentationTemplates = Boolean(
+    features?.[FeatureSwitchKey.ChatNewPresentationTemplates],
+  );
+  const presentationItems = presentationTemplatePickerItems(
+    useNewPresentationTemplates,
+  );
   if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }
@@ -2576,6 +2584,7 @@ function ComposerTemplatePickerSlot({
     <TemplatePickerButton
       picker={picker}
       hasPptTab={hasPptTab}
+      presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
     />
