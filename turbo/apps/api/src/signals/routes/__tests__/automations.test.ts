@@ -857,6 +857,32 @@ describe("Automations API", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.automationId, healthyId));
     expect(healthyRuns).toHaveLength(1);
+    const healthyRunId = healthyRuns[0]?.id;
+    if (!healthyRunId) {
+      throw new Error("Expected healthy automation run");
+    }
+    const callbacks = await db
+      .select({
+        url: agentRunCallbacks.url,
+        internalKind: agentRunCallbacks.internalKind,
+        payload: agentRunCallbacks.payload,
+      })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, healthyRunId));
+    expect(callbacks).toStrictEqual(
+      expect.arrayContaining([
+        {
+          url: null,
+          internalKind: "trigger:loop",
+          payload: { triggerId: healthyTrigger?.id },
+        },
+      ]),
+    );
+    expect(
+      callbacks.some((callback) => {
+        return callback.url?.endsWith("/api/internal/callbacks/chat");
+      }),
+    ).toBeTruthy();
 
     // The zombies were never touched: still due, never run.
     const zombieTriggers = await db

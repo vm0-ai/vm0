@@ -10,7 +10,7 @@ import { now } from "../../lib/time";
 import { db$ } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { legacyInternalRunCallbackKind } from "./internal-run-callback";
+import { internalRunCallbackKindForRecord } from "./internal-run-callback";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -64,9 +64,11 @@ export const dispatchProgressCallbacks$ = command(
 
     await Promise.allSettled(
       callbacks.map(async (callback) => {
+        const internalKind = internalRunCallbackKindForRecord(callback);
         if (
-          callback.internalKind === "agent" ||
-          legacyInternalRunCallbackKind(callback.url) === "agent"
+          internalKind === "agent" ||
+          internalKind === "trigger:cron" ||
+          internalKind === "trigger:loop"
         ) {
           return;
         }

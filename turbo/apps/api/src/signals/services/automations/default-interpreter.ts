@@ -6,6 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 
 import { internalApiBaseUrl } from "../../../lib/internal-api-url";
+import type { InternalRunCallbackKind } from "../internal-run-callback";
 
 /**
  * Identifies how an Automation should be interpreted into an agent run. The
@@ -38,11 +39,19 @@ interface Automation {
   readonly timezone: string;
 }
 
-interface RunCallback {
+interface HttpRunCallback {
   readonly url: string;
   readonly secret: string;
   readonly payload: unknown;
 }
+
+interface InternalRunCallback {
+  readonly internalKind: InternalRunCallbackKind;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+type RunCallback = HttpRunCallback | InternalRunCallback;
 
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
@@ -300,7 +309,7 @@ function buildTriggerCallbacks(
   if (automation.triggerType === "loop") {
     const payload: TriggerLoopCallbackPayload = { triggerId };
     callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/loop`,
+      internalKind: "trigger:loop",
       secret: generateCallbackSecret(),
       payload,
     });
@@ -316,7 +325,7 @@ function buildTriggerCallbacks(
       timezone: automation.timezone,
     };
     callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/cron`,
+      internalKind: "trigger:cron",
       secret: generateCallbackSecret(),
       payload,
     });
