@@ -3720,7 +3720,11 @@ describe("getConnectorEnvBindingEntries", () => {
 
   it("declares generated Google Maps firewall bearer auth header", () => {
     const firewall = getConnectorFirewall("google-maps");
-    expect(firewall.apis.map((api) => api.base)).toStrictEqual([
+    expect(
+      firewall.apis.map((api) => {
+        return api.base;
+      }),
+    ).toStrictEqual([
       "https://maps.googleapis.com",
       "https://geocode.googleapis.com",
       "https://places.googleapis.com",
