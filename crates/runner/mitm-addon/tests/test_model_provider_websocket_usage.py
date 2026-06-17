@@ -179,7 +179,7 @@ class TestModelProviderWebSocketUsage:
         [entry] = [
             entry
             for entry in read_jsonl_entries_after_flush(proxy_log)
-            if entry["type"] == "usage_underbilling"
+            if entry.get("type") == "usage_underbilling"
         ]
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
@@ -187,6 +187,32 @@ class TestModelProviderWebSocketUsage:
         assert entry["run_id"] == "run-abc-123"
         assert entry["firewall_name"] == "model-provider:openai-api-key"
         assert entry["missing_sandbox_token"] is True
+
+    def test_model_websocket_missing_api_url_releases_positive_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with mitm_ctx(api_url=""):
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_usage_frame(
+                    "resp_ws_missing_api_url",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["missing_sandbox_token"] is False
+        assert entry["missing_api_url"] is True
 
     def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
@@ -201,6 +227,25 @@ class TestModelProviderWebSocketUsage:
                 output_tokens=0,
             ),
         )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert not jsonl_exists_after_flush(proxy_log)
+
+    def test_model_websocket_missing_api_url_releases_zero_only_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with mitm_ctx(api_url=""):
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_usage_frame(
+                    "resp_ws_zero_missing_api_url",
+                    input_tokens=0,
+                    output_tokens=0,
+                ),
+            )
 
         assert _model_websocket_usage_sources(flow) == {}
         assert not jsonl_exists_after_flush(proxy_log)
