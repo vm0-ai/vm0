@@ -3,11 +3,19 @@ import {
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -769,6 +777,117 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByText("Download failed")).toBeInTheDocument();
     });
+  });
+
+  it("keeps chat image preview dimensions stable while the image loads", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-stable-image-preview",
+          role: "assistant",
+          content: `Chart preview:\n\n${imageUrl}`,
+          runId: "run-stable-image-preview",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const preview = await screen.findByLabelText("Preview chart.png");
+    expect(preview).toHaveClass(
+      "aspect-[10/9]",
+      "w-[50px]",
+      "max-w-full",
+      "cursor-pointer",
+    );
+    expect(
+      within(preview).getByTestId("chat-image-preview-loading"),
+    ).toHaveClass("h-full", "w-full");
+
+    const image = within(preview).getByAltText("chart.png");
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview).toHaveClass(
+      "aspect-[10/9]",
+      "w-[50px]",
+      "max-w-full",
+      "cursor-pointer",
+    );
+    expect(image).toHaveClass("h-full", "w-full", "object-contain");
+  });
+
+  it("keeps markdown image preview dimensions stable while the image loads", async () => {
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image/kitten-1280x720.png";
+    render(
+      <StoreProvider value={context.store}>
+        <Markdown source={`![1280x720](${imageUrl})`} mediaPreview />
+      </StoreProvider>,
+    );
+
+    const image = await screen.findByAltText("1280x720");
+    const preview = image.closest("button");
+    if (!preview) {
+      throw new Error("Markdown image preview button not found");
+    }
+    expect(preview).toHaveClass(
+      "aspect-[10/9]",
+      "w-[200px]",
+      "max-w-full",
+      "cursor-pointer",
+    );
+    expect(
+      within(preview).getByTestId("markdown-image-preview-loading"),
+    ).toHaveClass("h-full", "w-full");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("markdown-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview).toHaveClass(
+      "aspect-[10/9]",
+      "w-[200px]",
+      "max-w-full",
+      "cursor-pointer",
+    );
+    expect(image).toHaveClass("h-full", "w-full", "object-contain");
+  });
+
+  it("renders user markdown images without preview controls", async () => {
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/test/user-markdown-image/kitten-1280x720.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-user-markdown-image",
+          role: "user",
+          content: `![1280x720](${imageUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("1280x720");
+    expect(image).toHaveAttribute("src", imageUrl);
+    expect(image.closest("button")).toBeNull();
+    expect(image).not.toHaveAttribute("data-image-load-key");
+    expect(
+      screen.queryByTestId("markdown-image-preview-loading"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens markdown and text previews, shares a document link, and reports download failures", async () => {
