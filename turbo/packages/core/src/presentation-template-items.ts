@@ -1774,7 +1774,7 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
     },
   ];
 
-const APLOCOTO_CDN_PREVIEW_IMAGES = [
+const PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0e4eee8-78f5-4630-9133-5c1771268833/slide-01.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6b283082-35a6-466e-b44e-d1f03b7538b7/slide-02.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27522a10-0cf6-46aa-a25d-7c3fa5f125a3/slide-03.png",
@@ -1795,15 +1795,15 @@ const APLOCOTO_CDN_PREVIEW_IMAGES = [
 export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
-      slug: "playful-editorial-deck",
-      title: "Playful editorial deck",
+      slug: "playful-launch-presentation",
+      title: "Playful launch presentation",
       prompt:
-        "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-editorial`, create a 15-slide presentation for a product or service launch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it saturated, editorial, joyful, and structured.",
+        "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-launch`, create a 15-slide presentation for a product or service launch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it saturated, joyful, idea-led, and structured.",
       embedUrl:
         "https://playful-editorial-presentation-preview-715f6d07-adec3994.sites.vm0.io",
-      previewImage: APLOCOTO_CDN_PREVIEW_IMAGES[0],
-      previewImages: APLOCOTO_CDN_PREVIEW_IMAGES,
+      previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
+      previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
       designSystemId: "design-system:playful-editorial",
-      templateId: "template:html-ppt-playful-editorial",
+      templateId: "template:html-ppt-playful-launch",
     },
   ];

@@ -52,7 +52,7 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    expect(result.prompt).toContain("Playful Editorial");
+    expect(result.prompt).toContain("Playful Launch Presentation");
     expect(result.prompt).toContain(`(${item.designSystemId})`);
     expect(result.prompt).toContain(`(${item.templateId})`);
     expect(result.prompt).toContain(

@@ -766,11 +766,11 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["presentation"],
   },
   {
-    id: "template:html-ppt-playful-editorial",
+    id: "template:html-ppt-playful-launch",
     kind: "template",
-    name: "Playful Editorial Presentation",
+    name: "Playful Launch Presentation",
     description:
-      "15-slot HTML presentation structure with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
+      "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
     source: {
       repo: VM0_SKILLS_REPO,
       ref: VM0_SKILLS_REF,
@@ -2512,9 +2512,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
     id: "design-system:playful-editorial",
     kind: "design-system",
-    name: "Playful Editorial",
+    name: "Playful Launch",
     description:
-      "Carnival editorial look with saturated color fields, scalloped burst badges, pill chips, Archivo headlines, and Manrope body.",
+      "Joyful launch-deck look with saturated color fields, scalloped burst badges, pill chips, Archivo headlines, and Manrope body.",
     source: {
       repo: VM0_SKILLS_REPO,
       ref: VM0_SKILLS_REF,

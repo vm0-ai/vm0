@@ -68,17 +68,17 @@ describe("presentation template items", () => {
   it("keeps the picker catalog separate from the legacy catalog", () => {
     expect(
       PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "playful-editorial-deck";
+        return candidate.slug === "playful-launch-presentation";
       }),
     ).toBe(false);
 
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-      return candidate.slug === "playful-editorial-deck";
+      return candidate.slug === "playful-launch-presentation";
     });
 
     expect(item).toBeDefined();
     expect(item?.designSystemId).toBe("design-system:playful-editorial");
-    expect(item?.templateId).toBe("template:html-ppt-playful-editorial");
+    expect(item?.templateId).toBe("template:html-ppt-playful-launch");
     expect(item?.previewImages.length).toBe(15);
     expect(item?.previewImage).toBe(item?.previewImages[0]);
     expect(
