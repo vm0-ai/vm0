@@ -44,6 +44,14 @@ fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
     )
 }
 
+pub(crate) fn validate_group_dir(group_dir: &Path) -> io::Result<()> {
+    host_file::validate_dir(
+        group_dir,
+        DirMode::SharedTrustedParent,
+        "local queue group directory",
+    )
+}
+
 fn ensure_queue_dir(path: &Path, context: &str) -> io::Result<()> {
     host_file::ensure_dir(path, DirMode::Private, context)
 }

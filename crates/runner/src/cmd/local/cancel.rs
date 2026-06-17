@@ -41,6 +41,12 @@ async fn run_cancel_with_home(args: CancelArgs, home: HomePaths) -> RunnerResult
             group_dir.display()
         )));
     }
+    local_queue::validate_group_dir(&group_dir).map_err(|e| {
+        RunnerError::Config(format!(
+            "invalid group directory {}: {e}",
+            group_dir.display()
+        ))
+    })?;
 
     let run_id = resolve_run_id(&group_dir, &args.run)?;
 
@@ -115,7 +121,7 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     fn mode(path: &std::path::Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -198,5 +204,34 @@ mod tests {
         assert!(cancel_path.exists());
         assert_eq!(mode(&local_queue::cancels_dir(&group_dir)), 0o700);
         assert_eq!(mode(&cancel_path), 0o600);
+    }
+
+    #[tokio::test]
+    async fn run_cancel_rejects_group_symlink_before_claim_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let groups_dir = home.groups_dir();
+        std::fs::create_dir_all(&groups_dir).unwrap();
+        let target = dir.path().join("target-group");
+        std::fs::create_dir(&target).unwrap();
+        let org_dir = groups_dir.join("test");
+        std::fs::create_dir(&org_dir).unwrap();
+        let group_dir = org_dir.join("group");
+        symlink(&target, &group_dir).unwrap();
+
+        let err = run_cancel_with_home(
+            CancelArgs {
+                run: RunId::new_v4().to_string(),
+                group: "test/group".into(),
+            },
+            home,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid group directory"),
+            "got: {err}"
+        );
     }
 }
