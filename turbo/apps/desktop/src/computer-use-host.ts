@@ -26,6 +26,13 @@ const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
 const ERROR_LOG_LIMIT = 20;
+const LOCAL_COMMAND_LOG_LIMIT = 20;
+const LOCAL_COMMAND_LOG_OMITTED_RESULT_KEYS = new Set([
+  "appState",
+  "elements",
+  "screenshot",
+  "visibleElements",
+]);
 
 export type ComputerUseHostFetch = (
   input: string,
@@ -162,6 +169,24 @@ function commandFailureFromError(
       message: errorMessage(error),
     },
   };
+}
+
+function localCommandLogResult(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  const omittedResultFields: string[] = [];
+  for (const [key, value] of Object.entries(result)) {
+    if (LOCAL_COMMAND_LOG_OMITTED_RESULT_KEYS.has(key)) {
+      omittedResultFields.push(key);
+      continue;
+    }
+    next[key] = value;
+  }
+  if (omittedResultFields.length > 0) {
+    next.omittedResultFields = omittedResultFields;
+  }
+  return next;
 }
 
 function replaceHostPrefix(hostname: string, target: string): string {
@@ -401,7 +426,7 @@ export class ComputerUseHostRuntime {
         ...this.state.localCommandLog.filter((candidate) => {
           return candidate.commandId !== command.id;
         }),
-      ],
+      ].slice(0, LOCAL_COMMAND_LOG_LIMIT),
     });
   }
 
@@ -421,7 +446,7 @@ export class ComputerUseHostRuntime {
         return {
           ...entry,
           status: args.status,
-          result: args.result,
+          result: args.result ? localCommandLogResult(args.result) : null,
           error: args.error,
           completedAt: args.completedAt,
           durationMs: args.durationMs,

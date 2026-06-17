@@ -366,10 +366,19 @@ describe("ComputerUseHostRuntime", () => {
         status: "succeeded",
         result: {
           appState: "0 standard window Inbox",
+          elements: [{ id: "element-1", role: "AXWindow" }],
           screenshot: "data:image/png;base64,abc123",
           screenshotWidth: 800,
           screenshotHeight: 600,
           screenshotSourceName: "Inbox",
+          visibleElements: [
+            {
+              elementId: "element-1",
+              text: "Inbox",
+              source: "accessibility",
+              sourceAttributes: ["AXTitle"],
+            },
+          ],
         },
       };
     });
@@ -386,11 +395,15 @@ describe("ComputerUseHostRuntime", () => {
       status: "succeeded",
       payload: { app: "Things" },
       result: {
-        appState: "0 standard window Inbox",
-        screenshot: "data:image/png;base64,abc123",
         screenshotWidth: 800,
         screenshotHeight: 600,
         screenshotSourceName: "Inbox",
+        omittedResultFields: [
+          "appState",
+          "elements",
+          "screenshot",
+          "visibleElements",
+        ],
       },
       error: null,
       durationMs: 0,
@@ -415,9 +428,56 @@ describe("ComputerUseHostRuntime", () => {
       status: "succeeded",
       result: {
         appState: "0 standard window Inbox",
+        elements: [{ id: "element-1", role: "AXWindow" }],
         screenshot: "data:image/png;base64,abc123",
+        visibleElements: [
+          {
+            elementId: "element-1",
+            text: "Inbox",
+            source: "accessibility",
+            sourceAttributes: ["AXTitle"],
+          },
+        ],
       },
     });
+
+    await runtime.stop();
+  });
+
+  it("limits the local native command log to recent entries", async () => {
+    vi.useFakeTimers();
+    let nextCommandId = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCommandId++;
+        return jsonResponse({
+          status: "command",
+          command: {
+            id: `cmd-${nextCommandId.toString()}`,
+            kind: "keyboard.press_key",
+            payload: { app: "Terminal", key: "Enter" },
+          },
+        });
+      }
+      if (url.includes("/api/zero/computer-use/host/commands/cmd-")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    for (let index = 0; index < 25; index++) {
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+
+    const entries = runtime.getState().localCommandLog;
+    expect(entries).toHaveLength(20);
+    expect(entries[0]?.commandId).toBe("cmd-25");
+    expect(entries.at(-1)?.commandId).toBe("cmd-6");
 
     await runtime.stop();
   });
