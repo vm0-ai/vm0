@@ -589,6 +589,63 @@ fn active_input_stream_rejects_early_eof() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
+fn active_input_stream_rejects_non_user_followup() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:1", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+
+    stream.stdin_mut()?.write_all(
+        serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": "not a user frame",
+            },
+        })
+        .to_string()
+        .as_bytes(),
+    )?;
+    stream.stdin_mut()?.write_all(b"\n")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("stream-json stdin follow-up message 1 must have type \"user\""),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn active_input_stream_rejects_invalid_followup_json() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke:1", "active-initial").as_bytes(),
+    )?;
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+
+    stream.stdin_mut()?.write_all(b"{\"type\":\"user\"\n")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("parse stream-json stdin follow-up message 1"),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
 fn active_input_invalid_large_count_drains_stderr() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
     let mut stream = spawn_stream_json_child(home.path(), false)?;
