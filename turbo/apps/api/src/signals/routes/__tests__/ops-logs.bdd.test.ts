@@ -14,7 +14,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 /*
  * OPS-01 run log search, BILL-02 model stats, and OPS-01 user export.
  *
- * This file is the SOLE OWNER of GET /api/internal/cron/aggregate-model-stats:
+ * This file is the SOLE OWNER of GET /api/cron/aggregate-model-stats:
  * the cron is a global sweep (window-scoped DELETE+reinsert over model_stat
  * plus an unconditional model_usage_observation retention delete), so calling
  * it from any other test file would race this file's far-past observation

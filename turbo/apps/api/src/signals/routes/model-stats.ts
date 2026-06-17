@@ -1,4 +1,5 @@
 import { initContract } from "@ts-rest/core";
+import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -9,7 +10,6 @@ import type { RouteEntry } from "../route";
 import {
   aggregateModelStats$,
   DEFAULT_MODEL_STATS_REPROCESS_HOURS,
-  MAX_MODEL_STATS_REPROCESS_HOURS,
   MODEL_RANKING_PERIODS,
   readPublicModelRankings$,
 } from "../services/model-stats.service";
@@ -26,37 +26,7 @@ const modelRankingRowSchema = z.object({
   previousTotalTokens: z.number(),
 });
 
-const aggregateModelStatsContract = c.router({
-  aggregate: {
-    method: "GET" as const,
-    path: "/api/internal/cron/aggregate-model-stats",
-    headers: z.object({
-      authorization: z.string().optional(),
-    }),
-    query: z.object({
-      hours: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(MAX_MODEL_STATS_REPROCESS_HOURS)
-        .optional(),
-    }),
-    responses: {
-      200: z.object({
-        success: z.literal(true),
-        windowStart: z.string(),
-        windowEnd: z.string(),
-        aggregated: z.number(),
-      }),
-      401: z.object({
-        error: z.object({
-          message: z.string(),
-          code: z.literal("UNAUTHORIZED"),
-        }),
-      }),
-    },
-    summary: "Aggregate hourly model usage statistics",
-  },
+export const modelStatsContract = c.router({
   rankings: {
     method: "GET" as const,
     path: "/api/public/model-rankings",
@@ -76,8 +46,8 @@ const aggregateModelStatsContract = c.router({
   },
 });
 
-const aggregateQuery$ = queryOf(aggregateModelStatsContract.aggregate);
-const rankingsQuery$ = queryOf(aggregateModelStatsContract.rankings);
+const aggregateQuery$ = queryOf(cronAggregateModelStatsContract.aggregate);
+const rankingsQuery$ = queryOf(modelStatsContract.rankings);
 
 function unauthorized() {
   return {
@@ -138,13 +108,11 @@ const readPublicModelRankingsRoute$ = command(
 
 export const modelStatsRoutes: readonly RouteEntry[] = [
   {
-    route: aggregateModelStatsContract.aggregate,
+    route: cronAggregateModelStatsContract.aggregate,
     handler: aggregateModelStatsRoute$,
   },
   {
-    route: aggregateModelStatsContract.rankings,
+    route: modelStatsContract.rankings,
     handler: readPublicModelRankingsRoute$,
   },
 ];
-
-export const modelStatsContract = aggregateModelStatsContract;

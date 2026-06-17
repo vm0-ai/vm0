@@ -529,6 +529,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cli/auth/test-token", "/api/cli/auth/test-token"],
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
+  ["/api/cron/aggregate-model-stats", "/api/cron/aggregate-model-stats"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
   [
@@ -652,10 +653,6 @@ export const API_BACKEND_REWRITES = [
     BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH_RE,
   ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
-  [
-    "/api/internal/cron/aggregate-model-stats",
-    "/api/internal/cron/aggregate-model-stats",
-  ],
   ["/api/test/oauth-provider/authorize", "/api/test/oauth-provider/authorize"],
   [
     "/api/test/oauth-provider/device/code",

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   cronAggregateInsightsContract,
+  cronAggregateModelStatsContract,
   cronAggregateUsageContract,
   cronCleanupSandboxesContract,
   cronComputerUseScreenshotCleanupContract,
@@ -80,7 +81,7 @@ const expectedVercelCrons = [
     schedule: "30 2 * * *",
   },
   {
-    path: "/api/internal/cron/aggregate-model-stats",
+    path: cronAggregateModelStatsContract.aggregate.path,
     schedule: "12 * * * *",
   },
 ] satisfies readonly VercelCron[];
@@ -110,5 +111,17 @@ describe("vercel cron config", () => {
         `${path} must be registered in API routes`,
       ).toBeTruthy();
     }
+  });
+
+  it("does not register the previous internal model stats cron path", () => {
+    const routePaths = new Set(
+      ROUTES.map(({ route }) => {
+        return route.path;
+      }),
+    );
+
+    expect(
+      routePaths.has("/api/internal/cron/aggregate-model-stats"),
+    ).toBeFalsy();
   });
 });

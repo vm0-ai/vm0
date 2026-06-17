@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { lt, sql } from "drizzle-orm";
+import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
@@ -12,7 +13,7 @@ import { nowDate } from "../external/time";
 
 const HOUR_MS = 60 * 60_000;
 export const DEFAULT_MODEL_STATS_REPROCESS_HOURS = 24;
-export const MAX_MODEL_STATS_REPROCESS_HOURS = 24 * 32;
+const MAX_MODEL_STATS_REPROCESS_HOURS = CRON_AGGREGATE_MODEL_STATS_MAX_HOURS;
 export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
 const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";

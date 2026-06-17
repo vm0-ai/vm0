@@ -123,6 +123,15 @@ const cronSummarizeMemoryResponseSchema = z.union([
   cronSummarizeMemorySummarizedResponseSchema,
 ]);
 
+export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
+
+const cronAggregateModelStatsResponseSchema = z.object({
+  success: z.literal(true),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  aggregated: z.number(),
+});
+
 export const cronAggregateUsageContract = c.router({
   aggregate: {
     method: "GET",
@@ -240,6 +249,27 @@ export const cronAggregateInsightsContract = c.router({
   },
 });
 
+export const cronAggregateModelStatsContract = c.router({
+  aggregate: {
+    method: "GET",
+    path: "/api/cron/aggregate-model-stats",
+    headers: authHeadersSchema,
+    query: z.object({
+      hours: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(CRON_AGGREGATE_MODEL_STATS_MAX_HOURS)
+        .optional(),
+    }),
+    responses: {
+      200: cronAggregateModelStatsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Aggregate hourly model usage statistics",
+  },
+});
+
 export const cronSummarizeMemoryContract = c.router({
   summarize: {
     method: "GET",
@@ -260,6 +290,8 @@ export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
+export type CronAggregateModelStatsContract =
+  typeof cronAggregateModelStatsContract;
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
@@ -282,5 +314,6 @@ export {
   cronSyncSkillsResponseSchema,
   cronExecuteAutomationsResponseSchema,
   cronAggregateInsightsResponseSchema,
+  cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,
 };
