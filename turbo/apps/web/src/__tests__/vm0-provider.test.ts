@@ -22,7 +22,11 @@ describe("VM0 managed model provider", () => {
       expect(getVm0Vendor("claude-opus-4-6")).toBe("anthropic");
     });
 
-    it("should resolve glm-5.1 to openrouter-api-key with z-ai/glm-5.1 upstream id", () => {
+    it("should resolve GLM models to openrouter-api-key with upstream ids", () => {
+      expect(getVm0ConcreteProviderType("glm-5.2")).toBe("openrouter-api-key");
+      expect(getVm0Vendor("glm-5.2")).toBe("openrouter");
+      expect(getVm0ApiModel("glm-5.2")).toBe("z-ai/glm-5.2");
+
       expect(getVm0ConcreteProviderType("glm-5.1")).toBe("openrouter-api-key");
       expect(getVm0Vendor("glm-5.1")).toBe("openrouter");
       expect(getVm0ApiModel("glm-5.1")).toBe("z-ai/glm-5.1");
@@ -72,6 +76,7 @@ describe("VM0 managed model provider", () => {
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
+        "glm-5.2",
         "glm-5.1",
         "kimi-k2.7-code",
         "MiniMax-M3",

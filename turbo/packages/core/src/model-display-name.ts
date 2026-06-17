@@ -39,11 +39,13 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "moonshotai/kimi-k2.6": "Kimi K2.6",
   "moonshotai/kimi-k2.5": "Kimi K2.5",
   // GLM / ZhipuAI
+  "glm-5.2": "GLM-5.2",
   "glm-5.1": "GLM-5.1",
   "glm-5": "GLM-5",
   "glm-4.7": "GLM-4.7",
   "glm-4.5-air": "GLM-4.5 Air",
   "zai/glm-5-turbo": "GLM-5 Turbo",
+  "z-ai/glm-5.2": "GLM-5.2",
   "z-ai/glm-5.1": "GLM-5.1",
   // Minimax via OpenRouter
   "minimax/minimax-m2.7": "MiniMax M2.7",

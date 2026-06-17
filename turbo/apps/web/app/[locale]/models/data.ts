@@ -267,6 +267,35 @@ export const MODELS: ModelEntry[] = [
   }),
 
   reasoningModel({
+    slug: "glm-5-2",
+    modelId: "glm-5.2",
+    name: "GLM-5.2",
+    vendor: "Z.AI",
+    category: "reasoning",
+    contextWindowK: 1000,
+    promptCaching: true,
+    modalities: ["Text", "Code"],
+    releasedToVm0: "June 2026",
+    pricing: {
+      inputUsd: 1.4,
+      outputUsd: 4.4,
+      cacheReadUsd: 0.26,
+      cacheWriteUsd: null,
+    },
+    vm0Tier: "cost-saving",
+    vm0TimeoutMin: 50,
+    byoKeyLabel: "Z.AI API key",
+    defaultFor: ["Z.AI"],
+    comparisonSlugs: [
+      "GLM-5.1",
+      "Kimi K2.7 Code",
+      "Claude Sonnet 4.6",
+      "DeepSeek V4 Pro",
+    ],
+    alternativeSlugs: ["glm-5-1", "kimi-k2-7-code", "deepseek-v4-pro"],
+  }),
+
+  reasoningModel({
     slug: "glm-5-1",
     modelId: "glm-5.1",
     name: "GLM-5.1",
@@ -285,9 +314,10 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,
     byoKeyLabel: "Z.AI API key",
-    defaultFor: ["Z.AI"],
+    defaultFor: [],
     comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
     alternativeSlugs: [
+      "glm-5-2",
       "kimi-k2-7-code",
       "deepseek-v4-pro",
       "claude-sonnet-4-6",
@@ -336,8 +366,8 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "cost-saving",
     byoKeyLabel: "Moonshot API key",
     defaultFor: ["Moonshot"],
-    comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
-    alternativeSlugs: ["glm-5-1", "deepseek-v4-pro", "claude-sonnet-4-6"],
+    comparisonSlugs: ["GLM-5.2", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: ["glm-5-2", "deepseek-v4-pro", "claude-sonnet-4-6"],
   }),
 
   reasoningModel({
@@ -360,7 +390,7 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 10,
     byoKeyLabel: "DeepSeek API key",
     defaultFor: [],
-    comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.7 Code", "GLM-5.1"],
+    comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.7 Code", "GLM-5.2"],
     alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-7-code"],
   }),
 

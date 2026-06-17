@@ -446,12 +446,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ]);
   });
 
-  it("allows compatible org provider routes", async () => {
+  it("allows compatible GLM 5.2 org provider routes", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const providerId = await store.set(
+    const openRouterProviderId = await store.set(
       insertOrgProvider$,
       { orgId: fixture.orgId, type: "openrouter-api-key" },
+      context.signal,
+    );
+    const zaiProviderId = await store.set(
+      insertOrgProvider$,
+      { orgId: fixture.orgId, type: "zai-api-key" },
       context.signal,
     );
     const client = apiClient();
@@ -462,29 +467,57 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const updates = [
       ...toUpdate(listResponse.body),
       {
-        model: "glm-5.1",
+        model: "glm-5.2",
         isDefault: false,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
-        modelProviderId: providerId,
+        modelProviderId: openRouterProviderId,
       } satisfies UpdateOrgModelPolicy,
     ];
 
-    const response = await accept(
+    const openRouterResponse = await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
         body: { policies: updates },
       }),
       [200],
     );
-    const glm = response.body.policies.find((policy) => {
-      return policy.model === "glm-5.1";
+    const openRouterGlm = openRouterResponse.body.policies.find((policy) => {
+      return policy.model === "glm-5.2";
     });
 
-    expect(glm).toMatchObject({
+    expect(openRouterGlm).toMatchObject({
       defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
-      modelProviderId: providerId,
+      modelProviderId: openRouterProviderId,
+      routeStatus: "valid",
+    });
+
+    const zaiUpdates = toUpdate(openRouterResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "zai-api-key" as const,
+        modelProviderId: zaiProviderId,
+      };
+    });
+    const zaiResponse = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { policies: zaiUpdates },
+      }),
+      [200],
+    );
+    const zaiGlm = zaiResponse.body.policies.find((policy) => {
+      return policy.model === "glm-5.2";
+    });
+
+    expect(zaiGlm).toMatchObject({
+      defaultProviderType: "zai-api-key",
+      credentialScope: "org",
+      modelProviderId: zaiProviderId,
       routeStatus: "valid",
     });
   });
@@ -577,17 +610,16 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "gpt-5.5") {
-        return policy;
-      }
-      return {
-        ...policy,
+    const updates = [
+      ...toUpdate(listResponse.body),
+      {
+        model: "glm-5.2",
+        isDefault: false,
         defaultProviderType: "anthropic-api-key" as const,
         credentialScope: "org" as const,
         modelProviderId: providerId,
-      };
-    });
+      } satisfies UpdateOrgModelPolicy,
+    ];
 
     const response = await client.update({
       headers: { authorization: "Bearer clerk-session" },
@@ -611,7 +643,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const updates = [
       ...toUpdate(listResponse.body),
       {
-        model: "glm-5.1",
+        model: "glm-5.2",
         isDefault: false,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",

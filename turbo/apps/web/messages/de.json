@@ -5274,6 +5274,136 @@
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
         "vm0Notes": "GPT-5.4 sits at the ×1 baseline, same as Claude Sonnet 4.6, which makes the two cost-equivalent on VM0 Managed and easy to A/B against each other. Prompt caching is enabled by default. Pair with GPT-5.4 Mini for high-volume pre-filter work, and escalate to GPT-5.5 only for the steps that genuinely need the extra reasoning depth."
       },
+      "glm-5-2": {
+        "name": "GLM-5.2",
+        "pageTitle": "GLM-5.2 on VM0. Z.AI's default long-context model",
+        "tagline": "The current Z.AI default on VM0. Up to a 1M-token context window, Anthropic-compatible routing, and cost-saving x0.4 VM0 Managed pricing.",
+        "cardIntro": "Z.AI's current default on VM0. Long-context text and code agents at x0.4 VM0 Managed pricing.",
+        "metaTitle": "GLM-5.2 on VM0: Pricing, Context & Best Agent Tasks",
+        "metaDescription": "GLM-5.2 on VM0. Z.AI's current default model with up to 1M-token context, x0.4 credit cost, OpenRouter-backed VM0 Managed routing, and direct Z.AI BYOK support.",
+        "summary": "GLM-5.2 is the current GLM default on VM0 for Z.AI API-key users and is also available through VM0 Managed via OpenRouter. It keeps the GLM series' long-context profile while becoming the preferred Z.AI route for new agents.\n\nUse it for large codebases, large document sets, and cost-sensitive long-context planning where Sonnet-class pricing is unnecessary. GLM-5.1 remains available for compatibility, but new Z.AI routes should start on GLM-5.2 unless a workflow has been tuned specifically against 5.1.",
+        "releaseDate": "June 2026",
+        "familyPosition": "Current default model in VM0's Z.AI / GLM route.",
+        "background": [
+          "GLM-5.2 extends the GLM 5 family as the current Z.AI default exposed by VM0. It is available through VM0 Managed, where VM0 routes to OpenRouter with the upstream id `z-ai/glm-5.2`, and through direct Z.AI API keys using the canonical `glm-5.2` id.",
+          "The route is Anthropic-compatible, so Claude-style agents can keep the same runtime interface. Existing GLM-5.1 agents do not need to migrate immediately, but new Z.AI-backed agents should prefer GLM-5.2.",
+          "On VM0 Managed it sits at x0.4 credits, matching GLM-5.1's cost tier while taking over the Z.AI default slot."
+        ],
+        "architecture": "GLM-5.2 is exposed on VM0 through Anthropic-compatible endpoints. VM0 Managed uses OpenRouter's `z-ai/glm-5.2` id; direct Z.AI BYOK uses `glm-5.2`.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "GLM-5 series"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Context window",
+            "value": "Up to 1M tokens"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Available on VM0",
+            "value": "June 2026"
+          }
+        ],
+        "benchmarksNote": "Treat GLM-5.2 as the preferred GLM route on VM0. Third-party rankings can move quickly, so VM0 keeps the page focused on routing, cost, and operational fit rather than frozen leaderboard percentages.",
+        "benchmarks": [
+          {
+            "name": "Long-context tasks",
+            "score": "Strong fit",
+            "note": "VM0 routing profile"
+          },
+          {
+            "name": "Cost tier",
+            "score": "x0.4 credits",
+            "note": "VM0 Managed"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Long-context work",
+            "body": "GLM-5.2 is best used when the agent needs a large working set: repositories, documentation folders, design notes, or long research material."
+          },
+          {
+            "title": "Cost control",
+            "body": "At x0.4 credits it is a cost-saving alternative to Sonnet-class routes for workflows where context size and price matter more than maximum English reasoning depth."
+          },
+          {
+            "title": "Routing",
+            "body": "VM0 Managed routes through OpenRouter using `z-ai/glm-5.2`; direct Z.AI API keys use `glm-5.2`. Both paths keep the Claude-compatible agent interface."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "Whole-repo review on a budget",
+            "body": "Use GLM-5.2 when the agent needs to inspect a large codebase and produce concrete file-level recommendations without paying for a premium reasoning model on every pass."
+          },
+          {
+            "title": "Large document synthesis",
+            "body": "Load policy documents, tickets, transcripts, or internal docs together and ask for cross-document patterns. The long context and x0.4 multiplier keep repeated runs practical."
+          },
+          {
+            "title": "Z.AI BYOK default route",
+            "body": "Teams using a direct Z.AI API key get GLM-5.2 as the default VM0 model while retaining GLM-5.1 for existing tuned workflows."
+          }
+        ],
+        "avoidFor": "Skip GLM-5.2 for workflows that depend on vision input, or when maximum English-language reasoning and tool routing quality matter more than context size and cost.",
+        "comparisons": [
+          {
+            "vs": "GLM-5.1",
+            "body": "GLM-5.1 remains available for compatibility. GLM-5.2 is the default choice for new Z.AI routes on VM0."
+          },
+          {
+            "vs": "Kimi K2.7 Code",
+            "body": "Both sit in cost-saving territory. Kimi is the Moonshot default and a strong code-focused alternative; GLM-5.2 is the preferred Z.AI long-context route."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 remains the stronger default for premium tool-routing quality. GLM-5.2 is cheaper and better suited when context size dominates."
+          }
+        ],
+        "verdict": "Pick GLM-5.2 as the default Z.AI route on VM0. Keep GLM-5.1 only for compatibility with workflows already tuned against it.",
+        "faqs": [
+          {
+            "q": "Is GLM-5.2 available through VM0 Managed?",
+            "a": "Yes. VM0 Managed routes GLM-5.2 through OpenRouter with the upstream id `z-ai/glm-5.2`."
+          },
+          {
+            "q": "Is GLM-5.2 the default for direct Z.AI API keys?",
+            "a": "Yes. The Z.AI provider defaults to `glm-5.2` while keeping `glm-5.1` available."
+          },
+          {
+            "q": "Does GLM-5.2 support image input?",
+            "a": "No. VM0 exposes GLM-5.2 for text and code agents. Use Claude Sonnet 4.6 or Kimi K2.7 Code when vision input is required."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "glm-5-1",
+            "reason": "Compatibility with existing GLM-5.1 workflows"
+          },
+          {
+            "slug": "kimi-k2-7-code",
+            "reason": "Moonshot's cost-saving code model"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Cheaper standard-context alternative"
+          }
+        ],
+        "routingNotes": "On VM0 Managed, GLM-5.2 routes through OpenRouter with the upstream id `z-ai/glm-5.2`. With a Z.AI API key it talks directly to `api.z.ai` as `glm-5.2`. It is the default model on the Z.AI provider.",
+        "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider, so long-context planning and analysis runs have room to finish."
+      },
       "glm-5-1": {
         "name": "GLM-5.1",
         "pageTitle": "GLM-5.1 on VM0. Long-context agents",
@@ -5286,7 +5416,7 @@
         "familyPosition": "Flaggschiff der GLM-Familie von Z.AI.",
         "background": [
           "GLM-5.1 is the flagship of Zhipu AI's GLM series, distributed via Z.AI. It's a reasoning model with strong general capability and an unusually large context window. Up to 1M tokens, several times larger than the Anthropic and Moonshot defaults at the same price tier.",
-          "On VM0, GLM-5.1 is exposed two ways: through VM0 Managed (routed via OpenRouter with the upstream id `z-ai/glm-5.1`), and via a direct Z.AI API key (where it's the default model). Either path uses Z.AI's Anthropic-compatible interface, so existing VM0 agents drop in unchanged.",
+          "On VM0, GLM-5.1 is exposed two ways: through VM0 Managed (routed via OpenRouter with the upstream id `z-ai/glm-5.1`), and via a direct Z.AI API key. GLM-5.2 is now the Z.AI default, while GLM-5.1 remains available for compatibility.",
           "GLM-5.1 became broadly available on VM0 in April 2026 when its feature flag was retired (PR #10497). It's the cost-efficient long-context option in the lineup, sitting at ×0.4 credits. Less than half of Sonnet 4.6."
         ],
         "architecture": "",
@@ -5405,7 +5535,7 @@
             "reason": "Bessere Allround-Qualität zu höheren Kosten (×1,0 Credits)."
           }
         ],
-        "routingNotes": "On VM0 Managed, GLM-5.1 is routed through OpenRouter with the upstream id `z-ai/glm-5.1`. With a Z.AI API key it talks to `api.z.ai`'s Anthropic-compatible endpoint directly. Default model on the Z.AI provider.",
+        "routingNotes": "On VM0 Managed, GLM-5.1 is routed through OpenRouter with the upstream id `z-ai/glm-5.1`. With a Z.AI API key it talks to `api.z.ai`'s Anthropic-compatible endpoint directly. GLM-5.2 is now the default model on the Z.AI provider.",
         "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider so long thinking steps complete reliably without dropping, and pairs the model's 1M-token context with high-volume document agents that need the room."
       },
       "gpt-5-4-mini": {

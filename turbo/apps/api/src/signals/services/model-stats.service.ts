@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { lt, sql } from "drizzle-orm";
+import { and, gte, inArray, lt, sql } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
@@ -37,28 +37,33 @@ interface ModelRankingResult {
   readonly rows: readonly ModelRankingRow[];
 }
 
-interface RawModelRankingRow extends Record<string, unknown> {
-  readonly model: string;
-  readonly input_tokens: string | number | bigint;
-  readonly output_tokens: string | number | bigint;
-  readonly total_tokens: string | number | bigint;
-  readonly previous_total_tokens: string | number | bigint;
-}
-
 function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
 }
 
+function getModelStatsModelIds(): readonly string[] {
+  return [
+    ...Object.keys(VM0_MODEL_TO_PROVIDER),
+    ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
+  ];
+}
+
 function getModelStatsModelIdSql() {
   return sql.join(
-    [
-      ...Object.keys(VM0_MODEL_TO_PROVIDER),
-      ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
-    ].map((model) => {
+    getModelStatsModelIds().map((model) => {
       return sql`${model}`;
     }),
     sql`, `,
   );
+}
+
+function normalizeModelStatsModel(model: string): string {
+  for (const [alias, canonical] of getModelAliasEntries()) {
+    if (model === alias) {
+      return canonical;
+    }
+  }
+  return model;
 }
 
 interface ModelStatsAggregationResult {
@@ -130,16 +135,6 @@ function parseModelRankingPeriod(
 
 function modelUsageObservationModelExpression() {
   const modelColumn = sql.raw('"model_usage_observation"."model"');
-  return sql<string>`CASE ${sql.join(
-    getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
-    }),
-    sql` `,
-  )} ELSE ${modelColumn} END`;
-}
-
-function modelStatModelExpression() {
-  const modelColumn = sql.raw('"model_stat"."model"');
   return sql<string>`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
       return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
@@ -278,55 +273,38 @@ async function selectModelRankings(
   const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
-  const modelExpr = modelStatModelExpression();
-  const currentModelStatsModelIdSql = getModelStatsModelIdSql();
-  const previousModelStatsModelIdSql = getModelStatsModelIdSql();
 
-  const result = await db.execute<RawModelRankingRow>(sql`
-    WITH current_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${window.start}
-        AND ${modelStat.hourStart} < ${window.end}
-        AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
-      GROUP BY 1
-    ),
-    previous_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${previousStart}
-        AND ${modelStat.hourStart} < ${previousEnd}
-        AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
-      GROUP BY 1
-    )
-    SELECT
-      current_period.model,
-      current_period.input_tokens,
-      current_period.output_tokens,
-      current_period.total_tokens,
-      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
-    FROM current_period
-    LEFT JOIN previous_period ON previous_period.model = current_period.model
-    WHERE current_period.total_tokens > 0
-    ORDER BY current_period.total_tokens DESC
-    LIMIT 50
-  `);
-
-  const rows = result.rows.map((row) => {
-    return {
-      model: row.model,
-      inputTokens: toNumber(row.input_tokens),
-      outputTokens: toNumber(row.output_tokens),
-      totalTokens: toNumber(row.total_tokens),
-      previousTotalTokens: toNumber(row.previous_total_tokens),
-    };
+  const currentRows = await selectModelRankingPeriod(db, {
+    start: window.start,
+    end: window.end,
   });
+  const previousRows = await selectModelRankingPeriod(db, {
+    start: previousStart,
+    end: previousEnd,
+  });
+  const previousTotals = new Map(
+    previousRows.map((row) => {
+      return [row.model, row.totalTokens] as const;
+    }),
+  );
+
+  const rows = currentRows
+    .filter((row) => {
+      return row.totalTokens > 0;
+    })
+    .map((row) => {
+      return {
+        model: row.model,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        totalTokens: row.totalTokens,
+        previousTotalTokens: previousTotals.get(row.model) ?? 0,
+      };
+    })
+    .sort((left, right) => {
+      return right.totalTokens - left.totalTokens;
+    })
+    .slice(0, 50);
 
   return {
     period,
@@ -337,6 +315,55 @@ async function selectModelRankings(
     windowEnd: window.end,
     rows,
   };
+}
+
+async function selectModelRankingPeriod(
+  db: Db,
+  window: { readonly start: Date; readonly end: Date },
+): Promise<readonly ModelRankingRow[]> {
+  const rawRows = await db
+    .select({
+      model: modelStat.model,
+      input_tokens: sql<string | number | bigint>`
+        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint
+      `,
+      output_tokens: sql<string | number | bigint>`
+        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint
+      `,
+      total_tokens: sql<string | number | bigint>`
+        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint
+      `,
+    })
+    .from(modelStat)
+    .where(
+      and(
+        gte(modelStat.hourStart, window.start),
+        lt(modelStat.hourStart, window.end),
+        inArray(modelStat.model, getModelStatsModelIds()),
+      ),
+    )
+    .groupBy(modelStat.model);
+
+  const byModel = new Map<string, ModelRankingRow>();
+  for (const row of rawRows) {
+    const model = normalizeModelStatsModel(row.model);
+    const current = byModel.get(model) ?? {
+      model,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      previousTotalTokens: 0,
+    };
+    byModel.set(model, {
+      model,
+      inputTokens: current.inputTokens + toNumber(row.input_tokens),
+      outputTokens: current.outputTokens + toNumber(row.output_tokens),
+      totalTokens: current.totalTokens + toNumber(row.total_tokens),
+      previousTotalTokens: 0,
+    });
+  }
+
+  return [...byModel.values()];
 }
 
 export const aggregateModelStats$ = command(

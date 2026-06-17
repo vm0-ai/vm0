@@ -69,6 +69,7 @@ describe("model-first canonical catalog", () => {
       "deepseek-v4-pro",
       "kimi-k2.7-code",
       "MiniMax-M3",
+      "glm-5.2",
       "glm-5.1",
       "gpt-5.5",
       "gpt-5.4",
@@ -113,6 +114,7 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
     );
+    expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
       "claude-fable-5",
     );
@@ -120,8 +122,10 @@ describe("model-first canonical catalog", () => {
   });
 
   it("normalizes provider aliases without accepting unsupported models", () => {
+    expect(normalizeRunModelId("z-ai/glm-5.2")).toBe("glm-5.2");
     expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
+    expect(isSupportedRunModel("glm-5.2")).toBe(true);
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
     expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
       "deepseek/deepseek-v4-flash",
@@ -163,6 +167,16 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "moonshot-api-key",
     ]);
+    expect(getProvidersForModel("glm-5.2")).toEqual([
+      "vm0",
+      "zai-api-key",
+      "openrouter-api-key",
+    ]);
+    expect(getProvidersForModel("z-ai/glm-5.2")).toEqual([
+      "vm0",
+      "zai-api-key",
+      "openrouter-api-key",
+    ]);
     expect(getProvidersForModel("anthropic/claude-haiku-4.5")).toEqual([]);
     expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([]);
     expect(getProvidersForModel("MiniMax-M3")).toEqual([
@@ -186,9 +200,19 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("MiniMax-M3", "openrouter-api-key")).toBe(
       false,
     );
+    expect(isModelSupportedByProvider("glm-5.2", "zai-api-key")).toBe(true);
+    expect(isModelSupportedByProvider("glm-5.2", "openrouter-api-key")).toBe(
+      true,
+    );
+    expect(isModelSupportedByProvider("glm-5.2", "anthropic-api-key")).toBe(
+      false,
+    );
   });
 
   it("maps canonical models to provider runtime model ids", () => {
+    expect(getProviderRuntimeModel("openrouter-api-key", "glm-5.2")).toBe(
+      "z-ai/glm-5.2",
+    );
     expect(getProviderRuntimeModel("openrouter-api-key", "glm-5.1")).toBe(
       "z-ai/glm-5.1",
     );
@@ -210,7 +234,9 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
       "claude-fable-5",
     );
+    expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("z-ai/glm-5.2");
     expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
+    expect(getProviderRuntimeModel("zai-api-key", "glm-5.2")).toBe("glm-5.2");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
     );
@@ -248,6 +274,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-6": 2,
         "deepseek-v4-pro": 0.1,
         "kimi-k2.7-code": 0.3,
+        "glm-5.2": 0.4,
       }),
     );
     expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
@@ -255,6 +282,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelMultiplier("claude-opus-4-6")).toBe(2);
     expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
     expect(getVm0ModelMultiplier("kimi-k2.7-code")).toBe(0.3);
+    expect(getVm0ModelMultiplier("glm-5.2")).toBe(0.4);
     expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
   });
 });
@@ -388,6 +416,20 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("model selection for Claude-compatible gateway providers", () => {
+  it("openrouter-api-key exposes GLM 5.2 before GLM 5.1", () => {
+    expect(getModels("openrouter-api-key")).toEqual([
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-opus-4.7",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-opus-4.6",
+      "anthropic/claude-opus-4.5",
+      "anthropic/claude-sonnet-4.5",
+      "z-ai/glm-5.2",
+      "z-ai/glm-5.1",
+      "deepseek/deepseek-v4-pro",
+    ]);
+  });
+
   it.each(["openrouter-api-key", "vercel-ai-gateway"] as const)(
     "%s omits Claude Fable 5",
     (type) => {
@@ -409,6 +451,7 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.7-code");
     expect(models).toContain("MiniMax-M3");
+    expect(models).toContain("glm-5.2");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("gpt-5.5");
@@ -426,6 +469,7 @@ describe("normalizeVm0ModelId", () => {
     ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
+    ["z-ai/glm-5.2", "glm-5.2"],
     ["z-ai/glm-5.1", "glm-5.1"],
   ])("normalizes %s to %s", (model, expected) => {
     expect(normalizeVm0ModelId(model)).toBe(expected);
@@ -452,7 +496,10 @@ describe("model image input support", () => {
   });
 
   it.each([
+    "glm-5.2",
+    "z-ai/glm-5.2",
     "glm-5.1",
+    "z-ai/glm-5.1",
     "deepseek-v4-pro",
     "deepseek/deepseek-v4-pro",
     "MiniMax-M2.1",
@@ -480,6 +527,19 @@ describe("minimax-api-key provider", () => {
       "MiniMax-M2.1",
     ]);
     expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
+  });
+});
+
+describe("zai-api-key provider", () => {
+  it("defaults to GLM 5.2 while keeping GLM 5.1 available", () => {
+    expect(getModels("zai-api-key")).toEqual([
+      "glm-5.2",
+      "glm-5.1",
+      "glm-5",
+      "glm-4.7",
+      "glm-4.5-air",
+    ]);
+    expect(getDefaultModel("zai-api-key")).toBe("glm-5.2");
   });
 });
 
