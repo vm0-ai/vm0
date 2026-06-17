@@ -210,6 +210,26 @@ export const setTemplateCardHover$ = command(
   },
 );
 
+export interface TemplateCardHtmlPreviewState {
+  readonly slug: string;
+  readonly embedUrl: string;
+  readonly loading: boolean;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly slideCount: number;
+}
+
+const internalTemplateCardHtmlPreview$ =
+  state<TemplateCardHtmlPreviewState | null>(null);
+export const templateCardHtmlPreview$ = computed((get) => {
+  return get(internalTemplateCardHtmlPreview$);
+});
+export const setTemplateCardHtmlPreview$ = command(
+  ({ set }, value: TemplateCardHtmlPreviewState | null) => {
+    set(internalTemplateCardHtmlPreview$, value);
+  },
+);
+
 // -- Per-message generation template selections --------------------------------
 
 const internalNewThreadGenerationTemplate$ = state<

@@ -3,6 +3,7 @@ import type { PresentationSpeakerNotesPatch } from "@vm0/api-contracts/contracts
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const SLIDE_SELECTORS = [
+  "[data-vm0-slide]",
   "[data-slide]",
   "[data-slide-index]",
   "[data-page]",

@@ -1502,6 +1502,112 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("renders presentation template card hover previews from HTML when available", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const blobHtml: Promise<string>[] = [];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobHtml.push(blob.text());
+      return `blob:template-preview-${String(blobHtml.length)}`;
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    context.mocks.http.get(template.embedUrl, () => {
+      return new Response(
+        `
+          <!doctype html>
+          <html>
+            <body>
+              <section data-vm0-slide data-slide-id="slide-one">
+                <h1>Slide one</h1>
+              </section>
+              <section data-vm0-slide data-slide-id="slide-two">
+                <h1>Slide two</h1>
+              </section>
+            </body>
+          </html>
+        `,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: true,
+          [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+        },
+      });
+
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await fill(screen.getByLabelText("Search templates"), template.title);
+      const previewImage = await screen.findByTestId(
+        `${template.title} card preview slide 1`,
+      );
+      const preview = previewImage.parentElement;
+      if (!preview) {
+        throw new Error("Template preview not found");
+      }
+      Object.defineProperty(preview, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return new DOMRect(0, 0, 300, 160);
+        },
+      });
+
+      fireEvent.mouseEnter(preview);
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${template.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-1");
+      });
+      await expect(blobHtml[0]).resolves.toContain("Slide one");
+
+      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${template.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-2");
+      });
+      await expect(blobHtml[1]).resolves.toContain("Slide two");
+      fireEvent.mouseLeave(preview);
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it("uses legacy presentation templates when the new catalog switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;

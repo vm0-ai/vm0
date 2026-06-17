@@ -70,6 +70,7 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  settle,
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
@@ -99,6 +100,11 @@ import type {
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import {
+  parsePresentationEditDraft,
+  previewPresentationHtml,
+  type PresentationEditDraft,
+} from "./presentation-html-edit-protocol.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
@@ -171,6 +177,9 @@ import {
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  templateCardHtmlPreview$,
+  setTemplateCardHtmlPreview$,
+  type TemplateCardHtmlPreviewState,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -1074,6 +1083,87 @@ function presentationPreviewImageDecoded(url: string): boolean {
   return presentationPreviewImageCache().decoded.has(url);
 }
 
+async function loadPresentationTemplateHtmlPreview(params: {
+  readonly item: PresentationTemplateItem;
+}): Promise<PresentationEditDraft | null> {
+  const response = await fetch(params.item.embedUrl, {
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load template HTML (${response.status})`);
+  }
+
+  const draft = parsePresentationEditDraft(await response.text());
+  return draft.slides.length > 0 ? draft : null;
+}
+
+interface PresentationTemplateHtmlPreviewCache {
+  readonly drafts: Map<string, PresentationEditDraft>;
+  readonly failed: Set<string>;
+  readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
+  readonly activeTokens: Map<string, symbol>;
+}
+
+function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
+  const cacheKey = "vm0PresentationTemplateHtmlPreviewCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationTemplateHtmlPreviewCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: PresentationTemplateHtmlPreviewCache = {
+    activeTokens: new Map<string, symbol>(),
+    drafts: new Map<string, PresentationEditDraft>(),
+    failed: new Set<string>(),
+    pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
+  if (url !== null) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createPresentationTemplateHtmlPreviewState(params: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+}): TemplateCardHtmlPreviewState | null {
+  const slide =
+    params.draft.slides[Math.min(params.index, params.draft.slides.length - 1)];
+  if (slide === undefined) {
+    return null;
+  }
+
+  revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+  const frameUrl = URL.createObjectURL(
+    new Blob(
+      [
+        previewPresentationHtml({
+          activeSlideId: slide.id,
+          html: params.draft.html,
+        }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+
+  return {
+    slug: params.item.slug,
+    embedUrl: params.item.embedUrl,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: params.draft.slides.length,
+  };
+}
+
 async function selectDecodedTemplatePreviewImage({
   container,
   imageUrl,
@@ -1125,12 +1215,99 @@ function TemplatePreview({
   });
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
+  const htmlPreview = useGet(templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
   const previewImage = slideImages[0];
   const isHovering = hover?.slug === item.slug;
+  const activeHtmlPreview =
+    htmlPreview?.slug === item.slug && htmlPreview.embedUrl === item.embedUrl
+      ? htmlPreview
+      : null;
+  const scrubSlideCount = activeHtmlPreview?.slideCount ?? slideImages.length;
+
+  const startHtmlPreviewLoad = () => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft: cachedDraft,
+        index: 0,
+        item,
+        previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+      });
+      setHtmlPreview(previewState);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      setHtmlPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        slideCount: slideImages.length,
+      });
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+
+    const activeToken = Symbol(item.embedUrl);
+    cache.activeTokens.set(item.embedUrl, activeToken);
+    setHtmlPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      slideCount: slideImages.length,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+            setHtmlPreview({
+              slug: item.slug,
+              embedUrl: item.embedUrl,
+              loading: false,
+              failed: true,
+              frameUrl: null,
+              slideCount: slideImages.length,
+            });
+          }
+          return;
+        }
+
+        cache.drafts.set(item.embedUrl, result.value);
+        if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+          setHtmlPreview(
+            createPresentationTemplateHtmlPreviewState({
+              draft: result.value,
+              index: 0,
+              item,
+              previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+            }),
+          );
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (slideImages.length < 2) {
+    if (scrubSlideCount < 2) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1142,13 +1319,29 @@ function TemplatePreview({
       Math.max(0, event.clientX - rect.left),
     );
     const nextIndex = Math.min(
-      slideImages.length - 1,
-      Math.round((offsetX / rect.width) * (slideImages.length - 1)),
+      scrubSlideCount - 1,
+      Math.round((offsetX / rect.width) * (scrubSlideCount - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
+      const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+        item.embedUrl,
+      );
       const nextImage = slideImages[nextIndex];
       event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
-      if (nextIndex === 0) {
+      if (cachedDraft !== undefined) {
+        setHover({ slug: item.slug, index: nextIndex });
+        setHtmlPreview(
+          createPresentationTemplateHtmlPreviewState({
+            draft: cachedDraft,
+            index: nextIndex,
+            item,
+            previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+          }),
+        );
+        return;
+      }
+
+      if (nextIndex === 0 || nextImage === undefined) {
         setHover({ slug: item.slug, index: nextIndex });
         return;
       }
@@ -1175,6 +1368,8 @@ function TemplatePreview({
     <div
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
+        setHover({ slug: item.slug, index: 0 });
+        startHtmlPreviewLoad();
         preloadPresentationPreviewImages(slideImages);
         detach(
           Promise.all(
@@ -1188,6 +1383,13 @@ function TemplatePreview({
       onMouseMove={handleMouseMove}
       onMouseLeave={(event) => {
         delete event.currentTarget.dataset.targetSlideIndex;
+        presentationTemplateHtmlPreviewCache().activeTokens.delete(
+          item.embedUrl,
+        );
+        revokePresentationTemplateHtmlPreviewUrl(
+          activeHtmlPreview?.frameUrl ?? null,
+        );
+        setHtmlPreview(null);
         setHover(null);
       }}
     >
@@ -1246,6 +1448,20 @@ function TemplatePreview({
                 />
               );
             })}
+          {activeHtmlPreview?.frameUrl ? (
+            <iframe
+              title={`${item.title} HTML preview`}
+              data-testid={`${item.title} card HTML preview`}
+              src={activeHtmlPreview.frameUrl}
+              sandbox="allow-same-origin"
+              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
+            />
+          ) : null}
+          {activeHtmlPreview?.loading && !activeHtmlPreview.frameUrl ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-black/10">
+              <div className="h-full w-1/3 animate-pulse bg-black/30" />
+            </div>
+          ) : null}
           <div
             data-template-preview-error=""
             hidden
