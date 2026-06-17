@@ -1188,6 +1188,7 @@ function TemplatePreview({
           <img
             src={previewImage}
             alt=""
+            data-testid={`${item.title} card preview slide 1`}
             title={`${item.title} card preview slide 1`}
             className="absolute inset-0 h-full w-full object-contain"
             loading="lazy"
@@ -1210,7 +1211,7 @@ function TemplatePreview({
                   key={imageUrl}
                   src={imageUrl}
                   alt=""
-                  title={`${item.title} card preview slide ${
+                  data-testid={`${item.title} card preview slide ${
                     isHovering ? imageIndex + 1 : 1
                   }`}
                   className={cn(
@@ -1431,10 +1432,20 @@ function PptCard({
       )}
     >
       <TemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="cursor-default truncate text-sm font-semibold text-foreground">
+                  {item.title}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{item.title}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatPresentationTemplateKind(item.templateId)}
           </p>
         </div>
         <div className="flex shrink-0 items-center">
