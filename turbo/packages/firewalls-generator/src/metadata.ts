@@ -429,14 +429,8 @@ function replaceGeneratedPath(
     fs.renameSync(nextPath, targetPath);
     nextMoved = true;
   } catch (error) {
-    if (
-      previousPath &&
-      previousMoved &&
-      !nextMoved &&
-      !fs.existsSync(targetPath)
-    ) {
+    if (previousPath && previousMoved && !fs.existsSync(targetPath)) {
       fs.renameSync(previousPath, targetPath);
-      previousMoved = false;
     }
     throw error;
   } finally {
