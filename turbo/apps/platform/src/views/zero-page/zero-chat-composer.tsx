@@ -17,8 +17,7 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconChevronLeft,
-  IconChevronRight,
+  IconCheck,
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
@@ -26,6 +25,7 @@ import {
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
+  IconPalette,
   IconPlayerStop,
   IconPlug,
   IconPhoto,
@@ -105,6 +105,7 @@ import {
   previewPresentationHtml,
   type PresentationEditDraft,
 } from "./presentation-html-edit-protocol.ts";
+import { readablePresentationResourceUrl } from "./presentation-html-pptx-download.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
@@ -170,16 +171,22 @@ import {
   setTemplatePickerSearch$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
-  templatePickerPreviewSlideIndex$,
   setComputerUseDownloadDialogOpen$,
-  setTemplatePickerPreviewSlideIndex$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  templateCardDefaultHtmlPreviews$,
+  setTemplateCardDefaultHtmlPreview$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
   type TemplateCardHtmlPreviewState,
+  templateDetailHtmlPreview$,
+  setTemplateDetailHtmlPreview$,
+  templateDetailThemeIdBySlug$,
+  setTemplateDetailThemeId$,
+  templateDetailSlideIndexBySlug$,
+  setTemplateDetailSlideIndex$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -342,8 +349,6 @@ type ComposerTemplatePicker = NonNullable<
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
-const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
-const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
   width: 768,
   height: 768,
@@ -984,112 +989,525 @@ function presentationTemplateSlideImages(
   return item.previewImages;
 }
 
-interface PresentationPreviewImageCache {
-  readonly decoded: Set<string>;
-  readonly pendingDecodes: Map<string, Promise<void>>;
-  readonly preloads: Map<string, HTMLImageElement>;
+interface PresentationTemplateThemeOption {
+  readonly id: string;
+  readonly name: string;
+  readonly group: "multi-accent" | "single-accent";
+  readonly paletteName: string;
+  readonly fontName: string;
+  readonly displayFont: string;
+  readonly bodyFont: string;
+  readonly colors: readonly [
+    string,
+    string,
+    string,
+    string,
+    string,
+    readonly [string, string, string, string, ...string[]],
+  ];
 }
 
-function presentationPreviewImageCache(): PresentationPreviewImageCache {
-  const cacheKey = "vm0PresentationPreviewImageDecodeCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationPreviewImageCache
-    | undefined;
-  if (existingCache !== undefined) {
-    return existingCache;
-  }
+const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
+  [
+    {
+      id: "prism",
+      name: "Prism",
+      group: "multi-accent",
+      paletteName: "Prism",
+      fontName: "Poppins",
+      displayFont: "Poppins",
+      bodyFont: "Figtree",
+      colors: [
+        "#FFFFFF",
+        "#F7F7FA",
+        "#1A1726",
+        "#5C5870",
+        "#ECECF2",
+        ["#5B5FEF", "#2F80ED", "#20B486", "#F2C94C"],
+      ],
+    },
+    {
+      id: "carnival",
+      name: "Carnival",
+      group: "multi-accent",
+      paletteName: "Carnival",
+      fontName: "Archivo",
+      displayFont: "Archivo",
+      bodyFont: "Manrope",
+      colors: [
+        "#FFFDF7",
+        "#FFFFFF",
+        "#221C14",
+        "#5E564A",
+        "#EFEADF",
+        ["#E85D3F", "#C6417B", "#D9A441", "#3BA99C", "#4F63D7"],
+      ],
+    },
+    {
+      id: "pop-art",
+      name: "Pop Art",
+      group: "multi-accent",
+      paletteName: "Pop Art",
+      fontName: "Sora",
+      displayFont: "Sora",
+      bodyFont: "Inter",
+      colors: [
+        "#111016",
+        "#1B1A22",
+        "#F4F2FA",
+        "#A09CB0",
+        "#26242E",
+        ["#5B7CFA", "#D94C8A", "#9BE15D", "#F28C28"],
+      ],
+    },
+    {
+      id: "warm-sand",
+      name: "Warm Sand",
+      group: "single-accent",
+      paletteName: "Warm Sand",
+      fontName: "Poppins",
+      displayFont: "Poppins",
+      bodyFont: "Figtree",
+      colors: [
+        "#FFFDF8",
+        "#FFFFFF",
+        "#262626",
+        "#5A5A5A",
+        "#ECECEC",
+        ["#F19B3A", "#8DACE5", "#DDB8D9", "#516049"],
+      ],
+    },
+    {
+      id: "bauhaus-primary",
+      name: "Bauhaus Primary",
+      group: "single-accent",
+      paletteName: "Bauhaus Primary",
+      fontName: "Space Grotesk",
+      displayFont: "Space Grotesk",
+      bodyFont: "Lexend",
+      colors: [
+        "#F5F1E6",
+        "#FFFFFF",
+        "#1A1A1A",
+        "#4A4A4A",
+        "#E2DDD0",
+        ["#E63327", "#2C5BD6", "#F2B705", "#1A1A1A"],
+      ],
+    },
+    {
+      id: "nordic-frost",
+      name: "Nordic Frost",
+      group: "single-accent",
+      paletteName: "Nordic Frost",
+      fontName: "Inter",
+      displayFont: "Sora",
+      bodyFont: "Inter",
+      colors: [
+        "#FBFCFD",
+        "#FFFFFF",
+        "#1F2933",
+        "#5B6B7B",
+        "#E8EDF1",
+        ["#3E8EDE", "#7BC6C9", "#B8C4D0", "#1F2933"],
+      ],
+    },
+    {
+      id: "forest-editorial",
+      name: "Forest Editorial",
+      group: "single-accent",
+      paletteName: "Forest Editorial",
+      fontName: "Lora",
+      displayFont: "Montserrat",
+      bodyFont: "Lora",
+      colors: [
+        "#F7F6F1",
+        "#FFFFFF",
+        "#1E2B22",
+        "#4F5C52",
+        "#E6E8E1",
+        ["#5B7553", "#C97B4A", "#E4DFD0", "#1E2B22"],
+      ],
+    },
+    {
+      id: "coral-studio",
+      name: "Coral Studio",
+      group: "single-accent",
+      paletteName: "Coral Studio",
+      fontName: "Manrope",
+      displayFont: "Archivo",
+      bodyFont: "Manrope",
+      colors: [
+        "#FFF9F6",
+        "#FFFFFF",
+        "#3A2A26",
+        "#6E5B55",
+        "#F0E7E2",
+        ["#FF6F5E", "#FFB199", "#2BB3A3", "#3A2A26"],
+      ],
+    },
+    {
+      id: "slate-corporate",
+      name: "Slate Corporate",
+      group: "single-accent",
+      paletteName: "Slate Corporate",
+      fontName: "Inter",
+      displayFont: "Sora",
+      bodyFont: "Inter",
+      colors: [
+        "#FFFFFF",
+        "#F6F8FB",
+        "#16243B",
+        "#5A6678",
+        "#E9EDF3",
+        ["#2F5BD0", "#6E8BB8", "#F0A03A", "#16243B"],
+      ],
+    },
+    {
+      id: "terracotta-clay",
+      name: "Terracotta Clay",
+      group: "single-accent",
+      paletteName: "Terracotta Clay",
+      fontName: "Lora",
+      displayFont: "Montserrat",
+      bodyFont: "Lora",
+      colors: [
+        "#FBF4EC",
+        "#FFFFFF",
+        "#3B2A20",
+        "#6B5546",
+        "#ECE0D2",
+        ["#C36A3F", "#D9A441", "#7A7A52", "#EAD9C6"],
+      ],
+    },
+    {
+      id: "berry-pop",
+      name: "Berry Pop",
+      group: "single-accent",
+      paletteName: "Berry Pop",
+      fontName: "DM Sans",
+      displayFont: "DM Serif Display",
+      bodyFont: "DM Sans",
+      colors: [
+        "#FFFAFC",
+        "#FFFFFF",
+        "#2E1A2C",
+        "#6A5566",
+        "#F0E6EC",
+        ["#D63A8E", "#8E5BD0", "#F4B8D4", "#2E1A2C"],
+      ],
+    },
+    {
+      id: "citrus-fresh",
+      name: "Citrus Fresh",
+      group: "single-accent",
+      paletteName: "Citrus Fresh",
+      fontName: "Archivo",
+      displayFont: "Archivo",
+      bodyFont: "Manrope",
+      colors: [
+        "#FFFFFB",
+        "#FFFFFF",
+        "#232318",
+        "#5C5C4E",
+        "#EDEDE3",
+        ["#FF8A1E", "#FFD23E", "#8FB339", "#4FA3A3"],
+      ],
+    },
+    {
+      id: "mauve-dusk",
+      name: "Mauve Dusk",
+      group: "single-accent",
+      paletteName: "Mauve Dusk",
+      fontName: "Fraunces",
+      displayFont: "Fraunces",
+      bodyFont: "Work Sans",
+      colors: [
+        "#FAF7FB",
+        "#FFFFFF",
+        "#2B2533",
+        "#635B70",
+        "#ECE7F0",
+        ["#9C7BB8", "#8AA0C9", "#E0B6C9", "#2B2533"],
+      ],
+    },
+    {
+      id: "mono-ink",
+      name: "Mono Ink",
+      group: "single-accent",
+      paletteName: "Mono Ink",
+      fontName: "Inter",
+      displayFont: "Sora",
+      bodyFont: "Inter",
+      colors: [
+        "#FFFFFF",
+        "#FAFAFA",
+        "#0A0A0A",
+        "#6B6B6B",
+        "#EEEEEE",
+        ["#E5392E", "#0A0A0A", "#BFBFBF", "#0A0A0A"],
+      ],
+    },
+    {
+      id: "sunset-maroon",
+      name: "Sunset Maroon",
+      group: "single-accent",
+      paletteName: "Sunset Maroon",
+      fontName: "Playfair",
+      displayFont: "Playfair Display",
+      bodyFont: "Inter",
+      colors: [
+        "#FFF7F2",
+        "#FFFFFF",
+        "#3A1F22",
+        "#6E4A4C",
+        "#F0E2DA",
+        ["#F26B3A", "#E0457B", "#F2A93B", "#3A1F22"],
+      ],
+    },
+    {
+      id: "mint-tech",
+      name: "Mint Tech",
+      group: "single-accent",
+      paletteName: "Mint Tech",
+      fontName: "Fraunces",
+      displayFont: "Fraunces",
+      bodyFont: "Work Sans",
+      colors: [
+        "#FBFFFD",
+        "#FFFFFF",
+        "#1B2A26",
+        "#56655F",
+        "#E6F0EB",
+        ["#16B981", "#4FA3E0", "#9AE6C8", "#3A4A45"],
+      ],
+    },
+    {
+      id: "midnight-mono",
+      name: "Midnight Mono",
+      group: "single-accent",
+      paletteName: "Midnight Mono",
+      fontName: "Inter",
+      displayFont: "Sora",
+      bodyFont: "Inter",
+      colors: [
+        "#121316",
+        "#1C1E22",
+        "#F2F2F0",
+        "#A0A3A8",
+        "#2A2C31",
+        ["#C6FF4A", "#6B7280", "#3A3D44", "#C6FF4A"],
+      ],
+    },
+    {
+      id: "ocean-deep",
+      name: "Ocean Deep",
+      group: "single-accent",
+      paletteName: "Ocean Deep",
+      fontName: "Lexend",
+      displayFont: "Space Grotesk",
+      bodyFont: "Lexend",
+      colors: [
+        "#0E2A33",
+        "#143840",
+        "#EAF6F4",
+        "#9DB8B8",
+        "#1B454E",
+        ["#38C7B4", "#5A93A8", "#1F4A52", "#38C7B4"],
+      ],
+    },
+    {
+      id: "gold-luxe",
+      name: "Gold Luxe",
+      group: "single-accent",
+      paletteName: "Gold Luxe",
+      fontName: "Playfair",
+      displayFont: "Playfair Display",
+      bodyFont: "Inter",
+      colors: [
+        "#16140F",
+        "#211E16",
+        "#F3EEE2",
+        "#ADA48E",
+        "#2A271E",
+        ["#C9A24B", "#8A6E3A", "#3A352A", "#C9A24B"],
+      ],
+    },
+  ];
 
-  const cache: PresentationPreviewImageCache = {
-    decoded: new Set<string>(),
-    pendingDecodes: new Map<string, Promise<void>>(),
-    preloads: new Map<string, HTMLImageElement>(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
+function defaultPresentationTemplateThemeId(
+  item: PresentationTemplateItem,
+): string {
+  return item.designSystemId === "design-system:mauve-dusk"
+    ? "mauve-dusk"
+    : "warm-sand";
 }
 
-function preloadPresentationPreviewImage(
-  url: string,
-): HTMLImageElement | undefined {
-  if (typeof Image === "undefined") {
-    return undefined;
-  }
-
-  const cache = presentationPreviewImageCache();
-  const cachedImage = cache.preloads.get(url);
-  if (cachedImage !== undefined) {
-    return cachedImage;
-  }
-
-  const image = new Image();
-  image.decoding = "async";
-  image.src = url;
-  cache.preloads.set(url, image);
-  return image;
+function findPresentationTemplateTheme(
+  themeId: string,
+): PresentationTemplateThemeOption {
+  return (
+    PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
+      return theme.id === themeId;
+    }) ?? PRESENTATION_TEMPLATE_THEME_OPTIONS[0]!
+  );
 }
 
-function preloadPresentationPreviewImages(imageUrls: readonly string[]): void {
-  for (const imageUrl of imageUrls) {
-    preloadPresentationPreviewImage(imageUrl);
-  }
+function presentationTemplateThemePreviewSwatches(
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  const background = theme.colors[0];
+  const accents = theme.colors[5];
+  return [
+    { id: "background", color: background },
+    ...accents.slice(0, 3).map((accent, accentIndex) => {
+      return { id: `accent-${accentIndex + 1}`, color: accent };
+    }),
+  ];
 }
 
-async function decodePresentationPreviewImage(url: string): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  if (cache.decoded.has(url)) {
-    return;
-  }
+function presentationTemplateThemeAccentSwatches(
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  return [
+    { id: "base", color: theme.colors[0] },
+    { id: "accent", color: theme.colors[5][0] },
+  ];
+}
 
-  if (isHappyDomTestEnvironment()) {
-    cache.decoded.add(url);
-    return;
-  }
+function hexLuminance(hexColor: string): number {
+  const normalized = hexColor.replace("#", "");
+  const channels = [0, 2, 4].map((index) => {
+    const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
+    return value <= 0.039_28
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
 
-  const pendingDecode = cache.pendingDecodes.get(url);
-  if (pendingDecode !== undefined) {
-    await pendingDecode;
-    return;
-  }
+function contrastRatio(colorA: string, colorB: string): number {
+  const luminanceA = hexLuminance(colorA);
+  const luminanceB = hexLuminance(colorB);
+  return (
+    (Math.max(luminanceA, luminanceB) + 0.05) /
+    (Math.min(luminanceA, luminanceB) + 0.05)
+  );
+}
 
-  const image = preloadPresentationPreviewImage(url);
-  if (image === undefined) {
-    return;
-  }
+function hexToRgb(hexColor: string): readonly [number, number, number] {
+  const normalized = hexColor.replace("#", "");
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+  ];
+}
 
-  if (image.decode === undefined) {
-    if (image.complete && image.naturalWidth > 0) {
-      cache.decoded.add(url);
+function rgbToHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb
+    .map((value) => {
+      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+    })
+    .join("")}`;
+}
+
+function mixRgb(
+  colorA: readonly [number, number, number],
+  colorB: readonly [number, number, number],
+  amount: number,
+): readonly [number, number, number] {
+  return [
+    Math.round(colorA[0] * (1 - amount) + colorB[0] * amount),
+    Math.round(colorA[1] * (1 - amount) + colorB[1] * amount),
+    Math.round(colorA[2] * (1 - amount) + colorB[2] * amount),
+  ];
+}
+
+function previewTextColorOn(background: string): string {
+  return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
+}
+
+function safePreviewGround(accent: string): readonly [string, string] {
+  const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
+  const target: readonly [number, number, number] =
+    text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
+  const accentRgb = hexToRgb(accent);
+  for (let amount = 0; amount <= 1.0001; amount += 0.04) {
+    const ground = rgbToHex(mixRgb(accentRgb, target, amount));
+    if (contrastRatio(text, ground) >= 4.6) {
+      return [ground, text];
     }
-    return;
   }
-
-  const decode = markPresentationPreviewImageDecoded(url, image);
-  cache.pendingDecodes.set(url, decode);
-  await decode;
+  return [accent, text];
 }
 
-async function markPresentationPreviewImageDecoded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  await tapError(image.decode(), () => {});
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-  cache.pendingDecodes.delete(url);
+function presentationTemplateThemeCss(
+  theme: PresentationTemplateThemeOption,
+): string {
+  const [bg, surface, ink, soft, ph, accents] = theme.colors;
+  const accentVariables = accents
+    .map((accent, index) => {
+      const [ground, text] = safePreviewGround(accent);
+      return `--g${index}:${ground};--t${index}:${text};`;
+    })
+    .join("");
+  return `
+    :root {
+      --bg:${bg};
+      --surface:${surface};
+      --ink:${ink};
+      --soft:${soft};
+      --ph:${ph};
+      --accent:${accents[0]};
+      --s1:${accents[1]};
+      --s2:${accents[2]};
+      --s3:${accents[3]};
+      --oa:${previewTextColorOn(accents[0])};
+      --o1:${previewTextColorOn(accents[1])};
+      --o2:${previewTextColorOn(accents[2])};
+      --o3:${previewTextColorOn(accents[3])};
+      --ka:${contrastRatio(accents[0], bg) >= 4.5 ? accents[0] : ink};
+      --kad:${contrastRatio(accents[0], ink) >= 4.5 ? accents[0] : bg};
+      --fd:'${theme.displayFont}';
+      --fb:'${theme.bodyFont}';
+      ${accentVariables}
+    }
+    #sw {
+      display: none !important;
+    }
+  `;
 }
 
-function presentationPreviewImageDecoded(url: string): boolean {
-  return presentationPreviewImageCache().decoded.has(url);
+function themedPreviewPresentationHtml(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  const html = previewPresentationHtml({
+    activeSlideId: params.activeSlideId,
+    html: params.draft.html,
+  });
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const style = doc.createElement("style");
+  style.textContent = presentationTemplateThemeCss(params.theme);
+  doc.head.append(style);
+  return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }
 
 async function loadPresentationTemplateHtmlPreview(params: {
   readonly item: PresentationTemplateItem;
 }): Promise<PresentationEditDraft | null> {
-  const response = await fetch(params.item.embedUrl, {
-    credentials: "omit",
-  });
+  const response = await fetch(
+    readablePresentationResourceUrl(params.item.embedUrl),
+    {
+      credentials: "omit",
+      mode: "cors",
+    },
+  );
   if (!response.ok) {
     throw new Error(`Failed to load template HTML (${response.status})`);
   }
@@ -1103,6 +1521,8 @@ interface PresentationTemplateHtmlPreviewCache {
   readonly failed: Set<string>;
   readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
   readonly activeTokens: Map<string, symbol>;
+  readonly activeIndexes: Map<string, number>;
+  readonly defaultLoads: Set<string>;
 }
 
 function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
@@ -1115,7 +1535,9 @@ function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreview
   }
 
   const cache: PresentationTemplateHtmlPreviewCache = {
+    activeIndexes: new Map<string, number>(),
     activeTokens: new Map<string, symbol>(),
+    defaultLoads: new Set<string>(),
     drafts: new Map<string, PresentationEditDraft>(),
     failed: new Set<string>(),
     pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
@@ -1130,11 +1552,39 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
   }
 }
 
+function revokePresentationTemplateHtmlPreviewUrls(
+  urls: readonly string[],
+): void {
+  for (const url of urls) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createThemedPresentationPreviewUrl(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return URL.createObjectURL(
+    new Blob(
+      [
+        themedPreviewPresentationHtml({
+          activeSlideId: params.activeSlideId,
+          draft: params.draft,
+          theme: params.theme,
+        }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+}
+
 function createPresentationTemplateHtmlPreviewState(params: {
   readonly draft: PresentationEditDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
+  readonly theme?: PresentationTemplateThemeOption;
 }): TemplateCardHtmlPreviewState | null {
   const slide =
     params.draft.slides[Math.min(params.index, params.draft.slides.length - 1)];
@@ -1146,10 +1596,16 @@ function createPresentationTemplateHtmlPreviewState(params: {
   const frameUrl = URL.createObjectURL(
     new Blob(
       [
-        previewPresentationHtml({
-          activeSlideId: slide.id,
-          html: params.draft.html,
-        }),
+        params.theme
+          ? themedPreviewPresentationHtml({
+              activeSlideId: slide.id,
+              draft: params.draft,
+              theme: params.theme,
+            })
+          : previewPresentationHtml({
+              activeSlideId: slide.id,
+              html: params.draft.html,
+            }),
       ],
       { type: "text/html;charset=utf-8" },
     ),
@@ -1165,45 +1621,6 @@ function createPresentationTemplateHtmlPreviewState(params: {
   };
 }
 
-async function selectDecodedTemplatePreviewImage({
-  container,
-  imageUrl,
-  index,
-  item,
-  setHover,
-}: {
-  container: HTMLDivElement;
-  imageUrl: string;
-  index: number;
-  item: PresentationTemplateItem;
-  setHover: (value: { readonly slug: string; readonly index: number }) => void;
-}): Promise<void> {
-  await decodePresentationPreviewImage(imageUrl);
-  if (
-    container.dataset.targetSlideIndex === String(index) &&
-    presentationPreviewImageDecoded(imageUrl)
-  ) {
-    setHover({ slug: item.slug, index });
-  }
-}
-
-async function markPresentationPreviewImageLoaded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  if (image.decode !== undefined) {
-    await tapError(image.decode(), () => {});
-  }
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-  image.dataset.loaded = "true";
-  image.parentElement
-    ?.querySelector<HTMLElement>("[data-template-preview-error]")
-    ?.setAttribute("hidden", "");
-}
-
 function TemplatePreview({
   item,
   onPreview,
@@ -1211,29 +1628,102 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item).map((imageUrl) => {
-    return r2ImageTransformUrl(imageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
-  });
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[0];
-  const isHovering = hover?.slug === item.slug;
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug && htmlPreview.embedUrl === item.embedUrl
       ? htmlPreview
       : null;
-  const scrubSlideCount = activeHtmlPreview?.slideCount ?? slideImages.length;
+  const defaultHtmlPreview = defaultHtmlPreviews[item.embedUrl] ?? null;
+  const visibleHtmlPreview = activeHtmlPreview ?? defaultHtmlPreview;
+  const fallbackSlideCount = Math.max(item.previewImages.length, 1);
+  const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
+
+  const ensureDefaultHtmlPreview = () => {
+    if (defaultHtmlPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setDefaultPreview = (draft: PresentationEditDraft) => {
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(item.embedUrl, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setDefaultPreview(cachedDraft);
+      return;
+    }
+
+    if (
+      !cache.failed.has(item.embedUrl) &&
+      !cache.defaultLoads.has(item.embedUrl)
+    ) {
+      cache.defaultLoads.add(item.embedUrl);
+      setDefaultHtmlPreview(item.embedUrl, {
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        loading: true,
+        failed: false,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+      let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+      if (pendingLoad === undefined) {
+        pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+        cache.pendingLoads.set(item.embedUrl, pendingLoad);
+      }
+      detach(
+        (async () => {
+          const result = await settle(pendingLoad);
+          if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+            cache.pendingLoads.delete(item.embedUrl);
+          }
+          if (!result.ok || result.value === null) {
+            cache.failed.add(item.embedUrl);
+            setDefaultHtmlPreview(item.embedUrl, {
+              slug: item.slug,
+              embedUrl: item.embedUrl,
+              loading: false,
+              failed: true,
+              frameUrl: null,
+              slideCount: fallbackSlideCount,
+            });
+            return;
+          }
+          cache.drafts.set(item.embedUrl, result.value);
+          setDefaultPreview(result.value);
+        })(),
+        Reason.DomCallback,
+      );
+    }
+  };
+
+  if (!isHappyDomTestEnvironment()) {
+    ensureDefaultHtmlPreview();
+  }
 
   const startHtmlPreviewLoad = () => {
     const cache = presentationTemplateHtmlPreviewCache();
+    const activeIndex = cache.activeIndexes.get(item.embedUrl) ?? 0;
     const cachedDraft = cache.drafts.get(item.embedUrl);
     if (cachedDraft !== undefined) {
       const previewState = createPresentationTemplateHtmlPreviewState({
         draft: cachedDraft,
-        index: 0,
+        index: activeIndex,
         item,
         previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
       });
@@ -1248,7 +1738,7 @@ function TemplatePreview({
         loading: false,
         failed: true,
         frameUrl: null,
-        slideCount: slideImages.length,
+        slideCount: fallbackSlideCount,
       });
       return;
     }
@@ -1267,7 +1757,7 @@ function TemplatePreview({
       loading: true,
       failed: false,
       frameUrl: null,
-      slideCount: slideImages.length,
+      slideCount: fallbackSlideCount,
     });
     detach(
       (async () => {
@@ -1285,7 +1775,7 @@ function TemplatePreview({
               loading: false,
               failed: true,
               frameUrl: null,
-              slideCount: slideImages.length,
+              slideCount: fallbackSlideCount,
             });
           }
           return;
@@ -1296,7 +1786,7 @@ function TemplatePreview({
           setHtmlPreview(
             createPresentationTemplateHtmlPreviewState({
               draft: result.value,
-              index: 0,
+              index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
             }),
@@ -1327,7 +1817,10 @@ function TemplatePreview({
       const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
         item.embedUrl,
       );
-      const nextImage = slideImages[nextIndex];
+      presentationTemplateHtmlPreviewCache().activeIndexes.set(
+        item.embedUrl,
+        nextIndex,
+      );
       event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
       if (cachedDraft !== undefined) {
         setHover({ slug: item.slug, index: nextIndex });
@@ -1342,26 +1835,7 @@ function TemplatePreview({
         return;
       }
 
-      if (nextIndex === 0 || nextImage === undefined) {
-        setHover({ slug: item.slug, index: nextIndex });
-        return;
-      }
-
-      if (presentationPreviewImageDecoded(nextImage)) {
-        setHover({ slug: item.slug, index: nextIndex });
-        return;
-      }
-
-      detach(
-        selectDecodedTemplatePreviewImage({
-          container: event.currentTarget,
-          imageUrl: nextImage,
-          index: nextIndex,
-          item,
-          setHover,
-        }),
-        Reason.DomCallback,
-      );
+      setHover({ slug: item.slug, index: nextIndex });
     }
   };
 
@@ -1369,24 +1843,19 @@ function TemplatePreview({
     <div
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
+        presentationTemplateHtmlPreviewCache().activeIndexes.set(
+          item.embedUrl,
+          0,
+        );
         setHover({ slug: item.slug, index: 0 });
         startHtmlPreviewLoad();
-        preloadPresentationPreviewImages(slideImages);
-        detach(
-          Promise.all(
-            slideImages.map((imageUrl) => {
-              return decodePresentationPreviewImage(imageUrl);
-            }),
-          ),
-          Reason.DomCallback,
-        );
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={(event) => {
         delete event.currentTarget.dataset.targetSlideIndex;
-        presentationTemplateHtmlPreviewCache().activeTokens.delete(
-          item.embedUrl,
-        );
+        const cache = presentationTemplateHtmlPreviewCache();
+        cache.activeIndexes.delete(item.embedUrl);
+        cache.activeTokens.delete(item.embedUrl);
         revokePresentationTemplateHtmlPreviewUrl(
           activeHtmlPreview?.frameUrl ?? null,
         );
@@ -1394,92 +1863,22 @@ function TemplatePreview({
         setHover(null);
       }}
     >
-      {previewImage ? (
-        <>
-          <img
-            src={previewImage}
-            alt=""
-            data-testid={`${item.title} card preview slide 1`}
-            title={`${item.title} card preview slide 1`}
-            className="absolute inset-0 h-full w-full object-contain"
-            loading="lazy"
-            onLoad={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.setAttribute("hidden", "");
-            }}
-            onError={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.removeAttribute("hidden");
-            }}
-          />
-          {isHovering &&
-            slideImages.map((imageUrl, imageIndex) => {
-              const active = imageIndex > 0 && imageIndex === hoverSlideIndex;
-              return (
-                <img
-                  key={imageUrl}
-                  src={imageUrl}
-                  alt=""
-                  data-testid={`${item.title} card preview slide ${
-                    isHovering ? imageIndex + 1 : 1
-                  }`}
-                  className={cn(
-                    "absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-75",
-                    active && "data-[loaded=true]:opacity-100",
-                  )}
-                  loading={isHovering ? "eager" : "lazy"}
-                  onLoad={(event) => {
-                    detach(
-                      markPresentationPreviewImageLoaded(
-                        imageUrl,
-                        event.currentTarget,
-                      ),
-                      Reason.DomCallback,
-                    );
-                  }}
-                  onError={(event) => {
-                    event.currentTarget.parentElement
-                      ?.querySelector<HTMLElement>(
-                        "[data-template-preview-error]",
-                      )
-                      ?.removeAttribute("hidden");
-                  }}
-                />
-              );
-            })}
-          {activeHtmlPreview?.frameUrl ? (
-            <iframe
-              title={`${item.title} HTML preview`}
-              data-testid={`${item.title} card HTML preview`}
-              src={activeHtmlPreview.frameUrl}
-              sandbox="allow-same-origin"
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
-            />
-          ) : null}
-          {activeHtmlPreview?.loading && !activeHtmlPreview.frameUrl ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-black/10">
-              <div className="h-full w-1/3 animate-pulse bg-black/30" />
-            </div>
-          ) : null}
-          <div
-            data-template-preview-error=""
-            hidden
-            className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
-          >
-            <IconTemplate size={28} stroke={1.5} />
-          </div>
-        </>
-      ) : (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-          <IconTemplate size={28} stroke={1.5} />
+      <iframe
+        title={`${item.title} HTML preview`}
+        data-testid={`${item.title} card HTML preview`}
+        src={visibleHtmlPreview?.frameUrl ?? undefined}
+        sandbox="allow-same-origin"
+        className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
+      />
+      {visibleHtmlPreview?.loading || !visibleHtmlPreview?.frameUrl ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+          <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
         </div>
-      )}
+      ) : null}
       <button
         type="button"
         aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
           onPreview(item);
@@ -1493,36 +1892,221 @@ function TemplatePreview({
 
 function TemplatePreviewPage({
   item,
-  selectedSlideIndex,
-  onSlideChange,
   onBack,
   onSelect,
 }: {
   item: PresentationTemplateItem;
-  selectedSlideIndex: number;
-  onSlideChange: (index: number) => void;
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item);
-  const safeSlideIndex = Math.max(
-    0,
-    Math.min(selectedSlideIndex, slideImages.length - 1),
-  );
-  const selectedSlideImage = slideImages[safeSlideIndex];
-  const selectedSlidePreviewImage = selectedSlideImage
-    ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
-    : selectedSlideImage;
-  const hasMultipleSlides = slideImages.length > 1;
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const setThemeId = useSet(setTemplateDetailThemeId$);
+  const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
+  const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const selectedThemeId =
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
+  const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+  const activeSlideIndex = slideIndexBySlug[item.slug] ?? 0;
+  const visibleDetailPreview =
+    detailPreview?.slug === item.slug &&
+    detailPreview.embedUrl === item.embedUrl &&
+    detailPreview.themeId === selectedTheme.id &&
+    detailPreview.index === activeSlideIndex
+      ? detailPreview
+      : null;
+  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const detailSlideCount =
+    visibleDetailPreview?.slideCount ?? fallbackSlideCount;
 
-  const changeSlide = (direction: -1 | 1) => {
-    if (!hasMultipleSlides) {
+  const setLoadedDetailPreview = (params: {
+    readonly draft: PresentationEditDraft;
+    readonly index: number;
+    readonly previousFrameUrl: string | null;
+    readonly previousThumbnailFrameUrls: readonly string[];
+    readonly reuseThumbnailFrameUrls: boolean;
+    readonly theme: PresentationTemplateThemeOption;
+  }) => {
+    const slide =
+      params.draft.slides[
+        Math.min(params.index, params.draft.slides.length - 1)
+      ];
+    if (slide === undefined) {
       return;
     }
-    onSlideChange(
-      (safeSlideIndex + direction + slideImages.length) % slideImages.length,
+    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+    if (
+      !params.reuseThumbnailFrameUrls &&
+      params.previousThumbnailFrameUrls.length > 0
+    ) {
+      revokePresentationTemplateHtmlPreviewUrls(
+        params.previousThumbnailFrameUrls,
+      );
+    }
+    const frameUrl = createThemedPresentationPreviewUrl({
+      activeSlideId: slide.id,
+      draft: params.draft,
+      theme: params.theme,
+    });
+    const thumbnailFrameUrls =
+      params.reuseThumbnailFrameUrls &&
+      params.previousThumbnailFrameUrls.length > 0
+        ? params.previousThumbnailFrameUrls
+        : params.draft.slides.slice(0, 15).map((thumbnailSlide) => {
+            return createThemedPresentationPreviewUrl({
+              activeSlideId: thumbnailSlide.id,
+              draft: params.draft,
+              theme: params.theme,
+            });
+          });
+    setDetailPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: params.theme.id,
+      index: params.index,
+      loading: false,
+      failed: false,
+      frameUrl,
+      thumbnailFrameUrls,
+      slideCount: params.draft.slides.length,
+    });
+  };
+
+  const ensureDetailHtmlPreview = () => {
+    if (visibleDetailPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: activeSlideIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+        reuseThumbnailFrameUrls: detailPreview?.themeId === selectedTheme.id,
+        theme: selectedTheme,
+      });
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      setDetailPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: selectedTheme.id,
+        index: activeSlideIndex,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        thumbnailFrameUrls: [],
+        slideCount: fallbackSlideCount,
+      });
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    setDetailPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: selectedTheme.id,
+      index: activeSlideIndex,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      thumbnailFrameUrls: [],
+      slideCount: fallbackSlideCount,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          setDetailPreview({
+            slug: item.slug,
+            embedUrl: item.embedUrl,
+            themeId: selectedTheme.id,
+            index: activeSlideIndex,
+            loading: false,
+            failed: true,
+            frameUrl: null,
+            thumbnailFrameUrls: [],
+            slideCount: fallbackSlideCount,
+          });
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setLoadedDetailPreview({
+          draft: result.value,
+          index: activeSlideIndex,
+          previousFrameUrl: detailPreview?.frameUrl ?? null,
+          previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+          reuseThumbnailFrameUrls: false,
+          theme: selectedTheme,
+        });
+      })(),
+      Reason.DomCallback,
     );
   };
+
+  if (!isHappyDomTestEnvironment()) {
+    ensureDetailHtmlPreview();
+  }
+
+  const selectDetailSlide = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
+    setSlideIndex(item.slug, nextIndex);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: nextIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+        reuseThumbnailFrameUrls: detailPreview?.themeId === selectedTheme.id,
+        theme: selectedTheme,
+      });
+    }
+  };
+
+  const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
+    setThemeId(item.slug, theme.id);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: activeSlideIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+        reuseThumbnailFrameUrls: false,
+        theme,
+      });
+    }
+  };
+  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "multi-accent";
+    },
+  );
+  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "single-accent";
+    },
+  );
 
   return (
     <>
@@ -1541,72 +2125,82 @@ function TemplatePreviewPage({
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid max-h-[72vh] gap-5 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border border-border bg-background p-4">
+      <div className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+        <div className="rounded-lg border border-border bg-background p-3">
           <div className="relative overflow-hidden rounded-lg bg-muted">
-            <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
-              {safeSlideIndex + 1} of {slideImages.length}
-            </div>
-            <img
-              key={selectedSlideImage}
-              src={selectedSlidePreviewImage}
-              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
-              alt=""
-              className="aspect-[16/9] w-full object-contain"
-              loading="lazy"
+            <iframe
+              title={`${item.title} HTML preview`}
+              data-testid={`${item.title} detail HTML preview`}
+              src={visibleDetailPreview?.frameUrl ?? undefined}
+              sandbox="allow-same-origin"
+              className="pointer-events-none aspect-[16/9] w-full border-0 bg-background"
             />
             <button
               type="button"
-              aria-label="Previous slide"
-              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={!hasMultipleSlides}
+              aria-label="Preview previous slide"
+              disabled={activeSlideIndex === 0}
               onClick={() => {
-                changeSlide(-1);
+                selectDetailSlide(activeSlideIndex - 1);
               }}
-            >
-              <IconChevronLeft size={22} stroke={1.8} />
-            </button>
+              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+            />
             <button
               type="button"
-              aria-label="Next slide"
-              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={!hasMultipleSlides}
+              aria-label="Preview next slide"
+              disabled={activeSlideIndex >= detailSlideCount - 1}
               onClick={() => {
-                changeSlide(1);
+                selectDetailSlide(activeSlideIndex + 1);
               }}
-            >
-              <IconChevronRight size={22} stroke={1.8} />
-            </button>
+              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+            />
+            <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+              {Math.min(activeSlideIndex + 1, detailSlideCount)} of{" "}
+              {detailSlideCount}
+            </div>
+            {visibleDetailPreview?.loading ||
+            !visibleDetailPreview?.frameUrl ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+                <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
+              </div>
+            ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {slideImages.map((image, index) => {
-              const selected = index === safeSlideIndex;
-              const thumbnailImage = r2ImageTransformUrl(
-                image,
-                TEMPLATE_STRIP_THUMB_SIZE,
-              );
+          <div className="mt-3 grid grid-cols-8 gap-1.5">
+            {Array.from(
+              { length: Math.min(detailSlideCount, 15) },
+              (_, index) => {
+                return index + 1;
+              },
+            ).map((slideNumber) => {
+              const slideIndex = slideNumber - 1;
+              const active = slideIndex === activeSlideIndex;
               return (
                 <button
-                  key={image}
+                  key={slideNumber}
                   type="button"
-                  aria-label={`Show slide ${index + 1}`}
-                  aria-pressed={selected}
-                  className={cn(
-                    "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "border-primary" : "border-border",
-                  )}
+                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-pressed={active}
                   onClick={() => {
-                    onSlideChange(index);
+                    selectDetailSlide(slideIndex);
                   }}
+                  className={cn(
+                    "relative aspect-[16/9] overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "border-ring ring-1 ring-ring"
+                      : "border-border hover:border-muted-foreground/50",
+                  )}
                 >
-                  <img
-                    src={thumbnailImage}
-                    alt=""
-                    className="aspect-[16/9] w-full object-contain"
-                    loading="lazy"
-                  />
-                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {index + 1}
+                  {visibleDetailPreview?.thumbnailFrameUrls[slideIndex] ? (
+                    <iframe
+                      title={`${item.title} slide ${slideNumber} thumbnail`}
+                      src={visibleDetailPreview.thumbnailFrameUrls[slideIndex]}
+                      sandbox="allow-same-origin"
+                      className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
+                    />
+                  ) : (
+                    <span className="absolute inset-0 bg-muted/40" />
+                  )}
+                  <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
+                    {slideNumber}
                   </span>
                 </button>
               );
@@ -1614,17 +2208,116 @@ function TemplatePreviewPage({
           </div>
         </div>
         <div className="flex flex-col lg:sticky lg:top-0">
-          <div className="rounded-lg border border-border bg-background p-5 shadow-sm">
+          <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
             <h3 className="text-xl font-semibold text-foreground">
               {item.title}
             </h3>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {slideImages.length} slides
+              {detailSlideCount} slides
             </p>
+            <div className="my-5 border-t border-border" />
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <IconPalette size={14} stroke={1.9} />
+              <span>Theme</span>
+            </p>
+            <div className="mt-3 space-y-4">
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Multi-accent
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {multiAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-11 overflow-hidden rounded-lg border bg-background p-1 transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full overflow-hidden rounded-md">
+                          {presentationTemplateThemePreviewSwatches(theme).map(
+                            (swatch) => {
+                              return (
+                                <span
+                                  key={`${theme.id}-${swatch.id}`}
+                                  className="flex-1"
+                                  style={{ backgroundColor: swatch.color }}
+                                />
+                              );
+                            },
+                          )}
+                        </span>
+                        {active ? (
+                          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm backdrop-blur">
+                            <IconCheck size={11} stroke={2.3} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Single-accent
+                </p>
+                <div className="grid grid-cols-8 gap-2">
+                  {singleAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    const swatches =
+                      presentationTemplateThemeAccentSwatches(theme);
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full">
+                          {swatches.map((swatch) => {
+                            return (
+                              <span
+                                key={`${theme.id}-${swatch.id}`}
+                                className="flex-1"
+                                style={{ backgroundColor: swatch.color }}
+                              />
+                            );
+                          })}
+                        </span>
+                        {active ? (
+                          <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm backdrop-blur">
+                            <IconCheck size={11} stroke={2.3} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
             <button
               type="button"
               aria-label={`Select template ${item.title}`}
-              className="mt-5 h-12 w-full rounded-lg bg-[#ff7a1a] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#f06c12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
                 onSelect(item);
               }}
@@ -2285,8 +2978,6 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -2330,7 +3021,6 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem) => {
-    setSelectedSlideIndex(0);
     setPreviewSlug(item.slug);
   };
 
@@ -2361,8 +3051,6 @@ function TemplatePickerDialog({
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
-            selectedSlideIndex={selectedSlideIndex}
-            onSlideChange={setSelectedSlideIndex}
             onBack={() => {
               setPreviewSlug(null);
             }}
@@ -2630,7 +3318,6 @@ function SelectedTemplateChipSlot({
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
@@ -2642,7 +3329,6 @@ function SelectedTemplateChipSlot({
   const openPicker = (category: string) => {
     setSearch("");
     setPreviewSlug(null);
-    setSelectedSlideIndex(0);
     setCategory(category);
     setOpen(true);
   };
@@ -2708,7 +3394,6 @@ function TemplatePickerButton({
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
 
   return (
@@ -2727,7 +3412,6 @@ function TemplatePickerButton({
               onClick={() => {
                 setSearch("");
                 setPreviewSlug(null);
-                setSelectedSlideIndex(0);
                 setOpen(true);
               }}
             >

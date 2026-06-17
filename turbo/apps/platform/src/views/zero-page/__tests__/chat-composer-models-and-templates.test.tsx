@@ -328,6 +328,10 @@ function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
   });
 }
 
+function resetPresentationTemplateHtmlPreviewCache(): void {
+  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
+}
+
 async function expectComposerModel(label: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
@@ -338,9 +342,6 @@ async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
   template: PresentationTemplateItem = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
 ): Promise<void> {
-  const slideCount =
-    template.previewImages.length > 0 ? template.previewImages.length : 1;
-
   click(
     await waitFor(() => {
       return screen.getByLabelText("Template");
@@ -360,50 +361,17 @@ async function openTemplatePicker(
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
 
-  if (slideCount > 1) {
-    const previewImage = screen.getByTestId(
-      `${template.title} card preview slide 1`,
-    );
-    const preview = previewImage.parentElement;
-    if (!preview) {
-      throw new Error("Template preview not found");
-    }
-    Object.defineProperty(preview, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return new DOMRect(0, 0, 300, 160);
-      },
-    });
-    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(
-          `${template.title} card preview slide ${slideCount}`,
-        ),
-      ).toBeInTheDocument();
-    });
-    fireEvent.mouseLeave(preview);
-  }
-
   click(screen.getByLabelText(`View template ${template.title}`));
   await waitFor(() => {
-    expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${template.title} detail HTML preview`),
+    ).toBeInTheDocument();
   });
-
-  if (slideCount > 1) {
-    click(screen.getByLabelText("Next slide"));
-    await waitFor(() => {
-      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Previous slide"));
-    await waitFor(() => {
-      expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Show slide 2"));
-    await waitFor(() => {
-      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
-    });
-  }
+  expect(screen.getByLabelText("Select style Warm Sand")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByLabelText("Select style Gold Luxe")).toBeInTheDocument();
 
   await user.click(screen.getByLabelText(`Select template ${template.title}`));
   await waitFor(() => {
@@ -570,6 +538,7 @@ function workflowSummary({
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  resetPresentationTemplateHtmlPreviewCache();
 });
 
 describe("chat composer models", () => {
@@ -1520,7 +1489,7 @@ describe("chat composer templates", () => {
       configurable: true,
       value: revokeObjectURL,
     });
-    context.mocks.http.get(template.embedUrl, () => {
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
         `
           <!doctype html>
@@ -1556,10 +1525,10 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
-      const previewImage = await screen.findByTestId(
-        `${template.title} card preview slide 1`,
+      const previewFrame = await screen.findByTestId(
+        `${template.title} card HTML preview`,
       );
-      const preview = previewImage.parentElement;
+      const preview = previewFrame.parentElement;
       if (!preview) {
         throw new Error("Template preview not found");
       }
@@ -1571,7 +1540,6 @@ describe("chat composer templates", () => {
       });
 
       fireEvent.mouseEnter(preview);
-
       await waitFor(() => {
         expect(
           screen.getByTestId(`${template.title} card HTML preview`),
@@ -1606,6 +1574,44 @@ describe("chat composer templates", () => {
         delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
       }
     }
+  });
+
+  it("navigates presentation template detail previews from the main preview", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+    click(screen.getByLabelText(`View template ${template.title}`));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Preview next slide"));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 of 15")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Preview previous slide"));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+    });
   });
 
   it("uses legacy presentation templates when the new catalog switch is off", async () => {
