@@ -827,7 +827,12 @@ describe("computer use desktop runtime", () => {
                   id: "w0.e0.e1",
                   role: "AXButton",
                   description: "Invite people",
-                  actions: ["AXPress", "AXRaise"],
+                  actions: [
+                    "AXPress",
+                    "AXRaise",
+                    "AXShowMenu",
+                    "AXScrollToVisible",
+                  ],
                 },
               ],
             },
@@ -850,6 +855,8 @@ describe("computer use desktop runtime", () => {
     expect(text).toContain(
       "\t\t3 button Invite people, Secondary Actions: Raise",
     );
+    expect(text).not.toContain("Show Menu");
+    expect(text).not.toContain("ScrollToVisible");
     expect(text).toContain(
       "The focused UI element is 2 text entry area (settable, string) Ask me to automate workflows.",
     );
@@ -1003,7 +1010,7 @@ describe("computer use desktop runtime", () => {
     ]);
   });
 
-  it("compacts generic wrappers while preserving WebArea branching context", () => {
+  it("compacts structural web wrappers while preserving child controls", () => {
     const snapshot = {
       app: "Slack",
       snapshotId: "snap_1",
@@ -1025,10 +1032,12 @@ describe("computer use desktop runtime", () => {
                     {
                       id: "w0.e0.e0.e0",
                       role: "AXGroup",
+                      expanded: false,
                       children: [
                         {
                           id: "w0.e0.e0.e0.e0",
                           role: "AXGroup",
+                          expanded: false,
                           children: [
                             {
                               id: "w0.e0.e0.e0.e0.e0",
@@ -1060,9 +1069,276 @@ describe("computer use desktop runtime", () => {
 
     expect(text).not.toContain("w0.e0");
     expect(text).toContain("\t1 HTML content");
-    expect(text).toContain("\t\t2 container");
-    expect(text).toContain("\t\t\t3 button Send message");
-    expect(text).toContain("\t\t\t4 text release-notify");
+    expect(text).toContain("\t\t2 button Send message");
+    expect(text).toContain("\t\t3 text release-notify");
+    expect(text).not.toContain("\t\t2 container");
+  });
+
+  it("applies structural wrapper compaction before the output node budget", () => {
+    const noisyProfileLinks = Array.from({ length: 20 }, (_value, index) => {
+      const label = `Profile ${index}`;
+      return {
+        id: `w0.e0.row${index}`,
+        role: "AXGroup",
+        actions: ["AXShowMenu", "AXScrollToVisible"],
+        expanded: false,
+        mouseClickable: true,
+        children: [
+          {
+            id: `w0.e0.row${index}.link`,
+            role: "AXLink",
+            name: label,
+            actions: ["AXPress", "AXShowMenu", "AXScrollToVisible"],
+            pressable: true,
+            children: [
+              {
+                id: `w0.e0.row${index}.label`,
+                role: "AXStaticText",
+                value: label,
+                actions: ["AXPress", "AXShowMenu", "AXScrollToVisible"],
+                expanded: false,
+                pressable: true,
+                mouseClickable: true,
+              },
+            ],
+          },
+        ],
+      };
+    });
+    const snapshot = {
+      app: "Google Chrome",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "LinkedIn",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXWebArea",
+              roleDescription: "HTML content",
+              children: [
+                ...noisyProfileLinks,
+                {
+                  id: "w0.e0.messaging",
+                  role: "AXGroup",
+                  actions: ["AXShowMenu", "AXScrollToVisible"],
+                  children: [
+                    {
+                      id: "w0.e0.messaging.title",
+                      role: "AXStaticText",
+                      value: "New message",
+                    },
+                    {
+                      id: "w0.e0.messaging.input",
+                      role: "AXTextArea",
+                      description: "Write a message...",
+                      placeholderValue: "Write a message...",
+                      valueSettable: true,
+                      valueType: "string",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const normalized = normalizeAccessibilitySnapshot(snapshot, {
+      ...ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
+      maxNodes: 24,
+    });
+    const text = renderAccessibilityTree(normalized);
+
+    expect(normalized.truncated).toBeUndefined();
+    expect(text).toContain("text New message");
+    expect(text).toContain(
+      "text entry area (settable, string) Write a message...",
+    );
+    expect(text).toContain("\t\t2 link Profile 0");
+    expect(text).not.toContain("text Profile 0");
+    expect(text).not.toContain("Secondary Actions: Show Menu");
+    expect(text).not.toContain("ScrollToVisible");
+  });
+
+  it("keeps menu bars shallow for app state output", () => {
+    const snapshot = {
+      app: "Google Chrome",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "LinkedIn",
+          children: [
+            {
+              id: "w0.menu",
+              role: "AXMenuBar",
+              actions: ["AXCancel"],
+              children: [
+                {
+                  id: "w0.menu.chrome",
+                  role: "AXMenuBarItem",
+                  name: "Chrome",
+                  actions: ["AXCancel", "AXPick"],
+                  children: [
+                    {
+                      id: "w0.menu.chrome.menu",
+                      role: "AXMenu",
+                      name: "Chrome",
+                      actions: ["AXCancel"],
+                      children: [
+                        {
+                          id: "w0.menu.chrome.about",
+                          role: "AXMenuItem",
+                          name: "About Google Chrome",
+                          actions: ["AXPick"],
+                        },
+                        {
+                          id: "w0.menu.chrome.settings",
+                          role: "AXMenuItem",
+                          name: "Settings...",
+                          actions: ["AXPick"],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  id: "w0.menu.file",
+                  role: "AXMenuBarItem",
+                  name: "File",
+                  actions: ["AXCancel", "AXPick"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const text = renderAccessibilityTree(
+      normalizeAccessibilitySnapshot(snapshot),
+    );
+
+    expect(text).toContain("\t1 menu bar");
+    expect(text).toContain("\t\t2 menu bar item Chrome");
+    expect(text).toContain("\t\t3 menu bar item File");
+    expect(text).not.toContain("About Google Chrome");
+    expect(text).not.toContain("Settings...");
+    expect(text).not.toContain("Secondary Actions: Cancel");
+    expect(text).not.toContain("Secondary Actions: Pick");
+  });
+
+  it("compacts child labels already covered by parent action text", () => {
+    const snapshot = {
+      app: "Google Chrome",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "LinkedIn",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXWebArea",
+              roleDescription: "HTML content",
+              children: [
+                {
+                  id: "w0.e0.card",
+                  role: "AXLink",
+                  name: "Stephan B. Premium · 2nd Director Software Development & Product",
+                  url: "https://www.linkedin.com/in/stephangbetz/",
+                  actions: ["AXPress"],
+                  pressable: true,
+                  children: [
+                    {
+                      id: "w0.e0.card.name",
+                      role: "AXLink",
+                      name: "Stephan B. Premium",
+                      url: "https://www.linkedin.com/in/stephangbetz/",
+                      actions: ["AXPress"],
+                      pressable: true,
+                      children: [
+                        {
+                          id: "w0.e0.card.name.text",
+                          role: "AXStaticText",
+                          value: "Stephan B.",
+                        },
+                        {
+                          id: "w0.e0.card.name.empty",
+                          role: "AXStaticText",
+                          value: "",
+                        },
+                        {
+                          id: "w0.e0.card.name.badge",
+                          role: "AXImage",
+                          description: "Premium",
+                          mouseClickable: true,
+                        },
+                      ],
+                    },
+                    {
+                      id: "w0.e0.card.degree",
+                      role: "AXStaticText",
+                      value: "· 2nd",
+                    },
+                    {
+                      id: "w0.e0.card.headline",
+                      role: "AXStaticText",
+                      value: "Director Software Development & Product",
+                    },
+                  ],
+                },
+                {
+                  id: "w0.e0.invite",
+                  role: "AXButton",
+                  name: "Invite Stephan B. to connect",
+                  actions: ["AXPress"],
+                },
+                {
+                  id: "w0.e0.post",
+                  role: "AXLink",
+                  name: "Starting a new position at OpenAI",
+                  url: "https://www.linkedin.com/feed/update/1/",
+                  actions: ["AXPress"],
+                  pressable: true,
+                  children: [
+                    {
+                      id: "w0.e0.post.company",
+                      role: "AXLink",
+                      name: "OpenAI",
+                      url: "https://www.linkedin.com/company/openai/",
+                      actions: ["AXPress"],
+                      pressable: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const text = renderAccessibilityTree(
+      normalizeAccessibilitySnapshot(snapshot),
+    );
+
+    expect(text).toContain(
+      "\t\t2 link Stephan B. Premium · 2nd Director Software Development & Product",
+    );
+    expect(text).toContain("\t\t3 button Invite Stephan B. to connect");
+    expect(text).toContain("\t\t4 link Starting a new position at OpenAI");
+    expect(text).toContain("\t\t\t5 link OpenAI");
+    expect(text).not.toContain("text Stephan B.");
+    expect(text).not.toContain("image Premium");
+    expect(text).not.toContain("text · 2nd");
+    expect(text).not.toContain("text Director Software Development & Product");
   });
 
   it("renders browser table row and cell content for model targeting", () => {

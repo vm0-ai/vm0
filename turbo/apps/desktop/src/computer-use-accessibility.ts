@@ -141,6 +141,17 @@ export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
   });
 
 const GENERIC_WRAPPER_ROLES = new Set(["AXGroup", "AXUnknown"]);
+const REDUNDANT_LABEL_CHILD_ROLES = new Set(["AXImage", "AXStaticText"]);
+const PARENT_TEXT_COVERED_ROLES = new Set([
+  "AXButton",
+  "AXGroup",
+  "AXHeading",
+  "AXImage",
+  "AXLink",
+  "AXStaticText",
+  "AXUnknown",
+]);
+const TEXT_COVERING_PARENT_ROLES = new Set(["AXButton", "AXHeading", "AXLink"]);
 
 interface ComputerUseAppStateScreenshot {
   readonly dataUrl: string;
@@ -396,6 +407,14 @@ function normalizeDisplayText(value: string): string {
   return value.trim().replaceAll(/\s+/g, " ");
 }
 
+function normalizeCoverageText(value: string): string {
+  return normalizeDisplayText(value)
+    .replaceAll(/[•·]/g, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase();
+}
+
 function stringArrayHasValue(value: readonly string[] | undefined): boolean {
   return (
     value !== undefined &&
@@ -405,11 +424,8 @@ function stringArrayHasValue(value: readonly string[] | undefined): boolean {
   );
 }
 
-function elementIsWebArea(element: AccessibilityElementSnapshot): boolean {
-  return (
-    element.role === "AXWebArea" ||
-    element.roleDescription?.toLowerCase().includes("html") === true
-  );
+function stringValues(value: readonly string[] | undefined): readonly string[] {
+  return value ?? [];
 }
 
 function elementHasMeaningfulContent(
@@ -430,31 +446,272 @@ function elementHasMeaningfulContent(
     element.focused === true ||
     element.enabled === false ||
     element.selected === true ||
-    element.expanded !== undefined ||
+    element.expanded === true ||
     element.pressable === true ||
     element.pickable === true ||
     element.selectable === true ||
-    element.mouseClickable === true ||
-    element.clickableKind !== undefined ||
-    (element.actions !== undefined && element.actions.length > 0)
+    element.clickableKind === "press" ||
+    element.clickableKind === "pick" ||
+    element.clickableKind === "select" ||
+    hasMeaningfulSecondaryAction(element)
   );
 }
 
-function shouldElideElement(
+function hasMeaningfulSecondaryAction(
   element: AccessibilityElementSnapshot,
-  childCount: number,
-  inWebArea: boolean,
 ): boolean {
+  return (
+    element.actions?.some((action) => {
+      return (
+        action !== "AXShowMenu" &&
+        action !== "AXScrollToVisible" &&
+        action !== "AXPress" &&
+        !(action === "AXPick" && element.clickableKind === "pick")
+      );
+    }) === true
+  );
+}
+
+function shouldElideElement(element: AccessibilityElementSnapshot): boolean {
   if (!element.role || !GENERIC_WRAPPER_ROLES.has(element.role)) {
     return false;
   }
   if (elementHasMeaningfulContent(element)) {
     return false;
   }
-  if (inWebArea && childCount > 1) {
+  return true;
+}
+
+function elementHasDefaultPress(
+  element: AccessibilityElementSnapshot,
+): boolean {
+  return (
+    element.pressable === true ||
+    element.clickableKind === "press" ||
+    element.actions?.includes("AXPress") === true
+  );
+}
+
+function elementHasIndependentStateOrAction(
+  element: AccessibilityElementSnapshot,
+): boolean {
+  return (
+    element.focused === true ||
+    element.selected === true ||
+    element.enabled === false ||
+    element.expanded === true ||
+    element.valueSettable === true ||
+    element.pickable === true ||
+    element.selectable === true ||
+    element.clickableKind === "pick" ||
+    element.clickableKind === "select" ||
+    hasMeaningfulSecondaryAction(element)
+  );
+}
+
+function normalizedElementLabelValues(
+  element: AccessibilityElementSnapshot,
+): readonly string[] {
+  return [
+    element.name,
+    element.value,
+    element.description,
+    element.help,
+    element.placeholderValue,
+    element.visibleText,
+    element.text,
+    element.titleElementText,
+    ...stringValues(element.columnTitles),
+  ]
+    .filter((value): value is string => {
+      return value !== undefined;
+    })
+    .map(normalizeCoverageText)
+    .filter((value) => {
+      return value.length > 0;
+    });
+}
+
+function normalizedElementTextValues(
+  element: AccessibilityElementSnapshot,
+): ReadonlySet<string> {
+  const values = [
+    element.name,
+    element.value,
+    element.description,
+    element.help,
+    element.placeholderValue,
+    element.visibleText,
+    element.text,
+    element.titleElementText,
+    ...stringValues(element.columnTitles),
+    element.identifier,
+    element.url,
+  ]
+    .filter((value): value is string => {
+      return value !== undefined;
+    })
+    .map(normalizeDisplayText)
+    .filter((value) => {
+      return value.length > 0;
+    });
+  return new Set(values);
+}
+
+function normalizedSubtreeLabelValues(
+  element: AccessibilityElementSnapshot,
+): readonly string[] {
+  const values = [...normalizedElementLabelValues(element)];
+  for (const child of element.children ?? []) {
+    values.push(...normalizedSubtreeLabelValues(child));
+  }
+  return values;
+}
+
+function textValuesCover(
+  parentTexts: readonly string[],
+  childTexts: readonly string[],
+): boolean {
+  const meaningfulChildTexts = childTexts.filter((text) => {
+    return text.length > 0;
+  });
+  return (
+    meaningfulChildTexts.length > 0 &&
+    meaningfulChildTexts.every((childText) => {
+      return parentTexts.some((parentText) => {
+        return parentText === childText || parentText.includes(childText);
+      });
+    })
+  );
+}
+
+function childHasIndependentSemantics(
+  parent: AccessibilityElementSnapshot,
+  child: AccessibilityElementSnapshot,
+): boolean {
+  if (!child.role || !PARENT_TEXT_COVERED_ROLES.has(child.role)) {
+    return true;
+  }
+  if (elementHasIndependentStateOrAction(child)) {
+    return true;
+  }
+  if (
+    (child.role === "AXLink" || child.role === "AXButton") &&
+    child.role !== parent.role
+  ) {
+    return true;
+  }
+  if (
+    child.role === "AXLink" &&
+    parent.role === "AXLink" &&
+    child.url !== undefined &&
+    parent.url !== undefined &&
+    child.url !== parent.url
+  ) {
+    return true;
+  }
+  return (child.children ?? []).some((grandchild) => {
+    return childHasIndependentSemantics(parent, grandchild);
+  });
+}
+
+function childIsCoveredByParentText(
+  parent: AccessibilityElementSnapshot,
+  child: AccessibilityElementSnapshot,
+): boolean {
+  if (!parent.role || !TEXT_COVERING_PARENT_ROLES.has(parent.role)) {
+    return false;
+  }
+  if (childHasIndependentSemantics(parent, child)) {
+    return false;
+  }
+  return textValuesCover(
+    normalizedElementLabelValues(parent),
+    normalizedSubtreeLabelValues(child),
+  );
+}
+
+function childIsRedundantLabel(
+  parent: AccessibilityElementSnapshot,
+  child: AccessibilityElementSnapshot,
+): boolean {
+  if (
+    child.role === "AXStaticText" &&
+    (child.children ?? []).length === 0 &&
+    normalizedElementTextValues(child).size === 0 &&
+    !elementHasIndependentStateOrAction(child)
+  ) {
+    return true;
+  }
+  if (!child.role || !REDUNDANT_LABEL_CHILD_ROLES.has(child.role)) {
+    return false;
+  }
+  if (child.children && child.children.length > 0) {
+    return false;
+  }
+  const parentTexts = normalizedElementTextValues(parent);
+  if (parentTexts.size === 0) {
+    return false;
+  }
+  const duplicatesParentText = [...normalizedElementTextValues(child)].some(
+    (text) => {
+      return parentTexts.has(text);
+    },
+  );
+  if (!duplicatesParentText) {
+    return false;
+  }
+  if (
+    child.focused === true ||
+    child.selected === true ||
+    child.enabled === false ||
+    child.expanded === true ||
+    child.pickable === true ||
+    child.selectable === true ||
+    child.clickableKind === "pick" ||
+    child.clickableKind === "select" ||
+    hasMeaningfulSecondaryAction(child)
+  ) {
+    return false;
+  }
+  if (elementHasDefaultPress(child) && !elementHasDefaultPress(parent)) {
     return false;
   }
   return true;
+}
+
+function shouldCompactChild(
+  parent: AccessibilityElementSnapshot,
+  child: AccessibilityElementSnapshot,
+): boolean {
+  return (
+    childIsRedundantLabel(parent, child) ||
+    childIsCoveredByParentText(parent, child)
+  );
+}
+
+function shallowMenuBarChild(
+  element: AccessibilityElementSnapshot,
+): AccessibilityElementSnapshot {
+  return {
+    ...element,
+    actions: undefined,
+    children: undefined,
+  };
+}
+
+function compactRawChildren(
+  element: AccessibilityElementSnapshot,
+): readonly AccessibilityElementSnapshot[] {
+  const rawChildren = element.children ?? [];
+  if (element.role === "AXMenuBar") {
+    return rawChildren.map((child) => {
+      return shallowMenuBarChild(child);
+    });
+  }
+  return rawChildren.filter((child) => {
+    return !shouldCompactChild(element, child);
+  });
 }
 
 function pushUniqueReason(reasons: string[], reason: string): void {
@@ -473,7 +730,6 @@ export function normalizeAccessibilitySnapshot(
   const normalizeElement = (
     element: AccessibilityElementSnapshot,
     depth: number,
-    inWebArea: boolean,
   ): AccessibilityElementSnapshot[] => {
     if (depth > limits.maxDepth) {
       pushUniqueReason(truncationReasons, "max_depth");
@@ -488,14 +744,13 @@ export function normalizeAccessibilitySnapshot(
       return [];
     }
 
-    const nextInWebArea = inWebArea || elementIsWebArea(element);
-    const rawChildren = element.children ?? [];
-    const childEntries = rawChildren.slice(0, limits.maxChildrenPerNode);
-    if (rawChildren.length > childEntries.length) {
+    const semanticChildren = compactRawChildren(element);
+    const childEntries = semanticChildren.slice(0, limits.maxChildrenPerNode);
+    if (semanticChildren.length > childEntries.length) {
       pushUniqueReason(truncationReasons, "max_children_per_node");
     }
 
-    const elide = shouldElideElement(element, rawChildren.length, inWebArea);
+    const elide = shouldElideElement(element);
     if (!elide) {
       if (nodeCount >= limits.maxNodes) {
         pushUniqueReason(truncationReasons, "max_nodes");
@@ -510,23 +765,27 @@ export function normalizeAccessibilitySnapshot(
         pushUniqueReason(truncationReasons, "max_nodes");
         break;
       }
-      children.push(...normalizeElement(child, depth + 1, nextInWebArea));
+      children.push(...normalizeElement(child, depth + 1));
     }
 
     if (elide) {
       return children;
     }
 
+    const compactedChildren = children.filter((child) => {
+      return !shouldCompactChild(element, child);
+    });
+
     return [
       {
         ...element,
-        children: children.length > 0 ? children : undefined,
+        children: compactedChildren.length > 0 ? compactedChildren : undefined,
       },
     ];
   };
 
   const elements = snapshot.elements.flatMap((element) => {
-    return normalizeElement(element, 0, false);
+    return normalizeElement(element, 0);
   });
 
   const combinedReasons = [
@@ -844,6 +1103,14 @@ const ROLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 const DEFAULT_ACTION_NAMES = new Set(["AXPress"]);
+const GENERIC_WEB_ACTION_NAMES = new Set(["AXShowMenu", "AXScrollToVisible"]);
+const MENU_ACTION_NOISE_NAMES = new Set(["AXCancel", "AXPick"]);
+const MENU_ROLE_NAMES = new Set([
+  "AXMenu",
+  "AXMenuBar",
+  "AXMenuBarItem",
+  "AXMenuItem",
+]);
 const PRIMARY_CLICK_ROLE_NAMES = new Set([
   "AXButton",
   "AXCheckBox",
@@ -946,7 +1213,10 @@ function elementAnnotations(element: AccessibilityElementSnapshot): string[] {
     element.mouseClickable === true &&
     element.clickableKind === "mouse" &&
     element.selectable !== true &&
-    (element.role === undefined || !PRIMARY_CLICK_ROLE_NAMES.has(element.role))
+    (element.role === undefined ||
+      !PRIMARY_CLICK_ROLE_NAMES.has(element.role)) &&
+    element.role !== "AXStaticText" &&
+    (element.role === undefined || !GENERIC_WRAPPER_ROLES.has(element.role))
   ) {
     annotations.push("clickable");
   }
@@ -979,7 +1249,17 @@ function secondaryActions(element: AccessibilityElementSnapshot): string[] {
       if (action === "AXPick" && element.clickableKind === "pick") {
         return false;
       }
-      return !DEFAULT_ACTION_NAMES.has(action);
+      if (
+        element.role !== undefined &&
+        MENU_ROLE_NAMES.has(element.role) &&
+        MENU_ACTION_NOISE_NAMES.has(action)
+      ) {
+        return false;
+      }
+      return (
+        !DEFAULT_ACTION_NAMES.has(action) &&
+        !GENERIC_WEB_ACTION_NAMES.has(action)
+      );
     })
     .map((action) => {
       return actionLabel(action);
