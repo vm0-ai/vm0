@@ -1790,11 +1790,11 @@ def _form_action_values(
     if len(content_types) > 1:
         return _AwsFormActionResult([], False)
     if not content_types:
-        return _AwsFormActionResult([], True)
+        return _AwsFormActionResult([], False)
     content_type = content_types[0]
     media_type = content_type.split(";", maxsplit=1)[0].strip().lower()
     if media_type != "application/x-www-form-urlencoded":
-        return _AwsFormActionResult([], True)
+        return _AwsFormActionResult([], False)
     if len(body) > _AWS_FORM_BODY_MAX_BYTES:
         return _AwsFormActionResult([], False)
     try:

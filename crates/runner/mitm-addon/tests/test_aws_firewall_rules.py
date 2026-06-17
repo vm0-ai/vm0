@@ -209,6 +209,33 @@ def test_ec2_query_action_conflicting_form_body_uses_unknown_policy():
     assert isinstance(duplicate_content_type, matching.FirewallBlock)
     assert duplicate_content_type.reason == "unknown_endpoint"
 
+    missing_content_type = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context(
+            "ec2",
+            body=b"Action=RunInstances",
+        ),
+    )
+    assert isinstance(missing_content_type, matching.FirewallBlock)
+    assert missing_content_type.reason == "unknown_endpoint"
+
+    non_form_content_type = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context(
+            "ec2",
+            headers=(("content-type", "application/json"),),
+            body=b'{"Action":"RunInstances"}',
+        ),
+    )
+    assert isinstance(non_form_content_type, matching.FirewallBlock)
+    assert non_form_content_type.reason == "unknown_endpoint"
+
 
 def test_ec2_missing_or_duplicate_action_uses_unknown_policy():
     firewalls = _aws_firewall(
