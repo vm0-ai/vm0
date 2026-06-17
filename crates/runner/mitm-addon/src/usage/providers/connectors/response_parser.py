@@ -29,7 +29,13 @@ class ConnectorResponseParser(NamedTuple):
     error paths can release unfinished parser state without finalizing it, so
     parser correctness must not rely on ``finish`` running for every interrupted
     response.
+
+    ``finish_decode_error`` is optional. When provided, response streaming calls
+    it instead of ``finish`` if the transport decoder cannot prove a compressed
+    response body completed. It should publish connector-owned unparsed state so
+    later fallback parsing does not trust best-effort decoded bytes.
     """
 
     feed: Callable[[bytes], None]
     finish: Callable[[], None] | None = None
+    finish_decode_error: Callable[[str], None] | None = None

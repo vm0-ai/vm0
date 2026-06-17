@@ -1,5 +1,6 @@
 """Tests for model-provider SSE usage reporting paths."""
 
+import gzip
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -138,6 +139,34 @@ class TestModelProviderSseUsage:
             "tokens.cache_read": 2000,
         }
         assert {event["provider"] for event in events} == {"gpt-5.5"}
+
+    @pytest.mark.parametrize("hook_name", ["response", "error"])
+    def test_full_pipeline_compressed_openai_sse_truncated_trailer_does_not_report_usage(
+        self, tmp_path, real_flow, hook_name
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
+            b'"usage":{"input_tokens":50,"output_tokens":20}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        if hook_name == "error":
+            flow.error = Error("connection reset by peer")
+            webhook = self._run_error(flow)
+        else:
+            webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="compressed_body",
+        )
 
     def test_full_pipeline_anthropic_sse_logs_truncated_message_start(self, tmp_path, real_flow):
         flow = _model_provider_sse_flow(

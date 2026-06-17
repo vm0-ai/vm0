@@ -366,6 +366,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::ReconnectRequired);
     }
+    if matches!(framework, AgentFramework::Codex)
+        && guest_agent::events::is_codex_model_capacity_message(failure_message)
+    {
+        return Some(FailureReason::ProviderOverloaded);
+    }
     // Subscription/usage limits are an expected quota state for both Codex
     // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
     // "weekly limit" / org monthly spend limit), so classify them regardless of
@@ -1279,6 +1284,36 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
             "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_model_capacity() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "Selected model is at capacity. Please try a different model.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_wrapped_codex_model_capacity() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "Codex failed: Selected model is at capacity. Please try a different model.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_model_capacity() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "Selected model is at capacity. Please try a different model.",
         );
 
         assert_eq!(reason, None);

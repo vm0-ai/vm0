@@ -466,7 +466,21 @@ def create_response_parser(
             # report_model_provider_usage and triggers the model-provider webhook.
             # x_ndjson_state is only consumed by report_connector_usage.
             flow.metadata[metadata_keys.X_NDJSON_STATE] = extractor.state
-            return ConnectorResponseParser(feed=extractor.feed, finish=extractor.finish)
+
+            def finish_ndjson_decode_error(error: str) -> None:
+                flow.metadata.pop(metadata_keys.X_NDJSON_STATE, None)
+                flow.metadata[metadata_keys.X_JSON_STATE] = {
+                    "body_parsed": False,
+                    "body_truncated": False,
+                    "body_format": "ndjson",
+                    "parse_error": error,
+                }
+
+            return ConnectorResponseParser(
+                feed=extractor.feed,
+                finish=extractor.finish,
+                finish_decode_error=finish_ndjson_decode_error,
+            )
 
     if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
         return None
@@ -479,7 +493,18 @@ def create_response_parser(
             state["parse_error"] = error
         flow.metadata[metadata_keys.X_JSON_STATE] = state
 
-    return ConnectorResponseParser(feed=extractor.feed, finish=finish_json_state)
+    def finish_json_decode_error(error: str) -> None:
+        flow.metadata[metadata_keys.X_JSON_STATE] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": error,
+        }
+
+    return ConnectorResponseParser(
+        feed=extractor.feed,
+        finish=finish_json_state,
+        finish_decode_error=finish_json_decode_error,
+    )
 
 
 def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int | None:
@@ -740,9 +765,12 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         return result
     if not flow.response:
         return result
-    body = body_decoding.decompress_body(
+    body, decode_error = body_decoding.decompress_json_usage_body(
         bytes(buf), flow.response.headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
+    if decode_error is not None:
+        result["parse_error"] = decode_error
+        return result
     fields = _parse_x_json_response_fields_from_body(body)
     if fields is None:
         return result
