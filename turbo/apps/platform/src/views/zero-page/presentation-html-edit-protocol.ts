@@ -3,6 +3,7 @@ import type { PresentationSpeakerNotesPatch } from "@vm0/api-contracts/contracts
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const SLIDE_SELECTORS = [
+  "[data-vm0-slide]",
   "[data-slide]",
   "[data-slide-index]",
   "[data-page]",
@@ -12,6 +13,21 @@ const SLIDE_SELECTORS = [
   ".slide-page",
   ".slide",
   "section",
+] as const;
+const WEAK_SLIDE_SELECTORS = [".slide", "section"] as const;
+const INNER_SLIDE_CANDIDATE_SELECTORS = [
+  "[data-vm0-slide]",
+  "[data-slide]",
+  "[data-slide-index]",
+  "[data-page]",
+  ".ppt-slide",
+  ".presentation-slide",
+  ".deck-slide",
+  ".slide-page",
+  ".stage",
+  ".slide-stage",
+  ".slide-canvas",
+  ".presentation-stage",
 ] as const;
 const FALLBACK_EDITABLE_SELECTOR =
   "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,td,th,span,div";
@@ -135,10 +151,60 @@ function selectSlideElements(doc: Document): Element[] {
   for (const selector of SLIDE_SELECTORS) {
     const slides = Array.from(doc.querySelectorAll(selector));
     if (slides.length > 0) {
-      return slides;
+      return slides.map((slide) => {
+        return normalizeSlideElement(slide, selector);
+      });
     }
   }
   return doc.body ? [doc.body] : [];
+}
+
+function matchesAnySelector(
+  element: Element,
+  selectors: readonly string[],
+): boolean {
+  return selectors.some((selector) => {
+    return element.matches(selector);
+  });
+}
+
+function isWeakSlideSelector(selector: string): boolean {
+  return WEAK_SLIDE_SELECTORS.some((candidate) => {
+    return candidate === selector;
+  });
+}
+
+function normalizeSlideElement(slide: Element, selector: string): Element {
+  if (!isWeakSlideSelector(selector)) {
+    return slide;
+  }
+  const directCandidates = Array.from(slide.children).filter((child) => {
+    return matchesAnySelector(child, INNER_SLIDE_CANDIDATE_SELECTORS);
+  });
+  const candidate =
+    directCandidates.length === 1
+      ? directCandidates[0]
+      : uniqueInnerSlideCandidate(slide);
+  if (!candidate) {
+    return slide;
+  }
+  inheritSlideId(slide, candidate);
+  return candidate;
+}
+
+function uniqueInnerSlideCandidate(slide: Element): Element | null {
+  const selector = INNER_SLIDE_CANDIDATE_SELECTORS.join(",");
+  const candidates = Array.from(slide.querySelectorAll(selector));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function inheritSlideId(source: Element, target: Element): void {
+  if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+    return;
+  }
+  if (!target.dataset.slideId && source.dataset.slideId) {
+    target.dataset.slideId = source.dataset.slideId;
+  }
 }
 
 function hasUsefulText(element: Element): boolean {

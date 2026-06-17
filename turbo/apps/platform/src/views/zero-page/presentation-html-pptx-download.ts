@@ -44,6 +44,23 @@ const SLIDE_SELECTORS = [
   ".slide",
   "section",
 ] as const;
+const WEAK_SLIDE_SELECTORS = [".slide", "section"] as const;
+const INNER_SLIDE_CANDIDATE_SELECTORS = [
+  "[data-vm0-slide]",
+  "[data-slide]",
+  "[data-slide-index]",
+  "[data-page]",
+  ".ppt-slide",
+  ".presentation-slide",
+  ".deck-slide",
+  ".slide-page",
+  ".stage",
+  ".slide-stage",
+  ".slide-canvas",
+  ".presentation-stage",
+] as const;
+const WIDE_SLIDE_ASPECT_RATIO = 16 / 9;
+const WIDE_SLIDE_ASPECT_TOLERANCE = 0.03;
 
 type DomToPptxOptions = {
   readonly fileName: string;
@@ -339,6 +356,10 @@ function createExportBootstrapScript(options: DomToPptxOptions): string {
   const options = ${JSON.stringify(options)};
   const scriptUrl = ${JSON.stringify(domToPptxScriptUrl())};
   const slideSelectors = ${JSON.stringify(SLIDE_SELECTORS)};
+  const weakSlideSelectors = ${JSON.stringify(WEAK_SLIDE_SELECTORS)};
+  const innerSlideCandidateSelectors = ${JSON.stringify(INNER_SLIDE_CANDIDATE_SELECTORS)};
+  const wideSlideAspectRatio = ${JSON.stringify(WIDE_SLIDE_ASPECT_RATIO)};
+  const wideSlideAspectTolerance = ${JSON.stringify(WIDE_SLIDE_ASPECT_TOLERANCE)};
   const fontReadyTimeoutMs = ${JSON.stringify(EXPORT_FONT_READY_TIMEOUT_MS)};
 
   const post = (message) => {
@@ -390,13 +411,84 @@ function createExportBootstrapScript(options: DomToPptxOptions): string {
 `;
 }
 
+function createExportSlideNormalizationScript(): string {
+  return `
+  const matchesAnySelector = (element, selectors) => {
+    return selectors.some((selector) => element.matches(selector));
+  };
+
+  const isWeakSlideSelector = (selector) => {
+    return weakSlideSelectors.includes(selector);
+  };
+
+  const isWideSlideNode = (node) => {
+    if (!(node instanceof HTMLElement)) {
+      return false;
+    }
+    const rect = node.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+    return Math.abs(rect.width / rect.height - wideSlideAspectRatio) <= wideSlideAspectTolerance;
+  };
+
+  const innerSlideCandidates = (node) => {
+    if (!(node instanceof HTMLElement)) {
+      return [];
+    }
+    const directCandidates = Array.from(node.children).filter((child) => {
+      return matchesAnySelector(child, innerSlideCandidateSelectors);
+    });
+    if (directCandidates.length > 0) {
+      return directCandidates;
+    }
+    return Array.from(
+      node.querySelectorAll(innerSlideCandidateSelectors.join(",")),
+    );
+  };
+
+  const normalizeSlideNode = (node, selector) => {
+    if (!(node instanceof HTMLElement) || !isWeakSlideSelector(selector)) {
+      return node;
+    }
+    if (isWideSlideNode(node)) {
+      return node;
+    }
+    const candidates = innerSlideCandidates(node);
+    const wideCandidates = candidates.filter(isWideSlideNode);
+    if (wideCandidates.length === 1) {
+      return wideCandidates[0];
+    }
+    if (candidates.length === 1) {
+      return candidates[0];
+    }
+    console.warn(
+      "Presentation PPTX export kept the original slide node because no unique 16:9 inner slide canvas was found.",
+      node,
+    );
+    return node;
+  };
+
+  const uniqueNodes = (nodes) => {
+    const seen = new Set();
+    return nodes.filter((node) => {
+      if (seen.has(node)) {
+        return false;
+      }
+      seen.add(node);
+      return true;
+    });
+  };
+`;
+}
+
 function createExportSlideScript(): string {
   return `
   const selectSlideNodes = () => {
     for (const selector of slideSelectors) {
       const nodes = Array.from(document.querySelectorAll(selector));
       if (nodes.length > 0) {
-        return nodes;
+        return uniqueNodes(nodes.map((node) => normalizeSlideNode(node, selector)));
       }
     }
     return document.body ? [document.body] : [];
@@ -637,6 +729,7 @@ function createExportRunnerScript(): string {
 function createExportScript(options: DomToPptxOptions): string {
   return [
     createExportBootstrapScript(options),
+    createExportSlideNormalizationScript(),
     createExportSlideScript(),
     createExportReadinessScript(),
     createExportRunnerScript(),
@@ -747,10 +840,60 @@ function selectSlideElements(doc: Document): Element[] {
   for (const selector of SLIDE_SELECTORS) {
     const slides = Array.from(doc.querySelectorAll(selector));
     if (slides.length > 0) {
-      return slides;
+      return slides.map((slide) => {
+        return normalizeSlideElement(slide, selector);
+      });
     }
   }
   return doc.body ? [doc.body] : [];
+}
+
+function matchesAnySelector(
+  element: Element,
+  selectors: readonly string[],
+): boolean {
+  return selectors.some((selector) => {
+    return element.matches(selector);
+  });
+}
+
+function isWeakSlideSelector(selector: string): boolean {
+  return WEAK_SLIDE_SELECTORS.some((candidate) => {
+    return candidate === selector;
+  });
+}
+
+function normalizeSlideElement(slide: Element, selector: string): Element {
+  if (!isWeakSlideSelector(selector)) {
+    return slide;
+  }
+  const directCandidates = Array.from(slide.children).filter((child) => {
+    return matchesAnySelector(child, INNER_SLIDE_CANDIDATE_SELECTORS);
+  });
+  const candidate =
+    directCandidates.length === 1
+      ? directCandidates[0]
+      : uniqueInnerSlideCandidate(slide);
+  if (!candidate) {
+    return slide;
+  }
+  inheritSlideId(slide, candidate);
+  return candidate;
+}
+
+function uniqueInnerSlideCandidate(slide: Element): Element | null {
+  const selector = INNER_SLIDE_CANDIDATE_SELECTORS.join(",");
+  const candidates = Array.from(slide.querySelectorAll(selector));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function inheritSlideId(source: Element, target: Element): void {
+  if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+    return;
+  }
+  if (!target.dataset.slideId && source.dataset.slideId) {
+    target.dataset.slideId = source.dataset.slideId;
+  }
 }
 
 function slideIdForElement(slide: Element, index: number): string {

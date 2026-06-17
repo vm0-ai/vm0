@@ -242,6 +242,32 @@ function presentationHtmlWithDeckBackground(): string {
 </html>`;
 }
 
+function presentationHtmlWithNestedStage(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Nested stage deck</title>
+    <style>
+      .slide {
+        width: 100vw;
+        height: 100vh;
+      }
+      .stage {
+        width: min(100vw, 177.7778vh);
+        height: min(56.25vw, 100vh);
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide" data-slide-id="slide-intro">
+      <div class="stage">
+        <h1>Nested stage deck</h1>
+      </div>
+    </section>
+  </body>
+</html>`;
+}
+
 function presentationPptxBlob(): Promise<Blob> {
   const zip = new JSZip();
   zip.file(
@@ -881,6 +907,44 @@ describe("zero artifact sidebar", () => {
 
     await waitFor(() => {
       expect(downloads).toContain("dog-world.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("includes nested slide canvas normalization for PPTX export", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/nested-stage.html";
+    setupPresentationArtifactThread(
+      presentationUrl,
+      presentationHtmlWithNestedStage(),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+
+    expect(exportFrame.srcdoc).toContain("normalizeSlideNode");
+    expect(exportFrame.srcdoc).toContain("innerSlideCandidateSelectors");
+    expect(exportFrame.srcdoc).toContain(".stage");
+
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+    await waitFor(() => {
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
