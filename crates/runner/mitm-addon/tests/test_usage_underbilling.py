@@ -140,6 +140,11 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
             private_key="private-key-value",
             credential_value="credential-value",
             idempotency_key="diagnostic-key",
+            **{
+                "api-key": "hyphen-api-key-value",
+                "accessKeyId": "camel-access-key-value",
+                "privateKey": "camel-private-key-value",
+            },
         )
 
     message = log.error.call_args.args[0]
@@ -147,11 +152,17 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "access_key_id=[redacted]" in message
     assert "private_key=[redacted]" in message
     assert "credential_value=[redacted]" in message
+    assert "api-key=[redacted]" in message
+    assert "accessKeyId=[redacted]" in message
+    assert "privateKey=[redacted]" in message
     assert "idempotency_key=diagnostic-key" in message
     assert "api-key-value" not in message
     assert "access-key-value" not in message
     assert "private-key-value" not in message
     assert "credential-value" not in message
+    assert "hyphen-api-key-value" not in message
+    assert "camel-access-key-value" not in message
+    assert "camel-private-key-value" not in message
 
 
 def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):

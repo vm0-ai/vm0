@@ -15,12 +15,16 @@ USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
 _UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
 _SECRET_FIELD_MARKERS = (
     "access_key",
+    "accesskey",
     "api_key",
+    "api-key",
     "apikey",
     "authorization",
     "credential",
     "password",
     "private_key",
+    "private-key",
+    "privatekey",
     "secret",
     "token",
 )
