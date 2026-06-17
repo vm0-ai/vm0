@@ -440,6 +440,14 @@ const CRON_AGGREGATE_INSIGHTS_NEXT_NEGATIVE_PATHS = [
   "/api/cron/aggregate-insights/extra",
   "/api/cron",
 ] as const;
+const CRON_AGGREGATE_MODEL_STATS_REWRITE_SOURCE =
+  "/api/cron/aggregate-model-stats";
+const CRON_AGGREGATE_MODEL_STATS_PATH = "/api/cron/aggregate-model-stats";
+const CRON_AGGREGATE_MODEL_STATS_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/aggregate-model-stats/extra",
+  "/api/internal/cron/aggregate-model-stats",
+  "/api/cron",
+] as const;
 const CRON_AGGREGATE_USAGE_REWRITE_SOURCE = "/api/cron/aggregate-usage";
 const CRON_AGGREGATE_USAGE_PATH = "/api/cron/aggregate-usage";
 const CRON_AGGREGATE_USAGE_NEXT_NEGATIVE_PATHS = [
@@ -2037,6 +2045,11 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/aggregate-insights",
         },
         {
+          source: CRON_AGGREGATE_MODEL_STATS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/cron/aggregate-model-stats",
+        },
+        {
           source: CRON_AGGREGATE_USAGE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/aggregate-usage",
         },
@@ -3510,6 +3523,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_AGGREGATE_USAGE_PATH)).toStrictEqual({});
     for (const pathname of CRON_AGGREGATE_USAGE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron aggregate model stats rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_AGGREGATE_MODEL_STATS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_AGGREGATE_MODEL_STATS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/aggregate-model-stats",
+    });
+
+    const matcher = getPathMatch(CRON_AGGREGATE_MODEL_STATS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_AGGREGATE_MODEL_STATS_PATH)).toStrictEqual({});
+    for (const pathname of CRON_AGGREGATE_MODEL_STATS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

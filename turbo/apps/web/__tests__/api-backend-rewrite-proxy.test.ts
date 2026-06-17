@@ -444,6 +444,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the cron aggregate model stats rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/cron/aggregate-model-stats"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/cron/aggregate-model-stats/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/cron/aggregate-model-stats"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the cron aggregate usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-usage")).toBe(
       true,

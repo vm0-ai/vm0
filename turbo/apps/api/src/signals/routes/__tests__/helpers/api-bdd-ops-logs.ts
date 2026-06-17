@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
@@ -100,7 +101,7 @@ export function createOpsLogsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(modelStatsContract).aggregate({
+        setupApp({ context })(cronAggregateModelStatsContract).aggregate({
           headers: {
             authorization:
               auth === "valid" ? CRON_AUTHORIZATION : "Bearer wrong-secret",
