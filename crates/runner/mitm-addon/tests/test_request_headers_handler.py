@@ -73,6 +73,7 @@ def test_capture_enabled_browser_allow_installs_request_stream(
 
     assert callable(flow.request.stream)
     assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC in flow.metadata
 
 
 def test_capture_enabled_final_allow_installs_request_stream(tmp_path, real_flow, mitm_ctx):

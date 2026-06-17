@@ -1309,6 +1309,7 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         return
 
     if _should_stream_capture_request(classification):
+        _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
 
 
