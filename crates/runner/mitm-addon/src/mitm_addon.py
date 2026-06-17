@@ -831,6 +831,31 @@ def _connector_diagnostic_candidate_from_flow(
     )
 
 
+def _maybe_record_allow_connector_diagnostic_candidate(
+    flow: http.HTTPFlow,
+    classification: _RequestClassification,
+) -> None:
+    if classification.kind != "allow":
+        return
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        return
+    if metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE in flow.metadata:
+        return
+
+    vm_info = classification.vm_info
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if vm_info is None or not isinstance(original_url, str):
+        return
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        original_url,
+        flow.request.method,
+        active_firewall_names=_active_firewall_names(vm_info),
+    )
+    if candidate is not None:
+        _record_connector_diagnostic_candidate(flow, candidate)
+
+
 def _metadata_str_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
@@ -1336,6 +1361,7 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         return
 
     if _should_stream_capture_request(classification):
+        _maybe_record_allow_connector_diagnostic_candidate(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
@@ -1464,15 +1490,7 @@ async def request(flow: http.HTTPFlow) -> None:
         vm_info = classification.vm_info
         if vm_info is None:
             return
-        original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-        if not flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-            candidate = builtin_connector_diagnostics.find_candidate(
-                original_url,
-                flow.request.method,
-                active_firewall_names=_active_firewall_names(vm_info),
-            )
-            if candidate is not None:
-                _record_connector_diagnostic_candidate(flow, candidate)
+        _maybe_record_allow_connector_diagnostic_candidate(flow, classification)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
