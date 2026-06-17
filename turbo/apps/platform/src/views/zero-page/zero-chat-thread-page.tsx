@@ -2086,64 +2086,78 @@ function HeaderAutomationSidebarCard({
   return (
     <article
       className={cn(
-        "rounded-lg border border-border bg-background p-3 transition-colors",
+        "rounded-lg border border-border bg-background p-4 transition-colors",
         !automation.enabled && "opacity-75",
       )}
     >
-      <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+      <p
+        className={cn(
+          "line-clamp-2 text-sm font-medium leading-snug",
+          automation.enabled ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
         {automationDescription(automation)}
       </p>
 
-      <div className="mt-3 grid gap-1.5">
-        <div className="rounded-lg bg-muted/45 px-3 py-2">
-          <div className="text-xs text-muted-foreground">Next run</div>
-          <div className="mt-1 truncate text-xs font-medium text-foreground">
-            {formatAutomationNextRun(automation)}
-          </div>
+      <dl className="mt-3 text-xs">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">Status</dt>
+          <dd className="flex shrink-0 items-center gap-2">
+            <span
+              className={cn(
+                "font-medium",
+                automation.enabled
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              {automation.enabled ? "Active" : "Paused"}
+            </span>
+            <LoadingSwitch
+              checked={automation.enabled}
+              loading={toggling}
+              onCheckedChange={toggleEnabled}
+              ariaLabel={`${automation.enabled ? "Disable" : "Enable"} automation`}
+            />
+          </dd>
         </div>
-        <div className="rounded-lg bg-muted/45 px-3 py-2">
-          <div className="text-xs text-muted-foreground">Rule</div>
-          <div className="mt-1 truncate text-xs font-medium text-foreground">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">Schedule</dt>
+          <dd className="min-w-0 truncate text-right font-medium text-foreground">
             {automation.rule}
-          </div>
+          </dd>
         </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
-            disabled={running}
-            onClick={runNow}
-          >
-            {running ? (
-              <IconLoader2 size={14} className="animate-spin" />
-            ) : (
-              <IconPlayerPlay size={14} stroke={1.5} />
-            )}
-            {running ? "Starting…" : "Run now"}
-          </Button>
-          <Link
-            pathname="/automations/:automationId"
-            options={{ pathParams: { automationId: automation.id } }}
-            className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            Edit
-          </Link>
+        <div className="flex items-center justify-between gap-3 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">Next run</dt>
+          <dd className="min-w-0 truncate text-right font-medium text-foreground">
+            {formatAutomationNextRun(automation)}
+          </dd>
         </div>
+      </dl>
 
-        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-          Active
-          <LoadingSwitch
-            checked={automation.enabled}
-            loading={toggling}
-            onCheckedChange={toggleEnabled}
-            ariaLabel={`${automation.enabled ? "Disable" : "Enable"} automation`}
-          />
-        </span>
+      <div className="mt-4 flex min-w-0 items-center justify-between gap-2">
+        <Link
+          pathname="/automations/:automationId"
+          options={{ pathParams: { automationId: automation.id } }}
+          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Edit
+        </Link>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
+          disabled={running}
+          onClick={runNow}
+        >
+          {running ? (
+            <IconLoader2 size={14} className="animate-spin" />
+          ) : (
+            <IconPlayerPlay size={14} stroke={1.5} />
+          )}
+          {running ? "Starting…" : "Run now"}
+        </Button>
       </div>
     </article>
   );
