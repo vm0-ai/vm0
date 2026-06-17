@@ -56,7 +56,7 @@ pub(super) async fn restore_claude_session(
     write_session_history_file(
         sandbox,
         &session_path,
-        &session.session_id,
+        &[&session.session_id],
         &session.session_history,
     )
     .await?;
@@ -159,7 +159,7 @@ pub(super) async fn restore_codex_session(
     write_session_history_file(
         sandbox,
         &session_path,
-        &session_id,
+        &[&session_id, &session.session_id],
         &session.session_history,
     )
     .await?;
@@ -251,7 +251,7 @@ fi"#;
     if result.exit_code != 0 {
         return Err(RunnerError::Internal(redact_session_restore_diagnostic(
             format_guest_exec_failure("codex session cleanup", &result),
-            session_id,
+            &[session_id],
             session_path,
         )));
     }
@@ -266,33 +266,33 @@ fi"#;
 async fn write_session_history_file(
     sandbox: &dyn Sandbox,
     session_path: &str,
-    session_id: &str,
+    session_ids: &[&str],
     session_history: &str,
 ) -> RunnerResult<()> {
     sandbox
         .write_file(session_path, session_history.as_bytes())
         .await
-        .map_err(|error| redact_session_restore_sandbox_error(error, session_id, session_path))
+        .map_err(|error| redact_session_restore_sandbox_error(error, session_ids, session_path))
 }
 
 fn redact_session_restore_sandbox_error(
     error: SandboxError,
-    session_id: &str,
+    session_ids: &[&str],
     session_path: &str,
 ) -> RunnerError {
     RunnerError::Sandbox(match error {
         SandboxError::BackendUnavailable { message } => SandboxError::BackendUnavailable {
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::Configuration { message } => SandboxError::Configuration {
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::Initialization { phase, message } => SandboxError::Initialization {
             phase,
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::Start { message } => SandboxError::Start {
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::InvalidState {
             context,
@@ -300,8 +300,8 @@ fn redact_session_restore_sandbox_error(
             message,
         } => SandboxError::InvalidState {
             context,
-            state: redact_session_restore_diagnostic(state, session_id, session_path),
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            state: redact_session_restore_diagnostic(state, session_ids, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::Operation {
             operation,
@@ -310,30 +310,32 @@ fn redact_session_restore_sandbox_error(
         } => SandboxError::Operation {
             operation,
             reason,
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::IdleTransition {
             transition,
             message,
         } => SandboxError::IdleTransition {
             transition,
-            message: redact_session_restore_diagnostic(message, session_id, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
         },
         SandboxError::Io(error) => SandboxError::Io(std::io::Error::new(
             error.kind(),
-            redact_session_restore_diagnostic(error.to_string(), session_id, session_path),
+            redact_session_restore_diagnostic(error.to_string(), session_ids, session_path),
         )),
     })
 }
 
 fn redact_session_restore_diagnostic(
     message: String,
-    session_id: &str,
+    session_ids: &[&str],
     session_path: &str,
 ) -> String {
     let mut redacted = message.replace(session_path, SESSION_PATH_SENTINEL);
-    for sensitive in session_redaction_variants(session_id) {
-        redacted = redact_session_id_variant(redacted, &sensitive);
+    for session_id in session_ids {
+        for sensitive in session_redaction_variants(session_id) {
+            redacted = redact_session_id_variant(redacted, &sensitive);
+        }
     }
     redacted
         .replace(SESSION_PATH_SENTINEL, REDACTED_SESSION_PATH)

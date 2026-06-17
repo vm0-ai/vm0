@@ -511,6 +511,45 @@ async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
 }
 
 #[tokio::test]
+async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let raw_session_id = "019e9154C30470f0ADDE36efB1be1701";
+    let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": canonical_session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write original thread {raw_session_id} with canonical {canonical_session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(raw_session_id),
+        "write failure must not echo mixed-case raw session id: {message}"
+    );
+    assert!(
+        !message.contains(canonical_session_id),
+        "write failure must not echo canonical session id: {message}"
+    );
+}
+
+#[tokio::test]
 async fn restore_session_redacts_write_file_invalid_state() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
