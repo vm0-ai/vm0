@@ -13,7 +13,17 @@ UnderbillingClass = Literal["confirmed", "risk"]
 USAGE_UNDERBILLING_LOG_TYPE = "usage_underbilling"
 USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
 _UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
-_SECRET_FIELD_MARKERS = ("token", "secret", "password", "authorization")
+_SECRET_FIELD_MARKERS = (
+    "access_key",
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "password",
+    "private_key",
+    "secret",
+    "token",
+)
 _STDERR_FIELD_KEY_MAX_CHARS = 80
 _STDERR_FIELD_VALUE_MAX_CHARS = 256
 _TRUNCATION_SUFFIX = "..."

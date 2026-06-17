@@ -128,6 +128,32 @@ def test_underbilling_stderr_fallback_redacts_secret_strings_not_boolean_flags(m
     assert "secret-token" not in message
 
 
+def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Cannot report usage event",
+            "missing_reporting_context",
+            "confirmed",
+            api_key="api-key-value",
+            access_key_id="access-key-value",
+            private_key="private-key-value",
+            credential_value="credential-value",
+            idempotency_key="diagnostic-key",
+        )
+
+    message = log.error.call_args.args[0]
+    assert "api_key=[redacted]" in message
+    assert "access_key_id=[redacted]" in message
+    assert "private_key=[redacted]" in message
+    assert "credential_value=[redacted]" in message
+    assert "idempotency_key=diagnostic-key" in message
+    assert "api-key-value" not in message
+    assert "access-key-value" not in message
+    assert "private-key-value" not in message
+    assert "credential-value" not in message
+
+
 def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):
     long_value = f"first line\n{'x' * 400}\nlast line"
 
