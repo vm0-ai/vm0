@@ -2821,6 +2821,7 @@ name = "sandbox-mock"
 version = "0.7.8"
 dependencies = [
  "async-trait",
+ "guest-contracts",
  "sandbox",
  "tokio",
  "uuid",
