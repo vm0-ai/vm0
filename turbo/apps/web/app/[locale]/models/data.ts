@@ -414,7 +414,7 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 50,
     byoKeyLabel: "MiniMax API key",
     defaultFor: ["MiniMax"],
-    comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "GLM-5.1"],
+    comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "GLM-5.2"],
     alternativeSlugs: ["kimi-k2-7-code", "claude-sonnet-4-6"],
   }),
 
