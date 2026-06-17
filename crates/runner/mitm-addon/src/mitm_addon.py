@@ -53,14 +53,13 @@ import response_streaming
 import usage
 from auth import (
     FirewallAuthHandlingResult,
-    clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
     mark_auth_base_request_length_required,
     mark_auth_base_request_too_large,
     prepare_firewall_metadata,
-    request_force_refresh,
 )
+from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,

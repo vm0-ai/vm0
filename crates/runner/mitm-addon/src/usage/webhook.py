@@ -16,8 +16,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
-from auth import make_api_request
 from logging_utils import log_proxy_entry
+from platform_api import make_api_request
 
 from .counters import decrement_pending_reports, increment_pending_reports
 

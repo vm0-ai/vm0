@@ -24,8 +24,8 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
-from auth import get_api_url
 from logging_utils import log_proxy_entry
+from platform_api import get_api_url
 
 from ..buffer import (
     UsageEvent,

@@ -11,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import auth
+import firewall_auth_cache as auth_cache
+import firewall_auth_client as auth_client
 import matching
+import platform_api
 from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
@@ -51,9 +54,9 @@ def _auth_success(
     base: str | None = None,
     query: dict[str, str] | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
-) -> auth._FirewallAuthSuccess:
-    return auth._FirewallAuthSuccess(
-        payload=auth._FirewallAuthPayload(
+) -> auth_client.FirewallAuthSuccess:
+    return auth_client.FirewallAuthSuccess(
+        payload=auth_client.FirewallAuthPayload(
             headers=headers,
             resolved_secrets=resolved_secrets or [],
             base=base,
@@ -190,8 +193,8 @@ class TestGetFirewallHeaders:
         auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
 
         mock_fetch = AsyncMock(return_value=mock_result)
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz"
             )
 
@@ -223,8 +226,8 @@ class TestGetFirewallHeaders:
         set_cached_headers(cache_key, headers=cached_headers)
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -243,8 +246,8 @@ class TestGetFirewallHeaders:
         )
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -265,8 +268,8 @@ class TestGetFirewallHeaders:
         mock_result = _auth_success(headers=fresh_headers, expires_at=time.time() + 3600)
 
         mock_fetch = AsyncMock(return_value=mock_result)
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -284,8 +287,8 @@ class TestGetFirewallHeaders:
         set_cached_headers(cache_key, headers=cached_headers, expires_at=None)
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -299,8 +302,8 @@ class TestGetFirewallHeaders:
         set_cached_headers(cache_key, headers=cached_headers, expires_at=time.time() + 30)
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1",
                 "api-1",
                 "iv:tag:data",
@@ -326,7 +329,7 @@ class TestGetFirewallHeaders:
         ],
     )
     def test_expiry_validation_rejects_invalid_values(self, expiry, now):
-        assert auth._has_valid_expiry(expiry, now=now) is False
+        assert auth_cache._has_valid_expiry(expiry, now=now) is False
 
     @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
     async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
@@ -339,8 +342,8 @@ class TestGetFirewallHeaders:
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_fetch = AsyncMock(return_value=_auth_success(headers=fresh_headers, expires_at=None))
 
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -361,8 +364,8 @@ class TestGetFirewallHeaders:
             return_value=_auth_success(headers=fresh_headers, expires_at=expires_at)
         )
 
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1",
                 "api-1",
                 "iv:tag:data",
@@ -389,8 +392,8 @@ class TestGetFirewallHeaders:
             return_value=_auth_success(headers=fresh_headers, expires_at=time.time() + 30)
         )
 
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            headers = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            headers = await auth_cache.get_firewall_headers(
                 "run-1",
                 "api-1",
                 "iv:tag:data",
@@ -424,10 +427,10 @@ class TestGetFirewallHeaders:
         )
 
         with (
-            patch.object(auth, "fetch_firewall_headers", mock_fetch),
-            pytest.raises(auth.InvalidBillableAuthExpiryError),
+            patch.object(auth_cache, "fetch_firewall_headers", mock_fetch),
+            pytest.raises(auth_cache.InvalidBillableAuthExpiryError),
         ):
-            await auth.get_firewall_headers(
+            await auth_cache.get_firewall_headers(
                 "run-1",
                 "api-1",
                 "iv:tag:data",
@@ -449,8 +452,10 @@ class TestGetFirewallHeaders:
         )
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            result = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         assert result["cache_hit"] is True
@@ -468,9 +473,13 @@ class TestGetFirewallHeaders:
             )
         )
 
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
-            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            first = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
+            second = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert first["query"] == cached_query
         assert first["cache_hit"] is False
@@ -492,9 +501,13 @@ class TestGetFirewallHeaders:
             )
         )
 
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
-            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            first = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
+            second = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert first["base"] == cached_base
         assert first["query"] == cached_query
@@ -518,8 +531,10 @@ class TestGetFirewallHeaders:
         )
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            result = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert "base" not in result
         assert result["cache_hit"] is True
@@ -533,8 +548,8 @@ class TestGetFirewallHeaders:
         before = time.time()
 
         mock_fetch = AsyncMock(return_value=_auth_success(headers={"Authorization": "Bearer new"}))
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            await auth_cache.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         # force_refresh kwarg must be True
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
@@ -551,10 +566,10 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock(side_effect=ConnectionError("server unreachable"))
         with (
-            patch.object(auth, "fetch_firewall_headers", mock_fetch),
+            patch.object(auth_cache, "fetch_firewall_headers", mock_fetch),
             pytest.raises(ConnectionError),
         ):
-            await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            await auth_cache.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
         assert not force_refresh_pending(cache_key)
@@ -578,13 +593,13 @@ class TestGetFirewallHeaders:
                 expires_at=time.time() + 3600,
             )
 
-        with patch.object(auth, "fetch_firewall_headers", side_effect=delayed_fetch):
+        with patch.object(auth_cache, "fetch_firewall_headers", side_effect=delayed_fetch):
             task = asyncio.create_task(
-                auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+                auth_cache.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
             )
             try:
                 await asyncio.wait_for(fetch_entered.wait(), timeout=5)
-                auth.request_force_refresh(cache_key)
+                auth_cache.request_force_refresh(cache_key)
                 allow_fetch_return.set()
                 result = await task
             finally:
@@ -603,8 +618,8 @@ class TestGetFirewallHeaders:
         )
         before_forced = time.time()
 
-        with patch.object(auth, "fetch_firewall_headers", forced_fetch):
-            forced_result = await auth.get_firewall_headers(
+        with patch.object(auth_cache, "fetch_firewall_headers", forced_fetch):
+            forced_result = await auth_cache.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -637,17 +652,19 @@ class TestGetFirewallHeaders:
                 expires_at=time.time() + 3600,
             )
 
-        with patch.object(auth, "fetch_firewall_headers", side_effect=fetch_with_blocked_leader):
+        with patch.object(
+            auth_cache, "fetch_firewall_headers", side_effect=fetch_with_blocked_leader
+        ):
             leader = asyncio.create_task(
-                auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+                auth_cache.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
             )
             waiter = None
             try:
                 await asyncio.wait_for(first_fetch_entered.wait(), timeout=5)
                 waiter = asyncio.create_task(
-                    auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+                    auth_cache.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
                 )
-                auth.request_force_refresh(cache_key)
+                auth_cache.request_force_refresh(cache_key)
                 allow_first_fetch_return.set()
                 leader_result, waiter_result = await asyncio.gather(leader, waiter)
             finally:
@@ -666,8 +683,8 @@ class TestGetFirewallHeaders:
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
         mock_fetch = AsyncMock(return_value=_auth_success(headers={}))
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            await auth.get_firewall_headers("run-1", "api-2", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            await auth_cache.get_firewall_headers("run-1", "api-2", "iv:tag:data", {}, "tok-xyz")
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is False
         # No consume timestamp written when force-refresh didn't happen
@@ -685,8 +702,10 @@ class TestGetFirewallHeaders:
         mark_force_refresh(cache_key)
 
         mock_fetch = AsyncMock()
-        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
-            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            result = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
@@ -952,7 +971,7 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=Exception("API unreachable")),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1000,7 +1019,7 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
 
         with (
-            patch("auth.urllib.request.urlopen", side_effect=network_error),
+            patch("firewall_auth_client.urllib.request.urlopen", side_effect=network_error),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1038,7 +1057,7 @@ class TestHandleFirewallRequest:
         mock_resp.read.return_value = b"not-json"
 
         with (
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1078,11 +1097,11 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                auth,
+                auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
             ),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1121,7 +1140,7 @@ class TestHandleFirewallRequest:
         mock_resp = _json_response({"headers": []})
 
         with (
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1147,7 +1166,7 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry()
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
-        api_error = auth.FirewallAuthApiError(
+        api_error = auth_client.FirewallAuthApiError(
             status=502,
             code="TOKEN_REFRESH_FAILED",
             message="Access token expired and refresh failed for: codex-oauth-token.",
@@ -1162,7 +1181,7 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=api_error),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1190,7 +1209,7 @@ class TestHandleFirewallRequest:
         )
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
-        api_error = auth.FirewallAuthApiError(
+        api_error = auth_client.FirewallAuthApiError(
             status=403,
             code="FORBIDDEN",
             message="Firewall auth denied",
@@ -1231,7 +1250,7 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                auth,
+                auth_cache,
                 "fetch_firewall_headers",
                 AsyncMock(
                     return_value=_auth_success(
@@ -1305,13 +1324,13 @@ class TestHandleFirewallRequest:
                 auth,
                 "get_firewall_headers",
                 AsyncMock(
-                    side_effect=auth.ConnectorNotConfiguredError(
+                    side_effect=auth_client.ConnectorNotConfiguredError(
                         "Connector not configured",
                     )
                 ),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1338,10 +1357,10 @@ class TestHandleFirewallRequest:
             patch.object(
                 auth,
                 "get_firewall_headers",
-                AsyncMock(side_effect=auth.InsufficientCreditsError("Insufficient credits")),
+                AsyncMock(side_effect=auth_client.InsufficientCreditsError("Insufficient credits")),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1371,13 +1390,13 @@ class TestHandleFirewallRequest:
                 auth,
                 "get_firewall_headers",
                 AsyncMock(
-                    side_effect=auth.ConnectorNotConfiguredError(
+                    side_effect=auth_client.ConnectorNotConfiguredError(
                         "Connector not configured",
                     )
                 ),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1404,13 +1423,13 @@ class TestHandleFirewallRequest:
                 auth,
                 "get_firewall_headers",
                 AsyncMock(
-                    side_effect=auth.ConnectorNotConfiguredError(
+                    side_effect=auth_client.ConnectorNotConfiguredError(
                         "Connector not configured",
                     )
                 ),
             ),
             mitm_ctx(),
-            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
@@ -1451,8 +1470,8 @@ class TestHandleFirewallRequest:
 
 class TestMakeApiRequest:
     def test_builds_platform_api_request_with_standard_headers(self):
-        with patch.object(auth, "VERCEL_BYPASS", ""):
-            req = auth.make_api_request(
+        with patch.object(platform_api, "VERCEL_BYPASS", ""):
+            req = platform_api.make_api_request(
                 "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
                 b"{}",
                 "tok-xyz",
@@ -1479,7 +1498,7 @@ class TestMakeApiRequest:
     )
     def test_rejects_non_absolute_http_urls(self, url: str):
         with pytest.raises(ValueError, match="absolute http"):
-            auth.make_api_request(url, b"{}", "tok-xyz")
+            platform_api.make_api_request(url, b"{}", "tok-xyz")
 
 
 class TestFetchFirewallHeaders:
@@ -1490,9 +1509,9 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth.fetch_firewall_headers(
+            result = await auth_client.fetch_firewall_headers(
                 "iv:tag:data",
                 {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
                 "tok-xyz",
@@ -1542,9 +1561,9 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            result = await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert result.payload.headers == {
             "Authorization": "Bearer tok",
@@ -1570,9 +1589,9 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            await auth.fetch_firewall_headers(
+            await auth_client.fetch_firewall_headers(
                 "iv:tag:data",
                 {},
                 "tok-xyz",
@@ -1614,19 +1633,19 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", "secret-bypass-value"),
+            patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert endpoint.requests[0].headers["x-vercel-protection-bypass"] == "secret-bypass-value"
 
     async def test_invalid_api_url_raises_before_urlopen(self):
         with (
-            patch.object(auth, "get_api_url", return_value="file:///etc/passwd"),
-            patch("auth.urllib.request.urlopen") as mock_urlopen,
+            patch.object(platform_api, "get_api_url", return_value="file:///etc/passwd"),
+            patch("firewall_auth_client.urllib.request.urlopen") as mock_urlopen,
             pytest.raises(ValueError, match="absolute http"),
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         mock_urlopen.assert_not_called()
 
@@ -1646,10 +1665,10 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
-                await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            with pytest.raises(auth_client.ConnectorNotConfiguredError) as exc_info:
+                await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
             assert "Connector not configured" in str(exc_info.value)
 
     async def test_402_insufficient_credits_raises_custom_error(self, mitm_ctx):
@@ -1667,10 +1686,10 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            with pytest.raises(auth.InsufficientCreditsError) as exc_info:
-                await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            with pytest.raises(auth_client.InsufficientCreditsError) as exc_info:
+                await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
             assert "Insufficient credits" in str(exc_info.value)
 
     @pytest.mark.parametrize(
@@ -1748,10 +1767,10 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(auth_client.FirewallAuthApiError) as exc_info,
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert exc_info.value.status == status
         assert exc_info.value.code == code
@@ -1775,14 +1794,14 @@ class TestFetchFirewallHeaders:
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(
-                auth,
+                auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(error_body),
             ),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(auth_client.FirewallAuthApiError) as exc_info,
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
 
@@ -1802,17 +1821,17 @@ class TestFetchFirewallHeaders:
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(
-                auth,
+                auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(error_body) - 1,
             ),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(
-                auth.FirewallAuthResponseTooLargeError,
+                auth_client.FirewallAuthResponseTooLargeError,
                 match="Firewall auth response body too large",
             ),
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
     @pytest.mark.parametrize(
         "error_body",
@@ -1838,10 +1857,10 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert exc_info.value.code == 400
 
@@ -1851,13 +1870,13 @@ class TestFetchFirewallHeaders:
             (
                 "CONNECTOR_NOT_CONFIGURED",
                 424,
-                auth.ConnectorNotConfiguredError,
+                auth_client.ConnectorNotConfiguredError,
                 "Connector not configured",
             ),
             (
                 "INSUFFICIENT_CREDITS",
                 402,
-                auth.InsufficientCreditsError,
+                auth_client.InsufficientCreditsError,
                 "Insufficient credits",
             ),
         ],
@@ -1884,10 +1903,10 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(exception_type) as exc_info,
         ):
-            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            await auth_client.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
 
         assert str(exc_info.value) == default_message
 
@@ -1898,9 +1917,9 @@ class TestFetchFirewallHeaders:
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
+            result = await auth_client.fetch_firewall_headers("enc", {}, "sandbox-tok")
 
         assert result.payload.headers == {"Auth": "tok"}
         assert endpoint.requests[0].path == "/api/webhooks/agent/firewall/auth"
@@ -1933,7 +1952,7 @@ class TestFirewallAuthSuccessParser:
     )
     def test_malformed_success_response_shape_raises_value_error(self, body: object):
         with pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX):
-            auth._parse_firewall_auth_success(body)
+            auth_client._parse_firewall_auth_success(body)
 
 
 class TestFirewallAuthResponseBodyReader:
@@ -1941,8 +1960,8 @@ class TestFirewallAuthResponseBodyReader:
         response_body = json.dumps({"headers": {}}).encode()
         mock_resp = _raw_response(response_body)
 
-        with patch.object(auth, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body)):
-            assert auth._read_firewall_auth_response_body(mock_resp) == response_body
+        with patch.object(auth_client, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body)):
+            assert auth_client._read_firewall_auth_response_body(mock_resp) == response_body
 
         mock_resp.read.assert_called_once_with(len(response_body) + 1)
 
@@ -1951,13 +1970,15 @@ class TestFirewallAuthResponseBodyReader:
         mock_resp = _raw_response(response_body)
 
         with (
-            patch.object(auth, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body) - 1),
+            patch.object(
+                auth_client, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body) - 1
+            ),
             pytest.raises(
-                auth.FirewallAuthResponseTooLargeError,
+                auth_client.FirewallAuthResponseTooLargeError,
                 match="Firewall auth response body too large",
             ),
         ):
-            auth._read_firewall_auth_response_body(mock_resp)
+            auth_client._read_firewall_auth_response_body(mock_resp)
 
         mock_resp.read.assert_called_once_with(len(response_body))
 
@@ -1970,11 +1991,13 @@ class TestFetchFirewallHeadersResourceBoundary:
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
         with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+            auth_client._fetch_firewall_headers_sync(
+                "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+            )
 
         mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
@@ -1989,12 +2012,14 @@ class TestFetchFirewallHeadersResourceBoundary:
         http_error.close = MagicMock()
 
         with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+            auth_client._fetch_firewall_headers_sync(
+                "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+            )
 
         assert exc_info.value is http_error
         http_error.close.assert_called_once()
@@ -2018,19 +2043,21 @@ class TestFetchFirewallHeadersResourceBoundary:
 
         with (
             patch.object(
-                auth,
+                auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(error_body) - 1,
             ),
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(
-                auth.FirewallAuthResponseTooLargeError,
+                auth_client.FirewallAuthResponseTooLargeError,
                 match="Firewall auth response body too large",
             ),
         ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+            auth_client._fetch_firewall_headers_sync(
+                "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+            )
 
         http_error.close.assert_called_once()
 
@@ -2046,7 +2073,7 @@ class TestFetchFirewallHeadersResourceBoundary:
                         }
                     }
                 ).encode(),
-                auth.FirewallAuthApiError,
+                auth_client.FirewallAuthApiError,
             ),
             (b"{}", urllib.error.HTTPError),
         ],
@@ -2064,11 +2091,13 @@ class TestFetchFirewallHeadersResourceBoundary:
         http_error.close = MagicMock()
 
         with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(expected_exception),
         ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+            auth_client._fetch_firewall_headers_sync(
+                "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+            )
 
         http_error.close.assert_called_once()  # urllib external boundary (#9991)
