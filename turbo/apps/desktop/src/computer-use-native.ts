@@ -149,6 +149,7 @@ interface RunComputerUseHelperOptions {
   readonly helperPath?: string;
   readonly mode?: "serve" | "oneshot";
   readonly requestTimeoutMs?: number;
+  readonly onRuntimeError?: ComputerUseNativeRuntimeErrorReporter;
 }
 
 export class ComputerUseNativeHelperError extends Error {
@@ -160,6 +161,21 @@ export class ComputerUseNativeHelperError extends Error {
     this.name = "ComputerUseNativeHelperError";
   }
 }
+
+export interface ComputerUseNativeRuntimeErrorContext {
+  readonly helperPath: string;
+  readonly mode: "serve" | "oneshot";
+  readonly requestKind: string;
+  readonly stage: "spawn" | "exit" | "timeout" | "write" | "protocol";
+  readonly exitCode?: number | null;
+  readonly signal?: NodeJS.Signals | null;
+  readonly stderr?: string;
+}
+
+type ComputerUseNativeRuntimeErrorReporter = (
+  error: Error,
+  context: ComputerUseNativeRuntimeErrorContext,
+) => void;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -211,6 +227,15 @@ function parseHelperResponse(output: string): ComputerUseNativeResponse {
     "accessibility_unavailable",
     "Native Computer Use helper returned an invalid response status",
   );
+}
+
+function runtimeErrorFromUnknown(error: unknown): Error {
+  return error instanceof Error
+    ? error
+    : new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        String(error),
+      );
 }
 
 function resultRecord(result: unknown, kind: string): Record<string, unknown> {
@@ -368,6 +393,7 @@ async function runComputerUseHelper(
     });
     let stdout = "";
     let stderr = "";
+    let childHadError = false;
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -378,36 +404,83 @@ async function runComputerUseHelper(
       stderr += chunk;
     });
     child.on("error", (error) => {
-      reject(
-        new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          `Unable to start native Computer Use helper: ${error.message}`,
-        ),
+      childHadError = true;
+      const helperError = new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        `Unable to start native Computer Use helper: ${error.message}`,
       );
+      options.onRuntimeError?.(helperError, {
+        helperPath,
+        mode: "oneshot",
+        requestKind: request.kind,
+        stage: "spawn",
+      });
+      reject(helperError);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
+      if (childHadError) {
+        return;
+      }
       if (code !== 0) {
+        const helperError = new ComputerUseNativeHelperError(
+          "accessibility_unavailable",
+          stderr.trim() ||
+            `Native Computer Use helper exited with status ${code ?? "null"}`,
+        );
+        options.onRuntimeError?.(helperError, {
+          helperPath,
+          mode: "oneshot",
+          requestKind: request.kind,
+          stage: "exit",
+          exitCode: code,
+          signal,
+          stderr: stderr.trim(),
+        });
+        reject(helperError);
+        return;
+      }
+
+      const response = (() => {
+        try {
+          return parseHelperResponse(stdout.trim());
+        } catch (error) {
+          const helperError = runtimeErrorFromUnknown(error);
+          options.onRuntimeError?.(helperError, {
+            helperPath,
+            mode: "oneshot",
+            requestKind: request.kind,
+            stage: "protocol",
+            stderr: stderr.trim(),
+          });
+          reject(helperError);
+          return null;
+        }
+      })();
+      if (!response) {
+        return;
+      }
+      if (response.status === "failed") {
         reject(
           new ComputerUseNativeHelperError(
-            "accessibility_unavailable",
-            stderr.trim() ||
-              `Native Computer Use helper exited with status ${code ?? "null"}`,
+            responseErrorCode(response.error?.code),
+            responseErrorMessage(response.error?.message),
           ),
         );
         return;
       }
 
       try {
-        const response = parseHelperResponse(stdout.trim());
-        if (response.status === "failed") {
-          throw new ComputerUseNativeHelperError(
-            responseErrorCode(response.error?.code),
-            responseErrorMessage(response.error?.message),
-          );
-        }
         resolve(resultRecord(response.result ?? {}, request.kind));
       } catch (error) {
-        reject(error);
+        const helperError = runtimeErrorFromUnknown(error);
+        options.onRuntimeError?.(helperError, {
+          helperPath,
+          mode: "oneshot",
+          requestKind: request.kind,
+          stage: "protocol",
+          stderr: stderr.trim(),
+        });
+        reject(helperError);
       }
     });
 
@@ -451,6 +524,9 @@ class ComputerUseNativeRuntimeClient {
   constructor(
     private readonly helperPath: string,
     private readonly requestTimeoutMs: number,
+    private readonly onRuntimeError:
+      | ComputerUseNativeRuntimeErrorReporter
+      | undefined,
   ) {}
 
   request(request: ComputerUseNativeRequest): Promise<Record<string, unknown>> {
@@ -490,12 +566,16 @@ class ComputerUseNativeRuntimeClient {
           this.child = null;
         }
         child.kill("SIGKILL");
-        reject(
-          new ComputerUseNativeHelperError(
-            "accessibility_unavailable",
-            `Native Computer Use runtime timed out running ${request.kind}`,
-          ),
+        const helperError = new ComputerUseNativeHelperError(
+          "accessibility_unavailable",
+          `Native Computer Use runtime timed out running ${request.kind}`,
         );
+        this.reportRuntimeError(helperError, {
+          mode: "serve",
+          requestKind: request.kind,
+          stage: "timeout",
+        });
+        reject(helperError);
       }, this.requestTimeoutMs);
       this.pending.set(id, {
         kind: request.kind,
@@ -513,12 +593,16 @@ class ComputerUseNativeRuntimeClient {
         (error) => {
           if (error && this.pending.delete(id)) {
             clearTimeout(timer);
-            reject(
-              new ComputerUseNativeHelperError(
-                "accessibility_unavailable",
-                `Unable to write to native Computer Use runtime: ${error.message}`,
-              ),
+            const helperError = new ComputerUseNativeHelperError(
+              "accessibility_unavailable",
+              `Unable to write to native Computer Use runtime: ${error.message}`,
             );
+            this.reportRuntimeError(helperError, {
+              mode: "serve",
+              requestKind: request.kind,
+              stage: "write",
+            });
+            reject(helperError);
           }
         },
       );
@@ -561,15 +645,20 @@ class ComputerUseNativeRuntimeClient {
     });
     child.on("error", (error) => {
       if (this.child === child && !this.closed) {
-        this.rejectAll(
-          new ComputerUseNativeHelperError(
-            "accessibility_unavailable",
-            `Unable to start native Computer Use runtime: ${error.message}`,
-          ),
+        this.child = null;
+        const helperError = new ComputerUseNativeHelperError(
+          "accessibility_unavailable",
+          `Unable to start native Computer Use runtime: ${error.message}`,
         );
+        this.reportRuntimeError(helperError, {
+          mode: "serve",
+          requestKind: "runtime",
+          stage: "spawn",
+        });
+        this.rejectAll(helperError);
       }
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       // A helper we already replaced (e.g. after a timeout kill) closes with its
       // pending request already settled; ignore it so we neither clear the new
       // child reference nor reject the request now running on the new child.
@@ -578,13 +667,20 @@ class ComputerUseNativeRuntimeClient {
       }
       this.child = null;
       if (!this.closed) {
-        this.rejectAll(
-          new ComputerUseNativeHelperError(
-            "accessibility_unavailable",
-            this.stderr.trim() ||
-              `Native Computer Use runtime exited with status ${code ?? "null"}`,
-          ),
+        const helperError = new ComputerUseNativeHelperError(
+          "accessibility_unavailable",
+          this.stderr.trim() ||
+            `Native Computer Use runtime exited with status ${code ?? "null"}`,
         );
+        this.reportRuntimeError(helperError, {
+          mode: "serve",
+          requestKind: "runtime",
+          stage: "exit",
+          exitCode: code,
+          signal,
+          stderr: this.stderr.trim(),
+        });
+        this.rejectAll(helperError);
       }
     });
     return child;
@@ -606,6 +702,7 @@ class ComputerUseNativeRuntimeClient {
   }
 
   private handleResponseLine(line: string): void {
+    let requestKind = "runtime";
     try {
       const parsed = JSON.parse(line) as unknown;
       if (!isRecord(parsed) || typeof parsed.id !== "string") {
@@ -618,6 +715,7 @@ class ComputerUseNativeRuntimeClient {
       if (!pending) {
         return;
       }
+      requestKind = pending.kind;
       this.pending.delete(parsed.id);
       const response = parseHelperResponse(line);
       if (response.status === "failed") {
@@ -631,15 +729,25 @@ class ComputerUseNativeRuntimeClient {
       }
       pending.resolve(resultRecord(response.result ?? {}, pending.kind));
     } catch (error) {
-      const helperError =
-        error instanceof Error
-          ? error
-          : new ComputerUseNativeHelperError(
-              "accessibility_unavailable",
-              String(error),
-            );
+      const helperError = runtimeErrorFromUnknown(error);
+      this.reportRuntimeError(helperError, {
+        mode: "serve",
+        requestKind,
+        stage: "protocol",
+        stderr: this.stderr.trim(),
+      });
       this.rejectAll(helperError);
     }
+  }
+
+  private reportRuntimeError(
+    error: Error,
+    context: Omit<ComputerUseNativeRuntimeErrorContext, "helperPath">,
+  ): void {
+    this.onRuntimeError?.(error, {
+      ...context,
+      helperPath: this.helperPath,
+    });
   }
 
   private rejectAll(error: Error): void {
@@ -660,6 +768,7 @@ export function createComputerUseNativeBackend(
       : new ComputerUseNativeRuntimeClient(
           helperPath,
           options.requestTimeoutMs ?? DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS,
+          options.onRuntimeError,
         );
   const run = async (
     request: ComputerUseNativeRequest,

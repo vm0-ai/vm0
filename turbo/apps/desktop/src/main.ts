@@ -1,3 +1,4 @@
+import { captureDesktopNativeHelperError } from "./sentry-main";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -127,7 +128,9 @@ const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
-const computerUseNativeBackend = createComputerUseNativeBackend();
+const computerUseNativeBackend = createComputerUseNativeBackend({
+  onRuntimeError: captureDesktopNativeHelperError,
+});
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
 const computerUseAutoStart = new DesktopComputerUseAutoStartSupervisor({
   getState: getComputerUseBridgeState,

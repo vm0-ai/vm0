@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +29,49 @@ process.stdin.resume();
 process.stdin.on("data", () => {});
 process.stdin.on("end", () => {
   process.stdout.write(${JSON.stringify(`${JSON.stringify(response)}\n`)});
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath };
+}
+
+async function createRawOutputHelper(
+  output: string,
+): Promise<{ readonly dir: string; readonly helperPath: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+process.stdin.resume();
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  process.stdout.write(${JSON.stringify(output)});
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath };
+}
+
+async function createExitHelper({
+  code,
+  stderr,
+}: {
+  readonly code: number;
+  readonly stderr: string;
+}): Promise<{ readonly dir: string; readonly helperPath: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+process.stdin.resume();
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  process.stderr.write(${JSON.stringify(stderr)});
+  process.exit(${code.toString()});
 });
 `,
   );
@@ -533,6 +576,88 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("does not report expected helper failures", async () => {
+    const helper = await createHelper({
+      status: "failed",
+      error: { code: "app_open_failed", message: "Unable to open Things" },
+    });
+    const onRuntimeError = vi.fn();
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+        onRuntimeError,
+      });
+
+      await expect(backend.openApp("Things")).rejects.toMatchObject({
+        code: "app_open_failed",
+      });
+      expect(onRuntimeError).not.toHaveBeenCalled();
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports invalid one-shot helper protocol responses", async () => {
+    const helper = await createRawOutputHelper("not-json\n");
+    const onRuntimeError = vi.fn();
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+        onRuntimeError,
+      });
+
+      await expect(backend.listApps()).rejects.toBeInstanceOf(Error);
+      expect(onRuntimeError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          helperPath: helper.helperPath,
+          mode: "oneshot",
+          requestKind: "apps.list",
+          stage: "protocol",
+        }),
+      );
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports one-shot helper process exits", async () => {
+    const helper = await createExitHelper({
+      code: 2,
+      stderr: "helper crashed",
+    });
+    const onRuntimeError = vi.fn();
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+        onRuntimeError,
+      });
+
+      await expect(backend.openApp("Things")).rejects.toMatchObject({
+        message: "helper crashed",
+      });
+      expect(onRuntimeError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          helperPath: helper.helperPath,
+          mode: "oneshot",
+          requestKind: "app.open",
+          stage: "exit",
+          exitCode: 2,
+          stderr: "helper crashed",
+        }),
+      );
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("uses a session runtime for multiple commands in one helper process", async () => {
     const helper = await createSessionHelper();
     const backend = createComputerUseNativeBackend({
@@ -714,12 +839,14 @@ describe("computer use native backend", () => {
 
   it("recovers by respawning the helper after a request times out", async () => {
     const helper = await createConcurrencyHelper(20);
+    const onRuntimeError = vi.fn();
     // Generous enough that a legitimate request (which must cold-start a fresh
     // helper process after the kill) never trips it, while the never-answered
     // "HANG" request always does.
     const backend = createComputerUseNativeBackend({
       helperPath: helper.helperPath,
-      requestTimeoutMs: 600,
+      requestTimeoutMs: 2_000,
+      onRuntimeError,
     });
 
     try {
@@ -734,6 +861,15 @@ describe("computer use native backend", () => {
         .trim()
         .split("\n");
       expect(starts).toHaveLength(2);
+      expect(onRuntimeError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          helperPath: helper.helperPath,
+          mode: "serve",
+          requestKind: "app.open",
+          stage: "timeout",
+        }),
+      );
     } finally {
       backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
