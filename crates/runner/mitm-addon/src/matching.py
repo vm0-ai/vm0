@@ -1776,11 +1776,32 @@ def _unique_query_value(query_pairs: list[tuple[str, str]], name: str) -> str | 
     return values[0]
 
 
+def _content_length_may_have_body(headers: tuple[tuple[str, str], ...] | None) -> bool:
+    if headers is None:
+        return False
+    for name, value in headers:
+        if name.lower() != "content-length":
+            continue
+        for part in value.split(","):
+            stripped = part.strip(" \t")
+            if not stripped or not stripped.isascii() or not stripped.isdecimal():
+                return True
+            if int(stripped) > 0:
+                return True
+    return False
+
+
 def _form_action_values(
     headers: tuple[tuple[str, str], ...] | None,
     body: bytes | None,
 ) -> _AwsFormActionResult:
+    if body is None:
+        if _has_header(headers, "transfer-encoding") or _content_length_may_have_body(headers):
+            return _AwsFormActionResult([], False)
+        return _AwsFormActionResult([], True)
     if not body:
+        if _content_length_may_have_body(headers):
+            return _AwsFormActionResult([], False)
         return _AwsFormActionResult([], True)
     content_types = (
         []
