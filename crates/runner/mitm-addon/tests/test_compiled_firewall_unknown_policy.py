@@ -147,7 +147,7 @@ def test_compiled_blocks_unsafe_path_consumed_by_parameterized_base():
     assert compiled.path == "/admin"
 
 
-def test_compiled_reuses_safe_path_scan_for_multiple_base_matches(monkeypatch):
+def _same_base_read_write_firewall():
     first_api_entry = {
         "base": "https://api.example.com",
         "auth": {"headers": {"Authorization": "Bearer first"}},
@@ -168,26 +168,59 @@ def test_compiled_reuses_safe_path_scan_for_multiple_base_matches(monkeypatch):
         name="example",
     )
     policies = {"example": {"allow": ["read", "write"], "deny": [], "unknownPolicy": "allow"}}
-    calls: list[str] = []
+
+    return first_api_entry, second_api_entry, compile_firewalls_or_fail(fws), policies
+
+
+def test_compiled_caches_safe_path_scan_for_multiple_base_matches(monkeypatch):
+    first_api_entry, _, compiled_firewalls, policies = _same_base_read_write_firewall()
+    scan_count = 0
     original_has_unsafe_path = matching.has_unsafe_path
 
     def counting_has_unsafe_path(path: str) -> bool:
-        calls.append(path)
+        nonlocal scan_count
+        scan_count += 1
         return original_has_unsafe_path(path)
 
+    # Narrow performance-contract guard for #17198: the normal allow/block result
+    # does not show whether overlapping base matches rescan the same safe path.
     monkeypatch.setattr(matching, "has_unsafe_path", counting_has_unsafe_path)
+
+    no_match = matching.match_compiled_firewall_request(
+        "https://other.example.com/items/123",
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+    assert no_match is None
+    assert scan_count == 0
 
     result = matching.match_compiled_firewall_request(
         "https://api.example.com/items/123",
         "GET",
-        compile_firewalls_or_fail(fws),
+        compiled_firewalls,
         policies,
     )
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry is first_api_entry
     assert result.permission == "read"
-    assert calls == ["/items/123"]
+    assert scan_count == 1
+
+
+def test_compiled_same_base_later_api_entry_can_allow_matching_method():
+    _, second_api_entry, compiled_firewalls, policies = _same_base_read_write_firewall()
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/items/123",
+        "POST",
+        compiled_firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.api_entry is second_api_entry
+    assert result.permission == "write"
 
 
 def test_compiled_matches_unknown_policy_when_permissions_are_omitted():
