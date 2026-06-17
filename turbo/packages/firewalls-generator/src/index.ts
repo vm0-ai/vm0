@@ -533,9 +533,11 @@ async function main(): Promise<void> {
       console.error(`\n=== ${name} ===`);
       await gen();
     }
-  }
 
-  await generateFirewallMetadata();
+    // Metadata summarizes the complete generated registry, so only rebuild it
+    // after every registered firewall has been regenerated.
+    await generateFirewallMetadata();
+  }
 
   console.error("\nDone.");
 }
