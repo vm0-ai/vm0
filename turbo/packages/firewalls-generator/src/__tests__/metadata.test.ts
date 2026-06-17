@@ -9,6 +9,9 @@ function staticValueImportSpecifiers(source: string): string[] {
   )) {
     specifiers.push(match[1]!);
   }
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
   return specifiers;
 }
 
