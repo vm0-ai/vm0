@@ -27,6 +27,7 @@ pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::ClaudeResultSummary;
 
+use crate::active_input::{ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
@@ -47,54 +48,73 @@ use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
-use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[derive(serde::Serialize)]
-struct ClaudeInitialPromptFrame<'a> {
+struct ClaudeUserFrame<'a> {
     #[serde(rename = "type")]
     event_type: &'static str,
     uuid: String,
     parent_tool_use_id: Option<&'static str>,
-    message: ClaudeInitialPromptMessage<'a>,
+    message: ClaudeUserMessage<'a>,
 }
 
 #[derive(serde::Serialize)]
-struct ClaudeInitialPromptMessage<'a> {
+struct ClaudeUserMessage<'a> {
     role: &'static str,
     content: &'a str,
 }
 
-fn claude_initial_prompt_uuid(run_id: &str) -> String {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_OID,
-        format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
-    )
-    .to_string()
-}
-
-fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeInitialPromptFrame<'a> {
-    ClaudeInitialPromptFrame {
+fn claude_user_frame<'a>(uuid: &str, text: &'a str) -> ClaudeUserFrame<'a> {
+    ClaudeUserFrame {
         event_type: "user",
-        uuid: claude_initial_prompt_uuid(run_id),
+        uuid: uuid.to_owned(),
         parent_tool_use_id: None,
-        message: ClaudeInitialPromptMessage {
+        message: ClaudeUserMessage {
             role: "user",
-            content: prompt,
+            content: text,
         },
     }
 }
 
-async fn write_claude_initial_prompt_to_stdin(
-    mut stdin: tokio::process::ChildStdin,
-    run_id: &str,
-    prompt: &str,
+#[cfg(test)]
+fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeUserFrame<'a> {
+    let uuid = crate::active_input::claude_initial_prompt_uuid(run_id);
+    claude_user_frame(&uuid, prompt)
+}
+
+async fn write_claude_user_frame_to_stdin(
+    stdin: &mut tokio::process::ChildStdin,
+    uuid: &str,
+    text: &str,
 ) -> Result<(), AgentError> {
-    let mut line = serde_json::to_vec(&claude_initial_prompt_frame(run_id, prompt))?;
+    let mut line = serde_json::to_vec(&claude_user_frame(uuid, text))?;
     line.push(b'\n');
     stdin.write_all(&line).await?;
     stdin.flush().await?;
+    Ok(())
+}
+
+async fn write_claude_stream_json_to_stdin(
+    mut stdin: tokio::process::ChildStdin,
+    run_id: &str,
+    prompt: &str,
+    mut active_input: ActiveInputWriter,
+) -> Result<(), AgentError> {
+    let initial_uuid = crate::active_input::claude_initial_prompt_uuid(run_id);
+    write_claude_user_frame_to_stdin(&mut stdin, &initial_uuid, prompt).await?;
+    if !active_input.is_enabled() {
+        active_input.close_terminal();
+        return Ok(());
+    }
+
+    while let Some(frame) = active_input.next_frame().await {
+        write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await?;
+        active_input.mark_written(&frame.uuid);
+    }
+
+    active_input.close_terminal();
     Ok(())
 }
 
@@ -198,6 +218,34 @@ pub async fn execute_cli(
     http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
+    let active_input = ActiveInputRuntime::new(env::run_id(), false);
+    execute_cli_inner(
+        masker,
+        heartbeat_monitor,
+        http,
+        framework,
+        active_input.into_writer(),
+    )
+    .await
+}
+
+pub async fn execute_cli_with_active_input(
+    masker: &SecretMasker,
+    heartbeat_monitor: HeartbeatMonitor,
+    http: HttpClient,
+    active_input: ActiveInputWriter,
+) -> Result<CliExecutionResult, AgentError> {
+    let framework = env::Framework::from_env();
+    execute_cli_inner(masker, heartbeat_monitor, http, framework, active_input).await
+}
+
+async fn execute_cli_inner(
+    masker: &SecretMasker,
+    mut heartbeat_monitor: HeartbeatMonitor,
+    http: HttpClient,
+    framework: env::Framework,
+    active_input: ActiveInputWriter,
+) -> Result<CliExecutionResult, AgentError> {
     let behavior = CliFrameworkBehavior::new(framework);
     masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
@@ -269,7 +317,7 @@ pub async fn execute_cli(
 
     let mut child = cmd.spawn()?;
 
-    let initial_prompt_stdin = if behavior.uses_stream_json_stdin() {
+    let claude_stdin = if behavior.uses_stream_json_stdin() {
         let Some(stdin) = child.stdin.take() else {
             let _ = child.start_kill();
             return Err(AgentError::Execution("no stdin".into()));
@@ -292,12 +340,13 @@ pub async fn execute_cli(
     let mut stderr_handle =
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
-    let mut initial_prompt_write_handle = initial_prompt_stdin.map(|stdin| {
+    let active_input_controller = active_input.controller();
+    let mut claude_stdin_write_handle = claude_stdin.map(|stdin| {
         let run_id = env::run_id();
         let prompt = env::prompt();
-        tokio::spawn(
-            async move { write_claude_initial_prompt_to_stdin(stdin, run_id, prompt).await },
-        )
+        tokio::spawn(async move {
+            write_claude_stream_json_to_stdin(stdin, run_id, prompt, active_input).await
+        })
     });
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
@@ -388,21 +437,22 @@ pub async fn execute_cli(
     let mut failure_diagnostic = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
-            prompt_write_result = async {
-                match initial_prompt_write_handle.as_mut() {
+            stdin_write_result = async {
+                match claude_stdin_write_handle.as_mut() {
                     Some(handle) => Some(handle.await),
                     None => std::future::pending().await,
                 }
-            }, if initial_prompt_write_handle.is_some() => {
-                initial_prompt_write_handle = None;
+            }, if claude_stdin_write_handle.is_some() => {
+                claude_stdin_write_handle = None;
                 let can_terminate_for_stdin_error =
                     matches!(termination_state, TerminationState::Idle) && cli_status.is_none();
-                match prompt_write_result {
+                match stdin_write_result {
                     Some(Ok(Ok(()))) => {}
                     Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
+                        active_input_controller.close_terminal();
                         log_warn!(
                             LOG_TAG,
-                            "Failed to write initial prompt to Claude stdin, SIGTERM pgid={}: {error}",
+                            "Claude stdin writer failed, SIGTERM pgid={}: {error}",
                             pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
                         if let Some(pid) = pgid {
@@ -416,11 +466,14 @@ pub async fn execute_cli(
                                 + Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
                     }
-                    Some(Ok(Err(_))) => {}
+                    Some(Ok(Err(_))) => {
+                        active_input_controller.close_terminal();
+                    }
                     Some(Err(error)) if can_terminate_for_stdin_error => {
+                        active_input_controller.close_terminal();
                         log_warn!(
                             LOG_TAG,
-                            "Initial prompt stdin task failed, SIGTERM pgid={}: {error}",
+                            "Claude stdin writer task failed, SIGTERM pgid={}: {error}",
                             pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
                         if let Some(pid) = pgid {
@@ -434,23 +487,59 @@ pub async fn execute_cli(
                                 + Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
                     }
-                    Some(Err(_)) => {}
+                    Some(Err(_)) => {
+                        active_input_controller.close_terminal();
+                    }
                     None => {}
                 }
             }
             line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
-                        // Write to log
-                        let _ = log_file.write_all(line.as_bytes()).await;
-                        let _ = log_file.write_all(b"\n").await;
-
                         let stripped = line.trim();
                         if stripped.is_empty() {
                             continue;
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            match active_input_controller.replay_user_event_action(&event) {
+                                ReplayUserEventAction::External => {}
+                                ReplayUserEventAction::InternalInitialPrompt => {
+                                    let _ = log_file
+                                        .write_all(
+                                            br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
+                                        )
+                                        .await;
+                                    let _ = log_file.write_all(b"\n").await;
+                                    continue;
+                                }
+                                ReplayUserEventAction::InternalActiveInput => {
+                                    let _ = log_file
+                                        .write_all(
+                                            br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
+                                        )
+                                        .await;
+                                    let _ = log_file.write_all(b"\n").await;
+                                    continue;
+                                }
+                                ReplayUserEventAction::UnknownPromptUser => {
+                                    let _ = log_file
+                                        .write_all(
+                                            br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
+                                        )
+                                        .await;
+                                    let _ = log_file.write_all(b"\n").await;
+                                    log_warn!(
+                                        LOG_TAG,
+                                        "Filtered unknown top-level Claude user replay event"
+                                    );
+                                    continue;
+                                }
+                            }
+
+                            let _ = log_file.write_all(line.as_bytes()).await;
+                            let _ = log_file.write_all(b"\n").await;
+
                             if event.get("type").and_then(serde_json::Value::as_str)
                                 == Some("stream_event")
                             {
@@ -492,9 +581,15 @@ pub async fn execute_cli(
                                     // printing Claude's final result.
                                     println!("{}", masker.mask_string(result));
                                 }
+                                let active_input_idle =
+                                    active_input_controller.close_for_result_if_idle();
                                 // Arm the post-result reap deadline once per
-                                // run — see `TerminationState::should_arm_post_result`.
-                                if termination_state.should_arm_post_result(cli_status.is_some()) {
+                                // run when no active follow-up input is still
+                                // pending — see `TerminationState::should_arm_post_result`.
+                                if active_input_idle
+                                    && termination_state
+                                        .should_arm_post_result(cli_status.is_some())
+                                {
                                     termination_state = TerminationState::SigtermPending {
                                         reason: TerminationReason::PostResult,
                                     };
@@ -548,6 +643,9 @@ pub async fn execute_cli(
                                 }
                             }
                             seq += 1;
+                        } else {
+                            let _ = log_file.write_all(line.as_bytes()).await;
+                            let _ = log_file.write_all(b"\n").await;
                         }
                     }
                     Ok(None) => {
@@ -766,27 +864,28 @@ pub async fn execute_cli(
         }
     };
 
-    if let Some(handle) = initial_prompt_write_handle.take() {
+    if let Some(handle) = claude_stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     log_warn!(
                         LOG_TAG,
-                        "Initial prompt stdin write finished after CLI loop with error: {error}"
+                        "Claude stdin writer finished after CLI loop with error: {error}"
                     );
                 }
                 Err(error) => {
                     log_warn!(
                         LOG_TAG,
-                        "Initial prompt stdin task failed after CLI loop: {error}"
+                        "Claude stdin writer failed after CLI loop: {error}"
                     );
                 }
             }
         } else {
             handle.abort();
             let _ = handle.await;
-            log_warn!(LOG_TAG, "Aborted unfinished initial prompt stdin task");
+            active_input_controller.close_terminal();
+            log_warn!(LOG_TAG, "Aborted unfinished Claude stdin writer");
         }
     }
 

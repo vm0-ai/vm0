@@ -68,7 +68,15 @@ async fn run() -> i32 {
 
     let masker = Arc::new(masker::SecretMasker::from_env());
     let shutdown = CancellationToken::new();
-    let control_handle = control::ControlHandle::spawn(shutdown.clone());
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new(
+        env::run_id(),
+        matches!(env::Framework::from_env(), env::Framework::ClaudeCode)
+            && matches!(
+                std::env::var(process_control_ipc::BOOTSTRAP_ENV),
+                Ok(endpoint) if !endpoint.is_empty()
+            ),
+    );
+    let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
     let start = Instant::now();
 
     log_info!(
@@ -101,7 +109,15 @@ async fn run() -> i32 {
     // flush with checkpoint creation. The EOF-consuming final flush runs below,
     // after background producers stop, so `/complete` logs still upload without
     // racing metrics or heartbeat writes.
-    let exit_code = execute(&masker, start, Some(heartbeat_status_rx), &telemetry, http).await;
+    let exit_code = execute(
+        &masker,
+        start,
+        Some(heartbeat_status_rx),
+        &telemetry,
+        http,
+        active_input.into_writer(),
+    )
+    .await;
 
     stop_background_and_flush_final_telemetry(
         shutdown,
@@ -131,6 +147,7 @@ async fn execute(
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
     http: HttpClient,
+    active_input: guest_agent::active_input::ActiveInputWriter,
 ) -> i32 {
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
@@ -186,7 +203,14 @@ async fn execute(
         error_message,
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
-    ) = match cli::execute_cli(masker, heartbeat_monitor, http.clone()).await {
+    ) = match cli::execute_cli_with_active_input(
+        masker,
+        heartbeat_monitor,
+        http.clone(),
+        active_input,
+    )
+    .await
+    {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
             let cli_exit_code = cli_result.exit_code;

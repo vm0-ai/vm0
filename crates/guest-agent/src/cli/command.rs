@@ -57,6 +57,7 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         "stream-json".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
+        "--replay-user-messages".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
 
@@ -275,7 +276,7 @@ mod tests {
         assert_eq!(args[input_idx + 1], "stream-json");
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_claude_prompt_is_not_positional(&args, "hello world");
-        assert!(!args.contains(&"--replay-user-messages".to_string()));
+        assert!(args.contains(&"--replay-user-messages".to_string()));
         assert!(!args.contains(&"--append-system-prompt".to_string()));
         assert!(!args.contains(&"--resume".to_string()));
     }

@@ -7,12 +7,12 @@
 
 mod common;
 
-use std::io::{self, Write};
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::io;
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{fs::File, thread};
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use tokio::io::unix::AsyncFd;
@@ -24,67 +24,9 @@ const READY_CONTROL_MESSAGE_ID: &str = "process-control-after-cli-ready";
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-struct FifoGuard {
-    path: PathBuf,
-}
-
-struct FifoGate {
-    file: Option<File>,
-}
-
 struct ConnectionHarness {
     host: Option<vsock_host::VsockHost>,
     guest: Option<thread::JoinHandle<io::Result<()>>>,
-}
-
-impl FifoGuard {
-    fn create(path: PathBuf) -> TestResult<Self> {
-        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())?;
-        // SAFETY: c_path is a valid NUL-terminated path and the mode is a
-        // normal POSIX permission mask for a test-only FIFO.
-        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-        if result != 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-        Ok(Self { path })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl FifoGate {
-    fn open(path: &Path) -> io::Result<Self> {
-        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())?;
-        // SAFETY: c_path is NUL-terminated, flags request one read/write
-        // nonblocking FIFO fd, and ownership transfers to File on success.
-        let fd = unsafe {
-            libc::open(
-                c_path.as_ptr(),
-                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: fd is a freshly opened descriptor owned by this function.
-        let file = unsafe { File::from_raw_fd(fd) };
-        Ok(Self { file: Some(file) })
-    }
-
-    fn release(&mut self, payload: &[u8]) -> io::Result<()> {
-        if let Some(file) = self.file.as_mut() {
-            file.write_all(payload)?;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for FifoGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
 }
 
 impl ConnectionHarness {
@@ -124,8 +66,6 @@ impl Drop for ConnectionHarness {
 async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let fifo = FifoGuard::create(tmp.path().join("release.fifo"))?;
-    let ready = tmp.path().join("fifo.ready");
     let run_id = format!(
         "process-control-channel-{}-{}",
         std::process::id(),
@@ -133,11 +73,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     );
 
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
-    let prompt = format!(
-        "exec 3< {}; IFS= read -r _ <&3; touch {}; IFS= read -r _ <&3; echo process-control-channel-done",
-        shell_quote_path(fifo.path()),
-        shell_quote_path(&ready)
-    );
+    let prompt = "@active-input-smoke:2";
     let workdir = tmp.path().to_string_lossy().into_owned();
     let mock_path = mock.to_string_lossy().into_owned();
     let env = [
@@ -147,7 +83,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
         ("VM0_RUN_ID", run_id.as_str()),
-        ("VM0_PROMPT", prompt.as_str()),
+        ("VM0_PROMPT", prompt),
         ("VM0_API_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
@@ -155,7 +91,6 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("HOME", workdir.as_str()),
     ];
 
-    let mut fifo_gate = FifoGate::open(fifo.path())?;
     let connection = start_host_and_guest(tmp.path()).await?;
     let command = format!(
         "cleanup_home_user=0; \
@@ -208,8 +143,12 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         )
         .await?;
 
-    fifo_gate.release(b"ready\n")?;
-    wait_for_path(&ready, Duration::from_secs(10)).await?;
+    let mut stdout = collect_stdout_until(
+        &mut stdout_rx,
+        b"READY_FOR_ACTIVE_INPUT",
+        Duration::from_secs(10),
+    )
+    .await?;
 
     let ack = handle
         .control(
@@ -219,9 +158,8 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         )
         .await?;
 
-    fifo_gate.release(b"release\n")?;
     let exit = handle.wait(Duration::from_secs(20)).await?;
-    let stdout = collect_stdout(&mut stdout_rx, Duration::from_secs(5)).await?;
+    stdout.extend(collect_stdout(&mut stdout_rx, Duration::from_secs(5)).await?);
 
     connection.finish()?;
 
@@ -235,12 +173,41 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         captured_output_lossy(&exit.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&stdout).contains("process-control-channel-done"),
-        "guest-agent stdout did not include mock CLI completion marker: {}",
+        String::from_utf8_lossy(&stdout).contains("RESULT=before-ready+after-ready"),
+        "guest-agent stdout did not include active-input result: {}",
         String::from_utf8_lossy(&stdout)
     );
 
     Ok(())
+}
+
+async fn collect_stdout_until(
+    stdout_rx: &mut tokio::sync::mpsc::Receiver<vsock_host::ExecOutputEvent>,
+    needle: &[u8],
+    timeout: Duration,
+) -> io::Result<Vec<u8>> {
+    tokio::time::timeout(timeout, async {
+        let mut stdout = Vec::new();
+        while let Some(event) = stdout_rx.recv().await {
+            if event.stream == ExecOutputStream::Stdout && !event.truncated {
+                stdout.extend_from_slice(&event.chunk);
+                if stdout.windows(needle.len()).any(|window| window == needle) {
+                    return Ok(stdout);
+                }
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "stdout closed before expected marker",
+        ))
+    })
+    .await
+    .map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            "timed out waiting for stdout marker",
+        )
+    })?
 }
 
 async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
@@ -376,10 +343,6 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
         .join()
         .map_err(|_| io::Error::other("guest thread panicked"))??;
     Ok(())
-}
-
-fn shell_quote_path(path: &Path) -> String {
-    shell_quote(&path.to_string_lossy())
 }
 
 fn shell_quote(raw: &str) -> String {
