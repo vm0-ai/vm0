@@ -186,6 +186,15 @@ def test_compiled_caches_safe_path_scan_for_multiple_base_matches(monkeypatch):
     # does not show whether overlapping base matches rescan the same safe path.
     monkeypatch.setattr(matching, "has_unsafe_path", counting_has_unsafe_path)
 
+    no_match = matching.match_compiled_firewall_request(
+        "https://other.example.com/items/123",
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+    assert no_match is None
+    assert scan_count == 0
+
     result = matching.match_compiled_firewall_request(
         "https://api.example.com/items/123",
         "GET",
