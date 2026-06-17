@@ -1337,7 +1337,7 @@ describe("CHAT-02: explicit provider pins", () => {
       .where(
         and(
           eq(vm0ApiKeys.vendor, "openrouter"),
-          eq(vm0ApiKeys.model, "z-ai/glm-5.1"),
+          eq(vm0ApiKeys.model, "z-ai/glm-5.2"),
           or(
             like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
             like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
@@ -1347,13 +1347,13 @@ describe("CHAT-02: explicit provider pins", () => {
     await writeDb.insert(vm0ApiKeys).values([
       {
         vendor: "openrouter",
-        model: "z-ai/glm-5.1",
+        model: "z-ai/glm-5.2",
         apiKey: fakeKey,
         label: `bdd-fake-${keySuffix}`,
       },
       {
         vendor: "openrouter",
-        model: "z-ai/glm-5.1",
+        model: "z-ai/glm-5.2",
         apiKey: devSeedKey,
         label: "dev-seed",
       },
@@ -1368,7 +1368,7 @@ describe("CHAT-02: explicit provider pins", () => {
       prompt: "run with the selected vm0 provider",
       modelSelection: {
         modelProviderId: providerId,
-        selectedModel: "glm-5.1",
+        selectedModel: "glm-5.2",
       },
     });
 
@@ -1384,7 +1384,7 @@ describe("CHAT-02: explicit provider pins", () => {
       ),
     );
     expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
+    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.2");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -1410,7 +1410,7 @@ describe("CHAT-02: explicit provider pins", () => {
       .where(
         and(
           eq(vm0ApiKeys.vendor, "openrouter"),
-          eq(vm0ApiKeys.model, "z-ai/glm-5.1"),
+          eq(vm0ApiKeys.model, "z-ai/glm-5.2"),
           or(
             like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
             like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),

@@ -30,6 +30,16 @@ function buildAnthropicKeys(
   });
 }
 
+function buildOpenRouterKeys(
+  values: Readonly<Record<string, string | undefined>>,
+): ReturnType<typeof buildVm0ApiKeys> {
+  return buildVm0ApiKeys(readEnvFrom(values), () => {
+    // Suppress expected skip logs for vendors that are not configured in tests.
+  }).filter((key) => {
+    return key.vendor === "openrouter";
+  });
+}
+
 describe("buildVm0ApiKeys", () => {
   it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
     const anthropicKeys = buildAnthropicKeys({
@@ -81,6 +91,38 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["dev-deepseek-key"]));
+  });
+
+  it("builds OpenRouter dev seed rows with upstream model ids", () => {
+    const openRouterKeys = buildOpenRouterKeys({
+      DEV_MODEL_OPENROUTER_KEY: "dev-openrouter-key",
+      OPENROUTER_API_KEY: "provider-openrouter-key",
+    });
+
+    expect(openRouterKeys.length).toBeGreaterThan(0);
+    expect(openRouterKeys).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          apiKey: "dev-openrouter-key",
+          label: "dev-seed",
+          model: "z-ai/glm-5.2",
+          vendor: "openrouter",
+        }),
+        expect.objectContaining({
+          apiKey: "dev-openrouter-key",
+          label: "dev-seed",
+          model: "z-ai/glm-5.1",
+          vendor: "openrouter",
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        openRouterKeys.map((key) => {
+          return key.apiKey;
+        }),
+      ),
+    ).toStrictEqual(new Set(["dev-openrouter-key"]));
   });
 
   it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {

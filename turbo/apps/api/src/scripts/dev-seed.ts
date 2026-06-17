@@ -247,6 +247,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.1), 1_000_000],
     ["tokens.cache_creation", usd(0.6), 1_000_000],
   ]),
+  ...usageGroup("model", "glm-5.2", [
+    ["tokens.input", usd(1.4), 1_000_000],
+    ["tokens.output", usd(4.4), 1_000_000],
+    ["tokens.cache_read", usd(0.26), 1_000_000],
+    ["tokens.cache_creation", usd(1.4), 1_000_000],
+  ]),
   ...usageGroup("model", "glm-5.1", [
     ["tokens.input", usd(1.4), 1_000_000],
     ["tokens.output", usd(4.4), 1_000_000],
@@ -421,18 +427,21 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
- * so new models are automatically picked up.
+ * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER so new models
+ * are automatically picked up. Rows use upstream API model ids when configured
+ * because VM0 Managed key lookup first matches vendor plus runtime model.
  */
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof vm0ApiKeys.$inferInsert)[] {
-  // Group models by vendor from the canonical mapping
+  // Group runtime models by vendor from the canonical mapping.
   const vendorModels = new Map<string, string[]>();
-  for (const [model, { vendor }] of Object.entries(VM0_MODEL_TO_PROVIDER)) {
+  for (const [model, { apiModel, vendor }] of Object.entries(
+    VM0_MODEL_TO_PROVIDER,
+  )) {
     const models = vendorModels.get(vendor) ?? [];
-    models.push(model);
+    models.push(apiModel ?? model);
     vendorModels.set(vendor, models);
   }
 

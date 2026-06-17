@@ -91,6 +91,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "kimi-k2.7-code": "Kimi K2.7 Code",
   "MiniMax-M3": "MiniMax M3",
+  "glm-5.2": "GLM-5.2",
   "glm-5.1": "GLM-5.1",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
@@ -166,6 +167,11 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
+  "glm-5.2": {
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "z-ai/glm-5.2",
+  },
   "glm-5.1": {
     concreteType: "openrouter-api-key",
     vendor: "openrouter",
@@ -202,6 +208,7 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-opus-4.7": "claude-opus-4-7",
   "anthropic/claude-opus-4.6": "claude-opus-4-6",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+  "z-ai/glm-5.2": "glm-5.2",
   "z-ai/glm-5.1": "glm-5.1",
   "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
@@ -231,10 +238,12 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
 ]);
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
+  "glm-5.2",
   "glm-5.1",
   "glm-5",
   "glm-4.7",
   "glm-4.5-air",
+  "z-ai/glm-5.2",
   "z-ai/glm-5.1",
   "zai/glm-5-turbo",
   "deepseek-v4-pro",
@@ -354,6 +363,7 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.5",
+      "z-ai/glm-5.2",
       "z-ai/glm-5.1",
       "deepseek/deepseek-v4-pro",
     ] as string[],
@@ -439,8 +449,14 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
     } satisfies ModelProviderEnvBindings,
-    models: ["glm-5.1", "glm-5", "glm-4.7", "glm-4.5-air"] as string[],
-    defaultModel: "glm-5.1",
+    models: [
+      "glm-5.2",
+      "glm-5.1",
+      "glm-5",
+      "glm-4.7",
+      "glm-4.5-air",
+    ] as string[],
+    defaultModel: "glm-5.2",
   },
   "vercel-ai-gateway": {
     framework: "claude-code" as const,
@@ -765,6 +781,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
   "MiniMax-M3": ["vm0", "minimax-api-key"],
+  "glm-5.2": ["vm0", "zai-api-key", "openrouter-api-key"],
   "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
@@ -777,6 +794,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "glm-5.2": "z-ai/glm-5.2",
     "glm-5.1": "z-ai/glm-5.1",
   },
   "vercel-ai-gateway": {
@@ -804,6 +822,7 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+    "z-ai/glm-5.2": "glm-5.2",
     "z-ai/glm-5.1": "glm-5.1",
   };
 
