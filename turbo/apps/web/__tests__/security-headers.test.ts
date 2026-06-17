@@ -2314,11 +2314,6 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agentphone/webhook",
         },
         {
-          source: "/api/internal/event-consumers/agentphone-typing",
-          destination:
-            "https://api.example.test/api/internal/event-consumers/agentphone-typing",
-        },
-        {
           source: "/api/user/export",
           destination: "https://api.example.test/api/user/export",
         },
