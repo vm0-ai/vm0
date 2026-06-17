@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.431.1](https://github.com/vm0-ai/vm0/compare/web-v12.431.0...web-v12.431.1) (2026-06-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.1
+    * @vm0/core bumped to 8.350.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.86.0
+
 ## [12.431.0](https://github.com/vm0-ai/vm0/compare/web-v12.430.0...web-v12.431.0) (2026-06-17)
 
 

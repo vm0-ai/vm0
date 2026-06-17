@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.5...desktop-v0.15.0) (2026-06-17)
+
+
+### Features
+
+* **desktop:** add sentry reporting ([#18113](https://github.com/vm0-ai/vm0/issues/18113)) ([8762ad2](https://github.com/vm0-ai/vm0/commit/8762ad273fefd7410e3c4533f1b4276f8065ec31))
+
 ## [0.14.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.4...desktop-v0.14.5) (2026-06-17)
 
 
