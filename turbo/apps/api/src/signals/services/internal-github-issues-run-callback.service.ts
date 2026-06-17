@@ -274,7 +274,7 @@ async function resolveGitHubAuditLogsUrl(args: {
     Object.keys(overrides).length > 0
       ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
       : undefined;
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
     userId: args.run.userId,
     orgId: args.run.orgId,
     overrides: typedOverrides,

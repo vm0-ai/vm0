@@ -155,21 +155,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleMapsConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Maps connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.GoogleAnalyticsConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Analytics connector",
-    enabled: true,
-  },
-  [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Search Console connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -209,11 +194,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the Lab page for toggling experimental features",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AuditLink]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show audit log links in integration replies",
-    enabled: false,
   },
   [FeatureSwitchKey.SkillsViewer]: {
     maintainer: "lancy@vm0.ai",
@@ -316,8 +296,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show per-run usage chips in the Zero chat message action bar.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
@@ -342,20 +321,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ConnectorReconnectReasons]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Show explanatory tooltip help for connectors that need reconnect.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AssistantTextStreaming]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Stream assistant text deltas from Claude web chat runs through user-scoped realtime channels before the final assistant message is stored.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

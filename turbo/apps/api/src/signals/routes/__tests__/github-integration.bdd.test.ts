@@ -1597,7 +1597,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () 
     await waitForCommentCount(issueApi, 1);
 
     // Completion posts the audited comment through typed internal dispatch.
-    await gh.enableAuditLink(actor);
+    await gh.enableZeroDebug(actor);
     await checkpointGithubRun({
       webhooks,
       runId,

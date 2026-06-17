@@ -831,12 +831,12 @@ export function createGithubBddApi(context: TestContext) {
       return response.body;
     },
 
-    async enableAuditLink(actor: ApiTestUser): Promise<void> {
+    async enableZeroDebug(actor: ApiTestUser): Promise<void> {
       const client = setupApp({ context })(zeroFeatureSwitchesContract);
       await accept(
         client.update({
           headers: authenticate(actor),
-          body: { switches: { [FeatureSwitchKey.AuditLink]: true } },
+          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
       );

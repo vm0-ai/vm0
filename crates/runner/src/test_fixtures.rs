@@ -33,8 +33,5 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         feature_flags: None,
         billable_firewalls: vec![],
         model_usage_provider: None,
-        chat_stream_channel: None,
-        chat_stream_topic: None,
-        chat_stream_token: None,
     }
 }
