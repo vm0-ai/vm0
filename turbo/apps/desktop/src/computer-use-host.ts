@@ -26,6 +26,10 @@ const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
 const ERROR_LOG_LIMIT = 20;
+// Completed entries retain the full command result, which for Computer Use
+// includes screenshot-heavy app state. Cap retained entries so a long session
+// (e.g. repetitive browser automation) cannot grow runtime memory without bound.
+const LOCAL_COMMAND_LOG_LIMIT = 50;
 
 export type ComputerUseHostFetch = (
   input: string,
@@ -401,7 +405,7 @@ export class ComputerUseHostRuntime {
         ...this.state.localCommandLog.filter((candidate) => {
           return candidate.commandId !== command.id;
         }),
-      ],
+      ].slice(0, LOCAL_COMMAND_LOG_LIMIT),
     });
   }
 
