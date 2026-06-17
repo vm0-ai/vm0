@@ -351,10 +351,6 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
-  internalEventConsumerAgentPhoneTypingContract,
-  type InternalEventConsumerAgentPhoneTypingContract,
-} from "./internal-event-consumers";
-export {
   cronAggregateInsightsContract,
   cronAggregateInsightsResponseSchema,
   cronAggregateUsageContract,

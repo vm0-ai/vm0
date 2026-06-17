@@ -14,6 +14,7 @@ import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
+import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents$ } from "./agent-event-consumer-axiom.service";
 import { processChatAssistantEvents$ } from "./agent-event-consumer-chat-assistant.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
@@ -77,6 +78,10 @@ const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
   {
     name: "telegram-typing",
     command$: refreshTelegramTypingEvents$,
+  },
+  {
+    name: "agentphone-typing",
+    command$: refreshAgentPhoneTypingEvents$,
   },
 ];
 

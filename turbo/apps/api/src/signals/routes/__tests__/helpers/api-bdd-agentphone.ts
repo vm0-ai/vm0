@@ -6,7 +6,6 @@ import {
   type PhoneUploadCompleteBody,
   type PhoneUploadInitBody,
 } from "@vm0/api-contracts/contracts/integrations";
-import { internalEventConsumerAgentPhoneTypingContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -301,20 +300,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
           `Expected AgentPhone link status to show ${phone} as linked`,
         );
       }
-    },
-
-    async requestAgentPhoneTypingEventConsumer(
-      body: { readonly runId: string } & Record<string, unknown>,
-      headers: {
-        readonly "x-vm0-signature"?: string;
-        readonly "x-vm0-timestamp"?: string;
-      },
-      statuses: readonly (200 | 401)[],
-    ) {
-      const client = setupApp({ context })(
-        internalEventConsumerAgentPhoneTypingContract,
-      );
-      return await accept(client.refresh({ headers, body }), statuses);
     },
 
     async requestPhoneUploadInitWithToken<Status extends 200 | 400 | 401 | 403>(
