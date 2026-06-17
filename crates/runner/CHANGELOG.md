@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.119.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.11...runner-rs-v0.119.0) (2026-06-17)
+
+
+### Features
+
+* **runner:** add local submit env overrides ([#17930](https://github.com/vm0-ai/vm0/issues/17930)) ([5c2c63c](https://github.com/vm0-ai/vm0/commit/5c2c63cdde42a7951e3af80dad7c892cdeca4de9))
+
 ## [0.118.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.10...runner-rs-v0.118.11) (2026-06-17)
 
 

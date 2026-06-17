@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.348.0](https://github.com/vm0-ai/vm0/compare/core-v8.347.2...core-v8.348.0) (2026-06-17)
+
+
+### Features
+
+* add GLM 5.2 model support ([#18012](https://github.com/vm0-ai/vm0/issues/18012)) ([f39a67f](https://github.com/vm0-ai/vm0/commit/f39a67f88e52bdbd406765d9cb8953dcf9952692))
+* enable chat double-click rename for staff ([#18034](https://github.com/vm0-ai/vm0/issues/18034)) ([191d685](https://github.com/vm0-ai/vm0/commit/191d685668a1c3089ad3139bd853cdc26f530ff1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.98.0
+
 ## [8.347.2](https://github.com/vm0-ai/vm0/compare/core-v8.347.1...core-v8.347.2) (2026-06-17)
 
 

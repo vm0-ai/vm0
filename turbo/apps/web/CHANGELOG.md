@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.429.0](https://github.com/vm0-ai/vm0/compare/web-v12.428.10...web-v12.429.0) (2026-06-17)
+
+
+### Features
+
+* add GLM 5.2 model support ([#18012](https://github.com/vm0-ai/vm0/issues/18012)) ([f39a67f](https://github.com/vm0-ai/vm0/commit/f39a67f88e52bdbd406765d9cb8953dcf9952692))
+
+
+### Refactoring
+
+* align model stats cron route ([#18037](https://github.com/vm0-ai/vm0/issues/18037)) ([6bc9c96](https://github.com/vm0-ai/vm0/commit/6bc9c96d3f323aeae05b43bb526aaade032f2459))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.98.0
+    * @vm0/core bumped to 8.348.0
+
 ## [12.428.10](https://github.com/vm0-ai/vm0/compare/web-v12.428.9...web-v12.428.10) (2026-06-17)
 
 

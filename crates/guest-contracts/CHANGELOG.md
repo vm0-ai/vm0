@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.1.2...guest-contracts-v0.2.0) (2026-06-17)
+
+
+### Features
+
+* **runner:** add local submit env overrides ([#17930](https://github.com/vm0-ai/vm0/issues/17930)) ([5c2c63c](https://github.com/vm0-ai/vm0/commit/5c2c63cdde42a7951e3af80dad7c892cdeca4de9))
+
 ## [0.1.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.1.1...guest-contracts-v0.1.2) (2026-06-17)
 
 

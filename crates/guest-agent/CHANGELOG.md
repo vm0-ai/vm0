@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.7...guest-agent-v0.37.0) (2026-06-17)
+
+
+### Features
+
+* **runner:** add local submit env overrides ([#17930](https://github.com/vm0-ai/vm0/issues/17930)) ([5c2c63c](https://github.com/vm0-ai/vm0/commit/5c2c63cdde42a7951e3af80dad7c892cdeca4de9))
+
+
+### Refactoring
+
+* **guest-agent:** split session history reader tests ([#18041](https://github.com/vm0-ai/vm0/issues/18041)) ([d698fed](https://github.com/vm0-ai/vm0/commit/d698fed994d96d838eb7aa501bfb067c57cc9732))
+
 ## [0.36.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.6...guest-agent-v0.36.7) (2026-06-17)
 
 ## [0.36.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.5...guest-agent-v0.36.6) (2026-06-16)

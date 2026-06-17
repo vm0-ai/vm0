@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.149.0](https://github.com/vm0-ai/vm0/compare/api-v1.148.4...api-v1.149.0) (2026-06-17)
+
+
+### Features
+
+* add GLM 5.2 model support ([#18012](https://github.com/vm0-ai/vm0/issues/18012)) ([f39a67f](https://github.com/vm0-ai/vm0/commit/f39a67f88e52bdbd406765d9cb8953dcf9952692))
+
+
+### Bug Fixes
+
+* stabilize model stats ranking windows ([#18031](https://github.com/vm0-ai/vm0/issues/18031)) ([aa5fea9](https://github.com/vm0-ai/vm0/commit/aa5fea98003a18ae41278643e0847a864891d6ba))
+
+
+### Refactoring
+
+* align model stats cron route ([#18037](https://github.com/vm0-ai/vm0/issues/18037)) ([6bc9c96](https://github.com/vm0-ai/vm0/commit/6bc9c96d3f323aeae05b43bb526aaade032f2459))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.98.0
+    * @vm0/core bumped to 8.348.0
+    * @vm0/db bumped to 1.54.0
+
 ## [1.148.4](https://github.com/vm0-ai/vm0/compare/api-v1.148.3...api-v1.148.4) (2026-06-17)
 
 
