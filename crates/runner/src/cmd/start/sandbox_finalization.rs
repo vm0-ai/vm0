@@ -28,6 +28,7 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
+use crate::paths::diagnostic_session_fingerprint;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
@@ -157,6 +158,7 @@ pub(super) async fn finalize_sandbox_for_completion(
     let mut session_affinity_changed = false;
     let mut session_affinity_refresh_sent = false;
     let budget = if let Some(session_id) = parkable_session {
+        let session_fingerprint = diagnostic_session_fingerprint(&session_id);
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -184,7 +186,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 } = failure.active;
                 warn!(
                     run_id = %run_id,
-                    session_id,
+                    session_fingerprint = %session_fingerprint,
                     error = %failure.error,
                     "sandbox park failed, destroying instead of parking"
                 );
@@ -226,7 +228,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
-                session_id,
+                session_fingerprint = %session_fingerprint,
                 "job cancelled while parking, destroying VM"
             );
             let destroy_result = destroy_active_owned_idle_payload(
@@ -254,7 +256,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     if cancel.is_cancelled() {
                         info!(
                             run_id = %run_id,
-                            session_id,
+                            session_fingerprint = %session_fingerprint,
                             "job cancelled before idle pool ownership transfer, destroying VM"
                         );
                         drop(transfer_guard);
@@ -278,7 +280,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 if cancel.is_cancelled() {
                     info!(
                         run_id = %run_id,
-                        session_id,
+                        session_fingerprint = %session_fingerprint,
                         "job cancelled before idle pool ownership transfer, destroying VM"
                     );
                     drop(transfer_guard);
@@ -300,7 +302,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 let candidate = candidate.with_last_completed_at(completed_at.clone());
                 break match pool.park(candidate) {
                     ParkResult::Parked => {
-                        info!(run_id = %run_id, session_id, "VM parked for reuse");
+                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "VM parked for reuse");
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -328,7 +330,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Replaced(evicted) => {
-                        info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "VM parked, evicting previous");
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -356,7 +358,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Rejected(rejected) => {
-                        info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");
+                        info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "idle parking rejected, destroying VM");
                         drop(transfer_guard);
                         drop(pool);
                         // Pool unchanged (park rejected) — no status
@@ -520,13 +522,14 @@ async fn stop_and_destroy_sandbox(
     mut context: ActiveCleanupContext<'_>,
 ) -> DestroyOutcome {
     let mut uncertain = false;
+    let session_fingerprint = context.session_id.map(diagnostic_session_fingerprint);
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(
             run_id = %context.run_id,
             sandbox_id = %context.sandbox_id,
             profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
+            session_fingerprint = ?session_fingerprint,
             reason = context.reason,
             error = %e,
             "sandbox stop failed during active cleanup"
@@ -536,7 +539,7 @@ async fn stop_and_destroy_sandbox(
                 run_id = %context.run_id,
                 sandbox_id = %context.sandbox_id,
                 profile_name = context.profile_name,
-                session_id = context.session_id.unwrap_or("<none>"),
+                session_fingerprint = ?session_fingerprint,
                 reason = context.reason,
                 "sandbox stop panicked during active cleanup"
             );
@@ -558,7 +561,7 @@ async fn stop_and_destroy_sandbox(
             run_id = %context.run_id,
             sandbox_id = %context.sandbox_id,
             profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
+            session_fingerprint = ?session_fingerprint,
             reason = context.reason,
             "sandbox destroy panicked during active cleanup"
         );
@@ -580,6 +583,8 @@ mod tests {
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{
@@ -686,6 +691,42 @@ mod tests {
                 cleanup_state: RunCleanupState::new(),
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
+            }
+        }
+    }
+
+    async fn capture_finalizer_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
+    fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
+        for event in events {
+            for (field, value) in &event.fields {
+                assert!(
+                    !value.contains(raw),
+                    "captured field {field} leaked raw session id {raw:?}: {event:#?}"
+                );
             }
         }
     }
@@ -798,6 +839,49 @@ mod tests {
                 )
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_parking_log_uses_session_fingerprint() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let raw_session_id = "sess-sensitive-finalizer-17975";
+
+        let (_completion_ready, events) =
+            capture_finalizer_events(finalize_sandbox_for_completion(
+                Some(Box::new(MockSandbox::new("finalizer-redaction"))),
+                ActiveBudgetLease::new(lease),
+                CompletionPayload::new(
+                    run_id,
+                    0,
+                    None,
+                    sandbox_id,
+                    SandboxReuseResult::PoolMiss,
+                    CompletionAuth::local(),
+                ),
+                fixture.finalize_context(
+                    run_id,
+                    sandbox_id,
+                    raw_session_id,
+                    network_log_session,
+                    RunCancellationHandle::new(),
+                ),
+            ))
+            .await;
+
+        assert_captured_events_do_not_contain(&events, raw_session_id);
+        let event = captured_event(&events, "VM parked for reuse");
+        assert_eq!(
+            event.fields.get("session_fingerprint").map(String::as_str),
+            Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+        );
+        assert!(
+            !event.fields.contains_key("session_id"),
+            "parking diagnostic must not include raw session_id field: {event:#?}"
         );
     }
 

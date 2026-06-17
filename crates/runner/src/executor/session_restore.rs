@@ -5,6 +5,7 @@ use tracing::{info, warn};
 
 use super::storage::format_guest_exec_failure;
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -17,10 +18,7 @@ pub(super) async fn restore_session(
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
     // skip branch is ever upgraded to a write.
     if !is_valid_session_id(&session.session_id) {
-        return Err(RunnerError::Internal(format!(
-            "invalid session_id: {}",
-            session.session_id
-        )));
+        return Err(RunnerError::Internal("invalid session_id".into()));
     }
 
     match context.cli_agent_type.as_str() {
@@ -52,7 +50,13 @@ pub(super) async fn restore_claude_session(
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
-    info!(run_id = %context.run_id, path = %session_path, "restored claude session history");
+    info!(
+        run_id = %context.run_id,
+        framework = "claude-code",
+        session_fingerprint = %diagnostic_session_fingerprint(&session.session_id),
+        bytes_in = session.session_history.len(),
+        "restored session history"
+    );
     Ok(())
 }
 
@@ -134,9 +138,8 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let session_id = canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
-        RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
-    })?;
+    let session_id = canonical_codex_thread_id(&session.session_id)
+        .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
 
     let session_path =
         codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
@@ -149,9 +152,10 @@ pub(super) async fn restore_codex_session(
 
     info!(
         run_id = %context.run_id,
-        path = %session_path,
+        framework = "codex",
+        session_fingerprint = %diagnostic_session_fingerprint(&session_id),
         bytes_in = session.session_history.len(),
-        "restored codex session history",
+        "restored session history",
     );
     Ok(())
 }
@@ -238,7 +242,7 @@ fi"#;
     }
     info!(
         run_id = %context.run_id,
-        session_id = %session_id,
+        session_fingerprint = %diagnostic_session_fingerprint(session_id),
         "cleaned up existing codex session files before restore",
     );
     Ok(())

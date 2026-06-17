@@ -329,15 +329,13 @@ pub(super) fn build_env_json_with_host_env(
 
     // Resume session ID
     if let Some(session) = &context.resume_session {
-        let session_id = if effective_cli_framework(&context.cli_agent_type)
-            == EffectiveCliFramework::Codex
-        {
-            canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
-                RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
-            })?
-        } else {
-            session.session_id.clone()
-        };
+        let session_id =
+            if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::Codex {
+                canonical_codex_thread_id(&session.session_id)
+                    .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?
+            } else {
+                session.session_id.clone()
+            };
         env.insert(
             guest_contracts::env::RESUME_SESSION_ID_ENV.into(),
             session_id,

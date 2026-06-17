@@ -585,10 +585,12 @@ fn build_env_json_rejects_invalid_codex_resume_session_id() {
         });
 
         let error = build_env_for_test_result(&ctx, "http://localhost").unwrap_err();
+        let message = error.to_string();
 
+        assert!(message.contains("invalid codex session_id"), "got: {error}");
         assert!(
-            error.to_string().contains("invalid codex session_id"),
-            "got: {error}"
+            !message.contains(session_id),
+            "invalid codex error must not echo raw session id: {message}"
         );
     }
 }

@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::config::RunnerConfig;
 use crate::error::RunnerResult;
 use crate::live_runner_instances::LiveRunnerInstance;
-use crate::paths::HomePaths;
+use crate::paths::{HomePaths, diagnostic_session_fingerprint};
 use crate::process;
 use chrono::{DateTime, Utc};
 use clap::Args;
@@ -1304,10 +1304,7 @@ fn print_report(
         {
             println!("    Idle:    {} VMs", st.idle_vms.len());
             for vm in &st.idle_vms {
-                println!(
-                    "      - session {} -> sandbox {}",
-                    vm.session_id, vm.sandbox_id
-                );
+                println!("{}", format_idle_vm_diagnostic_line(vm));
             }
         }
 
@@ -1342,6 +1339,14 @@ fn print_report(
         reports.iter().map(|r| r.warnings.len()).sum::<usize>() + global_warnings.len();
     println!("{total_warnings} warning(s) found");
     total_warnings
+}
+
+fn format_idle_vm_diagnostic_line(vm: &IdleVm) -> String {
+    format!(
+        "      - session fingerprint {} -> sandbox {}",
+        diagnostic_session_fingerprint(&vm.session_id),
+        vm.sandbox_id
+    )
 }
 
 /// Format an ISO 8601 timestamp as a human-readable relative duration.
@@ -2342,6 +2347,25 @@ mod tests {
         assert!(!is_inactive_mode("running"));
         assert!(!is_inactive_mode("starting"));
         assert!(!is_inactive_mode(""));
+    }
+
+    #[test]
+    fn idle_vm_diagnostic_line_redacts_session_id() {
+        let raw_session_id = "sess-sensitive-doctor-17975";
+        let line = format_idle_vm_diagnostic_line(&IdleVm {
+            session_id: raw_session_id.into(),
+            sandbox_id: "sandbox-123".into(),
+        });
+
+        assert!(
+            !line.contains(raw_session_id),
+            "doctor idle VM output must not expose raw session id: {line}"
+        );
+        assert!(
+            line.contains(&diagnostic_session_fingerprint(raw_session_id)),
+            "doctor idle VM output should retain session-level correlation: {line}"
+        );
+        assert!(line.contains("sandbox-123"));
     }
 
     struct DoctorReportFixture {

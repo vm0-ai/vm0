@@ -4,6 +4,7 @@ use futures_util::FutureExt;
 use sandbox::Sandbox;
 use tracing::warn;
 
+use crate::paths::diagnostic_session_fingerprint;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 use crate::workspace_mount::flush_and_unmount_workspace_drive;
 
@@ -24,11 +25,12 @@ pub(crate) async fn promote_workspace_image_from_active_sandbox(
     {
         Ok(promoted) => promoted,
         Err(_) => {
+            let session_fingerprint = diagnostic_session_fingerprint(promotion.session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_id = promotion.session_id(),
+                session_fingerprint = %session_fingerprint,
                 reason,
                 "workspace image cache promotion panicked"
             );
@@ -45,11 +47,12 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
         Ok(()) => {}
         Err(e) => {
+            let session_fingerprint = diagnostic_session_fingerprint(promotion.session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_id = promotion.session_id(),
+                session_fingerprint = %session_fingerprint,
                 reason,
                 error = %e,
                 "workspace image cache promotion skipped because guest unmount failed"
@@ -61,11 +64,12 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     match promotion.promote().await {
         Ok(promoted) => promoted,
         Err(e) => {
+            let session_fingerprint = diagnostic_session_fingerprint(promotion.session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_id = promotion.session_id(),
+                session_fingerprint = %session_fingerprint,
                 reason,
                 error = %e,
                 "workspace image cache promotion failed"
@@ -87,11 +91,12 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
     match AssertUnwindSafe(sandbox.unpark()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
+            let session_fingerprint = diagnostic_session_fingerprint(promotion.session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_id = promotion.session_id(),
+                session_fingerprint = %session_fingerprint,
                 reason,
                 error = %e,
                 "workspace image cache promotion skipped because idle sandbox unpark failed"
@@ -99,11 +104,12 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
             return false;
         }
         Err(_) => {
+            let session_fingerprint = diagnostic_session_fingerprint(promotion.session_id());
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
                 profile_name = promotion.profile_name(),
-                session_id = promotion.session_id(),
+                session_fingerprint = %session_fingerprint,
                 reason,
                 "workspace image cache promotion skipped because idle sandbox unpark panicked"
             );

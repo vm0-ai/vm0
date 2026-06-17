@@ -10,6 +10,8 @@ use sandbox::{
     Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandboxFactory, MockSandboxOverrides};
+use tracing_subscriber::prelude::*;
+use tracing_test_support::{CapturedEvent, CapturedEvents};
 
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
@@ -157,6 +159,40 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
 }
 
 #[tokio::test]
+async fn parked_workspace_promotion_warning_uses_session_fingerprint() {
+    let raw_session_id = "sess-sensitive-promotion-17975";
+    let fixture = WorkspacePromotionFixture::new(raw_session_id).await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated unpark failure".into(),
+    }));
+    let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
+
+    let (promoted, events) = capture_promotion_events(promote_workspace_image_from_parked_sandbox(
+        sandbox.as_mut(),
+        Some(&fixture.promotion),
+        "test",
+    ))
+    .await;
+
+    assert!(!promoted);
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let event = captured_event(
+        &events,
+        "workspace image cache promotion skipped because idle sandbox unpark failed",
+    );
+    assert_eq!(
+        event.fields.get("session_fingerprint").map(String::as_str),
+        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
+    assert!(
+        !event.fields.contains_key("session_id"),
+        "promotion diagnostic must not include raw session_id field: {event:#?}"
+    );
+}
+
+#[tokio::test]
 async fn parked_workspace_promotion_unpark_panic_skips_cache() {
     let fixture = WorkspacePromotionFixture::new("sess-parked-unpark-panic").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
@@ -215,4 +251,40 @@ async fn parked_workspace_promotion_guest_exec_panic_skips_cache() {
     assert!(!promoted);
     drop(fixture.promotion);
     assert!(fixture.cache.held_session_states().await.is_empty());
+}
+
+async fn capture_promotion_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: std::future::Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
+fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+    events
+        .iter()
+        .find(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+}
+
+fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
+    for event in events {
+        for (field, value) in &event.fields {
+            assert!(
+                !value.contains(raw),
+                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
+            );
+        }
+    }
 }

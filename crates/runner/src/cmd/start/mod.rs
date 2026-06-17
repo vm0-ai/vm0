@@ -53,7 +53,7 @@ use crate::kmsg_log;
 use crate::lock;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
-use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::paths::{HomePaths, LogPaths, RunnerPaths, diagnostic_session_fingerprint, touch_mtime};
 use crate::prefetch;
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
@@ -1269,8 +1269,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 if let Some(evicted) =
                     evict_oldest_idle_entry(&shared.idle_pool, &shared.status).await
                 {
+                    let session_fingerprint = diagnostic_session_fingerprint(evicted.session_id());
                     info!(
-                        session_id = %evicted.session_id(),
+                        session_fingerprint = %session_fingerprint,
                         profile = %evicted.profile_name(),
                         vcpu = evicted.budget_vcpu(),
                         memory_mb = evicted.budget_memory_mb(),

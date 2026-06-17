@@ -21,6 +21,7 @@ use super::{
 };
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
+use crate::paths::diagnostic_session_fingerprint;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
@@ -519,7 +520,11 @@ pub(super) async fn execute_prepared_sandbox_run(
     let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
         let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
         if let Some(ref sid) = id {
-            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
+            info!(
+                run_id = %context.run_id,
+                session_fingerprint = %diagnostic_session_fingerprint(sid),
+                "read guest session ID for parking"
+            );
         }
         id
     } else {

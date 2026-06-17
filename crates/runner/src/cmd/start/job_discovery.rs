@@ -22,6 +22,7 @@ use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
+use crate::paths::diagnostic_session_fingerprint;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -274,6 +275,7 @@ async fn try_reuse_from_pool(
     let Some(session_id) = context.session_id() else {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     };
+    let session_fingerprint = diagnostic_session_fingerprint(session_id);
 
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
@@ -307,7 +309,7 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        session_id,
+                        session_fingerprint = %session_fingerprint,
                         "reusing idle VM for session"
                     );
                     // Idle entry already holds budget. Drop the speculative
@@ -324,7 +326,7 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        session_id,
+                        session_fingerprint = %session_fingerprint,
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -336,7 +338,7 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                session_id,
+                session_fingerprint = %session_fingerprint,
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -355,7 +357,7 @@ async fn try_reuse_from_pool(
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                session_id,
+                session_fingerprint = %session_fingerprint,
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -375,7 +377,7 @@ async fn try_reuse_from_pool(
         None => {
             info!(
                 run_id = %run_id,
-                session_id,
+                session_fingerprint = %session_fingerprint,
                 "no idle VM found for session"
             );
             (None, job_lease, SandboxReuseResult::PoolMiss, None)
