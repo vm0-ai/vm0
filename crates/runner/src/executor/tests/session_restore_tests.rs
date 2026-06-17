@@ -1,4 +1,4 @@
-use sandbox::ExecResult;
+use sandbox::{ExecResult, SandboxError, SandboxInvalidStateContext, SandboxOperation};
 use sandbox_mock::MockSandbox;
 use tracing_subscriber::prelude::*;
 
@@ -462,6 +462,84 @@ async fn restore_session_redacts_codex_write_file_error() {
     assert!(
         !message.contains(session_path),
         "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let raw_session_id = "019E9154C30470F0ADDE36EFB1BE1701";
+    let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": canonical_session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write original thread {raw_session_id} at {session_path}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(raw_session_id),
+        "write failure must not echo raw no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(canonical_session_id),
+        "write failure must not echo canonical session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_write_file_invalid_state() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "sess-invalid-state-17975";
+    let session_path =
+        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-state-17975.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(SandboxError::InvalidState {
+        context: SandboxInvalidStateContext::Operation(SandboxOperation::WriteFile),
+        state: format!("blocked for {session_path}"),
+        message: format!("cannot write session {session_id}"),
+    }));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "invalid-state failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "invalid-state failure must not echo raw session path: {message}"
     );
 }
 

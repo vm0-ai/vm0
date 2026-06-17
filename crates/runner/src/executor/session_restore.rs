@@ -294,7 +294,7 @@ fn redact_session_restore_sandbox_error(
             message,
         } => SandboxError::InvalidState {
             context,
-            state,
+            state: redact_session_restore_diagnostic(state, session_id, session_path),
             message: redact_session_restore_diagnostic(message, session_id, session_path),
         },
         SandboxError::Operation {
@@ -325,13 +325,26 @@ fn redact_session_restore_diagnostic(
     session_id: &str,
     session_path: &str,
 ) -> String {
-    let no_dashes = session_id.replace('-', "");
     let mut redacted = message.replace(session_path, "[redacted-session-path]");
-    redacted = redacted.replace(session_id, "[redacted-session-id]");
-    if !no_dashes.is_empty() {
-        redacted = redacted.replace(&no_dashes, "[redacted-session-id]");
+    for sensitive in session_redaction_variants(session_id) {
+        redacted = redacted.replace(&sensitive, "[redacted-session-id]");
     }
     redacted
+}
+
+fn session_redaction_variants(session_id: &str) -> Vec<String> {
+    let no_dashes = session_id.replace('-', "");
+    [
+        session_id.to_string(),
+        session_id.to_ascii_lowercase(),
+        session_id.to_ascii_uppercase(),
+        no_dashes.clone(),
+        no_dashes.to_ascii_lowercase(),
+        no_dashes.to_ascii_uppercase(),
+    ]
+    .into_iter()
+    .filter(|variant| !variant.is_empty())
+    .collect()
 }
 
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
