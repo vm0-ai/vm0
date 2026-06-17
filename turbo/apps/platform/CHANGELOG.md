@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.465.0](https://github.com/vm0-ai/vm0/compare/app-v0.464.1...app-v0.465.0) (2026-06-17)
+
+
+### Features
+
+* **composer:** use hand-drawn SVG illustration for templates button ([#17842](https://github.com/vm0-ai/vm0/issues/17842)) ([6d9ece0](https://github.com/vm0-ai/vm0/commit/6d9ece0b985aafcbe2b8831d60414827ed4185ab))
+* make connector menu rows fully clickable ([#18074](https://github.com/vm0-ai/vm0/issues/18074)) ([4499ba5](https://github.com/vm0-ai/vm0/commit/4499ba589d383d275e8379e4f9197856b16bca4c))
+
+
+### Bug Fixes
+
+* remove presentation card template label ([#18098](https://github.com/vm0-ai/vm0/issues/18098)) ([739fd43](https://github.com/vm0-ai/vm0/commit/739fd438ec464b3c9cb35cc921f8c242337b17e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.99.0
+    * @vm0/connectors bumped to 1.84.1
+    * @vm0/core bumped to 8.349.0
+
 ## [0.464.1](https://github.com/vm0-ai/vm0/compare/app-v0.464.0...app-v0.464.1) (2026-06-17)
 
 
