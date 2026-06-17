@@ -649,12 +649,557 @@ export function extractFirewallTemplateReferences(
  */
 const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
 const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
+const URL_COMPONENT_DELIMITER_PATTERN = /[/?#]/;
+const AUTHORITY_VAR_STRUCTURE_CHARS = new Set(["/", "?", "#", "@", "\\"]);
+const AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = new Set([
+  "/",
+  ":",
+  "?",
+  "#",
+  "@",
+  "\\",
+]);
+const PERCENT_DECODED_BOUNDARY_CHARS = new Set(["/", ":", "?", "#", "@", "\\"]);
+const BASE_URL_VAR_PARAMETER_CHARS = new Set(["{", "}"]);
+const PATH_VAR_STRUCTURE_CHARS = new Set(["/", "?", "#", "\\"]);
+const PORT_VAR_PATTERN = /^[0-9]+$/;
+const MAX_PATH_PERCENT_DECODE_PASSES = 5;
 
 /**
  * Check if a base URL contains `${{ vars.X }}` template references.
  */
 export function hasBaseUrlVars(base: string): boolean {
   return BASE_URL_VARS_PATTERN.test(base);
+}
+
+function baseUrlVariableError(
+  base: string,
+  serviceName: string,
+  name: string,
+  detail: string,
+): Error {
+  return new Error(
+    errMsg(base, serviceName, `base URL variable "${name}" ${detail}`),
+  );
+}
+
+function validateBaseUrlVariableCommonSyntax({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  if (WHITESPACE_PATTERN.test(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain whitespace",
+    );
+  }
+  if (hasUnsafeUrlCodepoint(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain control characters or invalid Unicode",
+    );
+  }
+  for (const char of value) {
+    if (BASE_URL_VAR_PARAMETER_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not contain firewall parameter syntax",
+      );
+    }
+  }
+}
+
+function pathPartDotPrefix(part: string): string {
+  return part.split(";", 1)[0]!;
+}
+
+function pathPartIsDotSegment(part: string): boolean {
+  const dotPrefix = pathPartDotPrefix(part);
+  return dotPrefix === "." || dotPrefix === "..";
+}
+
+function pathSegmentContainsDotPathPart(segment: string): boolean {
+  if (pathPartIsDotSegment(segment)) return true;
+  return segment.split("/").some((part) => {
+    return pathPartIsDotSegment(part);
+  });
+}
+
+function pathSegmentHasUnsafeSyntaxParts(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
+  if (hasUnsafeUrlCodepoint(segment)) return true;
+  if (segment.includes("\\")) return true;
+  if (pathSegmentContainsDotPathPart(segment)) return true;
+  if (!rejectPathStructure) return false;
+  for (const char of segment) {
+    if (PATH_VAR_STRUCTURE_CHARS.has(char)) return true;
+  }
+  return false;
+}
+
+function normalizedPathSegmentHasUnsafeSyntax(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
+  const normalized = segment.normalize("NFKC");
+  if (normalized === segment) return false;
+  if (normalized.includes("%")) return true;
+  return pathSegmentHasUnsafeSyntaxParts(normalized, rejectPathStructure);
+}
+
+function percentDecodePathSegment(
+  segment: string,
+  rejectPathStructure: boolean,
+): string | null {
+  if (!segment.includes("%")) return segment;
+  for (let i = 0; i < segment.length; i += 1) {
+    if (segment[i] !== "%") continue;
+    if (
+      i + 2 >= segment.length ||
+      !isHexDigit(segment[i + 1]!) ||
+      !isHexDigit(segment[i + 2]!)
+    ) {
+      return null;
+    }
+  }
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  if (rejectPathStructure) {
+    for (const char of decoded) {
+      if (
+        PATH_VAR_STRUCTURE_CHARS.has(char) ||
+        WHITESPACE_PATTERN.test(char) ||
+        UNICODE_CONTROL_PATTERN.test(char)
+      ) {
+        return null;
+      }
+    }
+  }
+  return decoded;
+}
+
+function pathSegmentHasUnsafeSyntax(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
+  let current = segment;
+  for (let pass = 0; pass < MAX_PATH_PERCENT_DECODE_PASSES; pass += 1) {
+    if (
+      pathSegmentHasUnsafeSyntaxParts(current, rejectPathStructure) ||
+      normalizedPathSegmentHasUnsafeSyntax(current, rejectPathStructure)
+    ) {
+      return true;
+    }
+    const decoded = percentDecodePathSegment(current, rejectPathStructure);
+    if (decoded === null) return true;
+    if (decoded === current) return false;
+    current = decoded;
+  }
+
+  if (
+    pathSegmentHasUnsafeSyntaxParts(current, rejectPathStructure) ||
+    normalizedPathSegmentHasUnsafeSyntax(current, rejectPathStructure)
+  ) {
+    return true;
+  }
+  const decoded = percentDecodePathSegment(current, rejectPathStructure);
+  return decoded === null || decoded !== current;
+}
+
+function validateBaseUrlVariablePercentEncoding({
+  base,
+  serviceName,
+  name,
+  value,
+  structureChars,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly structureChars: ReadonlySet<string>;
+}): string {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] !== "%") {
+      continue;
+    }
+    if (
+      i + 2 >= value.length ||
+      !isHexDigit(value[i + 1]!) ||
+      !isHexDigit(value[i + 2]!)
+    ) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "has invalid percent encoding",
+      );
+    }
+
+    let end = i;
+    while (
+      end + 2 < value.length &&
+      value[end] === "%" &&
+      isHexDigit(value[end + 1]!) &&
+      isHexDigit(value[end + 2]!)
+    ) {
+      end += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(value.slice(i, end));
+    } catch {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "has invalid percent encoding",
+      );
+    }
+    for (const char of decoded) {
+      if (
+        structureChars.has(char) ||
+        WHITESPACE_PATTERN.test(char) ||
+        UNICODE_CONTROL_PATTERN.test(char)
+      ) {
+        throw baseUrlVariableError(
+          base,
+          serviceName,
+          name,
+          "must not contain encoded URL structure",
+        );
+      }
+    }
+    i = end - 1;
+  }
+  if (!value.includes("%")) {
+    return value;
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "has invalid percent encoding",
+    );
+  }
+}
+
+function validateBaseUrlPathSegment({
+  base,
+  serviceName,
+  name,
+  segment,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly segment: string;
+}): void {
+  if (pathSegmentHasUnsafeSyntax(segment, true)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain unsafe path segments",
+    );
+  }
+}
+
+function rawPathFromBaseUrl(value: string): string {
+  const schemeEnd = value.indexOf("://");
+  if (schemeEnd === -1) return "";
+  const afterScheme = value.slice(schemeEnd + 3);
+  const pathStart = afterScheme.indexOf("/");
+  if (pathStart === -1) return "";
+  const pathAndAfter = afterScheme.slice(pathStart);
+  const pathEnd = pathAndAfter.search(/[?#]/);
+  return pathEnd === -1 ? pathAndAfter : pathAndAfter.slice(0, pathEnd);
+}
+
+function validateBaseUrlPrefixVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  validateBaseUrl(value, serviceName);
+  const url = new URL(value);
+  if (url.search || url.hash) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain query or fragment before a fixed path suffix",
+    );
+  }
+  const rawPath = rawPathFromBaseUrl(value);
+  for (const segment of rawPath.split("/")) {
+    if (pathSegmentHasUnsafeSyntax(segment, false)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not contain unsafe path segments before a fixed path suffix",
+      );
+    }
+  }
+}
+
+function validateResolvedBaseUrlPathSafety(
+  templateBase: string,
+  serviceName: string,
+  resolved: string,
+): void {
+  const rawPath = rawPathFromBaseUrl(resolved);
+  for (const segment of rawPath.split("/")) {
+    if (pathSegmentHasUnsafeSyntax(segment, false)) {
+      throw new Error(
+        errMsg(
+          templateBase,
+          serviceName,
+          "resolved base URL must not contain unsafe path segments",
+        ),
+      );
+    }
+  }
+}
+
+function validateBaseUrlAuthorityVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  for (const char of value) {
+    if (AUTHORITY_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce URL structure",
+      );
+    }
+  }
+  validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PERCENT_DECODED_BOUNDARY_CHARS,
+  });
+  validateBaseUrl(`https://${value}`, serviceName);
+}
+
+function validateBaseUrlAuthorityFragmentVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  for (const char of value) {
+    if (AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce URL structure",
+      );
+    }
+  }
+  validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PERCENT_DECODED_BOUNDARY_CHARS,
+  });
+}
+
+function validateBaseUrlPortVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  if (!PORT_VAR_PATTERN.test(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must be a numeric URL port",
+    );
+  }
+}
+
+function validateBaseUrlPathVariable({
+  base,
+  serviceName,
+  name,
+  value,
+  prefix,
+  suffix,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly prefix: string;
+  readonly suffix: string;
+}): void {
+  for (const char of value) {
+    if (PATH_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce path structure",
+      );
+    }
+  }
+  const decoded = validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PATH_VAR_STRUCTURE_CHARS,
+  });
+  const prefixSegment = prefix.slice(prefix.lastIndexOf("/") + 1);
+  const suffixSegmentEnd = suffix.search(URL_COMPONENT_DELIMITER_PATTERN);
+  const suffixSegment =
+    suffixSegmentEnd === -1 ? suffix : suffix.slice(0, suffixSegmentEnd);
+  validateBaseUrlPathSegment({
+    base,
+    serviceName,
+    name,
+    segment: `${prefixSegment}${decoded}${suffixSegment}`,
+  });
+}
+
+function prefixIsInsideAuthority(prefix: string): boolean {
+  const schemeEnd = prefix.indexOf("://");
+  if (schemeEnd === -1) return false;
+  const afterScheme = prefix.slice(schemeEnd + 3);
+  return !URL_COMPONENT_DELIMITER_PATTERN.test(afterScheme);
+}
+
+function prefixIsInsidePath(prefix: string): boolean {
+  const schemeEnd = prefix.indexOf("://");
+  if (schemeEnd === -1) return false;
+  const afterScheme = prefix.slice(schemeEnd + 3);
+  if (afterScheme.includes("?") || afterScheme.includes("#")) return false;
+  return afterScheme.includes("/");
+}
+
+function suffixAuthorityPrefix(suffix: string): string {
+  const delimiterIndex = suffix.search(URL_COMPONENT_DELIMITER_PATTERN);
+  return delimiterIndex === -1 ? suffix : suffix.slice(0, delimiterIndex);
+}
+
+function validateBaseUrlTemplateVariable({
+  base,
+  serviceName,
+  name,
+  value,
+  prefix,
+  suffix,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly prefix: string;
+  readonly suffix: string;
+}): void {
+  validateBaseUrlVariableCommonSyntax({ base, serviceName, name, value });
+  if (prefix === "" && suffix === "") {
+    return;
+  }
+  if (prefix === "" && suffix.startsWith("/")) {
+    validateBaseUrlPrefixVariable({ base, serviceName, name, value });
+    return;
+  }
+  if (prefix.endsWith("://") && (suffix === "" || suffix.startsWith("/"))) {
+    validateBaseUrlAuthorityVariable({ base, serviceName, name, value });
+    return;
+  }
+  if (
+    prefixIsInsideAuthority(prefix) &&
+    prefix.endsWith(":") &&
+    (suffix === "" || suffix.startsWith("/"))
+  ) {
+    validateBaseUrlPortVariable({ base, serviceName, name, value });
+    return;
+  }
+  if (prefixIsInsideAuthority(prefix) && suffixAuthorityPrefix(suffix) !== "") {
+    validateBaseUrlAuthorityFragmentVariable({
+      base,
+      serviceName,
+      name,
+      value,
+    });
+    return;
+  }
+  if (prefixIsInsidePath(prefix)) {
+    validateBaseUrlPathVariable({
+      base,
+      serviceName,
+      name,
+      value,
+      prefix,
+      suffix,
+    });
+    return;
+  }
+  throw baseUrlVariableError(
+    base,
+    serviceName,
+    name,
+    "is used in an unsupported base URL template position",
+  );
 }
 
 function firewallAuthInjectsCredentials(auth: FirewallApi["auth"]): boolean {
@@ -698,18 +1243,31 @@ export function resolveFirewallBaseUrlVars(
       ...fw,
       apis: fw.apis.map((api) => {
         if (!hasBaseUrlVars(api.base)) return api;
-        const resolved = api.base.replace(
-          BASE_URL_VARS_PATTERN_G,
-          (_match, name: string) => {
-            const value = vars?.[name];
-            if (!value) {
-              throw new Error(
-                `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
-              );
-            }
-            return value;
-          },
-        );
+        let resolved = "";
+        let lastIndex = 0;
+        for (const match of api.base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+          const fullMatch = match[0];
+          const name = match[1]!;
+          const matchIndex = match.index!;
+          const value = vars?.[name];
+          if (!value) {
+            throw new Error(
+              `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
+            );
+          }
+          validateBaseUrlTemplateVariable({
+            base: api.base,
+            serviceName: fw.name,
+            name,
+            value,
+            prefix: api.base.slice(0, matchIndex),
+            suffix: api.base.slice(matchIndex + fullMatch.length),
+          });
+          resolved += api.base.slice(lastIndex, matchIndex) + value;
+          lastIndex = matchIndex + fullMatch.length;
+        }
+        resolved += api.base.slice(lastIndex);
+        validateResolvedBaseUrlPathSafety(api.base, fw.name, resolved);
         validateBaseUrl(resolved, fw.name);
         validateCredentialedBaseUrlTransport(resolved, fw.name, api.auth);
         return { ...api, base: resolved };

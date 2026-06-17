@@ -1249,6 +1249,119 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const shopifyFirewall = {
+    name: "shopify",
+    apis: [
+      {
+        base: "https://${{ vars.SHOPIFY_SHOP }}.myshopify.com",
+        auth: {
+          headers: {
+            "X-Shopify-Access-Token": "${{ secrets.SHOPIFY_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const snowflakeFirewall = {
+    name: "snowflake",
+    apis: [
+      {
+        base: "https://${{ vars.SNOWFLAKE_ACCOUNT }}.snowflakecomputing.com/api",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.SNOWFLAKE_PAT }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const jiraFirewall = {
+    name: "jira",
+    apis: [
+      {
+        base: "https://${{ vars.JIRA_DOMAIN }}",
+        auth: {
+          headers: {
+            Authorization:
+              "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const n8nFirewall = {
+    name: "n8n",
+    apis: [
+      {
+        base: "${{ vars.N8N_BASE_URL }}/api/v1",
+        auth: {
+          headers: {
+            "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const tenantPathFirewall = {
+    name: "tenant-path",
+    apis: [
+      {
+        base: "https://api.example.test/accounts/${{ vars.TENANT }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const portFirewall = {
+    name: "port-api",
+    apis: [
+      {
+        base: "https://api.example.test:${{ vars.API_PORT }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const pathFragmentFirewall = {
+    name: "path-fragment",
+    apis: [
+      {
+        base: "https://api.example.test/v${{ vars.VERSION }}",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const multiPathSegmentFirewall = {
+    name: "multi-path-segment",
+    apis: [
+      {
+        base: "https://api.example.test/accounts/${{ vars.A }}${{ vars.B }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
   const nonCredentialFirewall = {
     name: "diagnostic",
     apis: [
@@ -1264,6 +1377,207 @@ describe("resolveFirewallBaseUrlVars", () => {
       ZENDESK_SUBDOMAIN: "mycompany",
     });
     expect(result[0]!.apis[0]!.base).toBe("https://mycompany.zendesk.com");
+  });
+
+  it("rejects fixed provider suffix variables that escape the authority", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([shopifyFirewall], {
+        SHOPIFY_SHOP: "attacker.example:443/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects fixed provider suffix variables with encoded URL structure", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([shopifyFirewall], {
+        SHOPIFY_SHOP: "attacker.example%3A443%2Fcapture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts multi-label fixed provider suffix values without URL structure", () => {
+    const result = resolveFirewallBaseUrlVars([snowflakeFirewall], {
+      SNOWFLAKE_ACCOUNT: "xy12345.us-east-1.aws",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://xy12345.us-east-1.aws.snowflakecomputing.com/api",
+    );
+  });
+
+  it("rejects fixed provider suffix values that inject path syntax", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([snowflakeFirewall], {
+        SNOWFLAKE_ACCOUNT: "xy12345.us-east-1.aws/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts whole authority template values", () => {
+    const result = resolveFirewallBaseUrlVars([jiraFirewall], {
+      JIRA_DOMAIN: "acme.atlassian.net",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
+  });
+
+  it("rejects whole authority template values with paths", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([jiraFirewall], {
+        JIRA_DOMAIN: "attacker.example/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects base URL variables that introduce firewall parameters", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL: "https://{host}.example.test",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects base URL variables with Unicode whitespace", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL: "https://strapi.example.test/work\u00a0flows",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("preserves fixed path suffixes for whole base URL prefix templates", () => {
+    const result = resolveFirewallBaseUrlVars([n8nFirewall], {
+      N8N_BASE_URL: "https://n8n.example.test/workflows",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://n8n.example.test/workflows/api/v1",
+    );
+  });
+
+  it("accepts encoded path separators in whole base URL prefix paths", () => {
+    const result = resolveFirewallBaseUrlVars([n8nFirewall], {
+      N8N_BASE_URL: "https://n8n.example.test/work%2fflows",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://n8n.example.test/work%2fflows/api/v1",
+    );
+  });
+
+  it("rejects whole base URL prefix variables with path dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([n8nFirewall], {
+        N8N_BASE_URL: "https://n8n.example.test/workflows/..",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects whole base URL prefix variables with encoded path dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([n8nFirewall], {
+        N8N_BASE_URL: "https://n8n.example.test/workflows/%2e%2e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts path segment variables without crossing path boundaries", () => {
+    const result = resolveFirewallBaseUrlVars([tenantPathFirewall], {
+      TENANT: "acme:prod",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://api.example.test/accounts/acme:prod/v1",
+    );
+  });
+
+  it("rejects path segment variables that inject path structure", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme/../admin",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with encoded path separators", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme%2fprod",
+      });
+    }).toThrow("base URL variable");
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme%252fprod",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables that normalize as dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "%2e%2e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with path-parameter dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "..;type=folder",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with nested encoded dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "%252e%252e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with compatibility dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "\uff0e\uff0e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts path variable dots that do not form dot segments", () => {
+    const result = resolveFirewallBaseUrlVars([pathFragmentFirewall], {
+      VERSION: "%2e1",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.example.test/v%2e1");
+  });
+
+  it("rejects path variables that combine into dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([multiPathSegmentFirewall], {
+        A: ".",
+        B: ".",
+      });
+    }).toThrow("resolved base URL must not contain unsafe path segments");
+  });
+
+  it("accepts path variables that combine into safe segments", () => {
+    const result = resolveFirewallBaseUrlVars([multiPathSegmentFirewall], {
+      A: "v",
+      B: "1",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://api.example.test/accounts/v1/v1",
+    );
+  });
+
+  it("accepts authority port variables", () => {
+    const result = resolveFirewallBaseUrlVars([portFirewall], {
+      API_PORT: "8443",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.example.test:8443/v1");
+  });
+
+  it("rejects authority port variables that are not numeric", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([portFirewall], {
+        API_PORT: "443/path",
+      });
+    }).toThrow("base URL variable");
   });
 
   it("leaves static base URLs unchanged", () => {
