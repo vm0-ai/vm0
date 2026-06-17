@@ -458,6 +458,151 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
+  runner-local-submit-env-smoke:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test local submit environment forwarding
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          set -euo pipefail
+
+          REMOTE="${METAL_USER}@${HOST}"
+          ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$DEFAULT_ROOTFS_HASH" \
+            "$DEFAULT_SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          BIN_DIR=$1
+          JOB_REF=$2
+          ROOTFS_HASH=$3
+          SNAPSHOT_HASH=$4
+          OFFICIAL_RUNNER_SECRET=$5
+
+          SVC="${JOB_REF}-local-env"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
+          GROUP="vm0/local-env-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-env-${JOB_REF}"
+
+          fail() {
+            echo "FAIL: $1" >&2
+            exit 1
+          }
+
+          print_service_logs() {
+            echo "--- ${SVC} service logs ---"
+            sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 200 || true
+          }
+
+          cleanup() {
+            echo "--- Cleanup local env smoke runner ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+          }
+          trap cleanup EXIT
+
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+
+          echo "--- Generating local runner config ---"
+          sudo "$BIN_DIR/runner" config \
+            --profile vm0/default \
+            --rootfs-hash "$ROOTFS_HASH" \
+            --snapshot-hash "$SNAPSHOT_HASH" \
+            --name "$SVC" \
+            --group "$GROUP" \
+            --runner-dirname "$SVC" \
+            --max-concurrent 1 \
+            --api-url https://not-a-real-server.test \
+            --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "--- Starting local runner ---"
+          sudo "$BIN_DIR/runner" service start \
+            --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" \
+            --local \
+            --env USE_MOCK_CLAUDE=true \
+            --env USE_MOCK_CODEX=true
+
+          PROMPT="$(cat <<'PROMPT_SCRIPT'
+          set -euo pipefail
+          printf "LOCAL_SUBMIT_VISIBLE=%s\n" "${LOCAL_SUBMIT_VISIBLE:-missing}"
+          printf "LOCAL_SUBMIT_EMPTY=%s\n" "${LOCAL_SUBMIT_EMPTY:-}"
+          printf "VM0_STUCK_TOOL_TIMEOUT_SECS=%s\n" "${VM0_STUCK_TOOL_TIMEOUT_SECS:-missing}"
+          printf "ANTHROPIC_API_KEY=%s\n" "${ANTHROPIC_API_KEY:-missing}"
+          PROMPT_SCRIPT
+          )"
+
+          echo "--- Submitting env smoke job ---"
+          if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+            --group "$GROUP" \
+            --timeout 180 \
+            --env LOCAL_SUBMIT_VISIBLE=visible-from-env \
+            --env LOCAL_SUBMIT_EMPTY= \
+            --env VM0_STUCK_TOOL_TIMEOUT_SECS=3 \
+            --secret-env ANTHROPIC_API_KEY=sk-local-submit-env-smoke \
+            --prompt "$PROMPT" 2>&1); then
+            echo "$SUBMIT_OUTPUT"
+            print_service_logs
+            fail "local submit env smoke failed"
+          fi
+          echo "$SUBMIT_OUTPUT"
+
+          SUBMIT_JSON="$(awk '/^\{/{line=$0} END{print line}' <<<"$SUBMIT_OUTPUT")"
+          [ -n "$SUBMIT_JSON" ] || fail "local submit output did not include a JSON response"
+          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_JSON")"
+          [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
+          STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
+
+          print_failure_context() {
+            echo "--- Guest stdout stream tail ---"
+            sudo tail -200 "$STREAM_LOG" || true
+            print_service_logs
+          }
+
+          echo "--- Forwarded env lines from guest stdout ---"
+          sudo grep -E 'LOCAL_SUBMIT_VISIBLE=|LOCAL_SUBMIT_EMPTY=|VM0_STUCK_TOOL_TIMEOUT_SECS=|ANTHROPIC_API_KEY=' "$STREAM_LOG" || true
+
+          sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG" || {
+            print_failure_context
+            fail "ordinary --env value was not visible to the guest CLI"
+          }
+          sudo grep -q 'LOCAL_SUBMIT_EMPTY=' "$STREAM_LOG" || {
+            print_failure_context
+            fail "empty --env value was not visible to the guest CLI"
+          }
+          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=missing' "$STREAM_LOG" || {
+            print_failure_context
+            fail "guest-agent tuning env leaked into the guest CLI environment"
+          }
+          sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" || {
+            print_failure_context
+            fail "--secret-env value was not visible to the guest CLI"
+          }
+
+          echo "PASS: local submit forwarded env and secret-env to the guest CLI"
+          REMOTE_SCRIPT
+
   runner-benchmark:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -1605,6 +1750,7 @@ jobs:
       - api-contracts-rust-bindings
       - mitm-addon-test
       - runner-build
+      - runner-local-submit-env-smoke
       - runner-benchmark
       - runner-exec
       - runner-cancel
@@ -1654,6 +1800,7 @@ jobs:
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
+          check_result "runner-local-submit-env-smoke" "${{ needs.runner-local-submit-env-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-cancel" "${{ needs.runner-cancel.result }}" "true"
