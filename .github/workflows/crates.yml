@@ -472,10 +472,11 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Test local submit environment forwarding
+      - name: Test local submit with real Claude Code
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
@@ -484,13 +485,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::CI_ANTHROPIC_API_KEY is required for real Claude local submit smoke"
+            exit 1
+          fi
+
           REMOTE="${METAL_USER}@${HOST}"
           ssh "$REMOTE" bash -s -- \
             "$BIN_DIR" \
             "$JOB_REF" \
             "$DEFAULT_ROOTFS_HASH" \
             "$DEFAULT_SNAPSHOT_HASH" \
-            "$OFFICIAL_RUNNER_SECRET" <<'REMOTE_SCRIPT'
+            "$OFFICIAL_RUNNER_SECRET" \
+            "$ANTHROPIC_API_KEY" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           BIN_DIR=$1
@@ -498,6 +505,7 @@ jobs:
           ROOTFS_HASH=$3
           SNAPSHOT_HASH=$4
           OFFICIAL_RUNNER_SECRET=$5
+          ANTHROPIC_API_KEY=$6
 
           SVC="${JOB_REF}-local-env"
           RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
@@ -540,31 +548,21 @@ jobs:
           sudo "$BIN_DIR/runner" service start \
             --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" \
-            --local \
-            --env USE_MOCK_CLAUDE=true \
-            --env USE_MOCK_CODEX=true
+            --local
 
-          PROMPT="$(cat <<'PROMPT_SCRIPT'
-          set -euo pipefail
-          printf "LOCAL_SUBMIT_VISIBLE=%s\n" "${LOCAL_SUBMIT_VISIBLE:-missing}"
-          printf "LOCAL_SUBMIT_EMPTY=%s\n" "${LOCAL_SUBMIT_EMPTY:-}"
-          printf "VM0_STUCK_TOOL_TIMEOUT_SECS=%s\n" "${VM0_STUCK_TOOL_TIMEOUT_SECS:-missing}"
-          printf "ANTHROPIC_API_KEY=%s\n" "${ANTHROPIC_API_KEY:-missing}"
-          PROMPT_SCRIPT
-          )"
+          PROMPT='Compute 123+456 and reply with exactly: RESULT=<answer>'
 
-          echo "--- Submitting env smoke job ---"
+          echo "--- Submitting real Claude Code smoke job ---"
           if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
             --group "$GROUP" \
             --timeout 180 \
-            --env LOCAL_SUBMIT_VISIBLE=visible-from-env \
-            --env LOCAL_SUBMIT_EMPTY= \
-            --env VM0_STUCK_TOOL_TIMEOUT_SECS=3 \
-            --secret-env ANTHROPIC_API_KEY=sk-local-submit-env-smoke \
+            --cli-agent-type claude-code \
+            --env ANTHROPIC_MODEL=claude-haiku-4-5 \
+            --secret-env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --prompt "$PROMPT" 2>&1); then
             echo "$SUBMIT_OUTPUT"
             print_service_logs
-            fail "local submit env smoke failed"
+            fail "real Claude Code local submit smoke failed"
           fi
           echo "$SUBMIT_OUTPUT"
 
@@ -580,27 +578,20 @@ jobs:
             print_service_logs
           }
 
-          echo "--- Forwarded env lines from guest stdout ---"
-          sudo grep -E 'LOCAL_SUBMIT_VISIBLE=|LOCAL_SUBMIT_EMPTY=|VM0_STUCK_TOOL_TIMEOUT_SECS=|ANTHROPIC_API_KEY=' "$STREAM_LOG" || true
+          if sudo grep -q 'Using mock-claude for testing' "$STREAM_LOG"; then
+            print_failure_context
+            fail "real Claude Code smoke used mock Claude"
+          fi
 
-          sudo grep -q 'LOCAL_SUBMIT_VISIBLE=visible-from-env' "$STREAM_LOG" || {
+          echo "--- Real Claude Code result lines from guest stdout ---"
+          sudo grep -E 'RESULT=579|Claude Code Completed' "$STREAM_LOG" || true
+
+          sudo grep -q 'RESULT=579' "$STREAM_LOG" || {
             print_failure_context
-            fail "ordinary --env value was not visible to the guest CLI"
-          }
-          sudo grep -q 'LOCAL_SUBMIT_EMPTY=' "$STREAM_LOG" || {
-            print_failure_context
-            fail "empty --env value was not visible to the guest CLI"
-          }
-          sudo grep -q 'VM0_STUCK_TOOL_TIMEOUT_SECS=missing' "$STREAM_LOG" || {
-            print_failure_context
-            fail "guest-agent tuning env leaked into the guest CLI environment"
-          }
-          sudo grep -Eq 'ANTHROPIC_API_KEY=(sk-local-submit-env-smoke|\*\*\*)' "$STREAM_LOG" || {
-            print_failure_context
-            fail "--secret-env value was not visible to the guest CLI"
+            fail "real Claude Code did not return RESULT=579"
           }
 
-          echo "PASS: local submit forwarded env and secret-env to the guest CLI"
+          echo "PASS: local submit ran real Claude Code with Haiku and returned RESULT=579"
           REMOTE_SCRIPT
 
   runner-benchmark:
