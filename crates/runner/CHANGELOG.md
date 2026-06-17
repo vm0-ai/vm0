@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.119.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.2...runner-rs-v0.119.3) (2026-06-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve underbilling fallback context ([#18075](https://github.com/vm0-ai/vm0/issues/18075)) ([cc8fd8b](https://github.com/vm0-ai/vm0/commit/cc8fd8ba40c619d8dd8f329e0a503a6cecf6cbee))
+* **runner:** make local queue files private ([#18052](https://github.com/vm0-ai/vm0/issues/18052)) ([e482b43](https://github.com/vm0-ai/vm0/commit/e482b43ec36868f2c45c40ad55a31713415faf7d))
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
 ## [0.119.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.1...runner-rs-v0.119.2) (2026-06-17)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.151.0](https://github.com/vm0-ai/vm0/compare/api-v1.150.0...api-v1.151.0) (2026-06-17)
+
+
+### Features
+
+* rename zero skills to workflows ([#18099](https://github.com/vm0-ai/vm0/issues/18099)) ([c38a8fa](https://github.com/vm0-ai/vm0/commit/c38a8faaf091ea9950afdc344c7fb9701d502576))
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.0
+    * @vm0/connectors bumped to 1.85.0
+    * @vm0/core bumped to 8.350.0
+    * @vm0/db bumped to 1.55.0
+
 ## [1.150.0](https://github.com/vm0-ai/vm0/compare/api-v1.149.1...api-v1.150.0) (2026-06-17)
 
 
