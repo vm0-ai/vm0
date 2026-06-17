@@ -12,9 +12,9 @@ from pathlib import Path
 from mitmproxy import ctx
 
 import matching
+from authority_utils import percent_decode_host
 from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 from firewall_auth_config import auth_config_injects_credentials
-from authority_utils import percent_decode_host
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from path_security import has_unsafe_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
