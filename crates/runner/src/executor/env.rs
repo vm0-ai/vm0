@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
-use super::session_restore::canonical_codex_thread_id;
+use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
 use super::storage::format_guest_exec_failure;
 use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_AGENT_TUNING_ENV_KEYS, GUEST_USER_ENV_DIR_NAME,
@@ -97,9 +97,28 @@ pub(super) fn validate_model_provider_env_placeholders(
 pub(super) fn validate_execution_context_before_sandbox(
     context: &ExecutionContext,
 ) -> Result<(), String> {
+    validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
     validate_claude_tool_lists(context)?;
     Ok(())
+}
+
+pub(super) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(), String> {
+    let Some(session) = &context.resume_session else {
+        return Ok(());
+    };
+    match effective_cli_framework(&context.cli_agent_type) {
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(&session.session_id)
+            .map(|_| ())
+            .ok_or_else(|| "invalid codex session_id".to_string()),
+        EffectiveCliFramework::ClaudeCode => {
+            if is_valid_session_id(&session.session_id) {
+                Ok(())
+            } else {
+                Err("invalid session_id".to_string())
+            }
+        }
+    }
 }
 
 pub(super) fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(), String> {
