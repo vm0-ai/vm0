@@ -920,7 +920,7 @@ Download the archive here: ${fileUrl}.`,
 
     await waitFor(() => {
       expect(screen.getByText("Table keeps URLs as text")).toBeInTheDocument();
-      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-markdown")).toHaveAttribute(
         "aria-label",
