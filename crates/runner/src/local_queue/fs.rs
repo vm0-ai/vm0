@@ -157,6 +157,23 @@ mod tests {
     }
 
     #[test]
+    fn ensure_profile_jobs_dir_rejects_final_profile_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("groups").join("org").join("group");
+        let profile_parent = group_dir.join("jobs").join("vm0");
+        std::fs::create_dir_all(&profile_parent).unwrap();
+        let target = dir.path().join("target-profile");
+        let profile_dir = profile_parent.join("default");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &profile_dir).unwrap();
+
+        let error = ensure_profile_jobs_dir(&group_dir, crate::profile::DEFAULT_PROFILE)
+            .expect_err("final profile symlink should be rejected");
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
     fn ensure_profile_jobs_dir_rejects_intermediate_group_symlink_without_touching_target() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("target");
