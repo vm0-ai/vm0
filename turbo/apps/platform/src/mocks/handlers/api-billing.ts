@@ -1,6 +1,7 @@
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingConcurrencyCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
@@ -69,6 +70,15 @@ export const apiBillingHandlers = [
       url: `https://checkout.stripe.com/test?tier=${body.tier}`,
     });
   }),
+
+  mockApi(
+    zeroBillingConcurrencyCheckoutContract.create,
+    ({ body, respond }) => {
+      return respond(200, {
+        url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
+      });
+    },
+  ),
 
   mockApi(zeroBillingPortalContract.create, ({ respond }) => {
     return respond(200, {

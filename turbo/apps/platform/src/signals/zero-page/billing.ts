@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingConcurrencyCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
@@ -336,6 +337,36 @@ export const startCreditCheckout$ = command(
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
           successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
+
+export const startConcurrencyCheckout$ = command(
+  async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("concurrency", "purchased");
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("concurrency", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          quantity,
+          successUrl: successUrl.toString(),
           cancelUrl: cancelUrl.toString(),
         },
         fetchOptions: { signal },
