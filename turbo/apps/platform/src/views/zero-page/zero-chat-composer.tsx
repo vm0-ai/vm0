@@ -2902,9 +2902,9 @@ function ConnectorsPopoverButton({
               <div className="flex flex-col max-h-72 overflow-y-auto">
                 {visibleConnectors.map((item) => {
                   return (
-                    <div
+                    <label
                       key={item.type}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         <ConnectorIcon type={item.type} size={16} />
@@ -2921,7 +2921,7 @@ function ConnectorsPopoverButton({
                         ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
                       />
-                    </div>
+                    </label>
                   );
                 })}
               </div>

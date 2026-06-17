@@ -1347,7 +1347,7 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Remove GitHub"));
+    await user.click(screen.getByText("GitHub"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
