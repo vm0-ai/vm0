@@ -1,4 +1,5 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   ZeroWorkflowAgentSummary,
   ZeroWorkflowDetailResponse,
@@ -10,9 +11,12 @@ import {
   IconFile,
   IconFolderOpen,
   IconLock,
+  IconLoader2,
+  IconPlus,
   IconSearch,
   IconUsers,
   IconWorld,
+  IconX,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -29,6 +33,8 @@ import {
 } from "@vm0/ui";
 
 import {
+  attachSelectedWorkflowAgent$,
+  detachSelectedWorkflowAgent$,
   filteredOrgWorkflows$,
   selectedWorkflowAgentId$,
   selectedWorkflowDetail$,
@@ -39,12 +45,15 @@ import {
   setSelectedWorkflowName$,
   setWorkflowAttachmentFilter$,
   setWorkflowSearch$,
+  workflowAttachableAgents$,
   workflowAgentOptions$,
   workflowAttachmentFilter$,
   workflowSearch$,
   type WorkflowAttachmentFilter,
 } from "../../signals/workflows-page/workflows-signals.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
@@ -531,10 +540,7 @@ function WorkflowViewer({
           )}
         </div>
         <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
-          <AttachedAgentsPanel
-            agents={detail.attachedAgents}
-            count={detail.attachedAgentCount}
-          />
+          <AttachedAgentsPanel workflow={detail} />
           <WorkflowFiles
             files={files}
             selectedPath={selectedFilePath}
@@ -563,34 +569,121 @@ function VisibilityBadge({
 }
 
 function AttachedAgentsPanel({
-  agents,
-  count,
+  workflow,
 }: {
-  readonly agents: readonly ZeroWorkflowAgentSummary[];
-  readonly count: number;
+  readonly workflow: ZeroWorkflowDetailResponse;
 }) {
+  const attachableAgentsLoadable = useLoadable(workflowAttachableAgents$);
+  const pageSignal = useGet(pageSignal$);
+  const [attachLoadable, attachAgent] = useLoadableSet(
+    attachSelectedWorkflowAgent$,
+  );
+  const [detachLoadable, detachAgent] = useLoadableSet(
+    detachSelectedWorkflowAgent$,
+  );
+  const attachableAgents =
+    attachableAgentsLoadable.state === "hasData"
+      ? attachableAgentsLoadable.data
+      : [];
+  const attachableAgentsLoading = attachableAgentsLoadable.state === "loading";
+  const attaching = attachLoadable.state === "loading";
+  const detaching = detachLoadable.state === "loading";
+  const busy = attaching || detaching;
+  const attachDisabled =
+    busy || attachableAgentsLoading || attachableAgents.length === 0;
+  const attachPlaceholder = attachableAgentsLoading
+    ? "Loading agents"
+    : attachableAgents.length === 0
+      ? "No agents available"
+      : "Attach agent";
+
   return (
     <div className="border-b border-border/70">
       <div className="flex h-9 items-center justify-between px-3">
         <span className="text-xs font-medium text-muted-foreground">
           Attached agents
         </span>
-        <span className="text-xs text-muted-foreground">{count}</span>
+        <span className="text-xs text-muted-foreground">
+          {workflow.attachedAgentCount}
+        </span>
       </div>
+      {workflow.canManage ? (
+        <div className="px-2 pb-2">
+          <Select
+            value=""
+            disabled={attachDisabled}
+            onValueChange={(agentId) => {
+              detach(attachAgent(agentId, pageSignal), Reason.DomCallback);
+            }}
+          >
+            <SelectTrigger
+              aria-label="Attach workflow to agent"
+              className="zero-btn-morandi h-8 w-full gap-1.5 rounded-md px-2 text-xs"
+            >
+              {attaching ? (
+                <IconLoader2 size={13} className="shrink-0 animate-spin" />
+              ) : (
+                <IconPlus size={13} stroke={1.5} className="shrink-0" />
+              )}
+              <SelectValue placeholder={attachPlaceholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {attachableAgents.map((agent) => {
+                return (
+                  <SelectItem key={agent.agentId} value={agent.agentId}>
+                    {agentTitle(agent)}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       <div className="max-h-[180px] overflow-auto px-2 pb-2">
-        {agents.length > 0 ? (
+        {workflow.attachedAgents.length > 0 ? (
           <div className="flex flex-col gap-1">
-            {agents.map((agent) => {
+            {workflow.attachedAgents.map((agent) => {
+              const title = agentTitle(agent);
               return (
-                <Link
+                <div
                   key={agent.agentId}
-                  pathname={ROUTES.agentDetail}
-                  options={{ pathParams: { agentId: agent.agentId } }}
-                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                  className="flex min-w-0 items-center gap-1 rounded-md"
                 >
-                  <AgentAvatar agent={agent} />
-                  <span className="truncate">{agentTitle(agent)}</span>
-                </Link>
+                  <Link
+                    pathname={ROUTES.agentDetail}
+                    options={{ pathParams: { agentId: agent.agentId } }}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                  >
+                    <AgentAvatar agent={agent} />
+                    <span className="truncate">{title}</span>
+                  </Link>
+                  {workflow.canManage ? (
+                    <button
+                      type="button"
+                      aria-label={`Detach workflow from ${title}`}
+                      disabled={busy}
+                      className={cn(
+                        "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors",
+                        busy
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:bg-accent hover:text-foreground",
+                      )}
+                      onClick={() => {
+                        detach(
+                          detachAgent(agent.agentId, pageSignal),
+                          Reason.DomCallback,
+                        );
+                      }}
+                    >
+                      {detaching ? (
+                        <IconLoader2 size={13} className="animate-spin" />
+                      ) : (
+                        <IconX size={13} stroke={1.5} />
+                      )}
+                      <span>Detach</span>
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>

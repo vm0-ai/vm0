@@ -1,6 +1,8 @@
 import {
+  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  type ZeroWorkflowAgentSummary,
   type ZeroWorkflowContentResponse,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
@@ -22,6 +24,28 @@ function metadata(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     attachedAgentCount: workflow.attachedAgentCount,
     attachedAgents: workflow.attachedAgents,
     canManage: workflow.canManage,
+  };
+}
+
+function fallbackAgent(agentId: string): ZeroWorkflowAgentSummary {
+  return {
+    agentId,
+    ownerId: "test-user-123",
+    displayName: null,
+    description: null,
+    avatarUrl: null,
+    visibility: "public",
+  };
+}
+
+function withAttachedAgents(
+  workflow: ZeroWorkflowDetailResponse,
+  attachedAgents: readonly ZeroWorkflowAgentSummary[],
+): ZeroWorkflowDetailResponse {
+  return {
+    ...workflow,
+    attachedAgentCount: attachedAgents.length,
+    attachedAgents: [...attachedAgents],
   };
 }
 
@@ -84,5 +108,69 @@ export const apiWorkflowsHandlers = [
     };
     mockWorkflows[index] = updated;
     return respond(200, response);
+  }),
+
+  mockApi(zeroWorkflowAgentsContract.list, ({ params, respond }) => {
+    const workflow = mockWorkflows.find((item) => {
+      return item.name === params.name;
+    });
+    if (!workflow) {
+      return respond(404, {
+        error: {
+          message: `Workflow not found: ${params.name}`,
+          code: "NOT_FOUND",
+        },
+      });
+    }
+    return respond(200, workflow.attachedAgents);
+  }),
+
+  mockApi(zeroWorkflowAgentsContract.attach, ({ body, params, respond }) => {
+    const index = mockWorkflows.findIndex((item) => {
+      return item.name === params.name;
+    });
+    if (index === -1) {
+      return respond(404, {
+        error: {
+          message: `Workflow not found: ${params.name}`,
+          code: "NOT_FOUND",
+        },
+      });
+    }
+
+    const workflow = mockWorkflows[index]!;
+    const alreadyAttached = workflow.attachedAgents.some((agent) => {
+      return agent.agentId === body.agentId;
+    });
+    if (!alreadyAttached) {
+      mockWorkflows[index] = withAttachedAgents(workflow, [
+        ...workflow.attachedAgents,
+        fallbackAgent(body.agentId),
+      ]);
+    }
+    return respond(200, metadata(mockWorkflows[index]!));
+  }),
+
+  mockApi(zeroWorkflowAgentsContract.detach, ({ params, respond }) => {
+    const index = mockWorkflows.findIndex((item) => {
+      return item.name === params.name;
+    });
+    if (index === -1) {
+      return respond(404, {
+        error: {
+          message: `Workflow not found: ${params.name}`,
+          code: "NOT_FOUND",
+        },
+      });
+    }
+
+    const workflow = mockWorkflows[index]!;
+    mockWorkflows[index] = withAttachedAgents(
+      workflow,
+      workflow.attachedAgents.filter((agent) => {
+        return agent.agentId !== params.agentId;
+      }),
+    );
+    return respond(200, metadata(mockWorkflows[index]!));
   }),
 ];
