@@ -63,30 +63,40 @@ function isPolicyValue(value: unknown): value is FirewallPolicyValue {
   return value === "allow" || value === "deny" || value === "ask";
 }
 
+function generatedExportCandidates(
+  moduleExports: Readonly<Record<string, unknown>>,
+  suffix: string,
+): [string, unknown][] {
+  return Object.entries(moduleExports).filter(([name]) => {
+    return name.endsWith(suffix);
+  });
+}
+
 function getRequiredGeneratedExport<T>(
   moduleExports: Readonly<Record<string, unknown>>,
   type: FirewallConnectorType,
   suffix: string,
   isExpected: (value: unknown) => value is T,
 ): T {
-  const matches: T[] = [];
-  for (const [name, value] of Object.entries(moduleExports)) {
-    if (name.endsWith(suffix) && isExpected(value)) {
-      matches.push(value);
-    }
-  }
+  const matches = generatedExportCandidates(moduleExports, suffix);
   if (matches.length !== 1) {
     throw new Error(
       `Expected exactly one ${suffix} export for firewall metadata: ${type}`,
     );
   }
-  const [match] = matches;
-  if (match === undefined) {
+  const match = matches[0];
+  if (!match) {
     throw new Error(
       `Expected exactly one ${suffix} export for firewall metadata: ${type}`,
     );
   }
-  return match;
+  const [name, value] = match;
+  if (!isExpected(value)) {
+    throw new Error(
+      `Unexpected ${name} export shape for firewall metadata: ${type}`,
+    );
+  }
+  return value;
 }
 
 function getOptionalGeneratedExport<T>(
@@ -95,18 +105,23 @@ function getOptionalGeneratedExport<T>(
   suffix: string,
   isExpected: (value: unknown) => value is T,
 ): T | null {
-  const matches: T[] = [];
-  for (const [name, value] of Object.entries(moduleExports)) {
-    if (name.endsWith(suffix) && isExpected(value)) {
-      matches.push(value);
-    }
-  }
+  const matches = generatedExportCandidates(moduleExports, suffix);
   if (matches.length > 1) {
     throw new Error(
       `Expected at most one ${suffix} export for firewall metadata: ${type}`,
     );
   }
-  return matches[0] ?? null;
+  const [match] = matches;
+  if (!match) {
+    return null;
+  }
+  const [name, value] = match;
+  if (!isExpected(value)) {
+    throw new Error(
+      `Unexpected ${name} export shape for firewall metadata: ${type}`,
+    );
+  }
+  return value;
 }
 
 async function importModule(
@@ -526,8 +541,10 @@ export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} a
 function renderLoaderFile(types: readonly string[]): string {
   const loaders = types
     .map((type) => {
-      return `  "${type}": async () => {
-    return (await import("./details/${type}.generated")).firewallPermissionMetadata;
+      const key = JSON.stringify(type);
+      const specifier = JSON.stringify(`./details/${type}.generated`);
+      return `  ${key}: async () => {
+    return (await import(${specifier})).firewallPermissionMetadata;
   },`;
     })
     .join("\n");
