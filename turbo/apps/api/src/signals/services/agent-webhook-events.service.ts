@@ -15,7 +15,7 @@ import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { ingestAxiomEvents$ } from "./agent-event-consumer-axiom.service";
-import { processChatAssistantEvents$ } from "../routes/internal-event-consumers-chat-assistant";
+import { processChatAssistantEvents$ } from "./agent-event-consumer-chat-assistant.service";
 import { settle } from "../utils";
 
 const L = logger("webhook:events");

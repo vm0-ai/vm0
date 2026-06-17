@@ -76,23 +76,6 @@ export const internalEventConsumerAgentPhoneTypingContract = c.router({
   },
 });
 
-export const internalEventConsumerChatAssistantContract = c.router({
-  process: {
-    method: "POST",
-    path: "/api/internal/event-consumers/chat-assistant",
-    headers: eventConsumerHeadersSchema,
-    body: eventConsumerPayloadSchema,
-    responses: {
-      200: z.object({ processed: z.number() }),
-      401: eventConsumerUnauthorizedSchema,
-    },
-    summary: "Persist assistant-visible run events into chat threads",
-  },
-});
-
-export type InternalEventConsumerChatAssistantContract =
-  typeof internalEventConsumerChatAssistantContract;
-
 export type InternalEventConsumerTelegramTypingContract =
   typeof internalEventConsumerTelegramTypingContract;
 

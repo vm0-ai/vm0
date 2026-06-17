@@ -993,33 +993,6 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
 });
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
-  it("rejects event consumers with missing auth or invalid bodies", async () => {
-    const body = {
-      runId: randomUUID(),
-      events: [],
-      context: {
-        userId: "user_bdd_event_consumer",
-        orgId: "org_bdd_event_consumer",
-      },
-    };
-
-    const missingSignature = await api.requestChatAssistantEventConsumer(
-      body,
-      {},
-      [401],
-    );
-    expect(missingSignature.body).toStrictEqual({
-      error: "Missing X-VM0-Signature header",
-    });
-
-    const invalidBody = await api.requestInvalidChatAssistantEventConsumerBody(
-      "not-json",
-      api.signedEventConsumerHeaders("not-json"),
-      [401],
-    );
-    expect(invalidBody.body).toStrictEqual({ error: "Invalid JSON body" });
-  });
-
   it("dispatches agent event batches to Axiom in-process", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);

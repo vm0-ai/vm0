@@ -661,10 +661,6 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/event-consumers/agentphone-typing",
   ],
   [
-    "/api/internal/event-consumers/chat-assistant",
-    "/api/internal/event-consumers/chat-assistant",
-  ],
-  [
     "/api/internal/event-consumers/telegram-typing",
     "/api/internal/event-consumers/telegram-typing",
   ],

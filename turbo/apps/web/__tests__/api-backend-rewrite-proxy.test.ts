@@ -2084,12 +2084,12 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the internal event consumer chat assistant rewrite path exactly", () => {
+  it("does not match the removed internal event consumer chat assistant rewrite path", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/internal/event-consumers/chat-assistant",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/internal/event-consumers/chat-assistant/extra",
