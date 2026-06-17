@@ -109,6 +109,23 @@ class TestBodyCaptureStreamBuffer:
         assert "request_body_encoding" not in entry
         assert entry["request_body_truncated"] is True
 
+    def test_suppressed_request_body_ignores_invalid_stream_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(b"hidden")
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = ["truncated"]
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert entry["request_body_truncated"] is True
+
     def test_empty_request_stream_buffer_requires_dict_state_when_present(self, real_flow):
         flow = real_flow(
             method="POST",
