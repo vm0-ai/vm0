@@ -485,9 +485,10 @@ def _is_browser_user_agent(user_agent: str | None) -> bool:
     )
 
 
-def _is_browser_request(flow: http.HTTPFlow) -> bool:
-    # This is only a browser-looking User-Agent heuristic. It is not trusted
-    # browser provenance: any sandbox client can set this header.
+def _is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
+    # Short-term business passthrough heuristic for browser-originated traffic.
+    # This is not trusted browser provenance: any sandbox client can set this
+    # header. Issue #18024 tracks replacing it with a runner-owned signal.
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
 
 
@@ -591,7 +592,7 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
 
     _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
 
-    if _is_browser_request(flow):
+    if _is_browser_passthrough_heuristic(flow):
         flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
 
     try:
@@ -930,7 +931,9 @@ def _maybe_replace_connector_diagnostic_response(
         _HTTP_STATUS_FORBIDDEN,
     ):
         return
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
         return
 
     candidate = _connector_diagnostic_candidate_from_flow(flow)
@@ -958,7 +961,9 @@ def _maybe_make_connector_diagnostic_error_response(
     *,
     original_url: str,
 ) -> None:
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
         return
     candidate = _connector_diagnostic_candidate_from_flow(flow)
     if candidate is None:
@@ -986,7 +991,9 @@ def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
         _HTTP_STATUS_FORBIDDEN,
     ):
         return False
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
         return False
 
     candidate = _connector_diagnostic_candidate_from_flow(flow)
@@ -1342,10 +1349,9 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             return
         if classification.kind == "browser_allow":
-            # User-Agent is client-controlled. This is a business passthrough
-            # for browser-looking traffic, not proof of trusted browser
-            # provenance. Registry and authority validation have already run,
-            # but firewall matching, credential fetch, and auth injection do not.
+            # Browser-originated traffic intentionally bypasses connector
+            # firewall handling. User-Agent is the short-term heuristic for that
+            # business passthrough, not trusted provenance.
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
