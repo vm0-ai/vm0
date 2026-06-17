@@ -1260,7 +1260,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.37.1"
+version = "0.37.2"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1296,7 +1296,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "libc",
  "tempfile",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.27"
+version = "0.20.28"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.76"
+version = "0.16.77"
 dependencies = [
  "libc",
  "nix",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.119.2"
+version = "0.119.3"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.39"
+version = "0.37.40"
 dependencies = [
  "async-trait",
  "base64",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.7.11"
+version = "0.7.12"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3713,7 +3713,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.18.36"
+version = "0.18.37"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3740,7 +3740,7 @@ version = "0.18.15"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.95"
+version = "0.9.96"
 dependencies = [
  "guest-write-file",
  "libc",

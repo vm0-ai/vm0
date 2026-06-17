@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.4...desktop-v0.14.5) (2026-06-17)
+
+
+### Bug Fixes
+
+* **desktop:** make visual pointer more prominent ([#18109](https://github.com/vm0-ai/vm0/issues/18109)) ([828cdd6](https://github.com/vm0-ai/vm0/commit/828cdd65c4df786379be6c47e115d36e13c276ea))
+
 ## [0.14.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.3...desktop-v0.14.4) (2026-06-17)
 
 
