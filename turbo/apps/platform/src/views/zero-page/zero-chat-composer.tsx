@@ -687,6 +687,7 @@ function toPresentationGenerationTemplate(
     selection: {
       designSystemId: item.designSystemId,
       templateId: item.templateId,
+      previewUrl: item.embedUrl,
     },
   };
 }

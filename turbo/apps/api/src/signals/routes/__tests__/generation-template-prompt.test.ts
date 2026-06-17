@@ -16,6 +16,7 @@ describe("buildGenerationTemplatePrompt", () => {
       selection: {
         designSystemId: item.designSystemId,
         templateId: item.templateId,
+        previewUrl: item.embedUrl,
       },
     });
 
@@ -32,6 +33,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain(`(${item.designSystemId})`);
     expect(result.prompt).toContain(`(${item.templateId})`);
+    expect(result.prompt).toContain(`Template preview URL: ${item.embedUrl}`);
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );

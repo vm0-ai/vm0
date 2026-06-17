@@ -180,6 +180,7 @@ const presentationGenerationTemplateRequestSchema = z.object({
   selection: z.object({
     designSystemId: z.string().min(1),
     templateId: z.string().min(1),
+    previewUrl: z.string().url().optional(),
   }),
 });
 

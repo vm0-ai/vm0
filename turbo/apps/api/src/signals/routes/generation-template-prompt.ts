@@ -10,6 +10,7 @@ interface PresentationGenerationTemplateInput {
   readonly selection: {
     readonly designSystemId: string;
     readonly templateId: string;
+    readonly previewUrl?: string;
   };
 }
 
@@ -117,6 +118,9 @@ function buildPresentationGenerationTemplatePrompt(
       `- Design system description: ${designSystem.description}`,
       `- Template: ${template.name} (${template.id})`,
       `- Template description: ${template.description}`,
+      ...(generationTemplate.selection.previewUrl
+        ? [`- Template preview URL: ${generationTemplate.selection.previewUrl}`]
+        : []),
       "",
       "When you produce a presentation from the user's request:",
       `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
