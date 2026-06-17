@@ -36,6 +36,7 @@ import {
   IconVideo,
   IconX,
 } from "@tabler/icons-react";
+import { LayoutGrid, Sparkle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -2503,6 +2504,23 @@ function SelectedTemplateChipSlot({
   return null;
 }
 
+function TemplatePickerIcon() {
+  return (
+    <span aria-hidden="true" className="relative inline-flex h-[18px] w-[18px]">
+      <LayoutGrid
+        className="absolute bottom-0 left-0"
+        size={16}
+        strokeWidth={1.7}
+      />
+      <Sparkle
+        className="absolute -right-1.5 -top-1"
+        size={8}
+        strokeWidth={1.8}
+      />
+    </span>
+  );
+}
+
 function TemplatePickerButton({
   picker,
   hasPptTab,
@@ -2545,7 +2563,7 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <IconTemplate size={18} stroke={1.5} />
+              <TemplatePickerIcon />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
