@@ -877,6 +877,9 @@ impl IdlePool {
             self.bump_revision();
         }
         idle_vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        if idle_vms.len() < idle_vms.capacity() / 2 {
+            idle_vms.shrink_to_fit();
+        }
         (
             expired,
             IdlePoolSnapshot {
