@@ -141,11 +141,15 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
             credential_value="credential-value",
             sandbox_token_bytes=b"bytes-token-value",
             idempotency_key="diagnostic-key",
-            input_tokens=42,
+            input_tokens="42",
+            tokenizer_name="usage-tokenizer",
             **{
                 "api-key": "hyphen-api-key-value",
+                "api key number": 123456,
                 "spaced api key": "spaced-api-key-value",
+                "access key number": 456789,
                 "accessKeyId": "camel-access-key-value",
+                "oauth_token": "oauth-token-value",
                 "private.key": "dotted-private-key-value",
                 "privateKey": "camel-private-key-value",
             },
@@ -156,18 +160,25 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "access_key_id=[redacted]" in message
     assert "private_key=[redacted]" in message
     assert "credential_value=[redacted]" in message
+    assert "oauth_token=[redacted]" in message
     assert "sandbox_token_bytes=[redacted]" in message
     assert "api-key=[redacted]" in message
+    assert "api_key_number=[redacted]" in message
     assert "spaced_api_key=[redacted]" in message
+    assert "access_key_number=[redacted]" in message
     assert "accessKeyId=[redacted]" in message
     assert "private.key=[redacted]" in message
     assert "privateKey=[redacted]" in message
     assert "idempotency_key=diagnostic-key" in message
     assert "input_tokens=42" in message
+    assert "tokenizer_name=usage-tokenizer" in message
     assert "api-key-value" not in message
+    assert "123456" not in message
     assert "access-key-value" not in message
+    assert "456789" not in message
     assert "private-key-value" not in message
     assert "credential-value" not in message
+    assert "oauth-token-value" not in message
     assert "bytes-token-value" not in message
     assert "hyphen-api-key-value" not in message
     assert "spaced-api-key-value" not in message

@@ -13,15 +13,56 @@ UnderbillingClass = Literal["confirmed", "risk"]
 USAGE_UNDERBILLING_LOG_TYPE = "usage_underbilling"
 USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
 _UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
+_SECRET_FIELD_WORDS = frozenset(
+    (
+        "authorization",
+        "credential",
+        "password",
+        "secret",
+    )
+)
+_SECRET_KEY_WORD_PAIRS = frozenset(
+    (
+        ("access", "key"),
+        ("api", "key"),
+        ("private", "key"),
+    )
+)
+_SECRET_TOKEN_KEYS = frozenset(
+    (
+        "accesstoken",
+        "refreshtoken",
+        "sandboxtoken",
+        "token",
+    )
+)
+_SECRET_COMPACT_KEYS = frozenset(("accesskey", "apikey", "privatekey"))
+
+
+def _stderr_field_key_words(key: str) -> tuple[str, ...]:
+    words: list[str] = []
+    current = ""
+    for ch in key:
+        if ch.isalnum():
+            if current and ch.isupper() and not current[-1].isupper():
+                words.append(current.lower())
+                current = ch
+            else:
+                current += ch
+            continue
+        if current:
+            words.append(current.lower())
+            current = ""
+    if current:
+        words.append(current.lower())
+    return tuple(words)
+
+
 _SECRET_FIELD_MARKERS = (
-    "accesskey",
-    "apikey",
     "authorization",
     "credential",
     "password",
-    "privatekey",
     "secret",
-    "token",
 )
 _STDERR_FIELD_KEY_MAX_CHARS = 80
 _STDERR_FIELD_VALUE_MAX_CHARS = 256
@@ -29,9 +70,20 @@ _TRUNCATION_SUFFIX = "..."
 
 
 def _stderr_field_is_secret_like(key: str, value: object) -> bool:
-    if value is None or isinstance(value, bool | int | float):
+    if value is None or isinstance(value, bool):
         return False
-    normalized_key = "".join(ch for ch in key.lower() if ch.isalnum())
+    words = _stderr_field_key_words(key)
+    normalized_key = "".join(words)
+    if any(pair[0] in words and pair[1] in words for pair in _SECRET_KEY_WORD_PAIRS):
+        return True
+    if any(word in _SECRET_FIELD_WORDS for word in words):
+        return True
+    if normalized_key in _SECRET_COMPACT_KEYS:
+        return True
+    if "token" in words:
+        return True
+    if normalized_key in _SECRET_TOKEN_KEYS:
+        return True
     return any(marker in normalized_key for marker in _SECRET_FIELD_MARKERS)
 
 
