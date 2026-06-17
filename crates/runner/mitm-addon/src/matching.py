@@ -2370,7 +2370,12 @@ def match_compiled_firewall_request(
                 if not decision.accept_rule_candidate(candidate):
                     continue
 
-                blocked_aws_permissions = aws_blocked_permissions.get(candidate.aws_rule_identity)
+                aws_rule_identity = candidate.aws_rule_identity
+                blocked_aws_permissions = (
+                    aws_blocked_permissions.get(aws_rule_identity)
+                    if aws_rule_identity is not None
+                    else None
+                )
                 if blocked_aws_permissions is not None:
                     for permission in blocked_aws_permissions:
                         decision.record_denied_rule(block_match, permission)
