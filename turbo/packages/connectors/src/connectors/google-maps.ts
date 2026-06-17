@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleMaps = {
   "google-maps": {
@@ -9,7 +8,6 @@ export const googleMaps = {
       "Connect Google Maps Platform to access geocoding, places, directions, and other Maps APIs",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.GoogleMapsConnector,
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText:

@@ -15,7 +15,6 @@
 //! child reaping. Branch ordering and deadline reset timing in that control
 //! flow are part of the runtime contract.
 
-mod chat_stream;
 mod child_env;
 mod codex_setup;
 mod command;
@@ -37,7 +36,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use agent_diagnostics::{FailureDetailSource, FailureReason};
-use event_delivery::{AckedEventPrefix, ChatStreamDelta, PreparedEvent};
+use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -104,42 +103,6 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
             interval.tick().await;
         }
         None => std::future::pending::<()>().await,
-    }
-}
-
-fn enqueue_chat_stream_delta(
-    event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
-    chat_stream_configured: bool,
-    delta: Option<ChatStreamDelta>,
-) {
-    if !chat_stream_configured {
-        return;
-    }
-    let Some(delta) = delta else {
-        return;
-    };
-    if event_tx.send(PreparedEvent::ChatStream(delta)).is_err() {
-        log_warn!(LOG_TAG, "Event channel closed, dropping chat stream delta");
-    }
-}
-
-fn chat_stream_delta_from_event(
-    event: &serde_json::Value,
-    message_id: &str,
-    masker: &SecretMasker,
-) -> Option<ChatStreamDelta> {
-    let text = event
-        .get("delta")
-        .and_then(|delta| delta.get("text"))
-        .and_then(serde_json::Value::as_str)?;
-    let text = masker.mask_string(text);
-    if text.is_empty() {
-        None
-    } else {
-        Some(ChatStreamDelta {
-            message_id: message_id.to_string(),
-            text,
-        })
     }
 }
 
@@ -379,21 +342,14 @@ pub async fn execute_cli(
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
-    let chat_stream_config = env::chat_stream_config();
-    let chat_stream_configured = chat_stream_config.is_some();
-    let mut chat_stream_message_id: Option<String> = None;
-
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
     let event_http = http.clone();
-    let event_chat_stream_config = chat_stream_config.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
-        let chat_stream_publisher = chat_stream::ChatStreamPublisher::new();
-        let mut chat_stream_error_logged = false;
         while let Some(event) = event_rx.recv().await {
             match event {
                 PreparedEvent::Webhook { sequence, payload } => {
@@ -405,17 +361,6 @@ pub async fn execute_cli(
                             acked_prefix.record_failure(sequence);
                             log_warn!(LOG_TAG, "Event send failed: {e}");
                         }
-                    }
-                }
-                PreparedEvent::ChatStream(delta) => {
-                    let Some(config) = event_chat_stream_config.as_ref() else {
-                        continue;
-                    };
-                    if let Err(error) = chat_stream_publisher.publish(config, &delta).await
-                        && !chat_stream_error_logged
-                    {
-                        chat_stream_error_logged = true;
-                        log_warn!(LOG_TAG, "Chat stream publish failed: {error}");
                     }
                 }
             }
@@ -497,54 +442,6 @@ pub async fn execute_cli(
                                 == Some("stream_event")
                             {
                                 events::register_event_session_identifier(&event, masker);
-                                if event
-                                    .get("parent_tool_use_id")
-                                    .is_some_and(|value| !value.is_null())
-                                {
-                                    continue;
-                                }
-
-                                let Some(stream_event) = event.get("event") else {
-                                    continue;
-                                };
-                                match stream_event
-                                    .get("type")
-                                    .and_then(serde_json::Value::as_str)
-                                {
-                                    Some("message_start") => {
-                                        chat_stream_message_id = stream_event
-                                            .get("message")
-                                            .and_then(|message| message.get("id"))
-                                            .and_then(serde_json::Value::as_str)
-                                            .map(ToOwned::to_owned);
-                                    }
-                                    Some("content_block_delta")
-                                        if stream_event
-                                            .get("delta")
-                                            .and_then(|delta| delta.get("type"))
-                                            .and_then(serde_json::Value::as_str)
-                                            == Some("text_delta") =>
-                                    {
-                                        let delta = chat_stream_message_id.as_deref().and_then(
-                                            |message_id| {
-                                                chat_stream_delta_from_event(
-                                                    stream_event,
-                                                    message_id,
-                                                    masker,
-                                                )
-                                            },
-                                        );
-                                        enqueue_chat_stream_delta(
-                                            &event_tx,
-                                            chat_stream_configured,
-                                            delta,
-                                        );
-                                    }
-                                    Some("message_stop") => {
-                                        chat_stream_message_id = None;
-                                    }
-                                    _ => {}
-                                }
                                 continue;
                             }
                             last_read_event_at = Some(Instant::now());
@@ -1016,13 +913,10 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, chat_stream_delta_from_event, claude_initial_prompt_frame,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        CliFailureDiagnostic, claude_initial_prompt_frame, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason,
     };
-    use crate::events;
-    use crate::masker::SecretMasker;
     use agent_diagnostics::{FailureDetailSource, FailureReason};
-    use serde_json::json;
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
@@ -1100,33 +994,6 @@ mod tests {
             .expect_err("non-directory cwd should fail");
 
         assert!(err.to_string().contains("is not a directory"));
-    }
-
-    #[test]
-    fn stream_event_chat_delta_masks_top_level_session_id_from_same_event() {
-        let session_id = "stream-session-secret-123";
-        let masker = SecretMasker::from_raw("");
-        let event = json!({
-            "type": "stream_event",
-            "session_id": session_id,
-            "event": {
-                "type": "content_block_delta",
-                "delta": {
-                    "type": "text_delta",
-                    "text": format!("delta for {session_id}")
-                }
-            }
-        });
-
-        events::register_event_session_identifier(&event, &masker);
-        let delta = chat_stream_delta_from_event(
-            event.get("event").expect("stream event payload"),
-            "msg_01",
-            &masker,
-        )
-        .expect("chat delta");
-
-        assert_eq!(delta.text, "delta for ***");
     }
 
     #[test]

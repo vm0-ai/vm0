@@ -349,7 +349,6 @@ pub(super) fn build_env_json_with_host_env(
         guest_contracts::env::PROMPT_ENV.into(),
         context.prompt.clone(),
     );
-    insert_chat_stream_env(&mut env, context);
     insert_guest_agent_tuning_env(&mut env, context);
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()
@@ -474,29 +473,6 @@ pub(super) fn build_env_json_with_host_env(
     }
 
     Ok(env)
-}
-
-fn insert_chat_stream_env(env: &mut HashMap<String, String>, context: &ExecutionContext) {
-    let (Some(channel), Some(topic), Some(token)) = (
-        &context.chat_stream_channel,
-        &context.chat_stream_topic,
-        &context.chat_stream_token,
-    ) else {
-        return;
-    };
-
-    env.insert(
-        guest_contracts::env::CHAT_STREAM_CHANNEL_ENV.into(),
-        channel.clone(),
-    );
-    env.insert(
-        guest_contracts::env::CHAT_STREAM_TOPIC_ENV.into(),
-        topic.clone(),
-    );
-    env.insert(
-        guest_contracts::env::CHAT_STREAM_TOKEN_ENV.into(),
-        token.clone(),
-    );
 }
 
 pub(super) fn insert_guest_agent_tuning_env(

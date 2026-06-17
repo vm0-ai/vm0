@@ -836,7 +836,7 @@ export function createGithubBddApi(context: TestContext) {
       await accept(
         client.update({
           headers: authenticate(actor),
-          body: { switches: { [FeatureSwitchKey.AuditLink]: true } },
+          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
       );

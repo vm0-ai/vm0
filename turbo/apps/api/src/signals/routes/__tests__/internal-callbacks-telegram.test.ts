@@ -349,7 +349,7 @@ async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
   await db.insert(userFeatureSwitches).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    switches: { [FeatureSwitchKey.AuditLink]: true },
+    switches: { [FeatureSwitchKey.ZeroDebug]: true },
   });
 }
 

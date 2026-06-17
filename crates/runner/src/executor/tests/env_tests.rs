@@ -320,38 +320,6 @@ fn build_env_json_required_keys() {
 }
 
 #[test]
-fn build_env_json_injects_complete_chat_stream_env() {
-    let mut ctx = minimal_context();
-    ctx.chat_stream_channel = Some("user:user_123".into());
-    ctx.chat_stream_topic =
-        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
-    ctx.chat_stream_token = Some("stream-token".into());
-
-    let env = build_env_for_test(&ctx, "https://api.example.com");
-
-    assert_eq!(env.get("VM0_CHAT_STREAM_CHANNEL").unwrap(), "user:user_123");
-    assert_eq!(
-        env.get("VM0_CHAT_STREAM_TOPIC").unwrap(),
-        "chatThreadMessageDelta:22222222-2222-4222-8222-222222222222"
-    );
-    assert_eq!(env.get("VM0_CHAT_STREAM_TOKEN").unwrap(), "stream-token");
-}
-
-#[test]
-fn build_env_json_omits_partial_chat_stream_env() {
-    let mut ctx = minimal_context();
-    ctx.chat_stream_channel = Some("user:user_123".into());
-    ctx.chat_stream_topic =
-        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
-
-    let env = build_env_for_test(&ctx, "https://api.example.com");
-
-    assert!(!env.contains_key("VM0_CHAT_STREAM_CHANNEL"));
-    assert!(!env.contains_key("VM0_CHAT_STREAM_TOPIC"));
-    assert!(!env.contains_key("VM0_CHAT_STREAM_TOKEN"));
-}
-
-#[test]
 fn build_env_json_sandbox_reuse_result_wire_format() {
     let ctx = minimal_context();
     let sid = SandboxId::new_v4().to_string();
@@ -484,18 +452,6 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         ),
         (guest_contracts::env::API_TOKEN_ENV.into(), "stolen".into()),
         (
-            guest_contracts::env::CHAT_STREAM_CHANNEL_ENV.into(),
-            "user:attacker".into(),
-        ),
-        (
-            guest_contracts::env::CHAT_STREAM_TOPIC_ENV.into(),
-            "chatThreadMessageDelta:attacker".into(),
-        ),
-        (
-            guest_contracts::env::CHAT_STREAM_TOKEN_ENV.into(),
-            "attacker-token".into(),
-        ),
-        (
             guest_contracts::env::WORKING_DIR_ENV.into(),
             "/legacy".into(),
         ),
@@ -563,9 +519,6 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     for key in [
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::API_TOKEN_ENV,
-        guest_contracts::env::CHAT_STREAM_CHANNEL_ENV,
-        guest_contracts::env::CHAT_STREAM_TOPIC_ENV,
-        guest_contracts::env::CHAT_STREAM_TOKEN_ENV,
         guest_contracts::env::WORKING_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
@@ -607,10 +560,6 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
             "2".into(),
         ),
     ]));
-    ctx.chat_stream_channel = Some("user:user_123".into());
-    ctx.chat_stream_topic =
-        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
-    ctx.chat_stream_token = Some("stream-token".into());
     ctx.append_system_prompt = Some("Use terse answers.".into());
     ctx.resume_session = Some(ResumeSession {
         session_id: "sess-123".into(),

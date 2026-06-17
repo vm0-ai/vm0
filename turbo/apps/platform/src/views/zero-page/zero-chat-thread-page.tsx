@@ -1139,7 +1139,6 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const features = useLastResolved(featureSwitch$);
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
-  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
   const agentId =
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.agentId ?? null)
@@ -1161,7 +1160,6 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        {usageEnabled && <ThreadUsageChip thread={thread} />}
         <AutomationMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
@@ -6179,41 +6177,6 @@ function UsageChip({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-const THREAD_USAGE_POPOVER_ID = "__thread_credit_usage__";
-
-export function ThreadUsageChip({
-  thread,
-  contentAlign,
-  popoverId = THREAD_USAGE_POPOVER_ID,
-}: {
-  thread: ChatThreadSignals;
-  contentAlign?: "start" | "center" | "end";
-  popoverId?: string;
-}) {
-  const usageLoadable = useLastLoadable(thread.threadUsage$);
-  const openRunId = useGet(runUsagePopoverOpenRunId$);
-  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
-  const usage =
-    usageLoadable.state === "hasData" ? usageLoadable.data : undefined;
-
-  if (usage === undefined) {
-    return null;
-  }
-
-  return (
-    <UsageChip
-      usage={usage}
-      title="Thread credit usage"
-      ariaLabel="Thread credit usage"
-      contentAlign={contentAlign}
-      open={openRunId === popoverId}
-      setOpen={(open) => {
-        setOpenRunId(open ? popoverId : null);
-      }}
-    />
   );
 }
 
