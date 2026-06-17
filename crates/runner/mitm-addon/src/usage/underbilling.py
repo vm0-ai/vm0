@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import reprlib
 from typing import Literal
 
 from mitmproxy import ctx
@@ -140,8 +141,10 @@ def _render_stderr_field_value(key: str, value: object) -> str:
         rendered = "true" if sanitized else "false"
     elif sanitized is None:
         rendered = "null"
-    else:
+    elif isinstance(sanitized, str | int | float):
         rendered = str(sanitized)
+    else:
+        rendered = reprlib.repr(sanitized)
     return _single_token_stderr_value(rendered)
 
 

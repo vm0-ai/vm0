@@ -224,6 +224,22 @@ def test_underbilling_stderr_fallback_truncates_on_escape_boundaries(mitm_ctx):
     assert len(message) < 420
 
 
+def test_underbilling_stderr_fallback_bounds_non_scalar_values(mitm_ctx):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Usage underbilling signal",
+            "expected_reason",
+            "risk",
+            debug_payload={"items": ["x" * 400] * 20},
+        )
+
+    message = log.error.call_args.args[0]
+    assert "debug_payload=" in message
+    assert "x" * 300 not in message
+    assert len(message) < 420
+
+
 def test_underbilling_stderr_fallback_sanitizes_field_keys(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
