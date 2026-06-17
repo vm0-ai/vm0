@@ -3,6 +3,8 @@ node_modules
 dist
 packages/sandbox-scripts/src/dist/bundled.ts
 packages/connectors/src/firewalls/*.generated.ts
+packages/connectors/src/firewall-metadata/*.generated.ts
+packages/connectors/src/firewall-metadata/details/*.generated.ts
 pnpm-lock.yaml
 coverage
 .claude

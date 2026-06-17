@@ -2,6 +2,11 @@
 
 Generates firewall configs for connector integrations. Each generator produces a `.generated.ts` file in `packages/connectors/src/firewalls/`.
 
+The generator also writes browser-safe permission metadata under
+`packages/connectors/src/firewall-metadata/`. That metadata is for UI and other
+metadata-only callers; it is not a runtime enforcement source and does not
+include HTTP rules, auth config, base URLs, or placeholder values.
+
 ## Usage
 
 ```bash
