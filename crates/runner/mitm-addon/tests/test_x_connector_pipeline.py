@@ -1,6 +1,8 @@
 """Tests for X connector response and error hook lifecycle."""
 
+import gzip
 import json
+import zlib
 from pathlib import Path
 
 import brotli
@@ -90,6 +92,62 @@ class TestXConnectorResponsePipeline:
         assert "x_ndjson_state" not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+
+    def test_responseheaders_brotli_x_stream_does_not_leave_parser_state(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "br"
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+
+        assert "connector_response_finish" not in flow.metadata
+        assert "x_ndjson_state" not in flow.metadata
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br"])
+    def test_full_response_pipeline_truncated_compressed_x_json_does_not_bill(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, encoding_case
+    ):
+        flow = make_x_pipeline_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=vm0",
+            sandbox_value="tok-xyz",
+            rule="GET /2/tweets/search/recent",
+            content_encoding=encoding_case,
+        )
+        payload = b'{"data":[{"id":"1"}],"meta":{"result_count":1}}'
+        if encoding_case == "gzip":
+            compressed = gzip.compress(payload)[:-1]
+        elif encoding_case == "deflate":
+            compressed = zlib.compress(payload)[:-1]
+        else:
+            compressed = brotli.compress(payload)[:-1]
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        entry = lost_visibility_entries[0]
+        assert entry["level"] == "error"
+        assert entry["body_truncated"] is False
+        assert entry["parse_error"] == "incomplete compressed body"
+        assert "connector_response_finish" not in flow.metadata
 
     def test_full_response_pipeline_x_data_object_bills_single_resource(
         self, tmp_path, real_flow, mitm_ctx
@@ -215,6 +273,38 @@ class TestXConnectorResponsePipeline:
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert by_cat == {"posts.read": 2, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata
+
+    def test_full_pipeline_compressed_stream_error_does_not_bill_unverified_rows(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(
+            gzip.compress(
+                b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n{"data":{"id":"2"}}\n'
+            )[:-1]
+        )
+        assert flow.metadata["x_ndjson_state"]["data_count"] == 2
+        flow.error = Error("connection reset by peer")
+
+        with usage_webhook_api() as webhook:
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert webhook.request_count == 0
+        assert "x_ndjson_state" not in flow.metadata
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        assert lost_visibility_entries[0]["parse_error"] == "incomplete compressed body"
 
     def test_full_streaming_pipeline_ignores_malformed_include_values(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor

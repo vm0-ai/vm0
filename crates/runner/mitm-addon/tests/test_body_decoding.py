@@ -7,7 +7,11 @@ import brotli
 import pytest
 import zstandard
 
-from body_decoding import create_stream_decode_feed, decompress_body
+from body_decoding import (
+    create_stream_decode_feed,
+    create_stream_decode_session,
+    decompress_body,
+)
 from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
 
@@ -46,6 +50,32 @@ class TestStreamDecodeFeed:
             for idx in range(0, len(compressed), 3):
                 parse(compressed[idx : idx + 3])
             assert b"".join(chunks) == plaintext, encoding
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_session_reports_truncated_trailer(self, headers, encoding):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        compressed = gzip.compress(plaintext) if encoding == "gzip" else zlib.compress(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed[:-1])
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() == "incomplete compressed body"
+
+    def test_zstd_session_reports_truncated_frame(self, headers):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed[:-1])
+
+        assert session.finish_error() == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_concatenated_zlib_members_same_callback(self, headers, encoding):
@@ -119,7 +149,7 @@ class TestStreamDecodeFeed:
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
 
-    def test_zstd_streaming_uses_writer_instead_of_decompressobj(self, headers, monkeypatch):
+    def test_zstd_streaming_uses_decompressobj_for_finalization(self, headers, monkeypatch):
         real_decompressor = zstandard.ZstdDecompressor
         stats = {"stream_writer": 0, "decompressobj": 0}
 
@@ -129,11 +159,11 @@ class TestStreamDecodeFeed:
 
             def stream_writer(self, sink):
                 stats["stream_writer"] += 1
-                return self._inner.stream_writer(sink)
+                raise AssertionError("streaming usage decoder must not use stream_writer")
 
             def decompressobj(self):
                 stats["decompressobj"] += 1
-                raise AssertionError("streaming usage decoder must not use decompressobj")
+                return self._inner.decompressobj()
 
         monkeypatch.setattr("body_decoding.zstandard.ZstdDecompressor", CountingZstdDecompressor)
         chunks: list[bytes] = []
@@ -143,7 +173,8 @@ class TestStreamDecodeFeed:
         parse(zstandard.ZstdCompressor().compress(b"hello world"))
 
         assert b"".join(chunks) == b"hello world"
-        assert stats == {"stream_writer": 1, "decompressobj": 0}
+        assert stats["stream_writer"] == 0
+        assert stats["decompressobj"] >= 1
 
     def test_gzip_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
         chunks: list[bytes] = []
