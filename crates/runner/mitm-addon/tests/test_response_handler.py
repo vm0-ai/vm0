@@ -1008,9 +1008,7 @@ class TestResponseHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert flow.request.stream is False
 
-    async def test_early_response_keeps_request_classification_for_late_request_hook(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
+    async def test_early_response_makes_late_request_hook_noop(self, tmp_path, real_flow, mitm_ctx):
         reg_path = _write_registry(
             tmp_path,
             vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
@@ -1034,6 +1032,7 @@ class TestResponseHandler:
                 content=b"ok",
             )
             mitm_addon.response(flow)
+            assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
             reg_path.write_text("{ broken registry")
             await mitm_addon.request(flow)
 

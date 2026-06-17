@@ -1424,6 +1424,10 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
+    if flow.response is not None or flow.error is not None:
+        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+        return
+
     try:
         classification = _request_classification(flow)
 
@@ -1668,11 +1672,16 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
     return response_size
 
 
-def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+def _release_usage_hook_state(
+    flow: http.HTTPFlow,
+    *,
+    release_tracking: bool,
+) -> None:
     if release_tracking:
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+    flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     if release_tracking:
