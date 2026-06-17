@@ -25,6 +25,20 @@ type FirewallMetadataRuntime = Pick<
   "getDefaultFirewallPolicies" | "getPermissionCategories"
 >;
 
+function isConnectorType(type: string): type is ConnectorType {
+  return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, type);
+}
+
+function assertConnectorType(
+  type: FirewallConnectorType,
+): asserts type is FirewallConnectorType & ConnectorType {
+  if (!isConnectorType(type)) {
+    throw new Error(
+      `Firewall connector is missing connector metadata: ${type}`,
+    );
+  }
+}
+
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -146,6 +160,7 @@ function buildDetailMetadata(
   firewall: FirewallConfig,
   runtime: FirewallMetadataRuntime,
 ): FirewallPermissionDetailMetadata {
+  assertConnectorType(type);
   const permissions = collectPermissions(firewall);
   const categoryData = runtime.getPermissionCategories(type);
   const defaultPolicy = compactDefaultPolicy(
@@ -153,8 +168,8 @@ function buildDetailMetadata(
   );
 
   return {
-    type: type as ConnectorType,
-    label: CONNECTOR_TYPES[type]?.label ?? type,
+    type,
+    label: CONNECTOR_TYPES[type].label,
     permissionCount: permissions.length,
     permissions,
     ...(categoryData

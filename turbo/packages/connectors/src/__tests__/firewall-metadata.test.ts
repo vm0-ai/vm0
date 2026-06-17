@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { CONNECTOR_TYPES, type ConnectorType } from "../connectors";
 import {
   expandFirewallMetadataDefaultPolicy,
   FIREWALL_PERMISSION_METADATA_SUMMARIES,
@@ -27,6 +28,19 @@ const FORBIDDEN_METADATA_KEYS = new Set([
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function isConnectorType(type: string): type is ConnectorType {
+  return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, type);
+}
+
+function connectorLabel(type: FirewallConnectorType): string {
+  if (!isConnectorType(type)) {
+    throw new Error(
+      `Firewall connector is missing connector metadata: ${type}`,
+    );
+  }
+  return CONNECTOR_TYPES[type].label;
 }
 
 function collectRuntimePermissions(
@@ -135,6 +149,7 @@ describe("firewall metadata", () => {
       );
       expect(summary).toMatchObject({
         type,
+        label: connectorLabel(type),
         hasPermissions: permissions.length > 0,
         permissionCount: permissions.length,
         hasCategories: getPermissionCategories(type) !== null,
@@ -147,6 +162,7 @@ describe("firewall metadata", () => {
       expect(isFirewallMetadataConnectorType(type)).toBe(true);
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
+      expect(detail!.label).toBe(connectorLabel(type));
       expect(detail!.permissions).toStrictEqual(
         collectRuntimePermissions(firewall),
       );
