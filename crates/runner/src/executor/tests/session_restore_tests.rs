@@ -341,6 +341,55 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
 }
 
 #[tokio::test]
+async fn restore_session_redacts_codex_cleanup_failure_output() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_id_no_dashes = session_id.replace('-', "");
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        format!("stdout includes {session_id_no_dashes}").into_bytes(),
+        format!("find: {session_path}: Permission denied").into_bytes(),
+    )));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("codex session cleanup failed"));
+    assert!(message.contains("[redacted-codex-session-path]"));
+    assert!(message.contains("[redacted-codex-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "cleanup failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(&session_id_no_dashes),
+        "cleanup failure must not echo no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "cleanup failure must not echo raw session path: {message}"
+    );
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();

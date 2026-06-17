@@ -235,9 +235,10 @@ fi"#;
         })
         .await?;
     if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format_guest_exec_failure(
-            "codex session cleanup",
-            &result,
+        return Err(RunnerError::Internal(redact_codex_session_diagnostic(
+            format_guest_exec_failure("codex session cleanup", &result),
+            session_id,
+            session_path,
         )));
     }
     info!(
@@ -246,6 +247,20 @@ fi"#;
         "cleaned up existing codex session files before restore",
     );
     Ok(())
+}
+
+fn redact_codex_session_diagnostic(
+    message: String,
+    session_id: &str,
+    session_path: &str,
+) -> String {
+    let no_dashes = session_id.replace('-', "");
+    let mut redacted = message.replace(session_path, "[redacted-codex-session-path]");
+    redacted = redacted.replace(session_id, "[redacted-codex-session-id]");
+    if !no_dashes.is_empty() {
+        redacted = redacted.replace(&no_dashes, "[redacted-codex-session-id]");
+    }
+    redacted
 }
 
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
