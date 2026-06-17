@@ -1,6 +1,6 @@
 //! CLI session restore helpers for guest agent frameworks.
 
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox, SandboxError};
 use tracing::{info, warn};
 
 use super::storage::format_guest_exec_failure;
@@ -47,9 +47,13 @@ pub(super) async fn restore_claude_session(
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    sandbox
-        .write_file(&session_path, session.session_history.as_bytes())
-        .await?;
+    write_session_history_file(
+        sandbox,
+        &session_path,
+        &session.session_id,
+        &session.session_history,
+    )
+    .await?;
     info!(
         run_id = %context.run_id,
         framework = "claude-code",
@@ -146,9 +150,13 @@ pub(super) async fn restore_codex_session(
 
     cleanup_existing_codex_session_files(sandbox, context, &session_id, &session_path).await?;
 
-    sandbox
-        .write_file(&session_path, session.session_history.as_bytes())
-        .await?;
+    write_session_history_file(
+        sandbox,
+        &session_path,
+        &session_id,
+        &session.session_history,
+    )
+    .await?;
 
     info!(
         run_id = %context.run_id,
@@ -235,7 +243,7 @@ fi"#;
         })
         .await?;
     if result.exit_code != 0 {
-        return Err(RunnerError::Internal(redact_codex_session_diagnostic(
+        return Err(RunnerError::Internal(redact_session_restore_diagnostic(
             format_guest_exec_failure("codex session cleanup", &result),
             session_id,
             session_path,
@@ -249,16 +257,79 @@ fi"#;
     Ok(())
 }
 
-fn redact_codex_session_diagnostic(
+async fn write_session_history_file(
+    sandbox: &dyn Sandbox,
+    session_path: &str,
+    session_id: &str,
+    session_history: &str,
+) -> RunnerResult<()> {
+    sandbox
+        .write_file(session_path, session_history.as_bytes())
+        .await
+        .map_err(|error| redact_session_restore_sandbox_error(error, session_id, session_path))
+}
+
+fn redact_session_restore_sandbox_error(
+    error: SandboxError,
+    session_id: &str,
+    session_path: &str,
+) -> RunnerError {
+    RunnerError::Sandbox(match error {
+        SandboxError::BackendUnavailable { message } => SandboxError::BackendUnavailable {
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::Configuration { message } => SandboxError::Configuration {
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::Initialization { phase, message } => SandboxError::Initialization {
+            phase,
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::Start { message } => SandboxError::Start {
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::InvalidState {
+            context,
+            state,
+            message,
+        } => SandboxError::InvalidState {
+            context,
+            state,
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::Operation {
+            operation,
+            reason,
+            message,
+        } => SandboxError::Operation {
+            operation,
+            reason,
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::IdleTransition {
+            transition,
+            message,
+        } => SandboxError::IdleTransition {
+            transition,
+            message: redact_session_restore_diagnostic(message, session_id, session_path),
+        },
+        SandboxError::Io(error) => SandboxError::Io(std::io::Error::new(
+            error.kind(),
+            redact_session_restore_diagnostic(error.to_string(), session_id, session_path),
+        )),
+    })
+}
+
+fn redact_session_restore_diagnostic(
     message: String,
     session_id: &str,
     session_path: &str,
 ) -> String {
     let no_dashes = session_id.replace('-', "");
-    let mut redacted = message.replace(session_path, "[redacted-codex-session-path]");
-    redacted = redacted.replace(session_id, "[redacted-codex-session-id]");
+    let mut redacted = message.replace(session_path, "[redacted-session-path]");
+    redacted = redacted.replace(session_id, "[redacted-session-id]");
     if !no_dashes.is_empty() {
-        redacted = redacted.replace(&no_dashes, "[redacted-codex-session-id]");
+        redacted = redacted.replace(&no_dashes, "[redacted-session-id]");
     }
     redacted
 }

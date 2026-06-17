@@ -303,6 +303,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                 break match pool.park(candidate) {
                     ParkResult::Parked => {
                         info!(run_id = %run_id, session_fingerprint = %session_fingerprint, "VM parked for reuse");
+                        #[cfg(test)]
+                        test_observer
+                            .notify_vm_parked_for_reuse(run_id, session_fingerprint.clone());
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -583,8 +586,6 @@ mod tests {
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
-    use tracing_subscriber::prelude::*;
-    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{
@@ -691,42 +692,6 @@ mod tests {
                 cleanup_state: RunCleanupState::new(),
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
-            }
-        }
-    }
-
-    async fn capture_finalizer_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
-    where
-        F: std::future::Future,
-    {
-        let captured = CapturedEvents::default();
-        let subscriber = tracing_subscriber::registry().with(captured.clone());
-        let guard = tracing::subscriber::set_default(subscriber);
-        tracing::callsite::rebuild_interest_cache();
-        let output = future.await;
-        drop(guard);
-        (output, captured.entries())
-    }
-
-    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
-        events
-            .iter()
-            .find(|event| {
-                event
-                    .fields
-                    .get("message")
-                    .is_some_and(|actual| actual == message)
-            })
-            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
-    }
-
-    fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
-        for event in events {
-            for (field, value) in &event.fields {
-                assert!(
-                    !value.contains(raw),
-                    "captured field {field} leaked raw session id {raw:?}: {event:#?}"
-                );
             }
         }
     }
@@ -850,38 +815,38 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let raw_session_id = "sess-sensitive-finalizer-17975";
+        let observer = StartLoopTestObserver::default();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            raw_session_id,
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.test_observer = observer.clone();
 
-        let (_completion_ready, events) =
-            capture_finalizer_events(finalize_sandbox_for_completion(
-                Some(Box::new(MockSandbox::new("finalizer-redaction"))),
-                ActiveBudgetLease::new(lease),
-                CompletionPayload::new(
-                    run_id,
-                    0,
-                    None,
-                    sandbox_id,
-                    SandboxReuseResult::PoolMiss,
-                    CompletionAuth::local(),
-                ),
-                fixture.finalize_context(
-                    run_id,
-                    sandbox_id,
-                    raw_session_id,
-                    network_log_session,
-                    RunCancellationHandle::new(),
-                ),
-            ))
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("finalizer-redaction"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+        let field = observer
+            .wait_vm_parked_for_reuse(run_id, Duration::from_secs(1))
             .await;
 
-        assert_captured_events_do_not_contain(&events, raw_session_id);
-        let event = captured_event(&events, "VM parked for reuse");
-        assert_eq!(
-            event.fields.get("session_fingerprint").map(String::as_str),
-            Some(diagnostic_session_fingerprint(raw_session_id).as_str())
-        );
+        assert_eq!(field, diagnostic_session_fingerprint(raw_session_id));
         assert!(
-            !event.fields.contains_key("session_id"),
-            "parking diagnostic must not include raw session_id field: {event:#?}"
+            !field.contains(raw_session_id),
+            "parking diagnostic field must not include raw session id: {field}"
         );
     }
 

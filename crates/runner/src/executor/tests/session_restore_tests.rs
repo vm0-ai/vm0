@@ -65,7 +65,7 @@ async fn restore_session_rejects_invalid_session_id() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
@@ -171,7 +171,7 @@ async fn restore_session_writes_codex_session() {
     assert_eq!(writes[0].content, session.session_history.as_bytes());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
@@ -372,8 +372,8 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
 
     let message = err.to_string();
     assert!(message.contains("codex session cleanup failed"));
-    assert!(message.contains("[redacted-codex-session-path]"));
-    assert!(message.contains("[redacted-codex-session-id]"));
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
     assert!(
         !message.contains(session_id),
         "cleanup failure must not echo raw session id: {message}"
@@ -387,6 +387,82 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
         "cleanup failure must not echo raw session path: {message}"
     );
     assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn restore_session_redacts_claude_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "sess-sensitive-write-17975";
+    let session_path =
+        "/home/user/.claude/projects/-home-user-workspace/sess-sensitive-write-17975.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "write failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_id_no_dashes = session_id.replace('-', "");
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to rename temp file to {session_path}: thread {session_id_no_dashes}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "write failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(&session_id_no_dashes),
+        "write failure must not echo no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
 }
 
 #[tokio::test]

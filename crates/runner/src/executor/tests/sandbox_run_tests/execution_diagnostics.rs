@@ -149,7 +149,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

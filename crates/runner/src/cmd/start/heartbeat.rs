@@ -331,7 +331,7 @@ mod tests {
         assert_eq!(state.running_count, 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn send_heartbeat_logs_held_session_count_without_raw_session_state() {
         let session_id = "sess-sensitive-heartbeat-17975";
         let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {

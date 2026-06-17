@@ -761,8 +761,16 @@ enum SignalSource {
 #[derive(Debug, PartialEq, Eq)]
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
-    IdleCleanupProcessed { expired_count: usize },
-    BeforeIdlePoolOwnershipTransfer { run_id: RunId },
+    IdleCleanupProcessed {
+        expired_count: usize,
+    },
+    BeforeIdlePoolOwnershipTransfer {
+        run_id: RunId,
+    },
+    VmParkedForReuse {
+        run_id: RunId,
+        session_fingerprint: String,
+    },
     UsageFlushRequested,
 }
 
@@ -868,6 +876,13 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
+    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_fingerprint: String) {
+        self.record(StartLoopEvent::VmParkedForReuse {
+            run_id,
+            session_fingerprint,
+        });
+    }
+
     fn notify_usage_flush_requested(&self) {
         self.record(StartLoopEvent::UsageFlushRequested);
     }
@@ -904,6 +919,17 @@ impl StartLoopTestObserver {
                 _ => None,
             },
         )
+        .await
+    }
+
+    async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
+        self.wait_for(timeout, "VM parked for reuse", |event| match event {
+            StartLoopEvent::VmParkedForReuse {
+                run_id: observed_run_id,
+                session_fingerprint,
+            } if *observed_run_id == run_id => Some(session_fingerprint.clone()),
+            _ => None,
+        })
         .await
     }
 

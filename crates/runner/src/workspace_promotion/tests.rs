@@ -158,7 +158,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn parked_workspace_promotion_warning_uses_session_fingerprint() {
     let raw_session_id = "sess-sensitive-promotion-17975";
     let fixture = WorkspacePromotionFixture::new(raw_session_id).await;
