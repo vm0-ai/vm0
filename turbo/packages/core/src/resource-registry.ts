@@ -53,8 +53,10 @@ export interface RegistryEntry {
   readonly targets?: readonly GenerationTarget[];
 }
 
-export interface VideoTemplateRegistryEntry
-  extends Omit<RegistryEntry, "kind" | "source"> {
+export interface VideoTemplateRegistryEntry extends Omit<
+  RegistryEntry,
+  "kind" | "source"
+> {
   readonly kind: "video-template";
   readonly source: ResourceSourceRef & {
     readonly repo: string;
