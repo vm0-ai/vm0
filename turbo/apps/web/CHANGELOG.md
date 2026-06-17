@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.428.8](https://github.com/vm0-ai/vm0/compare/web-v12.428.7...web-v12.428.8) (2026-06-17)
+
+
+### Refactoring
+
+* remove axiom event consumer route ([#17995](https://github.com/vm0-ai/vm0/issues/17995)) ([3adefcb](https://github.com/vm0-ai/vm0/commit/3adefcbfff017182412ad5d90dd1f74984bd778d))
+* remove chat assistant event consumer route ([#18003](https://github.com/vm0-ai/vm0/issues/18003)) ([e0528cf](https://github.com/vm0-ai/vm0/commit/e0528cf21bc248c3c1be2fc6ea1d15fe2a1f4a66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.5
+    * @vm0/core bumped to 8.347.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.84.0
+
 ## [12.428.7](https://github.com/vm0-ai/vm0/compare/web-v12.428.6...web-v12.428.7) (2026-06-17)
 
 

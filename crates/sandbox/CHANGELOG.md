@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.4...sandbox-v0.19.5) (2026-06-17)
+
+
+### Documentation
+
+* document sandbox factory contract ([#17997](https://github.com/vm0-ai/vm0/issues/17997)) ([a0623cc](https://github.com/vm0-ai/vm0/commit/a0623cce1bbbbfd4ff37205c51e3167f87e3781e))
+
 ## [0.19.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.3...sandbox-v0.19.4) (2026-06-15)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.347.0](https://github.com/vm0-ai/vm0/compare/core-v8.346.1...core-v8.347.0) (2026-06-17)
+
+
+### Features
+
+* add sidebar chat double-click rename ([#18001](https://github.com/vm0-ai/vm0/issues/18001)) ([cf6f6ad](https://github.com/vm0-ai/vm0/commit/cf6f6ad59af6e4d972382b6bab043c062b27120a))
+
+
+### Bug Fixes
+
+* use CDN previews for aplocoto deck ([#17992](https://github.com/vm0-ai/vm0/issues/17992)) ([b514a0a](https://github.com/vm0-ai/vm0/commit/b514a0a3d0b8c9fd0bfb8a96d5310a6b06616f49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.5
+    * @vm0/connectors bumped to 1.84.0
+
 ## [8.346.1](https://github.com/vm0-ai/vm0/compare/core-v8.346.0...core-v8.346.1) (2026-06-17)
 
 
