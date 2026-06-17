@@ -2869,17 +2869,23 @@ fn idle_transition_error(
 // network pool, NBD COW device, firecracker child process, etc.).
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
-const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
+const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
-/// Accept small residual differences between requested and reported balloon size.
-/// This fixed tolerance is calibrated for the current 4 GiB production profile,
-/// where observed post-settle deficits were tens of MiB. If much smaller
-/// production profiles are introduced, revisit whether this should scale with
-/// `target_mib` so tiny balloon targets are not fully swallowed by tolerance.
-const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
+/// Upper bound for accepting residual differences between requested and
+/// reported balloon size. Current 4 GiB production profiles commonly settle
+/// with low-hundreds MiB residuals when the guest reports little available
+/// memory.
+const BALLOON_SETTLE_TOLERANCE_CAP_MIB: u32 = 256;
+/// Keep the settle tolerance proportional for smaller profiles so tiny balloon
+/// targets are not fully swallowed by the 4 GiB cap.
+const BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR: u32 = 8;
 const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
 const BYTES_PER_MIB: i64 = 1024 * 1024;
+
+fn balloon_settle_tolerance_mib(target_mib: u32) -> u32 {
+    BALLOON_SETTLE_TOLERANCE_CAP_MIB.min(target_mib / BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR)
+}
 
 #[derive(Debug)]
 struct BalloonSettleSummary {
@@ -2995,20 +3001,56 @@ impl BalloonSettleSummary {
     }
 }
 
+fn log_balloon_settle_timeout(
+    log_id: &str,
+    target_mib: u32,
+    tolerance_mib: u32,
+    summary: &BalloonSettleSummary,
+) {
+    warn!(
+        id = %log_id,
+        actual = ?summary.last_actual_mib,
+        target = target_mib,
+        deficit_mib = ?summary.last_deficit_mib,
+        tolerance_mib,
+        elapsed_ms = summary.elapsed_ms(),
+        sample_count = summary.sample_count,
+        requested_target_mib = summary.requested_target_mib,
+        first_observed_target_mib = ?summary.first_observed_target_mib,
+        observed_target_mib = ?summary.last_observed_target_mib,
+        target_observed = summary.target_observed,
+        first_actual_mib = ?summary.first_actual_mib,
+        max_actual_mib = ?summary.max_actual_mib,
+        actual_delta_mib = ?summary.actual_delta_mib(),
+        reported_free_mib = ?summary.reported_free_mib(),
+        reported_available_mib = ?summary.reported_available_mib(),
+        reported_total_mib = ?summary.reported_total_mib(),
+        reason = summary.reason(),
+        "balloon inflate incomplete after {}s, pausing anyway",
+        BALLOON_SETTLE_TIMEOUT.as_secs()
+    );
+}
+
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
-/// the remaining deficit is within [`BALLOON_SETTLE_TOLERANCE_MIB`],
+/// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// or after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better
 /// than none). Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
+    let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
     loop {
-        match client.get_balloon_statistics().await {
-            Ok(stats) => {
+        if tokio::time::Instant::now() >= deadline {
+            log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary);
+            return;
+        }
+
+        match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
+            Ok(Ok(stats)) => {
                 let deficit_mib = summary.observe(&stats);
                 if deficit_mib == 0 {
                     info!(
@@ -3016,7 +3058,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                         actual = stats.actual_mib,
                         target = target_mib,
                         deficit_mib,
-                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        tolerance_mib,
                         elapsed_ms = summary.elapsed_ms(),
                         sample_count = summary.sample_count,
                         requested_target_mib = summary.requested_target_mib,
@@ -3034,13 +3076,13 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                     return;
                 }
 
-                if deficit_mib <= BALLOON_SETTLE_TOLERANCE_MIB {
+                if deficit_mib <= tolerance_mib {
                     info!(
                         id = %log_id,
                         actual = stats.actual_mib,
                         target = target_mib,
                         deficit_mib,
-                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        tolerance_mib,
                         elapsed_ms = summary.elapsed_ms(),
                         sample_count = summary.sample_count,
                         requested_target_mib = summary.requested_target_mib,
@@ -3063,19 +3105,19 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                     actual = stats.actual_mib,
                     target = target_mib,
                     deficit_mib,
-                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    tolerance_mib,
                     observed_target_mib = stats.target_mib,
                     sample_count = summary.sample_count,
                     "waiting for balloon"
                 );
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 warn!(
                     id = %log_id,
                     actual = ?summary.last_actual_mib,
                     target = target_mib,
                     deficit_mib = ?summary.last_deficit_mib,
-                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    tolerance_mib,
                     elapsed_ms = summary.elapsed_ms(),
                     sample_count = summary.sample_count,
                     requested_target_mib = summary.requested_target_mib,
@@ -3094,33 +3136,19 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                 );
                 return;
             }
+            Err(_) => {
+                log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary);
+                return;
+            }
         }
-        if tokio::time::Instant::now() >= deadline {
-            warn!(
-                id = %log_id,
-                actual = ?summary.last_actual_mib,
-                target = target_mib,
-                deficit_mib = ?summary.last_deficit_mib,
-                tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
-                elapsed_ms = summary.elapsed_ms(),
-                sample_count = summary.sample_count,
-                requested_target_mib = summary.requested_target_mib,
-                first_observed_target_mib = ?summary.first_observed_target_mib,
-                observed_target_mib = ?summary.last_observed_target_mib,
-                target_observed = summary.target_observed,
-                first_actual_mib = ?summary.first_actual_mib,
-                max_actual_mib = ?summary.max_actual_mib,
-                actual_delta_mib = ?summary.actual_delta_mib(),
-                reported_free_mib = ?summary.reported_free_mib(),
-                reported_available_mib = ?summary.reported_available_mib(),
-                reported_total_mib = ?summary.reported_total_mib(),
-                reason = summary.reason(),
-                "balloon inflate incomplete after {}s, pausing anyway",
-                BALLOON_SETTLE_TIMEOUT.as_secs()
-            );
-            return;
-        }
-        tokio::time::sleep(BALLOON_SETTLE_POLL).await;
+
+        let next_poll = tokio::time::Instant::now() + BALLOON_SETTLE_POLL;
+        tokio::time::sleep_until(if next_poll < deadline {
+            next_poll
+        } else {
+            deadline
+        })
+        .await;
     }
 }
 
@@ -6609,7 +6637,24 @@ mod tests {
     #[derive(Debug, Clone)]
     enum MockBalloonStatsReply {
         Ok(MockBalloonStats),
+        DelayedOk(Duration, MockBalloonStats),
         Status(u16),
+    }
+
+    fn mock_balloon_stats_ok_response(stats: &MockBalloonStats) -> String {
+        let body = stats.to_json();
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+    }
+
+    fn mock_balloon_stats_status_response(status: u16) -> String {
+        let body = r#"{"fault_message":"test"}"#;
+        format!(
+            "HTTP/1.1 {status} Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
     }
 
     #[derive(Debug)]
@@ -6756,18 +6801,14 @@ mod tests {
                         let reply = balloon_stats_source.next().await;
                         let resp = match reply {
                             MockBalloonStatsReply::Ok(stats) => {
-                                let body = stats.to_json();
-                                format!(
-                                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
-                                    body.len()
-                                )
+                                mock_balloon_stats_ok_response(&stats)
+                            }
+                            MockBalloonStatsReply::DelayedOk(delay, stats) => {
+                                tokio::time::sleep(delay).await;
+                                mock_balloon_stats_ok_response(&stats)
                             }
                             MockBalloonStatsReply::Status(status) => {
-                                let body = r#"{"fault_message":"test"}"#;
-                                format!(
-                                    "HTTP/1.1 {status} Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
-                                    body.len()
-                                )
+                                mock_balloon_stats_status_response(status)
                             }
                         };
                         let _ = stream.write_all(resp.as_bytes()).await;
@@ -6887,7 +6928,7 @@ mod tests {
 
         assert!(!has_captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway"
+            "balloon inflate incomplete after 5s, pausing anyway"
         ));
         let event = captured_event(
             &events,
@@ -6912,7 +6953,7 @@ mod tests {
         let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
             std::collections::VecDeque::new(),
             std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-                target_mib, 1300,
+                target_mib, 1250,
             ))]),
         )
         .await;
@@ -6923,19 +6964,36 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
-        assert_event_field(event, "actual", "Some(1300)");
+        assert_event_field(event, "actual", "Some(1250)");
         assert_event_field(event, "target", "1536");
-        assert_event_field(event, "deficit_mib", "Some(236)");
+        assert_event_field(event, "deficit_mib", "Some(286)");
         assert_event_field(event, "requested_target_mib", "1536");
         assert_event_field(event, "target_observed", "true");
         assert_event_field(event, "observed_target_mib", "Some(1536)");
-        assert_event_field(event, "first_actual_mib", "Some(1300)");
-        assert_event_field(event, "max_actual_mib", "Some(1300)");
+        assert_event_field(event, "first_actual_mib", "Some(1250)");
+        assert_event_field(event, "max_actual_mib", "Some(1250)");
         assert_event_field(event, "actual_delta_mib", "Some(0)");
         assert_event_field(event, "reason", "actual_stalled");
+    }
+
+    #[test]
+    fn balloon_settle_tolerance_is_capped_and_scales_for_small_targets() {
+        assert_eq!(
+            balloon_settle_tolerance_mib(4096 - balloon::MIN_GUEST_MIB),
+            256
+        );
+        assert_eq!(
+            balloon_settle_tolerance_mib(2048 - balloon::MIN_GUEST_MIB),
+            192
+        );
+        assert_eq!(
+            balloon_settle_tolerance_mib(1024 - balloon::MIN_GUEST_MIB),
+            64
+        );
+        assert_eq!(balloon_settle_tolerance_mib(1), 0);
     }
 
     #[test]
@@ -6960,7 +7018,7 @@ mod tests {
         let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
             std::collections::VecDeque::new(),
             std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-                1024, 1300,
+                1024, 1200,
             ))]),
         )
         .await;
@@ -6971,12 +7029,39 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "target_observed", "false");
         assert_event_field(event, "observed_target_mib", "Some(1024)");
         assert_event_field(event, "reason", "target_not_observed");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
+        let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+        let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
+            std::collections::VecDeque::new(),
+            std::collections::VecDeque::from([MockBalloonStatsReply::DelayedOk(
+                BALLOON_SETTLE_TIMEOUT + Duration::from_secs(1),
+                MockBalloonStats::new(target_mib, target_mib),
+            )]),
+        )
+        .await;
+        let client = ApiClient::new(&sock);
+
+        let (_, events) =
+            capture_async_log_events(wait_for_balloon(&client, target_mib, "slow-stats")).await;
+
+        let event = captured_event(
+            &events,
+            "balloon inflate incomplete after 5s, pausing anyway",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "sample_count", "0");
+        assert_event_field(event, "reason", "stats_unavailable");
+        assert_event_field(event, "actual", "None");
+        assert_event_field(event, "deficit_mib", "None");
     }
 
     #[tokio::test(start_paused = true)]
@@ -6996,7 +7081,7 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "actual", "Some(900)");
@@ -7862,9 +7947,10 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn park_pauses_when_balloon_is_within_settle_tolerance() {
-        // Production samples have shown 4 GiB VMs reaching 3545-3555 MiB
-        // against a 3584 MiB target. That is close enough to park without
-        // waiting for the full 10s timeout and emitting a WARN.
+        // Production samples have shown 4 GiB VMs often settling with a
+        // low-hundreds MiB residual while the guest reports little available
+        // memory. That is close enough to park without waiting for the full
+        // timeout and emitting a WARN.
         let balloon_actual = Arc::new(AtomicU32::new(3545));
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
@@ -7900,7 +7986,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
         let target_mib = 4096 - balloon::MIN_GUEST_MIB;
-        let balloon_actual = Arc::new(AtomicU32::new(target_mib - BALLOON_SETTLE_TOLERANCE_MIB));
+        let balloon_actual = Arc::new(AtomicU32::new(
+            target_mib - balloon_settle_tolerance_mib(target_mib),
+        ));
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
             Some(Arc::clone(&balloon_actual)),
@@ -7943,7 +8031,7 @@ mod tests {
         // Balloon never reaches target — wait_for_balloon must time out
         // and proceed to pause anyway. With `start_paused = true`, tokio
         // auto-advances simulated time when all tasks await timers, so
-        // the 10s timeout completes instantly in wall-clock time.
+        // the timeout completes instantly in wall-clock time.
         let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
