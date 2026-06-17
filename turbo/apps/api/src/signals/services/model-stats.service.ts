@@ -119,6 +119,10 @@ function toNumber(value: string | number | bigint): number {
   return Number(value);
 }
 
+function utcTimestampParam(date: Date): string {
+  return date.toISOString().replace("T", " ").replace("Z", "");
+}
+
 function parseModelRankingPeriod(
   value: string | undefined,
 ): ModelRankingPeriod {
@@ -155,12 +159,14 @@ async function replaceModelStats(
 ): Promise<number> {
   const observationModelExpr = modelUsageObservationModelExpression();
   const modelStatsModelIdSql = getModelStatsModelIdSql();
+  const windowStartParam = utcTimestampParam(windowStart);
+  const windowEndParam = utcTimestampParam(windowEnd);
 
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`
       DELETE FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${windowStart}
-        AND ${modelStat.hourStart} < ${windowEnd}
+      WHERE ${modelStat.hourStart} >= ${windowStartParam}::timestamp
+        AND ${modelStat.hourStart} < ${windowEndParam}::timestamp
         AND ${modelStat.model} IN (${modelStatsModelIdSql})
     `);
 
@@ -182,8 +188,8 @@ async function replaceModelStats(
             THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
           0::bigint AS credits_charged
         FROM ${modelUsageObservation}
-        WHERE ${modelUsageObservation.observedAt} >= ${windowStart}
-          AND ${modelUsageObservation.observedAt} < ${windowEnd}
+        WHERE ${modelUsageObservation.observedAt} >= ${windowStartParam}::timestamp
+          AND ${modelUsageObservation.observedAt} < ${windowEndParam}::timestamp
           AND ${modelUsageObservation.model} IN (${modelStatsModelIdSql})
           AND ${modelUsageObservation.category} IN (
             ${TOKEN_CATEGORY_INPUT},
@@ -281,6 +287,10 @@ async function selectModelRankings(
   const modelExpr = modelStatModelExpression();
   const currentModelStatsModelIdSql = getModelStatsModelIdSql();
   const previousModelStatsModelIdSql = getModelStatsModelIdSql();
+  const windowStartParam = utcTimestampParam(window.start);
+  const windowEndParam = utcTimestampParam(window.end);
+  const previousStartParam = utcTimestampParam(previousStart);
+  const previousEndParam = utcTimestampParam(previousEnd);
 
   const result = await db.execute<RawModelRankingRow>(sql`
     WITH current_period AS (
@@ -290,8 +300,8 @@ async function selectModelRankings(
         COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
         COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
       FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${window.start}
-        AND ${modelStat.hourStart} < ${window.end}
+      WHERE ${modelStat.hourStart} >= ${windowStartParam}::timestamp
+        AND ${modelStat.hourStart} < ${windowEndParam}::timestamp
         AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
       GROUP BY 1
     ),
@@ -300,8 +310,8 @@ async function selectModelRankings(
         ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
       FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${previousStart}
-        AND ${modelStat.hourStart} < ${previousEnd}
+      WHERE ${modelStat.hourStart} >= ${previousStartParam}::timestamp
+        AND ${modelStat.hourStart} < ${previousEndParam}::timestamp
         AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
       GROUP BY 1
     )
