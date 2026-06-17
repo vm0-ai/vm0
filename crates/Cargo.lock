@@ -2794,6 +2794,7 @@ dependencies = [
  "base64",
  "clap",
  "futures-util",
+ "guest-contracts",
  "hex",
  "libc",
  "nbd-cow",
@@ -3713,6 +3714,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 name = "vsock-guest"
 version = "0.18.34"
 dependencies = [
+ "guest-contracts",
  "libc",
  "process-control-ipc",
  "vsock-proto",

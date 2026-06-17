@@ -27,18 +27,22 @@ struct Timing {
     exec_ms: Option<u128>,
 }
 
-/// Reject entries missing `=` so typos like `--env FOO` fail loud instead of
-/// being silently dropped.
+/// Reject malformed entries so typos fail loud before benchmark startup.
 fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
     env.iter()
         .map(|s| {
-            s.split_once('=')
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .ok_or_else(|| {
-                    RunnerError::Config(format!(
-                        "invalid --env value '{s}': expected KEY=VALUE format"
-                    ))
-                })
+            let (key, value) = s.split_once('=').ok_or_else(|| {
+                RunnerError::Config(format!(
+                    "invalid --env value '{s}': expected KEY=VALUE format"
+                ))
+            })?;
+            if !guest_contracts::env::is_shell_identifier_env_key(key) {
+                return Err(RunnerError::Config(format!(
+                    "invalid --env key '{}': expected shell identifier",
+                    key.escape_debug()
+                )));
+            }
+            Ok((key.to_string(), value.to_string()))
         })
         .collect()
 }
@@ -409,12 +413,19 @@ mod tests {
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
-        let input = vec!["FOO=bar".to_string(), "EMPTY=".to_string()];
+        let input = vec![
+            "FOO=bar".to_string(),
+            "_FOO=bar".to_string(),
+            "FOO_1=bar".to_string(),
+            "EMPTY=".to_string(),
+        ];
         let parsed = parse_env_args(&input).unwrap();
         assert_eq!(
             parsed,
             vec![
                 ("FOO".to_string(), "bar".to_string()),
+                ("_FOO".to_string(), "bar".to_string()),
+                ("FOO_1".to_string(), "bar".to_string()),
                 ("EMPTY".to_string(), String::new()),
             ]
         );
@@ -438,10 +449,22 @@ mod tests {
     }
 
     #[test]
-    fn parse_env_args_rejects_when_any_entry_is_invalid() {
+    fn parse_env_args_rejects_when_any_entry_is_missing_equals() {
         let input = vec!["GOOD=ok".to_string(), "BAD".to_string()];
         let err = parse_env_args(&input).unwrap_err();
         assert!(err.to_string().contains("'BAD'"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_env_args_rejects_invalid_shell_identifier_keys() {
+        for value in ["=value", "1BAD=value", "BAD-NAME=value"] {
+            let input = vec![value.to_string()];
+            let err = parse_env_args(&input).unwrap_err();
+            assert!(
+                err.to_string().contains("expected shell identifier"),
+                "got: {err}"
+            );
+        }
     }
 
     #[tokio::test]

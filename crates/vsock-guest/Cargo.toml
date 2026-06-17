@@ -4,6 +4,7 @@ version = "0.18.34"
 edition.workspace = true
 
 [dependencies]
+guest-contracts.workspace = true
 process-control-ipc.workspace = true
 libc.workspace = true
 vsock-proto.workspace = true

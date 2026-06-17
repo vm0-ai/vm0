@@ -207,20 +207,9 @@ pub(crate) fn format_env_diagnostics(command: &str, env: &[(&str, &str)]) -> Str
     )
 }
 
-fn is_shell_identifier(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !(first == '_' || first.is_ascii_alphabetic()) {
-        return false;
-    }
-    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
-}
-
 fn validate_env_keys(env: &[(&str, &str)]) -> io::Result<()> {
     for (key, _) in env {
-        if !is_shell_identifier(key) {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
@@ -644,6 +633,22 @@ mod tests {
             err.to_string()
                 .contains("invalid environment variable name")
         );
+    }
+
+    #[test]
+    fn env_script_content_rejects_non_shell_identifier_env_keys() {
+        let dir = Path::new("/run/vm0-exec/vm0-env-test");
+        let path = dir.join("run.sh");
+
+        for key in ["", "1BAD", "BAD-NAME"] {
+            let err = build_env_script_content(dir, &path, "echo hi", &[(key, "x")]).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+            assert!(
+                err.to_string()
+                    .contains("invalid environment variable name"),
+                "got: {err}"
+            );
+        }
     }
 
     #[test]
