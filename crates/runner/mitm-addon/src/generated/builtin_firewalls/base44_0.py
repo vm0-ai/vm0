@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BASE44_TOKEN }}"}},"base":"https://app.base44.com/mcp","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BASE44_TOKEN }}"}},"base":"https://app.base44.com/api/apps","permissions":[]}],"name":"base44"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BASE44_TOKEN }}"
+        }
+      },
+      "base": "https://app.base44.com/mcp",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BASE44_TOKEN }}"
+        }
+      },
+      "base": "https://app.base44.com/api/apps",
+      "permissions": []
+    }
+  ],
+  "name": "base44"
+}"""

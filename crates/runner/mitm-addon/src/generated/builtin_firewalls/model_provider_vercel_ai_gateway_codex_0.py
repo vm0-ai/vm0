@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}"}},"base":"https://ai-gateway.vercel.sh/v1","permissions":[]}],"name":"model-provider:vercel-ai-gateway-codex"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}"
+        }
+      },
+      "base": "https://ai-gateway.vercel.sh/v1",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:vercel-ai-gateway-codex"
+}"""

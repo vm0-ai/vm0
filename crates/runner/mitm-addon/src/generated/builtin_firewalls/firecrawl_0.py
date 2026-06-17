@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.FIRECRAWL_TOKEN }}"}},"base":"https://api.firecrawl.dev","permissions":[]}],"name":"firecrawl"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.FIRECRAWL_TOKEN }}"
+        }
+      },
+      "base": "https://api.firecrawl.dev",
+      "permissions": []
+    }
+  ],
+  "name": "firecrawl"
+}"""

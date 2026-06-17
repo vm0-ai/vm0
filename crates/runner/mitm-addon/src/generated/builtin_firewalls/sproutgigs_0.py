@@ -3,4 +3,99 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(vars.SPROUTGIGS_USER_ID, secrets.SPROUTGIGS_API_SECRET) }}"}},"base":"https://sproutgigs.com/api","permissions":[{"description":"Read gig categories, listings, details, questions, and reviews","name":"gigs:read","rules":["GET /gigs/get-categories.php","GET /gigs/get-gig-public-questions.php","GET /gigs/get-gig-reviews.php","GET /gigs/get-gig.php","GET /gigs/get-gigs.php"]},{"description":"Read job categories, jobs, zones, rated and unrated tasks, and predicted position","name":"jobs:read","rules":["GET /jobs/get-categories.php","GET /jobs/get-job.php","GET /jobs/get-jobs.php","POST /jobs/get-predicted-position.php","GET /jobs/get-rated-tasks.php","GET /jobs/get-unrated-tasks.php","GET /jobs/get-zones.php"]},{"description":"Create, update, feature, pause, resume, restart, stop, and configure jobs","name":"jobs:write","rules":["POST /jobs/add-positions.php","POST /jobs/edit-targeting.php","POST /jobs/feature-job.php","POST /jobs/job-pause.php","POST /jobs/job-restart.php","POST /jobs/job-resume.php","POST /jobs/job-stop.php","POST /jobs/post-job.php","POST /jobs/set-daily-tasks-limit.php","POST /jobs/set-distribution.php","POST /jobs/set-speed.php","POST /jobs/set-ttr.php"]},{"description":"Approve or reject single and multiple submitted tasks","name":"tasks:rate","rules":["POST /jobs/rate-multiple-tasks.php","POST /jobs/rate-single-task.php"]},{"description":"Read public and account freelancer lists","name":"lists:read","rules":["GET /jobs/get-lists.php","GET /lists/get-public-lists.php"]},{"description":"Add, block, and unblock freelancers in lists","name":"lists:write","rules":["POST /lists/add-workers.php","POST /lists/block-workers.php","POST /lists/unblock-workers.php"]},{"description":"Read freelancer profile details","name":"profiles:read","rules":["GET /profiles/get-profile.php"]},{"description":"Read account balances","name":"users:read","rules":["GET /users/get-balances.php"]}]}],"name":"sproutgigs"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(vars.SPROUTGIGS_USER_ID, secrets.SPROUTGIGS_API_SECRET) }}"
+        }
+      },
+      "base": "https://sproutgigs.com/api",
+      "permissions": [
+        {
+          "description": "Read gig categories, listings, details, questions, and reviews",
+          "name": "gigs:read",
+          "rules": [
+            "GET /gigs/get-categories.php",
+            "GET /gigs/get-gig-public-questions.php",
+            "GET /gigs/get-gig-reviews.php",
+            "GET /gigs/get-gig.php",
+            "GET /gigs/get-gigs.php"
+          ]
+        },
+        {
+          "description": "Read job categories, jobs, zones, rated and unrated tasks, and predicted position",
+          "name": "jobs:read",
+          "rules": [
+            "GET /jobs/get-categories.php",
+            "GET /jobs/get-job.php",
+            "GET /jobs/get-jobs.php",
+            "POST /jobs/get-predicted-position.php",
+            "GET /jobs/get-rated-tasks.php",
+            "GET /jobs/get-unrated-tasks.php",
+            "GET /jobs/get-zones.php"
+          ]
+        },
+        {
+          "description": "Create, update, feature, pause, resume, restart, stop, and configure jobs",
+          "name": "jobs:write",
+          "rules": [
+            "POST /jobs/add-positions.php",
+            "POST /jobs/edit-targeting.php",
+            "POST /jobs/feature-job.php",
+            "POST /jobs/job-pause.php",
+            "POST /jobs/job-restart.php",
+            "POST /jobs/job-resume.php",
+            "POST /jobs/job-stop.php",
+            "POST /jobs/post-job.php",
+            "POST /jobs/set-daily-tasks-limit.php",
+            "POST /jobs/set-distribution.php",
+            "POST /jobs/set-speed.php",
+            "POST /jobs/set-ttr.php"
+          ]
+        },
+        {
+          "description": "Approve or reject single and multiple submitted tasks",
+          "name": "tasks:rate",
+          "rules": [
+            "POST /jobs/rate-multiple-tasks.php",
+            "POST /jobs/rate-single-task.php"
+          ]
+        },
+        {
+          "description": "Read public and account freelancer lists",
+          "name": "lists:read",
+          "rules": [
+            "GET /jobs/get-lists.php",
+            "GET /lists/get-public-lists.php"
+          ]
+        },
+        {
+          "description": "Add, block, and unblock freelancers in lists",
+          "name": "lists:write",
+          "rules": [
+            "POST /lists/add-workers.php",
+            "POST /lists/block-workers.php",
+            "POST /lists/unblock-workers.php"
+          ]
+        },
+        {
+          "description": "Read freelancer profile details",
+          "name": "profiles:read",
+          "rules": [
+            "GET /profiles/get-profile.php"
+          ]
+        },
+        {
+          "description": "Read account balances",
+          "name": "users:read",
+          "rules": [
+            "GET /users/get-balances.php"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "sproutgigs"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ALTIUM365_TOKEN }}"}},"base":"${{ vars.ALTIUM365_WORKSPACE_URL }}","permissions":[]}],"name":"altium-365"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ALTIUM365_TOKEN }}"
+        }
+      },
+      "base": "${{ vars.ALTIUM365_WORKSPACE_URL }}",
+      "permissions": []
+    }
+  ],
+  "name": "altium-365"
+}"""

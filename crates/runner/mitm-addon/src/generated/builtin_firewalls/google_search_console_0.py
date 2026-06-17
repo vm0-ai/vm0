@@ -3,4 +3,46 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_SEARCH_CONSOLE_TOKEN }}"}},"base":"https://searchconsole.googleapis.com","permissions":[{"description":"View and manage Search Console data for your verified sites","name":"webmasters","rules":["POST /v1/urlInspection/index:inspect","GET /webmasters/v3/sites","GET /webmasters/v3/sites/{siteUrl}","PUT /webmasters/v3/sites/{siteUrl}","DELETE /webmasters/v3/sites/{siteUrl}","POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query","GET /webmasters/v3/sites/{siteUrl}/sitemaps","GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}","PUT /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}","DELETE /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"]},{"description":"View Search Console data for your verified sites","name":"webmasters.readonly","rules":["POST /v1/urlInspection/index:inspect","GET /webmasters/v3/sites","GET /webmasters/v3/sites/{siteUrl}","POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query","GET /webmasters/v3/sites/{siteUrl}/sitemaps","GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"]}]}],"name":"google-search-console"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_SEARCH_CONSOLE_TOKEN }}"
+        }
+      },
+      "base": "https://searchconsole.googleapis.com",
+      "permissions": [
+        {
+          "description": "View and manage Search Console data for your verified sites",
+          "name": "webmasters",
+          "rules": [
+            "POST /v1/urlInspection/index:inspect",
+            "GET /webmasters/v3/sites",
+            "GET /webmasters/v3/sites/{siteUrl}",
+            "PUT /webmasters/v3/sites/{siteUrl}",
+            "DELETE /webmasters/v3/sites/{siteUrl}",
+            "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query",
+            "GET /webmasters/v3/sites/{siteUrl}/sitemaps",
+            "GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}",
+            "PUT /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}",
+            "DELETE /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
+          ]
+        },
+        {
+          "description": "View Search Console data for your verified sites",
+          "name": "webmasters.readonly",
+          "rules": [
+            "POST /v1/urlInspection/index:inspect",
+            "GET /webmasters/v3/sites",
+            "GET /webmasters/v3/sites/{siteUrl}",
+            "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query",
+            "GET /webmasters/v3/sites/{siteUrl}/sitemaps",
+            "GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "google-search-console"
+}"""

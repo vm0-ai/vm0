@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"apikey":"${{ secrets.TICKETMASTER_API_KEY }}"}},"base":"https://app.ticketmaster.com","permissions":[]}],"name":"ticketmaster"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "apikey": "${{ secrets.TICKETMASTER_API_KEY }}"
+        }
+      },
+      "base": "https://app.ticketmaster.com",
+      "permissions": []
+    }
+  ],
+  "name": "ticketmaster"
+}"""

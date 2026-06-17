@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"app_id":"${{ vars.ADZUNA_APP_ID }}","app_key":"${{ secrets.ADZUNA_APP_KEY }}"}},"base":"https://api.adzuna.com","permissions":[]}],"name":"adzuna"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "app_id": "${{ vars.ADZUNA_APP_ID }}",
+          "app_key": "${{ secrets.ADZUNA_APP_KEY }}"
+        }
+      },
+      "base": "https://api.adzuna.com",
+      "permissions": []
+    }
+  ],
+  "name": "adzuna"
+}"""

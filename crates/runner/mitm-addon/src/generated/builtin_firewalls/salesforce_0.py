@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.SALESFORCE_TOKEN }}"}},"base":"https://${{ vars.SALESFORCE_INSTANCE }}.my.salesforce.com","permissions":[]}],"name":"salesforce"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.SALESFORCE_TOKEN }}"
+        }
+      },
+      "base": "https://${{ vars.SALESFORCE_INSTANCE }}.my.salesforce.com",
+      "permissions": []
+    }
+  ],
+  "name": "salesforce"
+}"""

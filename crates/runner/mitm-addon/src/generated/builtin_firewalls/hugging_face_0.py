@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"}},"base":"https://huggingface.co/api","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"}},"base":"https://api-inference.huggingface.co","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"}},"base":"https://router.huggingface.co","permissions":[]}],"name":"hugging-face"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"
+        }
+      },
+      "base": "https://huggingface.co/api",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"
+        }
+      },
+      "base": "https://api-inference.huggingface.co",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}"
+        }
+      },
+      "base": "https://router.huggingface.co",
+      "permissions": []
+    }
+  ],
+  "name": "hugging-face"
+}"""

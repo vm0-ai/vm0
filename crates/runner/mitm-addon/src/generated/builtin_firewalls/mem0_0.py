@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Token ${{ secrets.MEM0_TOKEN }}"}},"base":"https://api.mem0.ai","permissions":[]}],"name":"mem0"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MEM0_TOKEN }}"
+        }
+      },
+      "base": "https://api.mem0.ai",
+      "permissions": []
+    }
+  ],
+  "name": "mem0"
+}"""

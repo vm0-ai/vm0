@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-api-key":"${{ secrets.SUPADATA_TOKEN }}"}},"base":"https://api.supadata.ai","permissions":[]}],"name":"supadata"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-api-key": "${{ secrets.SUPADATA_TOKEN }}"
+        }
+      },
+      "base": "https://api.supadata.ai",
+      "permissions": []
+    }
+  ],
+  "name": "supadata"
+}"""

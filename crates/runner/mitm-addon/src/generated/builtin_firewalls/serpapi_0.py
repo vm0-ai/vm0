@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"api_key":"${{ secrets.SERPAPI_TOKEN }}"}},"base":"https://serpapi.com","permissions":[]}],"name":"serpapi"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "api_key": "${{ secrets.SERPAPI_TOKEN }}"
+        }
+      },
+      "base": "https://serpapi.com",
+      "permissions": []
+    }
+  ],
+  "name": "serpapi"
+}"""

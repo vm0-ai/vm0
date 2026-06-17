@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.SNOWFLAKE_PAT }}","X-Snowflake-Authorization-Token-Type":"PROGRAMMATIC_ACCESS_TOKEN"}},"base":"https://${{ vars.SNOWFLAKE_ACCOUNT }}.snowflakecomputing.com/api","permissions":[]}],"name":"snowflake"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.SNOWFLAKE_PAT }}",
+          "X-Snowflake-Authorization-Token-Type": "PROGRAMMATIC_ACCESS_TOKEN"
+        }
+      },
+      "base": "https://${{ vars.SNOWFLAKE_ACCOUNT }}.snowflakecomputing.com/api",
+      "permissions": []
+    }
+  ],
+  "name": "snowflake"
+}"""

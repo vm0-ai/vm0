@@ -3,4 +3,59 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_DOCS_TOKEN }}"}},"base":"https://docs.googleapis.com","permissions":[{"description":"See, edit, create, and delete all your Google Docs documents","name":"documents","rules":["POST /v1/documents","GET /v1/documents/{documentId}","POST /v1/documents/{documentId}:batchUpdate"]},{"description":"See all your Google Docs documents","name":"documents.readonly","rules":["GET /v1/documents/{documentId}"]},{"description":"See, edit, create, and delete all of your Google Drive files","name":"drive","rules":["POST /v1/documents","GET /v1/documents/{documentId}","POST /v1/documents/{documentId}:batchUpdate"]},{"description":"See, edit, create, and delete only the specific Google Drive files you use with this app","name":"drive.file","rules":["POST /v1/documents","GET /v1/documents/{documentId}","POST /v1/documents/{documentId}:batchUpdate"]},{"description":"See and download all your Google Drive files","name":"drive.readonly","rules":["GET /v1/documents/{documentId}"]}]}],"name":"google-docs"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_DOCS_TOKEN }}"
+        }
+      },
+      "base": "https://docs.googleapis.com",
+      "permissions": [
+        {
+          "description": "See, edit, create, and delete all your Google Docs documents",
+          "name": "documents",
+          "rules": [
+            "POST /v1/documents",
+            "GET /v1/documents/{documentId}",
+            "POST /v1/documents/{documentId}:batchUpdate"
+          ]
+        },
+        {
+          "description": "See all your Google Docs documents",
+          "name": "documents.readonly",
+          "rules": [
+            "GET /v1/documents/{documentId}"
+          ]
+        },
+        {
+          "description": "See, edit, create, and delete all of your Google Drive files",
+          "name": "drive",
+          "rules": [
+            "POST /v1/documents",
+            "GET /v1/documents/{documentId}",
+            "POST /v1/documents/{documentId}:batchUpdate"
+          ]
+        },
+        {
+          "description": "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          "name": "drive.file",
+          "rules": [
+            "POST /v1/documents",
+            "GET /v1/documents/{documentId}",
+            "POST /v1/documents/{documentId}:batchUpdate"
+          ]
+        },
+        {
+          "description": "See and download all your Google Drive files",
+          "name": "drive.readonly",
+          "rules": [
+            "GET /v1/documents/{documentId}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "google-docs"
+}"""

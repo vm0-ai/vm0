@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-cg-demo-api-key":"${{ secrets.COINGECKO_TOKEN }}"}},"base":"https://api.coingecko.com","permissions":[]},{"auth":{"headers":{"x-cg-pro-api-key":"${{ secrets.COINGECKO_TOKEN }}"}},"base":"https://pro-api.coingecko.com","permissions":[]}],"name":"coingecko"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-cg-demo-api-key": "${{ secrets.COINGECKO_TOKEN }}"
+        }
+      },
+      "base": "https://api.coingecko.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "x-cg-pro-api-key": "${{ secrets.COINGECKO_TOKEN }}"
+        }
+      },
+      "base": "https://pro-api.coingecko.com",
+      "permissions": []
+    }
+  ],
+  "name": "coingecko"
+}"""

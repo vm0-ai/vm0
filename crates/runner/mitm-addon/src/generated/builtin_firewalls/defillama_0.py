@@ -3,4 +3,15 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"base":"https://pro-api.llama.fi/${{ secrets.DEFILLAMA_TOKEN }}"},"base":"https://pro-api.llama.fi/CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof","permissions":[]}],"name":"defillama"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "base": "https://pro-api.llama.fi/${{ secrets.DEFILLAMA_TOKEN }}"
+      },
+      "base": "https://pro-api.llama.fi/CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
+      "permissions": []
+    }
+  ],
+  "name": "defillama"
+}"""

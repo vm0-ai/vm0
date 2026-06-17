@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ secrets.PDF4ME_TOKEN }}"}},"base":"https://api.pdf4me.com","permissions":[]}],"name":"pdf4me"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ secrets.PDF4ME_TOKEN }}"
+        }
+      },
+      "base": "https://api.pdf4me.com",
+      "permissions": []
+    }
+  ],
+  "name": "pdf4me"
+}"""

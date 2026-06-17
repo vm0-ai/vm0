@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.LANGSMITH_TOKEN }}"}},"base":"https://api.smith.langchain.com","permissions":[]}],"name":"langsmith"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.LANGSMITH_TOKEN }}"
+        }
+      },
+      "base": "https://api.smith.langchain.com",
+      "permissions": []
+    }
+  ],
+  "name": "langsmith"
+}"""

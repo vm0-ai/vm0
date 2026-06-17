@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-API-Key":"${{ secrets.NYNE_API_KEY }}","X-API-Secret":"${{ secrets.NYNE_API_SECRET }}"}},"base":"https://api.nyne.ai","permissions":[]}],"name":"nyne"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-API-Key": "${{ secrets.NYNE_API_KEY }}",
+          "X-API-Secret": "${{ secrets.NYNE_API_SECRET }}"
+        }
+      },
+      "base": "https://api.nyne.ai",
+      "permissions": []
+    }
+  ],
+  "name": "nyne"
+}"""

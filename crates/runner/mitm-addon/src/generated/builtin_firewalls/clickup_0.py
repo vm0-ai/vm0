@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ secrets.CLICKUP_TOKEN }}"}},"base":"https://api.clickup.com/api","permissions":[]}],"name":"clickup"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ secrets.CLICKUP_TOKEN }}"
+        }
+      },
+      "base": "https://api.clickup.com/api",
+      "permissions": []
+    }
+  ],
+  "name": "clickup"
+}"""

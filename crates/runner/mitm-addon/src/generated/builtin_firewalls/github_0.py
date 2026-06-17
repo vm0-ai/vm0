@@ -3,4 +3,80 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GITHUB_TOKEN }}"}},"base":"https://api.github.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GITHUB_TOKEN }}"}},"base":"https://uploads.github.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"}},"base":"https://github.com/{owner}/{repo}.git","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"}},"base":"https://gist.github.com/{gist_id}.git","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"}},"base":"https://gist.github.com/{user}/{gist_id}.git","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"}},"base":"https://raw.githubusercontent.com/{owner}/{repo}","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"}},"base":"https://codeload.github.com/{owner}/{repo}","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GITHUB_TOKEN }}"}},"base":"https://npm.pkg.github.com","permissions":[]}],"name":"github"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+        }
+      },
+      "base": "https://api.github.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+        }
+      },
+      "base": "https://uploads.github.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"
+        }
+      },
+      "base": "https://github.com/{owner}/{repo}.git",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"
+        }
+      },
+      "base": "https://gist.github.com/{gist_id}.git",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"
+        }
+      },
+      "base": "https://gist.github.com/{user}/{gist_id}.git",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"
+        }
+      },
+      "base": "https://raw.githubusercontent.com/{owner}/{repo}",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}"
+        }
+      },
+      "base": "https://codeload.github.com/{owner}/{repo}",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+        }
+      },
+      "base": "https://npm.pkg.github.com",
+      "permissions": []
+    }
+  ],
+  "name": "github"
+}"""

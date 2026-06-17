@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-apikey":"${{ secrets.FLIGHTAWARE_TOKEN }}"}},"base":"https://aeroapi.flightaware.com","permissions":[]}],"name":"flightaware"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-apikey": "${{ secrets.FLIGHTAWARE_TOKEN }}"
+        }
+      },
+      "base": "https://aeroapi.flightaware.com",
+      "permissions": []
+    }
+  ],
+  "name": "flightaware"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-API-Key":"${{ secrets.E2B_TOKEN }}"}},"base":"https://api.e2b.app","permissions":[]}],"name":"e2b"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-API-Key": "${{ secrets.E2B_TOKEN }}"
+        }
+      },
+      "base": "https://api.e2b.app",
+      "permissions": []
+    }
+  ],
+  "name": "e2b"
+}"""

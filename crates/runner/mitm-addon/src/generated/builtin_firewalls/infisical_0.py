@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.INFISICAL_TOKEN }}"}},"base":"https://us.infisical.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.INFISICAL_TOKEN }}"}},"base":"https://eu.infisical.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.INFISICAL_TOKEN }}"}},"base":"https://app.infisical.com","permissions":[]}],"name":"infisical"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.INFISICAL_TOKEN }}"
+        }
+      },
+      "base": "https://us.infisical.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.INFISICAL_TOKEN }}"
+        }
+      },
+      "base": "https://eu.infisical.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.INFISICAL_TOKEN }}"
+        }
+      },
+      "base": "https://app.infisical.com",
+      "permissions": []
+    }
+  ],
+  "name": "infisical"
+}"""

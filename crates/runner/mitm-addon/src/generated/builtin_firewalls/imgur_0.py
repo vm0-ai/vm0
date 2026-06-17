@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Client-ID ${{ secrets.IMGUR_CLIENT_ID }}"}},"base":"https://api.imgur.com","permissions":[]}],"name":"imgur"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Client-ID ${{ secrets.IMGUR_CLIENT_ID }}"
+        }
+      },
+      "base": "https://api.imgur.com",
+      "permissions": []
+    }
+  ],
+  "name": "imgur"
+}"""

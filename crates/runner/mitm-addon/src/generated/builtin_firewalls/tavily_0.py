@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.TAVILY_TOKEN }}"}},"base":"https://api.tavily.com","permissions":[]}],"name":"tavily"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.TAVILY_TOKEN }}"
+        }
+      },
+      "base": "https://api.tavily.com",
+      "permissions": []
+    }
+  ],
+  "name": "tavily"
+}"""

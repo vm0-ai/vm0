@@ -3,4 +3,34 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.HITEM3D_CLIENT_ID, secrets.HITEM3D_CLIENT_SECRET) }}"}},"base":"https://api.hitem3d.ai/open-api/v1/auth/token","permissions":[{"description":"Obtain a Hitem3D API access token","name":"auth-token","rules":["POST /"]}]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.HITEM3D_CLIENT_ID, secrets.HITEM3D_CLIENT_SECRET) }}"}},"base":"https://mcp.hitem3d.ai/mcp","permissions":[]}],"name":"hitem3d"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.HITEM3D_CLIENT_ID, secrets.HITEM3D_CLIENT_SECRET) }}"
+        }
+      },
+      "base": "https://api.hitem3d.ai/open-api/v1/auth/token",
+      "permissions": [
+        {
+          "description": "Obtain a Hitem3D API access token",
+          "name": "auth-token",
+          "rules": [
+            "POST /"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.HITEM3D_CLIENT_ID, secrets.HITEM3D_CLIENT_SECRET) }}"
+        }
+      },
+      "base": "https://mcp.hitem3d.ai/mcp",
+      "permissions": []
+    }
+  ],
+  "name": "hitem3d"
+}"""

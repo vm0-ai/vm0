@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.JAM_TOKEN }}"}},"base":"https://mcp.jam.dev","permissions":[]}],"name":"jam"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.JAM_TOKEN }}"
+        }
+      },
+      "base": "https://mcp.jam.dev",
+      "permissions": []
+    }
+  ],
+  "name": "jam"
+}"""

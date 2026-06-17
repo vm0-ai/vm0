@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.ASHBY_TOKEN, ) }}"}},"base":"https://api.ashbyhq.com","permissions":[]}],"name":"ashby"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.ASHBY_TOKEN, ) }}"
+        }
+      },
+      "base": "https://api.ashbyhq.com",
+      "permissions": []
+    }
+  ],
+  "name": "ashby"
+}"""

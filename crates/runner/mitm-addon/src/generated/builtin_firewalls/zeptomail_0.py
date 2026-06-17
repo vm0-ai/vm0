@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}"}},"base":"https://api.zeptomail.com","permissions":[]}],"name":"zeptomail"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}"
+        }
+      },
+      "base": "https://api.zeptomail.com",
+      "permissions": []
+    }
+  ],
+  "name": "zeptomail"
+}"""

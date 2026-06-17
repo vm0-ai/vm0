@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"}},"base":"${{ vars.BENTO_CLOUD_API_ENDPOINT }}","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"}},"base":"https://{deployment+}.bentoml.ai","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"}},"base":"https://{deployment+}.cloud-apps.bentoml.com","permissions":[]}],"name":"bentoml"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"
+        }
+      },
+      "base": "${{ vars.BENTO_CLOUD_API_ENDPOINT }}",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"
+        }
+      },
+      "base": "https://{deployment+}.bentoml.ai",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}"
+        }
+      },
+      "base": "https://{deployment+}.cloud-apps.bentoml.com",
+      "permissions": []
+    }
+  ],
+  "name": "bentoml"
+}"""

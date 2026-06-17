@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.HEYGEN_TOKEN }}"}},"base":"https://api.heygen.com","permissions":[]},{"auth":{"headers":{"X-Api-Key":"${{ secrets.HEYGEN_TOKEN }}"}},"base":"https://upload.heygen.com","permissions":[]}],"name":"heygen"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.HEYGEN_TOKEN }}"
+        }
+      },
+      "base": "https://api.heygen.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.HEYGEN_TOKEN }}"
+        }
+      },
+      "base": "https://upload.heygen.com",
+      "permissions": []
+    }
+  ],
+  "name": "heygen"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ZAPSIGN_TOKEN }}"}},"base":"https://api.zapsign.com.br","permissions":[]}],"name":"zapsign"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ZAPSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://api.zapsign.com.br",
+      "permissions": []
+    }
+  ],
+  "name": "zapsign"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.FRESHDESK_TOKEN, ) }}"}},"base":"https://${{ vars.FRESHDESK_DOMAIN }}.freshdesk.com","permissions":[]}],"name":"freshdesk"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.FRESHDESK_TOKEN, ) }}"
+        }
+      },
+      "base": "https://${{ vars.FRESHDESK_DOMAIN }}.freshdesk.com",
+      "permissions": []
+    }
+  ],
+  "name": "freshdesk"
+}"""

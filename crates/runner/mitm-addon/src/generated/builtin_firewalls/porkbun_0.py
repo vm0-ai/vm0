@@ -3,4 +3,28 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-API-Key":"${{ secrets.PORKBUN_API_KEY }}","X-Secret-API-Key":"${{ secrets.PORKBUN_SECRET_API_KEY }}"}},"base":"https://api.porkbun.com/api/json/v3","permissions":[]},{"auth":{"headers":{"X-API-Key":"${{ secrets.PORKBUN_API_KEY }}","X-Secret-API-Key":"${{ secrets.PORKBUN_SECRET_API_KEY }}"}},"base":"https://api-ipv4.porkbun.com/api/json/v3","permissions":[]}],"name":"porkbun"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-API-Key": "${{ secrets.PORKBUN_API_KEY }}",
+          "X-Secret-API-Key": "${{ secrets.PORKBUN_SECRET_API_KEY }}"
+        }
+      },
+      "base": "https://api.porkbun.com/api/json/v3",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "X-API-Key": "${{ secrets.PORKBUN_API_KEY }}",
+          "X-Secret-API-Key": "${{ secrets.PORKBUN_SECRET_API_KEY }}"
+        }
+      },
+      "base": "https://api-ipv4.porkbun.com/api/json/v3",
+      "permissions": []
+    }
+  ],
+  "name": "porkbun"
+}"""

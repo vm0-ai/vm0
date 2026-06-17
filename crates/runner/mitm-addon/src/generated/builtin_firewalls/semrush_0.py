@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"key":"${{ secrets.SEMRUSH_TOKEN }}"}},"base":"https://api.semrush.com","permissions":[]}],"name":"semrush"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "key": "${{ secrets.SEMRUSH_TOKEN }}"
+        }
+      },
+      "base": "https://api.semrush.com",
+      "permissions": []
+    }
+  ],
+  "name": "semrush"
+}"""

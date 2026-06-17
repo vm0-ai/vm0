@@ -3,4 +3,62 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://eu1.make.com","permissions":[]},{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://eu2.make.com","permissions":[]},{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://us1.make.com","permissions":[]},{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://us2.make.com","permissions":[]},{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://eu1.make.celonis.com","permissions":[]},{"auth":{"headers":{"Authorization":"Token ${{ secrets.MAKE_TOKEN }}"}},"base":"https://us1.make.celonis.com","permissions":[]}],"name":"make"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://eu1.make.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://eu2.make.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://us1.make.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://us2.make.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://eu1.make.celonis.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Token ${{ secrets.MAKE_TOKEN }}"
+        }
+      },
+      "base": "https://us1.make.celonis.com",
+      "permissions": []
+    }
+  ],
+  "name": "make"
+}"""

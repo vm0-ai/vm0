@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.RENTCAST_API_KEY }}"}},"base":"https://api.rentcast.io/v1","permissions":[]}],"name":"rentcast"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.RENTCAST_API_KEY }}"
+        }
+      },
+      "base": "https://api.rentcast.io/v1",
+      "permissions": []
+    }
+  ],
+  "name": "rentcast"
+}"""

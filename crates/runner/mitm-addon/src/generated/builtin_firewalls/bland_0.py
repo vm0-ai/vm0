@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ secrets.BLAND_API_KEY }}"}},"base":"https://api.bland.ai","permissions":[]}],"name":"bland"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ secrets.BLAND_API_KEY }}"
+        }
+      },
+      "base": "https://api.bland.ai",
+      "permissions": []
+    }
+  ],
+  "name": "bland"
+}"""

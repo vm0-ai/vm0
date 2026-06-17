@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Shopify-Access-Token":"${{ secrets.SHOPIFY_TOKEN }}"}},"base":"https://${{ vars.SHOPIFY_SHOP }}.myshopify.com","permissions":[]}],"name":"shopify"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Shopify-Access-Token": "${{ secrets.SHOPIFY_TOKEN }}"
+        }
+      },
+      "base": "https://${{ vars.SHOPIFY_SHOP }}.myshopify.com",
+      "permissions": []
+    }
+  ],
+  "name": "shopify"
+}"""

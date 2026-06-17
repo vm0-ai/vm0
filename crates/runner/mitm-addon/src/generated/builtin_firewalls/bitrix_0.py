@@ -3,4 +3,15 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"base":"${{ secrets.BITRIX_WEBHOOK_URL }}"},"base":"https://firewall-placeholder.vm3.ai/bitrix/hook","permissions":[]}],"name":"bitrix"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "base": "${{ secrets.BITRIX_WEBHOOK_URL }}"
+      },
+      "base": "https://firewall-placeholder.vm3.ai/bitrix/hook",
+      "permissions": []
+    }
+  ],
+  "name": "bitrix"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CANVA_TOKEN }}"}},"base":"https://api.canva.com","permissions":[]}],"name":"canva"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CANVA_TOKEN }}"
+        }
+      },
+      "base": "https://api.canva.com",
+      "permissions": []
+    }
+  ],
+  "name": "canva"
+}"""

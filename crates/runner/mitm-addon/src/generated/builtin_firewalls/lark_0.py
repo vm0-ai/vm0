@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.LARK_TOKEN }}"}},"base":"https://open.larksuite.com","permissions":[]}],"name":"lark"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.LARK_TOKEN }}"
+        }
+      },
+      "base": "https://open.larksuite.com",
+      "permissions": []
+    }
+  ],
+  "name": "lark"
+}"""

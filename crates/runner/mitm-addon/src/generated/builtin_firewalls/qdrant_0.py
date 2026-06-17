@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"api-key":"${{ secrets.QDRANT_TOKEN }}"}},"base":"${{ vars.QDRANT_BASE_URL }}","permissions":[]}],"name":"qdrant"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "api-key": "${{ secrets.QDRANT_TOKEN }}"
+        }
+      },
+      "base": "${{ vars.QDRANT_BASE_URL }}",
+      "permissions": []
+    }
+  ],
+  "name": "qdrant"
+}"""

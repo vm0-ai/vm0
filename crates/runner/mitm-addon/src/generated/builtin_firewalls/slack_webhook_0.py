@@ -3,4 +3,15 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"base":"${{ secrets.SLACK_WEBHOOK_URL }}"},"base":"https://firewall-placeholder.vm3.ai/slack-webhook/hook","permissions":[]}],"name":"slack-webhook"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "base": "${{ secrets.SLACK_WEBHOOK_URL }}"
+      },
+      "base": "https://firewall-placeholder.vm3.ai/slack-webhook/hook",
+      "permissions": []
+    }
+  ],
+  "name": "slack-webhook"
+}"""

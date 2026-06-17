@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Api-Key":"${{ secrets.PINECONE_TOKEN }}"}},"base":"https://api.pinecone.io","permissions":[]}],"name":"pinecone"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Api-Key": "${{ secrets.PINECONE_TOKEN }}"
+        }
+      },
+      "base": "https://api.pinecone.io",
+      "permissions": []
+    }
+  ],
+  "name": "pinecone"
+}"""

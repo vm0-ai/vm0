@@ -196,8 +196,13 @@ def load_json_parts(name: str) -> tuple[str, ...]:
     if name == "cloudflare":
         from . import cloudflare_0
         from . import cloudflare_1
+        from . import cloudflare_2
 
-        return (cloudflare_0.JSON_PART, cloudflare_1.JSON_PART)
+        return (
+            cloudflare_0.JSON_PART,
+            cloudflare_1.JSON_PART,
+            cloudflare_2.JSON_PART,
+        )
     if name == "coda":
         from . import coda_0
 
@@ -384,8 +389,12 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         return (google_calendar_0.JSON_PART,)
     if name == "google-cloud":
         from . import google_cloud_0
+        from . import google_cloud_1
 
-        return (google_cloud_0.JSON_PART,)
+        return (
+            google_cloud_0.JSON_PART,
+            google_cloud_1.JSON_PART,
+        )
     if name == "google-docs":
         from . import google_docs_0
 

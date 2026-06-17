@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-api-key":"${{ secrets.ZAPIER_TOKEN }}"}},"base":"https://actions.zapier.com","permissions":[]}],"name":"zapier"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-api-key": "${{ secrets.ZAPIER_TOKEN }}"
+        }
+      },
+      "base": "https://actions.zapier.com",
+      "permissions": []
+    }
+  ],
+  "name": "zapier"
+}"""

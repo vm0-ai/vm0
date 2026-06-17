@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CALENDLY_TOKEN }}"}},"base":"https://api.calendly.com","permissions":[]}],"name":"calendly"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CALENDLY_TOKEN }}"
+        }
+      },
+      "base": "https://api.calendly.com",
+      "permissions": []
+    }
+  ],
+  "name": "calendly"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.PLAUSIBLE_TOKEN }}"}},"base":"https://plausible.io/api","permissions":[]}],"name":"plausible"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.PLAUSIBLE_TOKEN }}"
+        }
+      },
+      "base": "https://plausible.io/api",
+      "permissions": []
+    }
+  ],
+  "name": "plausible"
+}"""

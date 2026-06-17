@@ -3,4 +3,105 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_SHEETS_TOKEN }}"}},"base":"https://sheets.googleapis.com","permissions":[{"description":"See, edit, create, and delete all of your Google Drive files","name":"drive","rules":["POST /v4/spreadsheets","GET /v4/spreadsheets/{spreadsheetId}","GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}","POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search","POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo","GET /v4/spreadsheets/{spreadsheetId}/values/{range}","PUT /v4/spreadsheets/{spreadsheetId}/values/{range}","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter","GET /v4/spreadsheets/{spreadsheetId}/values:batchGet","POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter","POST /v4/spreadsheets/{spreadsheetId}:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"]},{"description":"See, edit, create, and delete only the specific Google Drive files you use with this app","name":"drive.file","rules":["POST /v4/spreadsheets","GET /v4/spreadsheets/{spreadsheetId}","GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}","POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search","POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo","GET /v4/spreadsheets/{spreadsheetId}/values/{range}","PUT /v4/spreadsheets/{spreadsheetId}/values/{range}","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter","GET /v4/spreadsheets/{spreadsheetId}/values:batchGet","POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter","POST /v4/spreadsheets/{spreadsheetId}:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"]},{"description":"See and download all your Google Drive files","name":"drive.readonly","rules":["GET /v4/spreadsheets/{spreadsheetId}","GET /v4/spreadsheets/{spreadsheetId}/values/{range}","GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"]},{"description":"See, edit, create, and delete all your Google Sheets spreadsheets","name":"spreadsheets","rules":["POST /v4/spreadsheets","GET /v4/spreadsheets/{spreadsheetId}","GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}","POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search","POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo","GET /v4/spreadsheets/{spreadsheetId}/values/{range}","PUT /v4/spreadsheets/{spreadsheetId}/values/{range}","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append","POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClear","POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter","GET /v4/spreadsheets/{spreadsheetId}/values:batchGet","POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter","POST /v4/spreadsheets/{spreadsheetId}:batchUpdate","POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"]},{"description":"See all your Google Sheets spreadsheets","name":"spreadsheets.readonly","rules":["GET /v4/spreadsheets/{spreadsheetId}","GET /v4/spreadsheets/{spreadsheetId}/values/{range}","GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"]}]}],"name":"google-sheets"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_SHEETS_TOKEN }}"
+        }
+      },
+      "base": "https://sheets.googleapis.com",
+      "permissions": [
+        {
+          "description": "See, edit, create, and delete all of your Google Drive files",
+          "name": "drive",
+          "rules": [
+            "POST /v4/spreadsheets",
+            "GET /v4/spreadsheets/{spreadsheetId}",
+            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
+            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
+            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
+            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
+            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
+          ]
+        },
+        {
+          "description": "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          "name": "drive.file",
+          "rules": [
+            "POST /v4/spreadsheets",
+            "GET /v4/spreadsheets/{spreadsheetId}",
+            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
+            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
+            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
+            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
+            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
+          ]
+        },
+        {
+          "description": "See and download all your Google Drive files",
+          "name": "drive.readonly",
+          "rules": [
+            "GET /v4/spreadsheets/{spreadsheetId}",
+            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"
+          ]
+        },
+        {
+          "description": "See, edit, create, and delete all your Google Sheets spreadsheets",
+          "name": "spreadsheets",
+          "rules": [
+            "POST /v4/spreadsheets",
+            "GET /v4/spreadsheets/{spreadsheetId}",
+            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
+            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
+            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
+            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
+            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
+            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
+          ]
+        },
+        {
+          "description": "See all your Google Sheets spreadsheets",
+          "name": "spreadsheets.readonly",
+          "rules": [
+            "GET /v4/spreadsheets/{spreadsheetId}",
+            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "google-sheets"
+}"""

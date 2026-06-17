@@ -3,4 +3,385 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.YOUTUBE_TOKEN }}"}},"base":"https://youtube.googleapis.com/youtube","permissions":[{"description":"Manage your YouTube account","name":"youtube","rules":["POST /v3/abuseReports","GET /v3/activities","POST /v3/channelBanners/insert","GET /v3/channelSections","POST /v3/channelSections","PUT /v3/channelSections","DELETE /v3/channelSections","GET /v3/channels","PUT /v3/channels","GET /v3/i18nLanguages","GET /v3/i18nRegions","GET /v3/liveBroadcasts","POST /v3/liveBroadcasts","PUT /v3/liveBroadcasts","DELETE /v3/liveBroadcasts","POST /v3/liveBroadcasts/bind","POST /v3/liveBroadcasts/cuepoint","POST /v3/liveBroadcasts/transition","POST /v3/liveChat/bans","DELETE /v3/liveChat/bans","GET /v3/liveChat/messages","POST /v3/liveChat/messages","DELETE /v3/liveChat/messages","GET /v3/liveChat/messages/stream","POST /v3/liveChat/messages/transition","GET /v3/liveChat/moderators","POST /v3/liveChat/moderators","DELETE /v3/liveChat/moderators","GET /v3/liveStreams","POST /v3/liveStreams","PUT /v3/liveStreams","DELETE /v3/liveStreams","GET /v3/playlistImages","POST /v3/playlistImages","PUT /v3/playlistImages","DELETE /v3/playlistImages","GET /v3/playlistItems","POST /v3/playlistItems","PUT /v3/playlistItems","DELETE /v3/playlistItems","GET /v3/playlists","POST /v3/playlists","PUT /v3/playlists","DELETE /v3/playlists","GET /v3/search","GET /v3/subscriptions","POST /v3/subscriptions","DELETE /v3/subscriptions","GET /v3/superChatEvents","POST /v3/thumbnails/set","GET /v3/videoAbuseReportReasons","GET /v3/videoCategories","GET /v3/videoTrainability","GET /v3/videos","POST /v3/videos","PUT /v3/videos","DELETE /v3/videos","GET /v3/videos/getRating","POST /v3/videos/rate","POST /v3/videos/reportAbuse","POST /v3/watermarks/set","POST /v3/watermarks/unset"]},{"description":"See a list of your current active channel members, their current level, and when they became a member","name":"youtube.channel-memberships.creator","rules":["GET /v3/members","GET /v3/membershipsLevels"]},{"description":"See, edit, and permanently delete your YouTube videos, ratings, comments and captions","name":"youtube.force-ssl","rules":["POST /v3/abuseReports","GET /v3/activities","GET /v3/captions","POST /v3/captions","PUT /v3/captions","DELETE /v3/captions","GET /v3/captions/{id}","POST /v3/channelBanners/insert","GET /v3/channelSections","POST /v3/channelSections","PUT /v3/channelSections","DELETE /v3/channelSections","GET /v3/channels","PUT /v3/channels","GET /v3/commentThreads","POST /v3/commentThreads","GET /v3/comments","POST /v3/comments","PUT /v3/comments","DELETE /v3/comments","POST /v3/comments/markAsSpam","POST /v3/comments/setModerationStatus","GET /v3/i18nLanguages","GET /v3/i18nRegions","GET /v3/liveBroadcasts","POST /v3/liveBroadcasts","PUT /v3/liveBroadcasts","DELETE /v3/liveBroadcasts","POST /v3/liveBroadcasts/bind","POST /v3/liveBroadcasts/cuepoint","POST /v3/liveBroadcasts/transition","POST /v3/liveChat/bans","DELETE /v3/liveChat/bans","GET /v3/liveChat/messages","POST /v3/liveChat/messages","DELETE /v3/liveChat/messages","GET /v3/liveChat/messages/stream","POST /v3/liveChat/messages/transition","GET /v3/liveChat/moderators","POST /v3/liveChat/moderators","DELETE /v3/liveChat/moderators","GET /v3/liveStreams","POST /v3/liveStreams","PUT /v3/liveStreams","DELETE /v3/liveStreams","GET /v3/playlistImages","POST /v3/playlistImages","PUT /v3/playlistImages","DELETE /v3/playlistImages","GET /v3/playlistItems","POST /v3/playlistItems","PUT /v3/playlistItems","DELETE /v3/playlistItems","GET /v3/playlists","POST /v3/playlists","PUT /v3/playlists","DELETE /v3/playlists","GET /v3/search","GET /v3/subscriptions","POST /v3/subscriptions","DELETE /v3/subscriptions","GET /v3/superChatEvents","POST /v3/thumbnails/set","GET /v3/videoAbuseReportReasons","GET /v3/videoCategories","GET /v3/videoTrainability","GET /v3/videos","POST /v3/videos","PUT /v3/videos","DELETE /v3/videos","GET /v3/videos/getRating","POST /v3/videos/rate","POST /v3/videos/reportAbuse","POST /v3/watermarks/set","POST /v3/watermarks/unset"]},{"description":"View your YouTube account","name":"youtube.readonly","rules":["GET /v3/activities","GET /v3/channelSections","GET /v3/channels","GET /v3/i18nLanguages","GET /v3/i18nRegions","GET /v3/liveBroadcasts","GET /v3/liveChat/messages","GET /v3/liveChat/messages/stream","GET /v3/liveChat/moderators","GET /v3/liveStreams","GET /v3/playlistImages","GET /v3/playlistItems","GET /v3/playlists","GET /v3/search","GET /v3/subscriptions","GET /v3/superChatEvents","POST /v3/tests","GET /v3/videoAbuseReportReasons","GET /v3/videoCategories","GET /v3/videoTrainability","GET /v3/videos"]},{"description":"Manage your YouTube videos","name":"youtube.upload","rules":["POST /v3/channelBanners/insert","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"View and manage your assets and associated content on YouTube","name":"youtubepartner","rules":["GET /v3/captions","POST /v3/captions","PUT /v3/captions","DELETE /v3/captions","GET /v3/captions/{id}","GET /v3/channelSections","POST /v3/channelSections","PUT /v3/channelSections","DELETE /v3/channelSections","GET /v3/channels","PUT /v3/channels","GET /v3/i18nLanguages","GET /v3/i18nRegions","POST /v3/liveBroadcasts/cuepoint","GET /v3/playlistImages","POST /v3/playlistImages","PUT /v3/playlistImages","DELETE /v3/playlistImages","GET /v3/playlistItems","POST /v3/playlistItems","PUT /v3/playlistItems","DELETE /v3/playlistItems","GET /v3/playlists","POST /v3/playlists","PUT /v3/playlists","DELETE /v3/playlists","GET /v3/search","GET /v3/subscriptions","POST /v3/subscriptions","DELETE /v3/subscriptions","POST /v3/thumbnails/set","GET /v3/videoCategories","GET /v3/videoTrainability","GET /v3/videos","POST /v3/videos","PUT /v3/videos","DELETE /v3/videos","GET /v3/videos/getRating","POST /v3/videos/rate","POST /v3/videos/reportAbuse","POST /v3/watermarks/set","POST /v3/watermarks/unset"]},{"description":"View private information of your YouTube channel relevant during the audit process with a YouTube partner","name":"youtubepartner-channel-audit","rules":["GET /v3/channels"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.YOUTUBE_TOKEN }}"}},"base":"https://youtube.googleapis.com/upload/youtube","permissions":[{"description":"Manage your YouTube account","name":"youtube","rules":["POST /v3/channelBanners/insert","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"See, edit, and permanently delete your YouTube videos, ratings, comments and captions","name":"youtube.force-ssl","rules":["POST /v3/captions","PUT /v3/captions","POST /v3/channelBanners/insert","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"Manage your YouTube videos","name":"youtube.upload","rules":["POST /v3/channelBanners/insert","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"View and manage your assets and associated content on YouTube","name":"youtubepartner","rules":["POST /v3/captions","PUT /v3/captions","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.YOUTUBE_TOKEN }}"}},"base":"https://youtube.googleapis.com/resumable/upload/youtube","permissions":[{"description":"Manage your YouTube account","name":"youtube","rules":["POST /v3/channelBanners/insert","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"See, edit, and permanently delete your YouTube videos, ratings, comments and captions","name":"youtube.force-ssl","rules":["POST /v3/captions","PUT /v3/captions","POST /v3/channelBanners/insert","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"Manage your YouTube videos","name":"youtube.upload","rules":["POST /v3/channelBanners/insert","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]},{"description":"View and manage your assets and associated content on YouTube","name":"youtubepartner","rules":["POST /v3/captions","PUT /v3/captions","POST /v3/playlistImages","PUT /v3/playlistImages","POST /v3/thumbnails/set","POST /v3/videos","POST /v3/watermarks/set"]}]}],"name":"youtube"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
+        }
+      },
+      "base": "https://youtube.googleapis.com/youtube",
+      "permissions": [
+        {
+          "description": "Manage your YouTube account",
+          "name": "youtube",
+          "rules": [
+            "POST /v3/abuseReports",
+            "GET /v3/activities",
+            "POST /v3/channelBanners/insert",
+            "GET /v3/channelSections",
+            "POST /v3/channelSections",
+            "PUT /v3/channelSections",
+            "DELETE /v3/channelSections",
+            "GET /v3/channels",
+            "PUT /v3/channels",
+            "GET /v3/i18nLanguages",
+            "GET /v3/i18nRegions",
+            "GET /v3/liveBroadcasts",
+            "POST /v3/liveBroadcasts",
+            "PUT /v3/liveBroadcasts",
+            "DELETE /v3/liveBroadcasts",
+            "POST /v3/liveBroadcasts/bind",
+            "POST /v3/liveBroadcasts/cuepoint",
+            "POST /v3/liveBroadcasts/transition",
+            "POST /v3/liveChat/bans",
+            "DELETE /v3/liveChat/bans",
+            "GET /v3/liveChat/messages",
+            "POST /v3/liveChat/messages",
+            "DELETE /v3/liveChat/messages",
+            "GET /v3/liveChat/messages/stream",
+            "POST /v3/liveChat/messages/transition",
+            "GET /v3/liveChat/moderators",
+            "POST /v3/liveChat/moderators",
+            "DELETE /v3/liveChat/moderators",
+            "GET /v3/liveStreams",
+            "POST /v3/liveStreams",
+            "PUT /v3/liveStreams",
+            "DELETE /v3/liveStreams",
+            "GET /v3/playlistImages",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "DELETE /v3/playlistImages",
+            "GET /v3/playlistItems",
+            "POST /v3/playlistItems",
+            "PUT /v3/playlistItems",
+            "DELETE /v3/playlistItems",
+            "GET /v3/playlists",
+            "POST /v3/playlists",
+            "PUT /v3/playlists",
+            "DELETE /v3/playlists",
+            "GET /v3/search",
+            "GET /v3/subscriptions",
+            "POST /v3/subscriptions",
+            "DELETE /v3/subscriptions",
+            "GET /v3/superChatEvents",
+            "POST /v3/thumbnails/set",
+            "GET /v3/videoAbuseReportReasons",
+            "GET /v3/videoCategories",
+            "GET /v3/videoTrainability",
+            "GET /v3/videos",
+            "POST /v3/videos",
+            "PUT /v3/videos",
+            "DELETE /v3/videos",
+            "GET /v3/videos/getRating",
+            "POST /v3/videos/rate",
+            "POST /v3/videos/reportAbuse",
+            "POST /v3/watermarks/set",
+            "POST /v3/watermarks/unset"
+          ]
+        },
+        {
+          "description": "See a list of your current active channel members, their current level, and when they became a member",
+          "name": "youtube.channel-memberships.creator",
+          "rules": [
+            "GET /v3/members",
+            "GET /v3/membershipsLevels"
+          ]
+        },
+        {
+          "description": "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          "name": "youtube.force-ssl",
+          "rules": [
+            "POST /v3/abuseReports",
+            "GET /v3/activities",
+            "GET /v3/captions",
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "DELETE /v3/captions",
+            "GET /v3/captions/{id}",
+            "POST /v3/channelBanners/insert",
+            "GET /v3/channelSections",
+            "POST /v3/channelSections",
+            "PUT /v3/channelSections",
+            "DELETE /v3/channelSections",
+            "GET /v3/channels",
+            "PUT /v3/channels",
+            "GET /v3/commentThreads",
+            "POST /v3/commentThreads",
+            "GET /v3/comments",
+            "POST /v3/comments",
+            "PUT /v3/comments",
+            "DELETE /v3/comments",
+            "POST /v3/comments/markAsSpam",
+            "POST /v3/comments/setModerationStatus",
+            "GET /v3/i18nLanguages",
+            "GET /v3/i18nRegions",
+            "GET /v3/liveBroadcasts",
+            "POST /v3/liveBroadcasts",
+            "PUT /v3/liveBroadcasts",
+            "DELETE /v3/liveBroadcasts",
+            "POST /v3/liveBroadcasts/bind",
+            "POST /v3/liveBroadcasts/cuepoint",
+            "POST /v3/liveBroadcasts/transition",
+            "POST /v3/liveChat/bans",
+            "DELETE /v3/liveChat/bans",
+            "GET /v3/liveChat/messages",
+            "POST /v3/liveChat/messages",
+            "DELETE /v3/liveChat/messages",
+            "GET /v3/liveChat/messages/stream",
+            "POST /v3/liveChat/messages/transition",
+            "GET /v3/liveChat/moderators",
+            "POST /v3/liveChat/moderators",
+            "DELETE /v3/liveChat/moderators",
+            "GET /v3/liveStreams",
+            "POST /v3/liveStreams",
+            "PUT /v3/liveStreams",
+            "DELETE /v3/liveStreams",
+            "GET /v3/playlistImages",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "DELETE /v3/playlistImages",
+            "GET /v3/playlistItems",
+            "POST /v3/playlistItems",
+            "PUT /v3/playlistItems",
+            "DELETE /v3/playlistItems",
+            "GET /v3/playlists",
+            "POST /v3/playlists",
+            "PUT /v3/playlists",
+            "DELETE /v3/playlists",
+            "GET /v3/search",
+            "GET /v3/subscriptions",
+            "POST /v3/subscriptions",
+            "DELETE /v3/subscriptions",
+            "GET /v3/superChatEvents",
+            "POST /v3/thumbnails/set",
+            "GET /v3/videoAbuseReportReasons",
+            "GET /v3/videoCategories",
+            "GET /v3/videoTrainability",
+            "GET /v3/videos",
+            "POST /v3/videos",
+            "PUT /v3/videos",
+            "DELETE /v3/videos",
+            "GET /v3/videos/getRating",
+            "POST /v3/videos/rate",
+            "POST /v3/videos/reportAbuse",
+            "POST /v3/watermarks/set",
+            "POST /v3/watermarks/unset"
+          ]
+        },
+        {
+          "description": "View your YouTube account",
+          "name": "youtube.readonly",
+          "rules": [
+            "GET /v3/activities",
+            "GET /v3/channelSections",
+            "GET /v3/channels",
+            "GET /v3/i18nLanguages",
+            "GET /v3/i18nRegions",
+            "GET /v3/liveBroadcasts",
+            "GET /v3/liveChat/messages",
+            "GET /v3/liveChat/messages/stream",
+            "GET /v3/liveChat/moderators",
+            "GET /v3/liveStreams",
+            "GET /v3/playlistImages",
+            "GET /v3/playlistItems",
+            "GET /v3/playlists",
+            "GET /v3/search",
+            "GET /v3/subscriptions",
+            "GET /v3/superChatEvents",
+            "POST /v3/tests",
+            "GET /v3/videoAbuseReportReasons",
+            "GET /v3/videoCategories",
+            "GET /v3/videoTrainability",
+            "GET /v3/videos"
+          ]
+        },
+        {
+          "description": "Manage your YouTube videos",
+          "name": "youtube.upload",
+          "rules": [
+            "POST /v3/channelBanners/insert",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "View and manage your assets and associated content on YouTube",
+          "name": "youtubepartner",
+          "rules": [
+            "GET /v3/captions",
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "DELETE /v3/captions",
+            "GET /v3/captions/{id}",
+            "GET /v3/channelSections",
+            "POST /v3/channelSections",
+            "PUT /v3/channelSections",
+            "DELETE /v3/channelSections",
+            "GET /v3/channels",
+            "PUT /v3/channels",
+            "GET /v3/i18nLanguages",
+            "GET /v3/i18nRegions",
+            "POST /v3/liveBroadcasts/cuepoint",
+            "GET /v3/playlistImages",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "DELETE /v3/playlistImages",
+            "GET /v3/playlistItems",
+            "POST /v3/playlistItems",
+            "PUT /v3/playlistItems",
+            "DELETE /v3/playlistItems",
+            "GET /v3/playlists",
+            "POST /v3/playlists",
+            "PUT /v3/playlists",
+            "DELETE /v3/playlists",
+            "GET /v3/search",
+            "GET /v3/subscriptions",
+            "POST /v3/subscriptions",
+            "DELETE /v3/subscriptions",
+            "POST /v3/thumbnails/set",
+            "GET /v3/videoCategories",
+            "GET /v3/videoTrainability",
+            "GET /v3/videos",
+            "POST /v3/videos",
+            "PUT /v3/videos",
+            "DELETE /v3/videos",
+            "GET /v3/videos/getRating",
+            "POST /v3/videos/rate",
+            "POST /v3/videos/reportAbuse",
+            "POST /v3/watermarks/set",
+            "POST /v3/watermarks/unset"
+          ]
+        },
+        {
+          "description": "View private information of your YouTube channel relevant during the audit process with a YouTube partner",
+          "name": "youtubepartner-channel-audit",
+          "rules": [
+            "GET /v3/channels"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
+        }
+      },
+      "base": "https://youtube.googleapis.com/upload/youtube",
+      "permissions": [
+        {
+          "description": "Manage your YouTube account",
+          "name": "youtube",
+          "rules": [
+            "POST /v3/channelBanners/insert",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          "name": "youtube.force-ssl",
+          "rules": [
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "POST /v3/channelBanners/insert",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "Manage your YouTube videos",
+          "name": "youtube.upload",
+          "rules": [
+            "POST /v3/channelBanners/insert",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "View and manage your assets and associated content on YouTube",
+          "name": "youtubepartner",
+          "rules": [
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
+        }
+      },
+      "base": "https://youtube.googleapis.com/resumable/upload/youtube",
+      "permissions": [
+        {
+          "description": "Manage your YouTube account",
+          "name": "youtube",
+          "rules": [
+            "POST /v3/channelBanners/insert",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          "name": "youtube.force-ssl",
+          "rules": [
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "POST /v3/channelBanners/insert",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "Manage your YouTube videos",
+          "name": "youtube.upload",
+          "rules": [
+            "POST /v3/channelBanners/insert",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        },
+        {
+          "description": "View and manage your assets and associated content on YouTube",
+          "name": "youtubepartner",
+          "rules": [
+            "POST /v3/captions",
+            "PUT /v3/captions",
+            "POST /v3/playlistImages",
+            "PUT /v3/playlistImages",
+            "POST /v3/thumbnails/set",
+            "POST /v3/videos",
+            "POST /v3/watermarks/set"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "youtube"
+}"""

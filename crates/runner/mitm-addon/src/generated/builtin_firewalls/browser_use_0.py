@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Browser-Use-API-Key":"${{ secrets.BROWSER_USE_TOKEN }}"}},"base":"https://api.browser-use.com","permissions":[]}],"name":"browser-use"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Browser-Use-API-Key": "${{ secrets.BROWSER_USE_TOKEN }}"
+        }
+      },
+      "base": "https://api.browser-use.com",
+      "permissions": []
+    }
+  ],
+  "name": "browser-use"
+}"""

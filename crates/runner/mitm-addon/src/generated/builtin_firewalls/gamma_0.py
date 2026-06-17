@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-API-KEY":"${{ secrets.GAMMA_TOKEN }}"}},"base":"https://public-api.gamma.app","permissions":[]}],"name":"gamma"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-API-KEY": "${{ secrets.GAMMA_TOKEN }}"
+        }
+      },
+      "base": "https://public-api.gamma.app",
+      "permissions": []
+    }
+  ],
+  "name": "gamma"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DB9_API_KEY }}"}},"base":"https://api.db9.ai","permissions":[]}],"name":"db9"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DB9_API_KEY }}"
+        }
+      },
+      "base": "https://api.db9.ai",
+      "permissions": []
+    }
+  ],
+  "name": "db9"
+}"""

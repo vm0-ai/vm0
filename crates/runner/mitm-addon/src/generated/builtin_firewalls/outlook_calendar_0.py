@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.OUTLOOK_CALENDAR_TOKEN }}"}},"base":"https://graph.microsoft.com","permissions":[]}],"name":"outlook-calendar"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.OUTLOOK_CALENDAR_TOKEN }}"
+        }
+      },
+      "base": "https://graph.microsoft.com",
+      "permissions": []
+    }
+  ],
+  "name": "outlook-calendar"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.HONCHO_API_KEY }}"}},"base":"https://api.honcho.dev","permissions":[]}],"name":"honcho"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.HONCHO_API_KEY }}"
+        }
+      },
+      "base": "https://api.honcho.dev",
+      "permissions": []
+    }
+  ],
+  "name": "honcho"
+}"""

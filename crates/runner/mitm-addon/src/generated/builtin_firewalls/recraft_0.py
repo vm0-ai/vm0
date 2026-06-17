@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.RECRAFT_API_TOKEN }}"}},"base":"https://external.api.recraft.ai","permissions":[]}],"name":"recraft"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.RECRAFT_API_TOKEN }}"
+        }
+      },
+      "base": "https://external.api.recraft.ai",
+      "permissions": []
+    }
+  ],
+  "name": "recraft"
+}"""

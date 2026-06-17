@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.GREENHOUSE_TOKEN, ) }}"}},"base":"https://harvest.greenhouse.io","permissions":[]}],"name":"greenhouse"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.GREENHOUSE_TOKEN, ) }}"
+        }
+      },
+      "base": "https://harvest.greenhouse.io",
+      "permissions": []
+    }
+  ],
+  "name": "greenhouse"
+}"""

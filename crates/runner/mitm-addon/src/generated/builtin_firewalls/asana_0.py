@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ASANA_TOKEN }}"}},"base":"https://app.asana.com/api","permissions":[]}],"name":"asana"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ASANA_TOKEN }}"
+        }
+      },
+      "base": "https://app.asana.com/api",
+      "permissions": []
+    }
+  ],
+  "name": "asana"
+}"""

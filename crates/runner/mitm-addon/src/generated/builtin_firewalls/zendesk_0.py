@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ZENDESK_API_TOKEN }}"}},"base":"https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com","permissions":[]}],"name":"zendesk"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ZENDESK_API_TOKEN }}"
+        }
+      },
+      "base": "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+      "permissions": []
+    }
+  ],
+  "name": "zendesk"
+}"""

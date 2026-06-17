@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.MIRO_TOKEN }}"}},"base":"https://api.miro.com","permissions":[]}],"name":"miro"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.MIRO_TOKEN }}"
+        }
+      },
+      "base": "https://api.miro.com",
+      "permissions": []
+    }
+  ],
+  "name": "miro"
+}"""

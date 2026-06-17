@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ZAI_API_KEY }}"}},"base":"https://api.z.ai/api/anthropic/v1/messages","permissions":[]}],"name":"model-provider:zai-api-key"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ZAI_API_KEY }}"
+        }
+      },
+      "base": "https://api.z.ai/api/anthropic/v1/messages",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:zai-api-key"
+}"""

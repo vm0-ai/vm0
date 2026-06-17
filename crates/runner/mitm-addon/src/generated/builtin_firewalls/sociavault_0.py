@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-API-Key":"${{ secrets.SOCIAVAULT_TOKEN }}"}},"base":"https://api.sociavault.com","permissions":[]}],"name":"sociavault"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-API-Key": "${{ secrets.SOCIAVAULT_TOKEN }}"
+        }
+      },
+      "base": "https://api.sociavault.com",
+      "permissions": []
+    }
+  ],
+  "name": "sociavault"
+}"""

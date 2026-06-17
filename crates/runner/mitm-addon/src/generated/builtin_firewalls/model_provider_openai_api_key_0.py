@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.OPENAI_API_KEY }}"}},"base":"https://api.openai.com/v1/responses","permissions":[]}],"name":"model-provider:openai-api-key"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}"
+        }
+      },
+      "base": "https://api.openai.com/v1/responses",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:openai-api-key"
+}"""

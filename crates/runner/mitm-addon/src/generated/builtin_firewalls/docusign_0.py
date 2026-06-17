@@ -3,4 +3,98 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://www.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://na2.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://na3.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://na4.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://eu.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://au.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://ca.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://demo.docusign.net","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://account.docusign.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DOCUSIGN_TOKEN }}"}},"base":"https://account-d.docusign.com","permissions":[]}],"name":"docusign"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://www.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://na2.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://na3.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://na4.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://eu.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://au.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://ca.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://demo.docusign.net",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://account.docusign.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DOCUSIGN_TOKEN }}"
+        }
+      },
+      "base": "https://account-d.docusign.com",
+      "permissions": []
+    }
+  ],
+  "name": "docusign"
+}"""
