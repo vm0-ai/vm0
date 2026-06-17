@@ -17,6 +17,7 @@ interface DesktopTrayControllerOptions {
   readonly displayName: string;
   readonly iconPath: string;
   readonly disabledIconPath: string;
+  readonly runningIconPath: string;
   readonly getComputerUseState: () => DesktopComputerUseState;
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly showMainWindow: () => Promise<void>;
@@ -34,6 +35,13 @@ interface DesktopTrayControllerOptions {
   readonly quit: () => void;
 }
 
+type DesktopTrayIconFrame = "disabled" | "online" | "running";
+type DesktopTrayIconMode = "disabled" | "online" | "running";
+
+const RUNNING_TRAY_ICON_FRAME_MS = 280;
+const RUNNING_TRAY_ACTIVITY_LINGER_MS = 15_000;
+const RUNNING_TRAY_ICON_FRAME_COUNT = 4;
+
 function desktopTrayIcon(
   iconPath: string,
   options: { readonly template: boolean },
@@ -45,8 +53,31 @@ function desktopTrayIcon(
   return image;
 }
 
-function isOnlineTrayIconState(state: DesktopComputerUseState): boolean {
-  return state.host.status === "online";
+function hasRunningLocalCommand(state: DesktopComputerUseState): boolean {
+  return state.host.localCommandLog.some((entry) => {
+    return entry.status === "running";
+  });
+}
+
+function initialIconFrameForMode(
+  mode: DesktopTrayIconMode,
+): DesktopTrayIconFrame {
+  return mode === "running" ? runningTrayIconFrameAt(0) : mode;
+}
+
+function runningTrayIconFrameAt(index: number): DesktopTrayIconFrame {
+  switch (index % RUNNING_TRAY_ICON_FRAME_COUNT) {
+    case 0:
+      return "disabled";
+    case 1:
+      return "running";
+    case 2:
+      return "online";
+    case 3:
+      return "running";
+    default:
+      return "disabled";
+  }
 }
 
 function electronMenuItem(
@@ -87,8 +118,11 @@ export class DesktopTrayController {
   private authLoading = true;
   private authError: string | null = null;
   private authRefreshVersion = 0;
-  private iconState: boolean | null = null;
-  private readonly iconCache = new Map<boolean, NativeImage>();
+  private iconFrame: DesktopTrayIconFrame | null = null;
+  private readonly iconCache = new Map<DesktopTrayIconFrame, NativeImage>();
+  private runningActivityUntilMs: number | null = null;
+  private runningIconFrameIndex = 0;
+  private runningIconTimer: ReturnType<typeof setInterval> | null = null;
   private menuSignature: string | null = null;
 
   constructor(options: DesktopTrayControllerOptions) {
@@ -101,9 +135,10 @@ export class DesktopTrayController {
     }
 
     const computerUseState = this.options.getComputerUseState();
-    const iconState = isOnlineTrayIconState(computerUseState);
-    this.tray = new Tray(this.iconForState(iconState));
-    this.iconState = iconState;
+    const iconMode = this.iconModeForComputerUseState(computerUseState);
+    const iconFrame = initialIconFrameForMode(iconMode);
+    this.tray = new Tray(this.iconForFrame(iconFrame));
+    this.iconFrame = iconFrame;
     this.tray.setToolTip(this.options.displayName);
     this.refresh();
     this.refreshAuth();
@@ -137,30 +172,112 @@ export class DesktopTrayController {
     tray.setContextMenu(Menu.buildFromTemplate(electronMenuTemplate(items)));
   }
 
-  private iconForState(online: boolean): NativeImage {
-    const cached = this.iconCache.get(online);
+  private iconForFrame(frame: DesktopTrayIconFrame): NativeImage {
+    const cached = this.iconCache.get(frame);
     if (cached) {
       return cached;
     }
 
-    const image = desktopTrayIcon(
-      online ? this.options.iconPath : this.options.disabledIconPath,
-      { template: online },
-    );
-    this.iconCache.set(online, image);
+    const image = desktopTrayIcon(this.iconPathForFrame(frame), {
+      template: frame === "online",
+    });
+    this.iconCache.set(frame, image);
     return image;
+  }
+
+  private iconPathForFrame(frame: DesktopTrayIconFrame): string {
+    switch (frame) {
+      case "disabled":
+        return this.options.disabledIconPath;
+      case "online":
+        return this.options.iconPath;
+      case "running":
+        return this.options.runningIconPath;
+    }
+  }
+
+  private iconModeForComputerUseState(
+    state: DesktopComputerUseState,
+  ): DesktopTrayIconMode {
+    if (state.host.status !== "online") {
+      this.runningActivityUntilMs = null;
+      return "disabled";
+    }
+
+    if (hasRunningLocalCommand(state)) {
+      this.runningActivityUntilMs =
+        Date.now() + RUNNING_TRAY_ACTIVITY_LINGER_MS;
+      return "running";
+    }
+
+    if (
+      this.runningActivityUntilMs !== null &&
+      Date.now() < this.runningActivityUntilMs
+    ) {
+      return "running";
+    }
+
+    this.runningActivityUntilMs = null;
+    return "online";
   }
 
   private refreshIcon(
     tray: Tray,
     computerUseState: DesktopComputerUseState,
   ): void {
-    const iconState = isOnlineTrayIconState(computerUseState);
-    if (iconState === this.iconState) {
+    const iconMode = this.iconModeForComputerUseState(computerUseState);
+    if (iconMode === "running") {
+      this.startRunningIconAnimation(tray);
       return;
     }
-    this.iconState = iconState;
-    tray.setImage(this.iconForState(iconState));
+
+    this.stopRunningIconAnimation();
+    this.setTrayIconFrame(tray, iconMode);
+  }
+
+  private startRunningIconAnimation(tray: Tray): void {
+    if (this.runningIconTimer) {
+      return;
+    }
+
+    this.runningIconFrameIndex = 0;
+    this.setTrayIconFrame(tray, runningTrayIconFrameAt(0));
+    this.runningIconTimer = setInterval(() => {
+      const iconMode = this.iconModeForComputerUseState(
+        this.options.getComputerUseState(),
+      );
+      if (iconMode !== "running") {
+        this.stopRunningIconAnimation();
+        this.setTrayIconFrame(tray, iconMode);
+        return;
+      }
+
+      this.runningIconFrameIndex =
+        (this.runningIconFrameIndex + 1) % RUNNING_TRAY_ICON_FRAME_COUNT;
+      this.setTrayIconFrame(
+        tray,
+        runningTrayIconFrameAt(this.runningIconFrameIndex),
+      );
+    }, RUNNING_TRAY_ICON_FRAME_MS);
+  }
+
+  private stopRunningIconAnimation(): void {
+    const timer = this.runningIconTimer;
+    if (!timer) {
+      return;
+    }
+
+    clearInterval(timer);
+    this.runningIconTimer = null;
+  }
+
+  private setTrayIconFrame(tray: Tray, frame: DesktopTrayIconFrame): void {
+    if (frame === this.iconFrame) {
+      return;
+    }
+
+    this.iconFrame = frame;
+    tray.setImage(this.iconForFrame(frame));
   }
 
   refreshAuth(): void {
