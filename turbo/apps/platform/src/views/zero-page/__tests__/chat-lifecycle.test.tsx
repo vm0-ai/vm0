@@ -727,6 +727,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function linkByText(text: string): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -3053,16 +3063,15 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: false },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Automations" }),
-      ).toBeInTheDocument();
+      expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
-    click(screen.getByRole("button", { name: "Automations" }));
+    click(buttonByLabel("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
@@ -3093,12 +3102,10 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Automations" }),
-      ).toBeInTheDocument();
+      expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
-    click(screen.getByRole("button", { name: "Automations" }));
+    click(buttonByLabel("Automations"));
 
     await waitFor(() => {
       expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
@@ -3146,7 +3153,11 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
-    click(await screen.findByRole("button", { name: "Automations" }));
+    await waitFor(() => {
+      expect(buttonByLabel("Automations")).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
