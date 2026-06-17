@@ -101,11 +101,6 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
 const GUEST_USER_ENV_FILENAME: &str = "env.json";
-const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-    guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-];
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
 
@@ -397,7 +392,13 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
+    let sandbox_id = dispatch.id.to_string();
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+        &context,
+        &config.api_url,
+        &sandbox_id,
+        dispatch.reuse_result,
+    ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: None,
@@ -510,7 +511,13 @@ pub async fn execute_job_reuse(
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
+    let sandbox_id_string = sandbox_id.to_string();
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+        &context,
+        &config.api_url,
+        &sandbox_id_string,
+        SandboxReuseResult::Reused,
+    ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: Some(sandbox),

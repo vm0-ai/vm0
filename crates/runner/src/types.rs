@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
@@ -63,6 +63,10 @@ pub struct ExecutionContext {
     // Plain secret values used only for redaction. These are values, not names.
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
+    // Local submit may explicitly allow raw provider secrets for local-only
+    // runner testing. This marker is internal and must not be claimable via API JSON.
+    #[serde(default, skip)]
+    pub local_secret_env_keys: Option<HashSet<String>>,
     // Encrypted runtime secret namespace forwarded to mitm-addon for auth
     // resolution. Decrypted keys match `${{ secrets.NAME }}` names; connector
     // and model-provider keys are env aliases, not storage secret names.
@@ -441,6 +445,7 @@ mod tests {
         assert!(ctx.vars.is_none());
         assert!(ctx.firewalls.is_none());
         assert!(ctx.secret_values.is_none());
+        assert!(ctx.local_secret_env_keys.is_none());
         assert!(ctx.billable_firewalls.is_empty());
         assert!(ctx.model_usage_provider.is_none());
     }
@@ -475,6 +480,7 @@ mod tests {
             "environment": {"NODE_ENV": "production"},
             "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
             "secretValues": ["s1", "s2"],
+            "localSecretEnvKeys": ["ANTHROPIC_API_KEY"],
             "encryptedSecrets": "enc-blob",
             "secretConnectorMap": {"GITHUB_TOKEN": "github"},
             "secretConnectorMetadataMap": {
@@ -506,6 +512,7 @@ mod tests {
         assert_eq!(ctx.environment.as_ref().unwrap()["NODE_ENV"], "production");
         assert_eq!(ctx.resume_session.as_ref().unwrap().session_id, "sess-1");
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
+        assert!(ctx.local_secret_env_keys.is_none());
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
         let metadata = ctx.secret_connector_metadata_map.as_ref().unwrap();
         assert_eq!(

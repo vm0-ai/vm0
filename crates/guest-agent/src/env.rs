@@ -14,7 +14,6 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 const USER_ENV_FILENAME: &str = "env.json";
-const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -350,47 +349,21 @@ fn validate_user_env(user_env: &HashMap<String, String>) -> Result<(), String> {
     entries.sort_by_key(|(key, _)| *key);
 
     for (key, value) in entries {
-        if !is_valid_env_key(key) {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(format!(
                 "{USER_ENV_FILE_ENV_KEY} contains invalid env key {:?}",
-                sanitize_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
             ));
         }
         if value.contains('\0') {
             return Err(format!(
                 "{USER_ENV_FILE_ENV_KEY} contains NUL byte for env key {:?}",
-                sanitize_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
             ));
         }
     }
 
     Ok(())
-}
-
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !(first == '_' || first.is_ascii_alphabetic()) {
-        return false;
-    }
-    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-}
-
-fn sanitize_env_key_for_diagnostic(key: &str) -> String {
-    let mut chars = key.escape_debug();
-    let mut truncated = String::new();
-    for _ in 0..ENV_KEY_DIAGNOSTIC_MAX_CHARS {
-        let Some(ch) = chars.next() else {
-            return truncated;
-        };
-        truncated.push(ch);
-    }
-    if chars.next().is_some() {
-        truncated.push_str("...");
-    }
-    truncated
 }
 
 #[allow(clippy::panic)] // Entry points must call init_user_env; bypassing it is a code bug.

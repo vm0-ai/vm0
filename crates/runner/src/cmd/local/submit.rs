@@ -4,9 +4,9 @@
 //! for a group-wide `{job_id}.result` file written by the runner that claimed
 //! the job.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -14,6 +14,7 @@ use std::time::Duration;
 use clap::Args;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::host_file;
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
@@ -44,6 +45,12 @@ pub struct SubmitArgs {
     /// Feature flags (repeatable, format: key=value, e.g. --feature-flag myFlag=true)
     #[arg(long = "feature-flag")]
     feature_flags: Vec<String>,
+    /// Ordinary environment variables to pass to the local job (KEY=VALUE)
+    #[arg(long = "env")]
+    env: Vec<String>,
+    /// Local-only secret environment variables to pass and register for masking (KEY=VALUE)
+    #[arg(long = "secret-env")]
+    secret_env: Vec<String>,
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
@@ -87,6 +94,7 @@ struct PublishedMarker {
 
 struct SubmitQueueEntry {
     job_id: RunId,
+    group_dir: PathBuf,
     job_dir: PathBuf,
     job: PathBuf,
     result: PathBuf,
@@ -98,6 +106,7 @@ impl SubmitQueueEntry {
     fn for_job(group_dir: &Path, profile: &str, job_id: RunId) -> RunnerResult<Self> {
         Ok(Self {
             job_id,
+            group_dir: group_dir.to_path_buf(),
             job_dir: local_queue::profile_jobs_dir(group_dir, profile)?,
             job: local_queue::job_path(group_dir, profile, job_id)?,
             result: local_queue::result_path(group_dir, job_id),
@@ -108,17 +117,20 @@ impl SubmitQueueEntry {
 
     /// Clean up queue files after a completed job has produced a result.
     fn cleanup_completed(&self) {
-        let job_removed = remove_file_if_exists(&self.job);
+        let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
+            .remove_job_files_if_present(self.job_id);
         let _ = remove_file_if_exists(&self.cancel);
         let _ = remove_file_if_exists(&self.claim);
-        if job_removed {
+        if jobs_removed {
             let _ = remove_file_if_exists(&self.result);
         }
     }
 
     /// Clean up submit-owned queue files after timing out while waiting for a result.
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
-        if remove_file_if_exists(&self.job) && !self.claim.exists() {
+        let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
+            .remove_job_files_if_present(self.job_id);
+        if jobs_removed && !self.claim.exists() {
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
                 remove_marker_if_unchanged(&self.result, marker);
@@ -242,6 +254,8 @@ impl SubmitPlan {
             profile,
             session_id,
             feature_flags,
+            env,
+            secret_env,
             timeout,
         } = args;
 
@@ -256,6 +270,9 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
+        let environment = Self::parse_env_entries("--env", &env, true)?;
+        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
+        Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let group_dir = home.groups_dir().join(&group);
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
 
@@ -273,7 +290,8 @@ impl SubmitPlan {
             prompt,
             cli_agent_type,
             vars: None,
-            environment: None,
+            environment,
+            secret_environment,
             user_timezone: detect_system_timezone(),
             profile: Some(profile.clone()),
             session_id,
@@ -313,20 +331,109 @@ impl SubmitPlan {
         Ok(Some(map))
     }
 
+    fn parse_env_entries(
+        flag: &str,
+        entries: &[String],
+        allow_guest_agent_tuning_keys: bool,
+    ) -> RunnerResult<Option<HashMap<String, String>>> {
+        if entries.is_empty() {
+            return Ok(None);
+        }
+
+        let mut map = HashMap::new();
+        for entry in entries {
+            if entry.contains('\0') {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: NUL characters are not allowed"
+                )));
+            }
+            let Some(eq_pos) = entry.find('=') else {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: expected KEY=VALUE format"
+                )));
+            };
+            if eq_pos == 0 {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} value: expected KEY=VALUE format"
+                )));
+            }
+
+            let key = &entry[..eq_pos];
+            let value = &entry[eq_pos + 1..];
+            if !guest_contracts::env::is_shell_identifier_env_key(key) {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
+                )));
+            }
+            let is_guest_agent_tuning_key =
+                guest_contracts::env::is_guest_agent_tuning_env_key(key);
+            if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
+                )));
+            }
+            if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
+                )));
+            }
+            if map.insert(key.to_owned(), value.to_owned()).is_some() {
+                return Err(RunnerError::Config(format!("duplicate {flag} key '{key}'")));
+            }
+        }
+
+        Ok(Some(map))
+    }
+
+    fn validate_disjoint_env_keys(
+        environment: &Option<HashMap<String, String>>,
+        secret_environment: &Option<HashMap<String, String>>,
+    ) -> RunnerResult<()> {
+        let (Some(environment), Some(secret_environment)) = (environment, secret_environment)
+        else {
+            return Ok(());
+        };
+
+        let secret_keys: HashSet<&str> = secret_environment.keys().map(String::as_str).collect();
+        for key in environment.keys() {
+            if secret_keys.contains(key.as_str()) {
+                return Err(RunnerError::Config(format!(
+                    "duplicate env key '{key}' across --env and --secret-env"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn write_job_file(&self) -> RunnerResult<()> {
         let tmp_path = self
             .queue
             .job_dir
             .join(format!("{}.job.tmp", self.queue.job_id));
-        if let Err(e) = std::fs::write(&tmp_path, &self.request_json) {
+        let result = (|| {
+            let mut file = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .mode(host_file::PRIVATE_FILE_MODE)
+                .custom_flags(host_file::private_file_open_flags())
+                .open(&tmp_path)
+                .map_err(|e| RunnerError::Internal(format!("open job file tmp: {e}")))?;
+            host_file::secure_regular_private_file(&file, &tmp_path, "job file").map_err(|e| {
+                RunnerError::Internal(format!("validate job file tmp {}: {e}", tmp_path.display()))
+            })?;
+            file.write_all(&self.request_json)
+                .map_err(|e| RunnerError::Internal(format!("write job file: {e}")))?;
+            drop(file);
+
+            std::fs::rename(&tmp_path, &self.queue.job)
+                .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
+            Ok(())
+        })();
+
+        if result.is_err() {
             let _ = remove_file_if_exists(&tmp_path);
-            return Err(RunnerError::Internal(format!("write job file: {e}")));
         }
-        if let Err(e) = std::fs::rename(&tmp_path, &self.queue.job) {
-            let _ = remove_file_if_exists(&tmp_path);
-            return Err(RunnerError::Internal(format!("rename job file: {e}")));
-        }
-        Ok(())
+        result
     }
 
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
@@ -426,6 +533,13 @@ mod tests {
 
     fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
         SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
+    }
+
+    fn write_queue_job_file(group_dir: &Path, profile: &str, job_id: RunId) -> PathBuf {
+        let path = local_queue::job_path(group_dir, profile, job_id).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{}").unwrap();
+        path
     }
 
     #[test]
@@ -642,6 +756,20 @@ mod tests {
         wait_for_job_and_write_result(group_dir, profile, 0, None).await
     }
 
+    fn submit_args_for_test() -> SubmitArgs {
+        SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            session_id: None,
+            feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
+            timeout: 1,
+        }
+    }
+
     #[tokio::test]
     async fn submit_defaults_profile_and_writes_default_partition() {
         let dir = tempfile::tempdir().unwrap();
@@ -661,6 +789,8 @@ mod tests {
                 profile: None,
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -698,6 +828,8 @@ mod tests {
                 profile: Some(profile.into()),
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -729,6 +861,8 @@ mod tests {
                 profile: None,
                 session_id: Some("sess-123".into()),
                 feature_flags: vec!["alpha=true".into(), "beta=false".into()],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -744,6 +878,164 @@ mod tests {
         assert_eq!(request.session_id.as_deref(), Some("sess-123"));
         assert_eq!(flags.get("alpha"), Some(&true));
         assert_eq!(flags.get("beta"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn submit_serializes_env_and_secret_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_job_and_write_success(
+            group_dir,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+        ));
+
+        let mut args = submit_args_for_test();
+        args.group = group.into();
+        args.timeout = 5;
+        args.env = vec![
+            "FOO=bar".into(),
+            "URL=https://example.test/path?a=1&b=2".into(),
+            "EMPTY=".into(),
+            "MULTILINE=line1\nline2".into(),
+            "VM0_STUCK_TOOL_TIMEOUT_SECS=3".into(),
+        ];
+        args.secret_env = vec![
+            "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
+            "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
+        ];
+
+        let code = run_submit_with_home(args, home).await.unwrap();
+        let request = watcher.await.unwrap();
+        let environment = request.environment.as_ref().unwrap();
+        let secret_environment = request.secret_environment.as_ref().unwrap();
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(environment.get("FOO").map(String::as_str), Some("bar"));
+        assert_eq!(
+            environment.get("URL").map(String::as_str),
+            Some("https://example.test/path?a=1&b=2")
+        );
+        assert_eq!(environment.get("EMPTY").map(String::as_str), Some(""));
+        assert_eq!(
+            environment.get("MULTILINE").map(String::as_str),
+            Some("line1\nline2")
+        );
+        assert_eq!(
+            environment
+                .get("VM0_STUCK_TOOL_TIMEOUT_SECS")
+                .map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            secret_environment
+                .get("ANTHROPIC_API_KEY")
+                .map(String::as_str),
+            Some("sk-ant-local-secret")
+        );
+        assert_eq!(
+            secret_environment.get("PRIVATE_KEY").map(String::as_str),
+            Some("-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_env_entries_before_submit() {
+        let cases = vec![
+            (vec!["FOO".to_string()], Vec::new(), "expected KEY=VALUE"),
+            (vec!["=VALUE".to_string()], Vec::new(), "expected KEY=VALUE"),
+            (
+                vec!["BAD-KEY=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                vec!["1KEY=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                vec!["KEY SPACE=value".to_string()],
+                Vec::new(),
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                Vec::new(),
+                vec!["ÅKEY=value".to_string()],
+                "expected [_A-Za-z][_A-Za-z0-9]*",
+            ),
+            (
+                Vec::new(),
+                vec!["KEY=with\0nul".to_string()],
+                "NUL characters",
+            ),
+            (
+                vec!["VM0_PROMPT=value".to_string()],
+                Vec::new(),
+                "runner-owned environment variables",
+            ),
+            (
+                Vec::new(),
+                vec!["CLI_AGENT_TYPE=codex".to_string()],
+                "runner-owned environment variables",
+            ),
+            (
+                Vec::new(),
+                vec!["VM0_STUCK_TOOL_TIMEOUT_SECS=3".to_string()],
+                "must be passed with --env",
+            ),
+            (
+                vec!["FOO=1".to_string(), "FOO=2".to_string()],
+                Vec::new(),
+                "duplicate --env key 'FOO'",
+            ),
+            (
+                vec!["FOO=1".to_string()],
+                vec!["FOO=2".to_string()],
+                "across --env and --secret-env",
+            ),
+        ];
+
+        for (env, secret_env, expected) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().to_path_buf());
+            let mut args = submit_args_for_test();
+            args.env = env;
+            args.secret_env = secret_env;
+
+            let err = run_submit_with_home(args, home).await.unwrap_err();
+
+            assert!(err.to_string().contains(expected), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn write_job_file_creates_private_job_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        let plan = SubmitPlan {
+            group: "test/group".into(),
+            profile: crate::profile::DEFAULT_PROFILE.to_owned(),
+            queue,
+            timeout: Duration::ZERO,
+            request_json: br#"{"secretEnvironment":{"ANTHROPIC_API_KEY":"sk-local-secret"}}"#
+                .to_vec(),
+        };
+
+        plan.write_job_file().unwrap();
+
+        let mode = std::fs::metadata(&plan.queue.job)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, host_file::PRIVATE_FILE_MODE);
     }
 
     #[test]
@@ -795,6 +1087,8 @@ mod tests {
                 profile: None,
                 session_id: None,
                 feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
                 timeout: 5,
             },
             home,
@@ -843,6 +1137,31 @@ mod tests {
     }
 
     #[test]
+    fn completed_cleanup_removes_duplicate_job_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let large_job = write_queue_job_file(group_dir, "vm0/large", job_id);
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.cleanup_completed();
+
+        assert!(!default_job.exists());
+        assert!(!large_job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
     fn completed_cleanup_keeps_result_when_job_cannot_be_removed() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -862,6 +1181,35 @@ mod tests {
         assert!(
             queue.result.exists(),
             "result must remain as the terminal marker if the job path was not removed"
+        );
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn completed_cleanup_keeps_result_when_duplicate_job_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let blocked_job = local_queue::job_path(group_dir, "vm0/large", job_id).unwrap();
+        std::fs::create_dir_all(&blocked_job).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.cleanup_completed();
+
+        assert!(!default_job.exists());
+        assert!(blocked_job.exists());
+        assert!(
+            queue.result.exists(),
+            "result must remain as the terminal marker if any duplicate job path was not removed"
         );
         assert!(!queue.cancel.exists());
         assert!(!queue.claim.exists());
@@ -945,6 +1293,31 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_cleanup_removes_duplicate_unclaimed_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let large_job = write_queue_job_file(group_dir, "vm0/large", job_id);
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!default_job.exists());
+        assert!(!large_job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(
+            !queue.claim.exists(),
+            "abandoned cleanup should not create a temporary claim"
+        );
+    }
+
+    #[test]
     fn abandoned_cleanup_removes_marker_when_job_already_absent() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -960,6 +1333,31 @@ mod tests {
 
         assert!(!queue.result.exists());
         assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_keeps_marker_when_duplicate_job_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        let blocked_job = local_queue::job_path(group_dir, "vm0/large", job_id).unwrap();
+        std::fs::create_dir_all(&blocked_job).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!default_job.exists());
+        assert!(blocked_job.exists());
+        assert!(
+            queue.result.exists(),
+            "terminal marker must remain if any duplicate job path could not be removed"
+        );
+        assert!(queue.cancel.exists());
         assert!(!queue.claim.exists());
     }
 
@@ -1142,6 +1540,8 @@ mod tests {
             profile: Some("bad-name".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1162,6 +1562,8 @@ mod tests {
             profile: Some("vm0/default".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
         // Should pass validation and fail later (HomePaths or timeout), not on profile.
@@ -1182,6 +1584,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec!["myFlag".into()],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1199,6 +1603,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec!["myFlag=yes".into()],
+            env: vec![],
+            secret_env: vec![],
             timeout: 1,
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1221,6 +1627,8 @@ mod tests {
             profile: Some("vm0/large".into()),
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
 
@@ -1245,6 +1653,8 @@ mod tests {
             profile: None,
             session_id: None,
             feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
             timeout: 0,
         };
 

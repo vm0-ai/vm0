@@ -6,7 +6,7 @@
 //! The winning runner executes the job and writes a group-wide
 //! `{job_id}.result` file that `submit` polls for.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -191,6 +191,8 @@ impl JobProvider for LocalProvider {
             }
         };
 
+        let environment_merge = merge_local_environments(req.environment, req.secret_environment);
+
         let context = ExecutionContext {
             run_id,
             prompt: req.prompt,
@@ -200,7 +202,7 @@ impl JobProvider for LocalProvider {
             checkpoint_id: None,
             sandbox_token: String::new(),
             storage_manifest: None,
-            environment: req.environment,
+            environment: environment_merge.environment,
             resume_session: req
                 .session_id
                 .as_ref()
@@ -208,7 +210,8 @@ impl JobProvider for LocalProvider {
                     session_id: id.clone(),
                     session_history: String::new(),
                 }),
-            secret_values: None,
+            secret_values: environment_merge.secret_values,
+            local_secret_env_keys: environment_merge.local_secret_env_keys,
             encrypted_secrets: None,
             secret_connector_map: None,
             secret_connector_metadata_map: None,
@@ -245,7 +248,7 @@ impl JobProvider for LocalProvider {
                 warn!(run_id = %run_id, error = %error, "local: claimed job invariant violation");
                 let queue = self.queue.clone();
                 if let Err(e) = tokio::task::spawn_blocking(move || {
-                    queue.fail_claimed_job_sync(run_id, &job_file, error);
+                    queue.fail_claimed_job_sync(run_id, error);
                 })
                 .await
                 {
@@ -280,6 +283,47 @@ impl JobProvider for LocalProvider {
 
     async fn shutdown(&self) {
         self.cancel_watcher.shutdown().await;
+    }
+}
+
+struct LocalEnvironmentMerge {
+    environment: Option<HashMap<String, String>>,
+    secret_values: Option<Vec<String>>,
+    local_secret_env_keys: Option<HashSet<String>>,
+}
+
+fn merge_local_environments(
+    environment: Option<HashMap<String, String>>,
+    secret_environment: Option<HashMap<String, String>>,
+) -> LocalEnvironmentMerge {
+    let Some(secret_environment) = secret_environment else {
+        return LocalEnvironmentMerge {
+            environment,
+            secret_values: None,
+            local_secret_env_keys: None,
+        };
+    };
+    if secret_environment.is_empty() {
+        return LocalEnvironmentMerge {
+            environment,
+            secret_values: None,
+            local_secret_env_keys: None,
+        };
+    }
+
+    let mut merged = environment.unwrap_or_default();
+    let mut secret_values = Vec::with_capacity(secret_environment.len());
+    let mut local_secret_env_keys = HashSet::with_capacity(secret_environment.len());
+    for (key, value) in secret_environment {
+        local_secret_env_keys.insert(key.clone());
+        secret_values.push(value.clone());
+        merged.insert(key, value);
+    }
+
+    LocalEnvironmentMerge {
+        environment: Some(merged),
+        secret_values: Some(secret_values),
+        local_secret_env_keys: Some(local_secret_env_keys),
     }
 }
 
@@ -374,6 +418,7 @@ mod tests {
             cli_agent_type: "claude-code".into(),
             vars: None,
             environment: None,
+            secret_environment: None,
             user_timezone: None,
             profile: json_profile.map(String::from),
             session_id: None,
@@ -384,6 +429,34 @@ mod tests {
         std::fs::create_dir_all(&job_dir).unwrap();
         std::fs::write(
             local_queue::job_path(dir, partition_profile, job_id).unwrap(),
+            &json,
+        )
+        .unwrap();
+    }
+
+    fn write_job_with_environments(
+        dir: &std::path::Path,
+        job_id: RunId,
+        environment: Option<std::collections::HashMap<String, String>>,
+        secret_environment: Option<std::collections::HashMap<String, String>>,
+    ) {
+        let req = JobRequest {
+            job_id,
+            prompt: "hello with env".into(),
+            cli_agent_type: "claude-code".into(),
+            vars: None,
+            environment,
+            secret_environment,
+            user_timezone: None,
+            profile: Some(crate::profile::DEFAULT_PROFILE.into()),
+            session_id: None,
+            feature_flags: None,
+        };
+        let json = serde_json::to_vec(&req).unwrap();
+        let job_dir = local_queue::profile_jobs_dir(dir, crate::profile::DEFAULT_PROFILE).unwrap();
+        std::fs::create_dir_all(&job_dir).unwrap();
+        std::fs::write(
+            local_queue::job_path(dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap(),
             &json,
         )
         .unwrap();
@@ -404,6 +477,8 @@ mod tests {
 
         let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "hello world");
+        let job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, job_id).unwrap();
 
         let candidate = provider.discover().await.unwrap();
         assert_eq!(candidate.run_id(), job_id);
@@ -421,6 +496,49 @@ mod tests {
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.error.is_none());
+        assert!(
+            !job_path.exists(),
+            "complete() should remove the completed local job file"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_maps_secret_environment_into_context_and_masking() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let job_id = RunId::new_v4();
+        write_job_with_environments(
+            dir.path(),
+            job_id,
+            Some(std::collections::HashMap::from([(
+                "ANTHROPIC_MODEL".into(),
+                "claude-haiku-4-5".into(),
+            )])),
+            Some(std::collections::HashMap::from([(
+                "ANTHROPIC_API_KEY".into(),
+                "sk-ant-local-secret".into(),
+            )])),
+        );
+
+        let candidate = provider.discover().await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
+        let environment = ctx.environment.as_ref().unwrap();
+        let secret_values = ctx.secret_values.as_ref().unwrap();
+        let local_secret_env_keys = ctx.local_secret_env_keys.as_ref().unwrap();
+
+        assert_eq!(
+            environment.get("ANTHROPIC_MODEL").map(String::as_str),
+            Some("claude-haiku-4-5")
+        );
+        assert_eq!(
+            environment.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-ant-local-secret")
+        );
+        assert_eq!(secret_values, &["sk-ant-local-secret".to_string()]);
+        assert!(local_secret_env_keys.contains("ANTHROPIC_API_KEY"));
     }
 
     #[tokio::test]
@@ -851,6 +969,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn complete_removes_duplicate_job_files_across_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        write_job_in_partition(
+            dir.path(),
+            crate::profile::DEFAULT_PROFILE,
+            run_id,
+            "default",
+            Some(crate::profile::DEFAULT_PROFILE),
+        );
+        write_job_in_partition(dir.path(), "vm0/large", run_id, "large", Some("vm0/large"));
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
+
+        assert!(
+            !default_job_path.exists(),
+            "complete() should remove the default profile duplicate"
+        );
+        assert!(
+            !large_job_path.exists(),
+            "complete() should remove the large profile duplicate"
+        );
+    }
+
+    #[tokio::test]
     async fn complete_result_failure_removes_job_before_claim() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
@@ -882,6 +1033,52 @@ mod tests {
         assert!(
             !claim_path.exists(),
             "claim can be released after the job is no longer retryable"
+        );
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should not be stranded after terminal cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_result_failure_removes_duplicate_jobs_before_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        write_job_in_partition(
+            dir.path(),
+            crate::profile::DEFAULT_PROFILE,
+            run_id,
+            "default",
+            Some(crate::profile::DEFAULT_PROFILE),
+        );
+        write_job_in_partition(dir.path(), "vm0/large", run_id, "large", Some("vm0/large"));
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_dir = local_queue::results_dir(dir.path());
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_dir, b"not a directory").unwrap();
+
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
+
+        assert!(
+            !default_job_path.exists(),
+            "default duplicate must be removed"
+        );
+        assert!(!large_job_path.exists(), "large duplicate must be removed");
+        assert!(
+            !claim_path.exists(),
+            "claim can be released after all duplicate jobs are no longer retryable"
         );
         assert!(
             !cancel_path.exists(),
@@ -1029,6 +1226,47 @@ mod tests {
 
         // Next discover() scan must not re-surface the job.
         assert!(provider.find_unclaimed_job().is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_failure_removes_duplicate_job_files_across_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = provider_with_profiles(
+            dir.path(),
+            &[crate::profile::DEFAULT_PROFILE, "vm0/large"],
+            CancellationToken::new(),
+            empty_cancel_tokens(),
+        );
+
+        let run_id = RunId::new_v4();
+        let default_job_path =
+            local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        std::fs::create_dir_all(default_job_path.parent().unwrap()).unwrap();
+        std::fs::write(&default_job_path, b"not json").unwrap();
+        write_job_in_partition(
+            dir.path(),
+            "vm0/large",
+            run_id,
+            "large duplicate",
+            Some("vm0/large"),
+        );
+        let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
+
+        let candidate = provider.discover().await.unwrap();
+        assert!(provider.claim(candidate).await.is_none());
+
+        assert!(
+            !default_job_path.exists(),
+            "claim failure should remove the poisoned job"
+        );
+        assert!(
+            !large_job_path.exists(),
+            "claim failure should remove duplicate jobs for the same run id"
+        );
+        assert!(
+            provider.find_unclaimed_job().is_none(),
+            "terminal result should stop duplicate rediscovery"
+        );
     }
 
     #[tokio::test]

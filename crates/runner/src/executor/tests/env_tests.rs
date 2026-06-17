@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::types::runners::storage::{
@@ -8,7 +8,7 @@ use sandbox::SandboxId;
 
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
-    validate_model_provider_env_placeholders,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -22,6 +22,16 @@ use crate::host_env::{
 };
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult};
+
+fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
+    let sandbox_id = SandboxId::new_v4().to_string();
+    validate_execution_context_before_sandbox(
+        ctx,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+}
 
 #[test]
 fn model_provider_env_placeholder_validation_accepts_env_without_protected_keys() {
@@ -49,6 +59,121 @@ fn model_provider_env_placeholder_validation_rejects_real_anthropic_api_key() {
 
     assert!(error.contains("ANTHROPIC_API_KEY"));
     assert!(!error.contains(secret));
+}
+
+#[test]
+fn model_provider_env_placeholder_validation_accepts_local_secret_env_key() {
+    let secret = "sk-ant-api03-real-secret-value";
+    let mut ctx = context_with_env(HashMap::from([("ANTHROPIC_API_KEY".into(), secret.into())]));
+    ctx.local_secret_env_keys = Some(HashSet::from(["ANTHROPIC_API_KEY".into()]));
+
+    assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+}
+
+#[test]
+fn model_provider_env_placeholder_validation_rejects_unmarked_protected_key() {
+    let anthropic_secret = "sk-ant-api03-real-secret-value";
+    let openai_secret = "sk-proj-real-openai-secret";
+    let mut ctx = context_with_env(HashMap::from([
+        ("ANTHROPIC_API_KEY".into(), anthropic_secret.into()),
+        ("OPENAI_API_KEY".into(), openai_secret.into()),
+    ]));
+    ctx.local_secret_env_keys = Some(HashSet::from(["ANTHROPIC_API_KEY".into()]));
+
+    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+    assert!(error.contains("OPENAI_API_KEY"));
+    assert!(!error.contains("ANTHROPIC_API_KEY"));
+    assert!(!error.contains(anthropic_secret));
+    assert!(!error.contains(openai_secret));
+}
+
+#[test]
+fn execution_context_validation_accepts_minimal_context() {
+    let ctx = minimal_context();
+
+    assert!(validate_context_for_test(&ctx).is_ok());
+}
+
+#[test]
+fn execution_context_validation_rejects_invalid_user_env_key_before_sandbox() {
+    let secret = "secret-value";
+    let ctx = context_with_env(HashMap::from([("BAD-KEY".into(), secret.into())]));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("invalid env key"));
+    assert!(error.contains("BAD-KEY"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_user_env_nul_value_before_sandbox() {
+    let secret = "secret\0value";
+    let ctx = context_with_env(HashMap::from([("CUSTOM_ENV".into(), secret.into())]));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("CUSTOM_ENV"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_user_timezone_nul_before_sandbox() {
+    let secret = "Asia\0Shanghai";
+    let mut ctx = minimal_context();
+    ctx.user_timezone = Some(secret.into());
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("TZ"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
+    let secret = "3\0";
+    let ctx = context_with_env(HashMap::from([(
+        "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
+        secret.into(),
+    )]));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("bootstrap environment"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
+    let secret = "before\0after";
+    let mut ctx = minimal_context();
+    ctx.prompt = secret.into();
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("bootstrap environment"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_PROMPT"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_invalid_codex_resume_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        session_id: "not-a-thread-id".into(),
+        session_history: "{}".into(),
+    });
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("invalid codex session_id"));
 }
 
 #[test]

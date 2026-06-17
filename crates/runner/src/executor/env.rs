@@ -6,8 +6,8 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use super::session_restore::canonical_codex_thread_id;
 use super::storage::format_guest_exec_failure;
 use super::{
-    DEFAULT_EXEC_TIMEOUT, GUEST_AGENT_TUNING_ENV_KEYS, GUEST_USER_ENV_DIR_NAME,
-    GUEST_USER_ENV_FILENAME, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path,
+    DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
+    RunnerResult, guest_runtime_dir, guest_runtime_path,
 };
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -76,6 +76,10 @@ pub(super) fn validate_model_provider_env_placeholders(
                 || protected_key
                     .placeholder
                     .is_some_and(|placeholder| value == placeholder)
+                || context
+                    .local_secret_env_keys
+                    .as_ref()
+                    .is_some_and(|keys| keys.contains(protected_key.name))
             {
                 None
             } else {
@@ -96,9 +100,81 @@ pub(super) fn validate_model_provider_env_placeholders(
 
 pub(super) fn validate_execution_context_before_sandbox(
     context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+) -> Result<(), String> {
+    let host_env = HostEnv::from_process();
+    validate_execution_context_before_sandbox_with_host_env(
+        context,
+        api_url,
+        sandbox_id,
+        reuse_result,
+        &host_env,
+    )
+}
+
+pub(super) fn validate_execution_context_before_sandbox_with_host_env(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    host_env: &HostEnv,
 ) -> Result<(), String> {
     validate_model_provider_env_placeholders(context)?;
+    validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
+    let bootstrap_env =
+        build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
+            .map_err(|error| error.to_string())?;
+    validate_bootstrap_environment_for_guest(&bootstrap_env)?;
+    Ok(())
+}
+
+fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(), String> {
+    let user_env = build_user_env_json(context);
+    let mut entries: Vec<(&String, &String)> = user_env.iter().collect();
+    entries.sort_by_key(|(key, _)| *key);
+
+    for (key, value) in entries {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            return Err(format!(
+                "user environment contains invalid env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+        if value.contains('\0') {
+            return Err(format!(
+                "user environment contains NUL byte for env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_bootstrap_environment_for_guest(
+    environment: &HashMap<String, String>,
+) -> Result<(), String> {
+    let mut entries: Vec<(&String, &String)> = environment.iter().collect();
+    entries.sort_by_key(|(key, _)| *key);
+
+    for (key, value) in entries {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            return Err(format!(
+                "bootstrap environment contains invalid env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+        if value.contains('\0') {
+            return Err(format!(
+                "bootstrap environment contains NUL byte for env key {:?}",
+                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -413,7 +489,7 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in GUEST_AGENT_TUNING_ENV_KEYS {
+    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
         if let Some(value) = user_env.get(*key) {
             env.insert((*key).into(), value.clone());
         }
@@ -453,17 +529,10 @@ pub(super) fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFrame
     }
 }
 
-const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
-    guest_contracts::env::CLI_AGENT_TYPE_ENV,
-    guest_contracts::env::USE_MOCK_CLAUDE_ENV,
-    guest_contracts::env::USE_MOCK_CODEX_ENV,
-    guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-];
-
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     // The entire VM0_ namespace is runner-owned, including retired keys such
     // as VM0_WORKING_DIR. Non-VM0 keys must stay explicit.
-    key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    guest_contracts::env::is_runner_owned_env_key(key)
 }
 
 pub(super) fn scrub_runner_owned_env(env: &mut HashMap<String, String>) {

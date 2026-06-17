@@ -13,6 +13,8 @@ pub(crate) struct JobRequest {
     #[serde(default)]
     pub(crate) environment: Option<HashMap<String, String>>,
     #[serde(default)]
+    pub(crate) secret_environment: Option<HashMap<String, String>>,
+    #[serde(default)]
     pub(crate) user_timezone: Option<String>,
     #[serde(default)]
     pub(crate) profile: Option<String>,

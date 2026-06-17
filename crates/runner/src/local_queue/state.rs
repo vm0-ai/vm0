@@ -39,9 +39,20 @@ pub(crate) struct LocalQueue {
 }
 
 enum JobFileLookup {
-    Found(PathBuf),
+    Found,
     NotFound,
     ScanFailed,
+}
+
+enum JobFileScan {
+    Complete(Vec<PathBuf>),
+    ScanFailed(Vec<PathBuf>),
+}
+
+#[derive(Clone, Copy)]
+enum JobFileScanMode {
+    First,
+    All,
 }
 
 impl LocalQueue {
@@ -149,7 +160,6 @@ impl LocalQueue {
                 self.fail_claimed_job_sync_with_claim(
                     run_id,
                     &claim_file,
-                    job_file,
                     format!("failed to read job file: {e}"),
                 );
                 return LocalClaimResult::NotClaimed;
@@ -169,7 +179,6 @@ impl LocalQueue {
                 self.fail_claimed_job_sync_with_claim(
                     run_id,
                     &claim_file,
-                    job_file,
                     format!("invalid job JSON: {e}"),
                 );
                 return LocalClaimResult::NotClaimed;
@@ -182,7 +191,7 @@ impl LocalQueue {
                 request.job_id
             );
             warn!(run_id = %run_id, error = %error, "local: invalid job id");
-            self.fail_claimed_job_sync_with_claim(run_id, &claim_file, job_file, error);
+            self.fail_claimed_job_sync_with_claim(run_id, &claim_file, error);
             return LocalClaimResult::NotClaimed;
         }
 
@@ -195,7 +204,7 @@ impl LocalQueue {
                 let error =
                     format!("missing job profile in non-default partition: {partition_profile}");
                 warn!(run_id = %run_id, error = %error, "local: invalid job profile");
-                self.fail_claimed_job_sync_with_claim(run_id, &claim_file, job_file, error);
+                self.fail_claimed_job_sync_with_claim(run_id, &claim_file, error);
                 return LocalClaimResult::NotClaimed;
             }
         };
@@ -204,7 +213,7 @@ impl LocalQueue {
                 "job profile mismatch: request={request_profile}, partition={partition_profile}"
             );
             warn!(run_id = %run_id, error = %error, "local: invalid job profile");
-            self.fail_claimed_job_sync_with_claim(run_id, &claim_file, job_file, error);
+            self.fail_claimed_job_sync_with_claim(run_id, &claim_file, error);
             return LocalClaimResult::NotClaimed;
         }
 
@@ -214,19 +223,20 @@ impl LocalQueue {
         }
     }
 
-    pub(crate) fn fail_claimed_job_sync(&self, run_id: RunId, job_file: &Path, error: String) {
+    pub(crate) fn fail_claimed_job_sync(&self, run_id: RunId, error: String) {
         let claim_file = super::claim_path(&self.group_dir, run_id);
-        self.fail_claimed_job_sync_with_claim(run_id, &claim_file, job_file, error);
+        self.fail_claimed_job_sync_with_claim(run_id, &claim_file, error);
     }
 
     pub(crate) fn complete_job_sync(&self, run_id: RunId, exit_code: i32, error: Option<String>) {
         if !self.write_result_sync(run_id, exit_code, error.as_deref()) {
-            if self.remove_job_file_if_present(run_id) {
+            if self.remove_job_files_if_present(run_id) {
                 let _ = std::fs::remove_file(super::cancel_path(&self.group_dir, run_id));
                 let _ = std::fs::remove_file(super::claim_path(&self.group_dir, run_id));
             }
             return;
         }
+        let _ = self.remove_job_files_if_present(run_id);
         // Best-effort cleanup of cancel file (may have been written after the
         // last discover() scan but before the job actually finished).
         let _ = std::fs::remove_file(super::cancel_path(&self.group_dir, run_id));
@@ -280,7 +290,7 @@ impl LocalQueue {
             return CancelTargetState::Pending;
         }
         match self.lookup_job_file(run_id) {
-            JobFileLookup::Found(_) => CancelTargetState::Pending,
+            JobFileLookup::Found => CancelTargetState::Pending,
             JobFileLookup::NotFound => CancelTargetState::NotPending,
             JobFileLookup::ScanFailed => CancelTargetState::Unknown,
         }
@@ -293,19 +303,25 @@ impl LocalQueue {
             .unwrap_or(false)
     }
 
-    pub(crate) fn remove_job_file_if_present(&self, run_id: RunId) -> bool {
-        match self.lookup_job_file(run_id) {
-            JobFileLookup::Found(path) => match std::fs::remove_file(&path) {
-                Ok(()) => true,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+    pub(crate) fn remove_job_files_if_present(&self, run_id: RunId) -> bool {
+        let (paths, mut removed_all) =
+            match self.collect_job_file_paths(run_id, JobFileScanMode::All) {
+                JobFileScan::Complete(paths) => (paths, true),
+                JobFileScan::ScanFailed(paths) => (paths, false),
+            };
+
+        for path in paths {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
-                    warn!(run_id = %run_id, path = %path.display(), error = %e, "local: failed to remove job file after result failure");
-                    false
+                    warn!(run_id = %run_id, path = %path.display(), error = %e, "local: failed to remove job file after terminal result");
+                    removed_all = false;
                 }
-            },
-            JobFileLookup::NotFound => true,
-            JobFileLookup::ScanFailed => false,
+            };
         }
+
+        removed_all
     }
 
     pub(crate) fn write_result_sync(
@@ -349,32 +365,62 @@ impl LocalQueue {
         true
     }
 
-    fn fail_claimed_job_sync_with_claim(
-        &self,
-        run_id: RunId,
-        claim_file: &Path,
-        job_file: &Path,
-        error: String,
-    ) {
+    fn fail_claimed_job_sync_with_claim(&self, run_id: RunId, claim_file: &Path, error: String) {
         if self.write_result_sync(run_id, 1, Some(&error)) {
-            let _ = std::fs::remove_file(job_file);
+            let _ = self.remove_job_files_if_present(run_id);
         }
         let _ = std::fs::remove_file(claim_file);
     }
 
     fn lookup_job_file(&self, run_id: RunId) -> JobFileLookup {
+        match self.collect_job_file_paths(run_id, JobFileScanMode::First) {
+            JobFileScan::Complete(paths) => {
+                if paths.is_empty() {
+                    JobFileLookup::NotFound
+                } else {
+                    JobFileLookup::Found
+                }
+            }
+            JobFileScan::ScanFailed(paths) => {
+                if paths.is_empty() {
+                    JobFileLookup::ScanFailed
+                } else {
+                    JobFileLookup::Found
+                }
+            }
+        }
+    }
+
+    fn collect_job_file_paths(&self, run_id: RunId, mode: JobFileScanMode) -> JobFileScan {
         let jobs_dir = super::jobs_dir(&self.group_dir);
+        let mut paths = Vec::new();
         let orgs = match std::fs::read_dir(&jobs_dir) {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return JobFileLookup::NotFound,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return JobFileScan::Complete(paths);
+            }
             Err(e) => {
                 warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir for job file");
-                return JobFileLookup::ScanFailed;
+                return JobFileScan::ScanFailed(paths);
             }
         };
 
-        for org in orgs.filter_map(Result::ok) {
-            if !org.file_type().map(|ty| ty.is_dir()).unwrap_or(false) {
+        for org in orgs {
+            let org = match org {
+                Ok(entry) => entry,
+                Err(e) => {
+                    warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir entry for job file");
+                    return JobFileScan::ScanFailed(paths);
+                }
+            };
+            let org_file_type = match org.file_type() {
+                Ok(file_type) => file_type,
+                Err(e) => {
+                    warn!(path = %org.path().display(), error = %e, "local: cannot stat profile org dir entry for job file");
+                    return JobFileScan::ScanFailed(paths);
+                }
+            };
+            if !org_file_type.is_dir() {
                 continue;
             }
             let org_path = org.path();
@@ -383,25 +429,44 @@ impl LocalQueue {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {
                     warn!(path = %org_path.display(), error = %e, "local: cannot scan profile org dir for job file");
-                    return JobFileLookup::ScanFailed;
+                    return JobFileScan::ScanFailed(paths);
                 }
             };
-            for profile in profiles.filter_map(Result::ok) {
-                if !profile.file_type().map(|ty| ty.is_dir()).unwrap_or(false) {
+            for profile in profiles {
+                let profile = match profile {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        warn!(path = %org_path.display(), error = %e, "local: cannot scan profile dir entry for job file");
+                        return JobFileScan::ScanFailed(paths);
+                    }
+                };
+                let profile_file_type = match profile.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(e) => {
+                        warn!(path = %profile.path().display(), error = %e, "local: cannot stat profile dir entry for job file");
+                        return JobFileScan::ScanFailed(paths);
+                    }
+                };
+                if !profile_file_type.is_dir() {
                     continue;
                 }
                 let path = profile.path().join(format!("{run_id}.job"));
                 match std::fs::metadata(&path) {
-                    Ok(_) => return JobFileLookup::Found(path),
+                    Ok(_) => {
+                        paths.push(path);
+                        if matches!(mode, JobFileScanMode::First) {
+                            return JobFileScan::Complete(paths);
+                        }
+                    }
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) => {
                         warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
-                        return JobFileLookup::ScanFailed;
+                        return JobFileScan::ScanFailed(paths);
                     }
                 }
             }
         }
 
-        JobFileLookup::NotFound
+        JobFileScan::Complete(paths)
     }
 }
