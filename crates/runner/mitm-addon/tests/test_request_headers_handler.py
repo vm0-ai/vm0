@@ -116,6 +116,78 @@ def test_capture_enabled_small_bounded_body_does_not_install_request_stream(
     assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
+def test_capture_enabled_body_at_stream_limit_does_not_install_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+        request_headers=headers(
+            ("Host", "example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT)),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+
+
+def test_capture_enabled_body_over_stream_limit_installs_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+        request_headers=headers(
+            ("Host", "example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert callable(flow.request.stream)
+    assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+
+
+def test_capture_enabled_chunked_body_installs_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+        request_headers=headers(("Host", "example.com"), ("Transfer-Encoding", "chunked")),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert callable(flow.request.stream)
+    assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+
+
 def test_capture_disabled_final_allow_does_not_install_request_stream(
     tmp_path, real_flow, mitm_ctx
 ):

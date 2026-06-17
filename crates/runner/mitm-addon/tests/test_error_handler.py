@@ -190,6 +190,22 @@ class TestErrorHandler:
         assert "stream_buffer_state" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
+    def test_error_without_run_id_releases_request_stream_state(self, real_flow, mitm_ctx):
+        """Early-returning error flows should still drop request stream closures."""
+        flow = real_flow(with_response=False, host="api.example.com", method="POST")
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        stream(b"request-prefix")
+        flow.error = Error("connection reset")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        assert flow.request.stream is False
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
     def test_error_does_not_bill_partial_x_json_response(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, usage_webhook_api
     ):
