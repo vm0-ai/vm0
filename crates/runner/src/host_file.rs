@@ -1,10 +1,11 @@
 //! Low-level host filesystem primitives for runner-owned state hardening.
 //! Keep policy-specific entry points in caller modules.
 
-use std::ffi::OsStr;
+use std::ffi::{CString, OsStr};
 use std::fs::File;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
 
@@ -284,6 +285,15 @@ fn create_and_open_dir_component(
             )));
         }
     };
+    if created {
+        chmod_created_dir_entry(
+            parent,
+            name,
+            walk.full_path,
+            walk.context,
+            create_dir_mode(walk.mode),
+        )?;
+    }
 
     let fd = openat(parent, name, dir_open_flags(), Mode::empty())
         .map_err(|e| dir_component_error("open", name, walk.full_path, walk.context, e))?;
@@ -301,6 +311,45 @@ fn create_dir_mode(mode: DirMode) -> u32 {
     match mode {
         DirMode::Private | DirMode::TrustedParent => PRIVATE_DIR_MODE,
         DirMode::SharedTrustedParent => SHARED_TRUSTED_DIR_MODE,
+    }
+}
+
+fn chmod_created_dir_entry(
+    parent: &(impl AsRawFd + ?Sized),
+    name: &OsStr,
+    full_path: &Path,
+    context: &str,
+    mode: u32,
+) -> io::Result<()> {
+    let c_name = CString::new(name.as_bytes()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} contains a NUL byte in component {}",
+                full_path.display(),
+                name.to_string_lossy()
+            ),
+        )
+    })?;
+    // SAFETY: `c_name` is NUL-terminated, `parent` owns a live directory fd,
+    // and fchmodat does not affect Rust aliasing.
+    let result = unsafe {
+        nix::libc::fchmodat(
+            parent.as_raw_fd(),
+            c_name.as_ptr(),
+            mode as nix::libc::mode_t,
+            nix::libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "chmod {context} component {} for {}: {}",
+            name.to_string_lossy(),
+            full_path.display(),
+            io::Error::last_os_error()
+        )))
     }
 }
 
@@ -550,11 +599,48 @@ fn wrap_io(error: io::Error, context: String) -> io::Error {
 mod tests {
     use std::io;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::process::Command;
 
     use super::*;
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn ensure_dir_handles_restrictive_umask() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .env("VM0_RUN_RESTRICTIVE_UMASK_TEST", "1")
+            .arg("--exact")
+            .arg("host_file::tests::ensure_dir_handles_restrictive_umask_child")
+            .arg("--ignored")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "child failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn ensure_dir_handles_restrictive_umask_child() {
+        if std::env::var_os("VM0_RUN_RESTRICTIVE_UMASK_TEST").is_none() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("base").join("child");
+        let old_umask = nix::sys::stat::umask(Mode::from_bits_truncate(0o777));
+        let result = ensure_dir(&path, DirMode::SharedTrustedParent, "test directory");
+        nix::sys::stat::umask(old_umask);
+
+        result.unwrap();
+        assert_eq!(mode(&dir.path().join("base")), SHARED_TRUSTED_DIR_MODE);
+        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
     }
 
     #[test]
