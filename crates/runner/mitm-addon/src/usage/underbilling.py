@@ -51,26 +51,33 @@ def _render_stderr_field_key(key: str) -> str:
 
 def _single_token_stderr_value(value: str) -> str:
     rendered: list[str] = []
+    truncated_prefix: list[str] = []
+    rendered_len = 0
+    truncated_prefix_len = 0
+    truncated_prefix_limit = _STDERR_FIELD_VALUE_MAX_CHARS - len(_TRUNCATION_SUFFIX)
     for ch in value:
         if ch == "\\":
-            rendered.append("\\\\")
+            chunk = "\\\\"
         elif ch == "\n":
-            rendered.append("\\n")
+            chunk = "\\n"
         elif ch == "\r":
-            rendered.append("\\r")
+            chunk = "\\r"
         elif ch == "\t":
-            rendered.append("\\t")
+            chunk = "\\t"
         elif ch.isspace():
-            rendered.append("\\s")
+            chunk = "\\s"
         elif not ch.isprintable():
-            rendered.append(f"\\u{ord(ch):04x}")
+            chunk = f"\\u{ord(ch):04x}"
         else:
-            rendered.append(ch)
+            chunk = ch
+        if rendered_len + len(chunk) > _STDERR_FIELD_VALUE_MAX_CHARS:
+            return "".join(truncated_prefix) + _TRUNCATION_SUFFIX
+        rendered.append(chunk)
+        rendered_len += len(chunk)
+        if truncated_prefix_len + len(chunk) <= truncated_prefix_limit:
+            truncated_prefix.append(chunk)
+            truncated_prefix_len += len(chunk)
     return "".join(rendered)
-
-
-def _truncate_stderr_value(value: str) -> str:
-    return _truncate_stderr_text(value, _STDERR_FIELD_VALUE_MAX_CHARS)
 
 
 def _render_stderr_field_value(key: str, value: object) -> str:
@@ -83,7 +90,7 @@ def _render_stderr_field_value(key: str, value: object) -> str:
         rendered = "null"
     else:
         rendered = str(sanitized)
-    return _truncate_stderr_value(_single_token_stderr_value(rendered))
+    return _single_token_stderr_value(rendered)
 
 
 def _render_stderr_extra_fields(fields: dict[str, object]) -> str:
