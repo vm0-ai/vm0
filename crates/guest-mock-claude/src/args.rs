@@ -2,6 +2,7 @@
 pub(crate) struct ParsedArgs {
     pub(crate) input_format: String,
     pub(crate) output_format: String,
+    pub(crate) replay_user_messages: bool,
     pub(crate) prompt: String,
 }
 
@@ -17,6 +18,7 @@ fn skip_flag_value(args: &[String], i: &mut usize) {
 pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
     let mut input_format = "text".to_string();
     let mut output_format = "text".to_string();
+    let mut replay_user_messages = false;
     let mut remaining: Vec<String> = Vec::new();
 
     let mut i = 0;
@@ -60,11 +62,14 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                 // Skip the flag and its single JSON value argument
                 skip_flag_value(args, &mut i);
             }
+            "--replay-user-messages" => {
+                replay_user_messages = true;
+                i += 1;
+            }
             "--print"
             | "--verbose"
             | "--dangerously-skip-permissions"
-            | "--include-partial-messages"
-            | "--replay-user-messages" => {
+            | "--include-partial-messages" => {
                 i += 1;
             }
             "--" => {
@@ -89,6 +94,7 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
     ParsedArgs {
         input_format,
         output_format,
+        replay_user_messages,
         prompt,
     }
 }
@@ -103,6 +109,7 @@ mod tests {
         let result = parse_args(&args);
         assert_eq!(result.input_format, "text");
         assert_eq!(result.output_format, "text");
+        assert!(!result.replay_user_messages);
         assert!(result.prompt.is_empty());
     }
 
@@ -200,6 +207,7 @@ mod tests {
             .collect();
         let result = parse_args(&args);
         assert_eq!(result.prompt, "echo hi");
+        assert!(result.replay_user_messages);
     }
 
     #[test]
