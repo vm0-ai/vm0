@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest";
 import { VM0_MODEL_CREDIT_MULTIPLIER } from "@vm0/api-contracts/contracts/model-credit-multipliers";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 
-import { MODELS, isReasoningModel } from "../data";
+import { MODEL_SLUGS, MODELS, isReasoningModel } from "../data";
 
 const MODEL_CONTENT_LOCALES = ["en", "de", "es", "ja"] as const;
 type ModelContent = Record<
   string,
   {
+    readonly comparisons?: readonly {
+      readonly body?: string;
+      readonly vs?: string;
+    }[];
     readonly alternatives?: readonly {
       readonly reason?: string;
       readonly slug?: string;
@@ -153,6 +157,34 @@ describe("models page data", () => {
         return slugs.has(slug);
       }),
     ).toBe(true);
+  });
+
+  it("keeps localized model content scoped to documented pages", () => {
+    const expectedSlugs = [...MODEL_SLUGS].sort();
+    for (const locale of MODEL_CONTENT_LOCALES) {
+      expect(Object.keys(readModelContent(locale)).sort()).toEqual(
+        expectedSlugs,
+      );
+    }
+  });
+
+  it("keeps localized comparison and alternative targets aligned with model data", () => {
+    for (const locale of MODEL_CONTENT_LOCALES) {
+      const content = readModelContent(locale);
+      for (const model of MODELS) {
+        const localized = content[model.slug];
+        expect(
+          localized?.comparisons?.map((comparison) => {
+            return comparison.vs;
+          }),
+        ).toEqual(model.comparisonSlugs);
+        expect(
+          localized?.alternatives?.map((alternative) => {
+            return alternative.slug;
+          }),
+        ).toEqual(model.alternativeSlugs);
+      }
+    }
   });
 
   it("omits removed model names from localized model content", () => {

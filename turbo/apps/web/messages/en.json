@@ -2380,7 +2380,7 @@
           },
           {
             "name": "Zero",
-            "text": "**Cost Optimization Audit - This Week**\n\n🟢 **Already optimal** (keep as-is):\n• morning-brief (Sonnet) - multi-source aggregation, justified\n• pr-review-merge (Sonnet) - code review when triggered, justified\n\n🟡 **Over-provisioned** (safe to downgrade):\n| Task | Current Model | Recommended | Est. Savings |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Needs human review**:\n• auto-test-coverage - writes real code, borderline. Try Sonnet for a week and compare pass rates.\n\n**Estimated monthly savings: $2,400-3,800**"
+            "text": "**Cost Optimization Audit - This Week**\n\n🟢 **Already optimal** (keep as-is):\n• morning-brief (Sonnet) - multi-source aggregation, justified\n• pr-review-merge (Sonnet) - code review when triggered, justified\n\n🟡 **Over-provisioned** (safe to downgrade):\n| Task | Current Model | Recommended | Est. Savings |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.2 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.2 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Needs human review**:\n• auto-test-coverage - writes real code, borderline. Try Sonnet for a week and compare pass rates.\n\n**Estimated monthly savings: $2,400-3,800**"
           }
         ],
         "steps": [
@@ -2401,12 +2401,12 @@
           {
             "title": "Switch a low-risk task to a cheaper model",
             "description": "Start with the safest recommendation and verify quality holds.",
-            "examplePrompt": "@Zero switch the merge-queue-monitor schedule to use GLM-5.1 instead of Sonnet"
+            "examplePrompt": "@Zero switch the merge-queue-monitor schedule to use GLM-5.2 instead of Sonnet"
           },
           {
             "title": "Run a comparison test",
             "description": "Run the same task on both models and compare outputs before committing.",
-            "examplePrompt": "@Zero run the tech-debt-scan prompt on both Opus and GLM-5.1, then compare the results side by side"
+            "examplePrompt": "@Zero run the tech-debt-scan prompt on both Opus and GLM-5.2, then compare the results side by side"
           },
           {
             "title": "Make it routine",
@@ -4343,7 +4343,7 @@
             "body": "Fast mode at 2.5× speed used to cost three times what it does now ($10/$50 per 1M vs the prior tier). For interactive copilots, on-call summarisers, or any step where wall-clock latency dominates the experience, fast-mode 4.8 is now the default choice in the Claude family."
           }
         ],
-        "avoidFor": "Skip Opus 4.8 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-critical chat replies where Kimi K2.6 is much faster, on agentic terminal coding where GPT-5.5 still leads Terminal-Bench 2.1 (78.2% vs 4.8's 74.6%), and on pipelines that ingest untrusted input without sandboxing — 4.8's prompt-injection robustness is slightly weaker than 4.7's.",
+        "avoidFor": "Skip Opus 4.8 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-critical chat replies where Kimi K2.7 Code is much faster, on agentic terminal coding where GPT-5.5 still leads Terminal-Bench 2.1 (78.2% vs 4.8's 74.6%), and on pipelines that ingest untrusted input without sandboxing — 4.8's prompt-injection robustness is slightly weaker than 4.7's.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -4533,11 +4533,11 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and noticeably slower than Kimi K2.6. Anthropic publishes ~41 tokens/sec at max effort for Opus 4.6, and 4.7 is in a similar range. Reserve it for the steps that actually need the extra reasoning depth and run lighter tiers in parallel."
+            "body": "Slower than Sonnet 4.6 and noticeably slower than Kimi K2.7 Code. Anthropic publishes ~41 tokens/sec at max effort for Opus 4.6, and 4.7 is in a similar range. Reserve it for the steps that actually need the extra reasoning depth and run lighter tiers in parallel."
           },
           {
             "title": "Hallucination behaviour",
-            "body": "Opus 4.7 retains Anthropic's conservative refusal posture and tends to admit uncertainty rather than confabulate, which is the reason production teams keep paying the premium for high-stakes reasoning despite cheaper open-weight alternatives like Kimi K2.6 and DeepSeek V4 Pro now matching it on benchmarks."
+            "body": "Opus 4.7 retains Anthropic's conservative refusal posture and tends to admit uncertainty rather than confabulate, which is the reason production teams keep paying the premium for high-stakes reasoning despite cheaper open-weight alternatives like Kimi K2.7 Code and DeepSeek V4 Pro now matching it on benchmarks."
           }
         ],
         "bestForExamples": [
@@ -4558,8 +4558,12 @@
             "body": "Ask Opus 4.7 to migrate a 50-file codebase from one ORM to another, refactor a tangled module, or apply a security fix across the repo. The patch applies cleanly on the first attempt more often than any other model in the family, which is what vendor-reported Terminal-Bench 2.0 reflects, and what your CI bill will reflect too."
           }
         ],
-        "avoidFor": "Skip Opus 4.7 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-sensitive chat replies where Kimi K2.6 is much faster, and on bulk classification or extraction jobs where GPT-5.4 Mini is the cheaper supported bulk option.",
+        "avoidFor": "Skip Opus 4.7 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-sensitive chat replies where Kimi K2.7 Code is much faster, and on bulk classification or extraction jobs where GPT-5.4 Mini is the cheaper supported bulk option.",
         "comparisons": [
+          {
+            "vs": "Claude Opus 4.8",
+            "body": "Opus 4.8 is the newer flagship at the same VM0 multiplier. Use 4.8 for new high-stakes agents; keep 4.7 only when an existing workflow has been validated against it and stability matters more than the latest benchmark gains."
+          },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 is the workhorse default in the Claude family and the right pick for most agents. Promote to Opus 4.7 only when Sonnet visibly fails on hard reasoning, long context, or first-attempt code edits, usually as the orchestrator that delegates downward to Sonnet- or cost-saving sub-agents."
@@ -4569,16 +4573,12 @@
             "body": "Same context window (1M tokens), same vendor pricing, and the same adaptive-thinking architecture. Opus 4.7 is the newer generation with vendor-reported gains across SWE-bench Verified, Terminal-Bench 2.0, ARC AGI 2, and OSWorld. Pick 4.7 for new agents; pin 4.6 only when an existing agent has been validated against that version and you need behaviour stability."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "Moonshot's Kimi K2.6 leads several agentic benchmarks at the open-source frontier (vendor-reported SWE-bench Pro 58.6 versus Opus 4.6's 53.4). Opus 4.7 retains the lead on tool-routing reliability for production English-language agents and on safety profile, which is why most enterprise teams still keep it as the high-stakes tier."
+            "vs": "Kimi K2.7 Code",
+            "body": "Moonshot's Kimi K2.7 Code leads several agentic benchmarks at the open-source frontier (vendor-reported SWE-bench Pro 58.6 versus Opus 4.6's 53.4). Opus 4.7 retains the lead on tool-routing reliability for production English-language agents and on safety profile, which is why most enterprise teams still keep it as the high-stakes tier."
           },
           {
             "vs": "DeepSeek V4 Pro",
             "body": "DeepSeek V4 Pro trails Opus on most reasoning benchmarks but matches it on coding (vendor-reported SWE-bench Verified within ~0.2 points). The split is straightforward: pick DeepSeek when raw cost dominates, pick Opus 4.7 when reliability, safety profile, or tool-routing accuracy matter more than per-call price."
-          },
-          {
-            "vs": "GPT-5.2 / Gemini 3 Pro",
-            "body": "Anthropic's vendor materials position Opus 4.7 ahead of GPT-5.2 on most agentic-coding tasks (Terminal-Bench, τ2-bench Retail) and within a few points of Gemini 3 Pro on abstract reasoning (ARC AGI 2, GPQA Diamond). Independent leaderboards corroborate the rough ordering but shift weekly."
           }
         ],
         "verdict": "Opus 4.7 is the escalation tier. Default to Sonnet 4.6; promote to Opus only on the specific steps where Sonnet visibly fails.",
@@ -4606,16 +4606,16 @@
         ],
         "alternatives": [
           {
+            "slug": "claude-opus-4-8",
+            "reason": "Newer flagship for high-stakes agents"
+          },
+          {
             "slug": "claude-sonnet-4-6",
             "reason": "Cheaper default for most agent loops"
           },
           {
-            "slug": "kimi-k2-6",
-            "reason": "Stronger long-context recall at lower cost"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Cost-optimised reasoning if Claude is overkill"
+            "slug": "kimi-k2-7-code",
+            "reason": "Cost-saving open-weight coding alternative"
           }
         ],
         "routingNotes": "On VM0, Opus 4.7 is routed directly to Anthropic's Messages API and is exposed three ways: through the VM0 Managed credit pool, through a direct Anthropic API key, and through the Claude Code OAuth provider for teams already authenticated with Claude Code.",
@@ -4714,7 +4714,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and Kimi K2.6; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
+            "body": "Slower than Sonnet 4.6 and Kimi K2.7 Code; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
           }
         ],
         "bestForExamples": [
@@ -4738,8 +4738,8 @@
             "body": "Sonnet 4.6 is ×1 and handles most agent loops. Reach for Opus only when Sonnet visibly fails. Usually for orchestration or hard code edits."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "Kimi K2.6 (×0.3) edges Opus 4.6 on SWE-bench Pro (58.6 vs 53.4 vendor-reported) and is much cheaper. Opus 4.6 retains the safety-profile advantage and is the default Western enterprise pick."
+            "vs": "Kimi K2.7 Code",
+            "body": "Kimi K2.7 Code (×0.3) edges Opus 4.6 on SWE-bench Pro (58.6 vs 53.4 vendor-reported) and is much cheaper. Opus 4.6 retains the safety-profile advantage and is the default Western enterprise pick."
           }
         ],
         "verdict": "Pin if you've already validated against it; otherwise start on Opus 4.7. The migration is a setting change, not a rewrite.",
@@ -4758,7 +4758,7 @@
           },
           {
             "q": "Why is Opus 4.6 the default on the Anthropic API key provider?",
-            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Kimi K2.6 in VM0 Settings → Model Providers without changing the API key."
+            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Kimi K2.7 Code in VM0 Settings → Model Providers without changing the API key."
           },
           {
             "q": "What's adaptive thinking?",
@@ -4775,7 +4775,7 @@
             "reason": "Sonnet baseline at much lower cost"
           },
           {
-            "slug": "kimi-k2-6",
+            "slug": "kimi-k2-7-code",
             "reason": "Cheaper open-weight alternative on agentic benchmarks"
           }
         ],
@@ -4972,7 +4972,7 @@
         "cardIntro": "The default for most VM0 agents. Strong tool-routing accuracy, good long-context behaviour, and the credit baseline. Every other model is priced relative to Sonnet 4.6.",
         "metaTitle": "Claude Sonnet 4.6 on VM0: Benchmarks, Pricing & Use Cases",
         "metaDescription": "Claude Sonnet 4.6 is the default model on VM0. ×1 credit baseline, 1M context, $3/$15 pricing, SWE-bench Verified 77%. The agent tasks it handles best.",
-        "summary": "Claude Sonnet 4.6 is the workhorse of the Claude 4 family and the default Built-in model on VM0. It picks the right tool with the right arguments more reliably than anything cheaper, stays coherent across hundred-thousand-token conversations, and most production agents — Slack triage, GitHub PR review, customer support — never need to be promoted past it.\n\nVendor list price is $3 / $15 per 1M tokens, with cached input dropping to $0.30 / 1M. Reach for Opus only when Sonnet visibly fails on the hardest reasoning, and for Kimi K2.6 or GPT-5.4 Mini when unit cost dominates.",
+        "summary": "Claude Sonnet 4.6 is the workhorse of the Claude 4 family and the default Built-in model on VM0. It picks the right tool with the right arguments more reliably than anything cheaper, stays coherent across hundred-thousand-token conversations, and most production agents — Slack triage, GitHub PR review, customer support — never need to be promoted past it.\n\nVendor list price is $3 / $15 per 1M tokens, with cached input dropping to $0.30 / 1M. Reach for Opus only when Sonnet visibly fails on the hardest reasoning, and for Kimi K2.7 Code or GPT-5.4 Mini when unit cost dominates.",
         "releaseDate": "February 2026 (Claude 4.6 generation)",
         "familyPosition": "Mid-tier of the Claude 4 family. Anthropic's workhorse model, sitting between cost-saving models and Opus.",
         "background": [
@@ -5040,7 +5040,7 @@
           },
           {
             "title": "Speed",
-            "body": "Faster than Opus and slower than Kimi K2.6. The right speed/quality balance for production agents."
+            "body": "Faster than Opus and slower than Kimi K2.7 Code. The right speed/quality balance for production agents."
           },
           {
             "title": "Cost predictability",
@@ -5065,7 +5065,7 @@
             "body": "Long conversation histories, frequent tool calls into the CRM, the same hefty system prompt and tool schema on every turn. Sonnet's prompt caching turns that fixed prefix into a fraction of the input cost after the first call, which is what keeps per-conversation cost flat as volume grows."
           }
         ],
-        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where GPT-5.4 Mini is the cheaper supported bulk option, and on latency-critical micro-replies where Kimi K2.6 is meaningfully faster.",
+        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where GPT-5.4 Mini is the cheaper supported bulk option, and on latency-critical micro-replies where Kimi K2.7 Code is meaningfully faster.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -5074,9 +5074,13 @@
           {
             "vs": "DeepSeek V4 Pro",
             "body": "DeepSeek V4 Pro (×0.1) matches Sonnet on coding benchmarks (vendor-reported SWE-bench Verified) at much lower cost. The trade is some tool-routing reliability and a less-mature safety profile."
+          },
+          {
+            "vs": "GPT-5.4 Mini",
+            "body": "GPT-5.4 Mini is the cheaper OpenAI-side bulk option. Use Sonnet when tool-routing reliability matters more; use Mini for high-volume pre-filtering and simple steps that do not need Sonnet-class routing."
           }
         ],
-        "verdict": "Start here. Migrate up to Opus 4.7 or down to Kimi K2.6 / DeepSeek V4 Pro once you've seen real production behaviour and know which direction makes sense.",
+        "verdict": "Start here. Migrate up to Opus 4.7 or down to Kimi K2.7 Code / DeepSeek V4 Pro once you've seen real production behaviour and know which direction makes sense.",
         "faqs": [
           {
             "q": "Why is Sonnet 4.6 the default model on VM0 Managed?",
@@ -5092,7 +5096,7 @@
           },
           {
             "q": "When should I switch off Sonnet 4.6?",
-            "a": "Switch to Opus 4.7 if Sonnet visibly drops the goal on long agent loops or fails on hard code edits. Switch to Kimi K2.6 or GPT-5.4 Mini for high-volume simple flows where cost dominates."
+            "a": "Switch to Opus 4.7 if Sonnet visibly drops the goal on long agent loops or fails on hard code edits. Switch to Kimi K2.7 Code or GPT-5.4 Mini for high-volume simple flows where cost dominates."
           },
           {
             "q": "Is Sonnet 4.6 the same as Sonnet 4.5?",
@@ -5382,6 +5386,10 @@
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 remains the stronger default for premium tool-routing quality. GLM-5.2 is cheaper and better suited when context size dominates."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro sits lower on VM0 credits and is the stronger cost-first reasoning choice. Use it when price dominates, and use the current model when its provider fit or tool-routing profile matters more."
           }
         ],
         "verdict": "Pick GLM-5.2 as the default Z.AI route on VM0. Keep GLM-5.1 only for compatibility with workflows already tuned against it.",
@@ -5423,7 +5431,7 @@
         "cardIntro": "Z.AI's flagship. Up to a 1M-token context window. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
         "metaTitle": "GLM-5.1 on VM0: 1M Context, Pricing & Best Agent Tasks",
         "metaDescription": "GLM-5.1 review on VM0. Z.AI's flagship with up to 1M-token context, ×0.4 credit cost. Specs, pricing, performance and recommended agent tasks.",
-        "summary": "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run. Independent leaderboards consistently rank it in the top tier of open-weight models for long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Kimi K2.6 when latency dominates.",
+        "summary": "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run. Independent leaderboards consistently rank it in the top tier of open-weight models for long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Kimi K2.7 Code when latency dominates.",
         "releaseDate": "Early 2026; full GA on VM0 April 2026",
         "familyPosition": "Z.AI / Zhipu AI's flagship general-purpose model.",
         "background": [
@@ -5499,10 +5507,10 @@
             "body": "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts."
           }
         ],
-        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Kimi K2.6 is much faster.",
+        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Kimi K2.7 Code is much faster.",
         "comparisons": [
           {
-            "vs": "Kimi K2.6",
+            "vs": "Kimi K2.7 Code",
             "body": "Both are long-context options at similar credit cost (×0.4 vs ×0.3). Kimi has stronger long-context recall in our internal evaluation; GLM-5.1 wins on raw context size (1M vs 256K). Pick Kimi for very long transcripts; pick GLM-5.1 when you need to stuff a whole codebase into one prompt."
           },
           {
@@ -5530,12 +5538,16 @@
           },
           {
             "q": "Does GLM-5.1 support image input?",
-            "a": "GLM-5.1 on VM0 is exposed for text and code. For multimodal (image/video) input, choose Claude Sonnet 4.6 or Kimi K2.6."
+            "a": "GLM-5.1 on VM0 is exposed for text and code. For multimodal (image/video) input, choose Claude Sonnet 4.6 or Kimi K2.7 Code."
           }
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2-6",
+            "slug": "glm-5-2",
+            "reason": "Current Z.AI default route"
+          },
+          {
+            "slug": "kimi-k2-7-code",
             "reason": "Stronger long-context recall"
           },
           {
@@ -5556,14 +5568,14 @@
         "tagline": "OpenAI's cost-optimised member of the GPT-5 family. ×0.3 credits, multimodal vision, and fast enough for high-volume routing, classification and pre-filter work.",
         "cardIntro": "OpenAI's cost-saving GPT-5. ×0.3 credits, fast and multimodal — the right pick for bulk pre-filter work on the Codex framework.",
         "metaTitle": "GPT-5.4 Mini on VM0: Benchmarks, Pricing & Comparison",
-        "metaDescription": "GPT-5.4 Mini review on VM0. The cost-saving OpenAI GPT-5 model at $0.75/$4.5 vendor pricing, ×0.3 credits, 400K context and multimodal vision. Specs, behaviour and comparison to Kimi K2.6.",
-        "summary": "GPT-5.4 Mini is the cost-saving member of OpenAI's GPT-5 family — the one you reach for when unit cost matters more than peak reasoning quality. It keeps the 400K context window and multimodal inputs of the rest of the family but trims compute per token, which translates to lower price ($0.75 / $4.5 per 1M) and noticeably higher speed.\n\nOn VM0 it sits at ×0.3 credits, the same multiplier as Kimi K2.6, which makes it the natural OpenAI-side pick for bulk classification, fan-out routing, pre-filters, and any agent step where dropping to a third of GPT-5.4's cost is the deciding factor.",
+        "metaDescription": "GPT-5.4 Mini review on VM0. The cost-saving OpenAI GPT-5 model at $0.75/$4.5 vendor pricing, ×0.3 credits, 400K context and multimodal vision. Specs, behaviour and comparison to Kimi K2.7 Code.",
+        "summary": "GPT-5.4 Mini is the cost-saving member of OpenAI's GPT-5 family — the one you reach for when unit cost matters more than peak reasoning quality. It keeps the 400K context window and multimodal inputs of the rest of the family but trims compute per token, which translates to lower price ($0.75 / $4.5 per 1M) and noticeably higher speed.\n\nOn VM0 it sits at ×0.3 credits, the same multiplier as Kimi K2.7 Code, which makes it the natural OpenAI-side pick for bulk classification, fan-out routing, pre-filters, and any agent step where dropping to a third of GPT-5.4's cost is the deciding factor.",
         "releaseDate": "April 2026",
-        "familyPosition": "Cost-saving variant of the GPT-5 family. The OpenAI-side peer of Kimi K2.6.",
+        "familyPosition": "Cost-saving variant of the GPT-5 family. The OpenAI-side peer of Kimi K2.7 Code.",
         "background": [
           "GPT-5.4 Mini is the cost-optimised member of OpenAI's GPT-5 generation, released in April 2026 alongside GPT-5.5 and GPT-5.4. OpenAI positions it as the high-throughput tier — the model you keep running on classification, routing and pre-filter steps where the bigger 5.4 or 5.5 would be wasted on routine decisions.",
           "Architecturally it shares the GPT-5 family's 400K-token context window, the `reasoning_effort` parameter, prompt caching, and the Responses API surface that codex CLI uses by default. The trade-off versus 5.4 is reasoning depth: Mini handles standard tool calls, short summaries and structured-output workloads well, but starts to drift on the harder multi-step plans where 5.4 still holds up. The trade-off versus competitors at the same price point is ecosystem — if you're already on Codex, staying inside the OpenAI surface keeps tool definitions and structured-output schemas consistent.",
-          "On VM0 Mini sits at the ×0.3 credit multiplier, the same as Kimi K2.6. DeepSeek V4 Pro sits lower at ×0.1, so within the cost-saving tier the choice depends mostly on framework and behaviour fit on your specific workload."
+          "On VM0 Mini sits at the ×0.3 credit multiplier, the same as Kimi K2.7 Code. DeepSeek V4 Pro sits lower at ×0.1, so within the cost-saving tier the choice depends mostly on framework and behaviour fit on your specific workload."
         ],
         "architecture": "GPT-5.4 Mini uses the same architecture as the rest of the GPT-5 family: 400K-token context window, the `reasoning_effort` parameter at four levels, prompt caching where cached input bills at one-tenth the input rate, and the Responses API surface. Tool-use, structured outputs and multimodal vision inputs are supported. The model is a smaller, faster sibling — fewer parameters per token, more throughput per dollar.",
         "specs": [
@@ -5600,7 +5612,7 @@
             "value": "$0.75 input / $4.5 output per 1M"
           }
         ],
-        "benchmarksNote": "Vendor-reported scores from OpenAI's GPT-5 Mini release materials. Independent reviews place 5.4 Mini in the same cost-saving band as Kimi K2.6 on most agent benchmarks. Treat absolute percentages as directional.",
+        "benchmarksNote": "Vendor-reported scores from OpenAI's GPT-5 Mini release materials. Independent reviews place 5.4 Mini in the same cost-saving band as Kimi K2.7 Code on most agent benchmarks. Treat absolute percentages as directional.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -5643,7 +5655,7 @@
           },
           {
             "title": "Cost efficiency",
-            "body": "×0.3 credits with multimodal vision included. Mini and Kimi K2.6 sit in the same band, while DeepSeek V4 Pro sits lower at ×0.1 — the choice usually comes down to framework fit and behaviour on your specific workload."
+            "body": "×0.3 credits with multimodal vision included. Mini and Kimi K2.7 Code sit in the same band, while DeepSeek V4 Pro sits lower at ×0.1 — the choice usually comes down to framework fit and behaviour on your specific workload."
           },
           {
             "title": "When to escalate",
@@ -5669,6 +5681,14 @@
           {
             "vs": "GPT-5.4",
             "body": "Same family, different positioning. 5.4 Mini (×0.3) wins on cost and speed; 5.4 (×1) wins on reasoning quality and tool-routing accuracy on hard cases. The standard pattern is to pre-filter with Mini and escalate residual cases to 5.4."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Claude Sonnet 4.6 is the current catalog comparison target for this model."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro sits lower on VM0 credits and is the stronger cost-first reasoning choice. Use it when price dominates, and use the current model when its provider fit or tool-routing profile matters more."
           }
         ],
         "verdict": "GPT-5.4 Mini is the cost-saving default on the OpenAI side. Pre-filter with Mini, escalate to GPT-5.4 for routine steps, escalate to GPT-5.5 only for the hardest reasoning.",
@@ -5682,7 +5702,7 @@
             "a": "Yes. Like the rest of the GPT-5 family it accepts image inputs alongside text and code."
           },
           {
-            "q": "When should I pick GPT-5.4 Mini over Kimi K2.6?",
+            "q": "When should I pick GPT-5.4 Mini over Kimi K2.7 Code?",
             "a": "When your agent is already built on the Codex framework or you need the OpenAI structured-output / tool-call ecosystem. Both sit at ×0.3 credits, so cost is identical and the choice comes down to framework and behaviour."
           },
           {
@@ -5701,178 +5721,7 @@
           }
         ],
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6, above DeepSeek V4 Pro's ×0.1 tier. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
-      },
-      "kimi-k2-6": {
-        "name": "Kimi K2.6",
-        "pageTitle": "Kimi K2.6 on VM0. Long-context agents",
-        "tagline": "Moonshot's latest open-weight model. Best-in-class agentic benchmarks at the open-source frontier and a Claude-compatible interface.",
-        "cardIntro": "Moonshot's latest. Best-in-class long-context recall in our internal evaluation and a Claude-compatible interface.",
-        "metaTitle": "Kimi K2.6 on VM0: SWE-bench, Pricing & Long-Context Use",
-        "metaDescription": "Kimi K2.6 review on VM0. Moonshot's open-weight 1T-parameter MoE. SWE-bench Pro 58.6, ×0.3 credit cost, 256K context. Specs and recommended tasks.",
-        "summary": "Kimi K2.6 is Moonshot's open-weight flagship and currently the strongest open-source agentic model on several public benchmarks. It sustains very long runs without losing the thread (Moonshot has documented unattended sessions of 12+ hours and 4,000+ tool calls) and accepts image and video input natively. Vendor-reported SWE-bench Pro hits 58.6 (above Claude Opus 4.6 and GPT-5.4 on that benchmark), and the hallucination rate dropped from K2.5's ~65% to ~39%.\n\nVendor list price is $0.60 / $3 per 1M tokens, open weights ship under a Modified MIT license, and the API is Anthropic-compatible. Reach for Sonnet 4.6 when production tool-routing reliability matters more than benchmark scores, and for Kimi K2.6 when latency dominates.",
-        "releaseDate": "April 20, 2026",
-        "familyPosition": "Top of Moonshot's open-weight Kimi K2 series. Successor to K2.5 and K2 Thinking.",
-        "background": [
-          "Kimi K2.6 is Moonshot AI's open-weight agentic model released April 20, 2026. It's a 1-trillion-parameter Mixture-of-Experts (MoE) model with 32B active parameters per token. The same architecture family as K2.5 and K2 Thinking, with substantial gains on agentic coding and long-horizon reasoning.",
-          "K2.6 made a real splash on independent leaderboards. Vendor-reported scores put it ahead of GPT-5.4 (xhigh) and Claude Opus 4.6 (max effort) on SWE-bench Pro, with a hallucination rate of 39% (down from K2.5's 65%). Artificial Analysis ranks it #4 on its Intelligence Index. The leading open-weight option.",
-          "On VM0 it's exposed via the Moonshot API key as the default model, through VM0 Managed at the same ×0.3 multiplier, and via OpenRouter. The API is Anthropic-compatible, so VM0 agents written for Claude work without code changes."
-        ],
-        "architecture": "K2.6 is a Mixture-of-Experts model with 1T total parameters and 32B active per token, fronted by a 256K-token context window and multimodal input across image and video (text-only output). Moonshot pairs it with an Agent Swarm runtime that scales horizontally to 300 sub-agents and 4,000 coordinated steps, and has documented long-horizon coding sessions of 12 hours or more. Open weights are published on Hugging Face under a Modified MIT License.",
-        "specs": [
-          {
-            "label": "Family",
-            "value": "Kimi K2 series"
-          },
-          {
-            "label": "Parameters",
-            "value": "1T total / 32B active (MoE)"
-          },
-          {
-            "label": "Modalities",
-            "value": "Image, video, text"
-          },
-          {
-            "label": "Languages",
-            "value": "Multilingual"
-          },
-          {
-            "label": "Context window",
-            "value": "256K tokens"
-          },
-          {
-            "label": "License",
-            "value": "Modified MIT (open weights)"
-          },
-          {
-            "label": "Available on VM0",
-            "value": "April 2026"
-          }
-        ],
-        "benchmarksNote": "Vendor-reported scores from Moonshot's K2.6 release blog. Independent third parties (Artificial Analysis, TokenMix) corroborate the relative ordering. K2.6's hallucination rate dropped to 39% from K2.5's 65%. A significant safety/reliability improvement.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Pro",
-            "score": "58.6",
-            "note": "vendor-reported; beats GPT-5.4, Opus 4.6"
-          },
-          {
-            "name": "SWE-bench Verified",
-            "score": "80.2",
-            "note": "vendor-reported"
-          },
-          {
-            "name": "Terminal-Bench 2.0",
-            "score": "66.7",
-            "note": "Terminus-2 framework"
-          },
-          {
-            "name": "LiveCodeBench (v6)",
-            "score": "89.6",
-            "note": "vendor-reported"
-          },
-          {
-            "name": "HLE (with tools)",
-            "score": "54.0",
-            "note": "leads GPT-5.4 and Opus 4.6"
-          },
-          {
-            "name": "BrowseComp (Agent Swarm)",
-            "score": "86.3",
-            "note": "up from K2.5's 78.4"
-          },
-          {
-            "name": "Artificial Analysis Intelligence Index",
-            "score": "54",
-            "note": "#4 overall, leading open-weight"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Long-context recall",
-            "body": "Strongest long-context recall in our internal evaluation across the Built-in lineup. Maintains coherence across long agent transcripts where Anthropic Sonnet starts to drift."
-          },
-          {
-            "title": "Agentic benchmarks",
-            "body": "Vendor-reported SWE-bench Pro 58.6 is the highest in the lineup at the time of writing. Beats GPT-5.4 and Opus 4.6."
-          },
-          {
-            "title": "Long-horizon coding",
-            "body": "Documented 12+ hour autonomous sessions completing 4,000+ tool calls. The model genuinely sustains performance across very long runs."
-          },
-          {
-            "title": "Tool use",
-            "body": "Reliable across common VM0 tool flows. The Anthropic-compatible API means tool schemas designed for Claude work directly."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "The investigation that has to read every old thread",
-            "body": "Dig through six months of Slack conversations to find why a customer churned, comb the support-ticket backlog for a recurring bug pattern, or stitch together insights across a hundred RFCs. K2.6's long-context recall holds up across transcripts where Anthropic Sonnet starts dropping earlier turns, which is exactly what \"reading the whole pile\" workflows need."
-          },
-          {
-            "title": "The autonomous refactor that runs overnight",
-            "body": "Moonshot has documented a 13-hour autonomous refactor of an eight-year-old matching engine, with K2.6 sustaining 4,000+ tool calls without drifting off task. That's the kind of run where most models lose the goal somewhere around hour two; K2.6's long-horizon stability is what makes \"start it Friday evening, check Monday morning\" actually work."
-          },
-          {
-            "title": "The multimodal agent that handles screenshots and clips",
-            "body": "K2.6 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any deployment where you'd otherwise have to splice in a separate vision model just to read images."
-          }
-        ],
-        "avoidFor": "Skip K2.6 on the hardest tool-routing edge cases where Sonnet 4.6 still leads on production reliability, and on pinned legacy workflows where K2.5's lower multiplier is already sufficient.",
-        "comparisons": [
-          {
-            "vs": "GLM-5.1",
-            "body": "Both are long-context options. K2.6 wins on raw long-context recall in our internal evaluation; GLM-5.1 wins on context size (1M vs 256K). Default to K2.6 for long transcripts; reach for GLM-5.1 only when you need >256K tokens in a single prompt."
-          },
-          {
-            "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet (×1) leads on multi-tool English-language routing reliability. K2.6 (×0.3) wins on cost and on agentic benchmarks (SWE-bench Pro). Pair them: Sonnet for complex tool-routing, K2.6 for cost-sensitive agent work."
-          },
-          {
-            "vs": "Kimi K2.5",
-            "body": "K2.6 is the newer generation with stronger tool-use, lower hallucination rate (39% vs 65%), and better reasoning. K2.5 (×0.2) is slightly cheaper. Prefer K2.6 for new work."
-          }
-        ],
-        "verdict": "The open-weight default for serious agent work — long-context, cost-effective. The remaining gaps versus Sonnet 4.6 are tool-routing reliability and enterprise support.",
-        "faqs": [
-          {
-            "q": "When was Kimi K2.6 released?",
-            "a": "Moonshot AI released Kimi K2.6 on April 20, 2026. Open weights are published on Hugging Face under a Modified MIT License."
-          },
-          {
-            "q": "What's the context window?",
-            "a": "256K tokens. K2.6 differentiates on recall quality at that size, not raw window size. Recall starts to degrade past ~180K (similar to other 256K models)."
-          },
-          {
-            "q": "Do I need to rewrite my agent to use Kimi?",
-            "a": "No. Kimi K2.6 exposes an Anthropic-compatible API, so VM0 agents tuned for Claude work without code changes."
-          },
-          {
-            "q": "How does Kimi K2.6 compare to Claude Opus 4.6?",
-            "a": "On agentic benchmarks (vendor-reported), K2.6 leads. SWE-bench Pro 58.6 vs Opus 4.6's 53.4, HLE with tools 54.0 vs 53.0. Opus 4.6 retains an edge on safety profile and English-language tool-routing reliability in production."
-          },
-          {
-            "q": "Does K2.6 support image input?",
-            "a": "Yes. K2.6 accepts image and video input. Text-only output. Multimodal agents work natively."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "kimi-k2-5",
-            "reason": "Older generation, slightly cheaper multiplier"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Even longer context window (1M tokens)"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Cheaper alternative for cost-sensitive work"
-          }
-        ],
-        "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed and via OpenRouter.",
-        "vm0Notes": "K2.6 has the strongest long-context recall in the Built-in lineup based on our internal evaluation, and at ×0.3 credits it's cheap enough to act as a viable Sonnet substitute for cost-sensitive work."
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.7 Code, above DeepSeek V4 Pro's ×0.1 tier. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-7-code": {
         "name": "Kimi K2.7 Code",
@@ -5993,16 +5842,16 @@
         "avoidFor": "Skip K2.7 on the hardest tool-routing edge cases where Sonnet 4.6 still leads on production reliability, and on pinned legacy workflows where K2.6's lower multiplier is already sufficient.",
         "comparisons": [
           {
-            "vs": "GLM-5.1",
-            "body": "Both are long-context options. K2.7 wins on raw long-context recall in our internal evaluation; GLM-5.1 wins on context size (1M vs 256K). Default to K2.7 for long transcripts; reach for GLM-5.1 only when you need >256K tokens in a single prompt."
+            "vs": "GLM-5.2",
+            "body": "Both are current cost-saving long-context options. K2.7 Code is the Moonshot default with stronger multimodal coding fit; GLM-5.2 is the current Z.AI default with a larger 1M-token context window."
           },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet (×1) leads on multi-tool English-language routing reliability. K2.7 (×0.3) wins on cost and on agentic benchmarks (SWE-bench Pro). Pair them: Sonnet for complex tool-routing, K2.7 for cost-sensitive agent work."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "K2.7 is the newer generation with stronger tool-use, lower hallucination rate (39% vs 65%), and better reasoning. K2.6 (×0.2) is slightly cheaper. Prefer K2.7 for new work."
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro is cheaper and has a larger 1M-token context window. Kimi K2.7 Code is the stronger Moonshot-native coding route and includes vision input. Pick by provider fit and workload shape."
           }
         ],
         "verdict": "The open-weight default for serious agent work — long-context, cost-effective. The remaining gaps versus Sonnet 4.6 are tool-routing reliability and enterprise support.",
@@ -6030,16 +5879,16 @@
         ],
         "alternatives": [
           {
-            "slug": "claude-sonnet-4-6",
-            "reason": "Older generation, slightly cheaper multiplier"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Even longer context window (1M tokens)"
+            "slug": "glm-5-2",
+            "reason": "Current Z.AI long-context route"
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Cheaper alternative for cost-sensitive work"
+            "reason": "Cheaper reasoning alternative for cost-sensitive work"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Higher-reliability baseline for complex tool use"
           }
         ],
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed.",
@@ -6052,13 +5901,13 @@
         "cardIntro": "DeepSeek's flagship. Strong reasoning at a low VM0 credit multiplier, Claude-compatible API.",
         "metaTitle": "DeepSeek V4 Pro on VM0: Benchmarks, Pricing & Comparison",
         "metaDescription": "DeepSeek V4 Pro review on VM0. Open-weight 1.6T MoE with SWE-bench Verified 80.6%, ×0.1 credit cost, 1M context. Pricing, specs and Claude comparison.",
-        "summary": "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for GPT-5.4 Mini or Kimi K2.6 when single-shot bulk work does not need V4 Pro's reasoning depth.",
+        "summary": "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for GPT-5.4 Mini or Kimi K2.7 Code when single-shot bulk work does not need V4 Pro's reasoning depth.",
         "releaseDate": "April 24, 2026",
         "familyPosition": "Reasoning variant of the DeepSeek V4 family, focused on maximum reasoning quality.",
         "background": [
           "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation, released April 24, 2026 under the MIT License. It's an open-weight Mixture-of-Experts model with 1.6T total parameters and 49B active per token.",
           "V4 Pro supports a 1M-token context window, 384K maximum output, three reasoning effort modes (standard, think, think-max), JSON output, tool calls, and FIM completion in non-think mode. The Pro model adds a hybrid attention architecture (Compressed Sparse Attention + Heavily Compressed Attention) for dramatically improved long-context efficiency. 27% of single-token inference FLOPs and 10% of KV cache vs DeepSeek V3.2 at 1M context.",
-          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.1. Lower multiplier than Kimi K2.6, with substantially stronger reasoning behaviour."
+          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.1. Lower multiplier than Kimi K2.7 Code, with substantially stronger reasoning behaviour."
         ],
         "architecture": "V4 Pro is a Mixture-of-Experts model with 1.6T total parameters and 49B active per token, fronted by a hybrid attention stack (Compressed Sparse Attention plus Heavily Compressed Attention) that keeps long-context inference cheap. It supports a 1M-token context window with 384K of maximum output, three reasoning effort modes (standard, think, and think-max), and uses Manifold-Constrained Hyper-Connections for stable signal propagation. The model was trained on 32T+ tokens with the Muon optimizer and is released under the MIT License with open weights.",
         "specs": [
@@ -6095,7 +5944,7 @@
             "value": "April 24, 2026"
           }
         ],
-        "benchmarksNote": "Vendor-reported scores from DeepSeek's V4 Pro release. Independent reviews (Geeky Gadgets, Code Arena) place V4 Pro third on Code Arena behind GLM-5.1 and Kimi K2.6. The strongest benchmark claims come from DeepSeek's own materials. Treat directionally rather than as absolute truth.",
+        "benchmarksNote": "Vendor-reported scores from DeepSeek's V4 Pro release. Independent reviews (Geeky Gadgets, Code Arena) place V4 Pro third on Code Arena behind GLM-5.1 and Kimi K2.7 Code. The strongest benchmark claims come from DeepSeek's own materials. Treat directionally rather than as absolute truth.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -6152,7 +6001,7 @@
           },
           {
             "title": "Speed",
-            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Kimi K2.6, slightly slower than Opus 4.6."
+            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Kimi K2.7 Code, slightly slower than Opus 4.6."
           }
         ],
         "bestForExamples": [
@@ -6169,18 +6018,22 @@
             "body": "1M-token context with hybrid attention (Compressed Sparse Attention plus Heavily Compressed Attention) means a mid-sized codebase fits in one prompt and inference cost stays manageable as the window fills up. For cross-file refactors and architecture-level reviews, this is where you get the Opus-style \"see everything at once\" workflow without the Opus-style invoice."
           }
         ],
-        "avoidFor": "Skip V4 Pro on the hardest tool-routing edge cases where Sonnet 4.6 still leads, and on bulk single-shot work where GPT-5.4 Mini or Kimi K2.6 is sufficient at lower cost.",
+        "avoidFor": "Skip V4 Pro on the hardest tool-routing edge cases where Sonnet 4.6 still leads, and on bulk single-shot work where GPT-5.4 Mini or Kimi K2.7 Code is sufficient at lower cost.",
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 (×1) wins on tool-routing edge cases and English-language reasoning. V4 Pro (×0.1) wins on cost and is competitive on coding benchmarks (vendor-reported). Worth A/B-testing on a real agent before committing."
           },
           {
-            "vs": "Kimi K2.6",
+            "vs": "Kimi K2.7 Code",
             "body": "Lower multiplier than Kimi (×0.1 vs ×0.3). Kimi has stronger long-context recall and a higher Intelligence Index (54 vs 52); V4 Pro has the better cache economics (free writes) and a 1M context window vs Kimi's 256K. Pick by which property matters more."
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 is the current Z.AI default route on VM0. It is the better comparison for new Z.AI-backed agents, while GLM-5.1 remains available only for compatibility with tuned workflows."
           }
         ],
-        "verdict": "Pre-filter with GPT-5.4 Mini or Kimi K2.6, escalate to V4 Pro for reasoning, escalate to Sonnet 4.6 only when V4 Pro stalls on tool-routing edge cases.",
+        "verdict": "Pre-filter with GPT-5.4 Mini or Kimi K2.7 Code, escalate to V4 Pro for reasoning, escalate to Sonnet 4.6 only when V4 Pro stalls on tool-routing edge cases.",
         "faqs": [
           {
             "q": "When was DeepSeek V4 Pro released?",
@@ -6209,143 +6062,12 @@
             "reason": "Step up for hard tool routing"
           },
           {
-            "slug": "kimi-k2-6",
-            "reason": "Same price, stronger long-context recall"
+            "slug": "kimi-k2-7-code",
+            "reason": "Moonshot default with stronger multimodal coding fit"
           }
         ],
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Available on VM0 Managed and the DeepSeek provider.",
         "vm0Notes": "DeepSeek bills cache reads but not cache writes, which is a real cost win whenever the system prompt is stable. VM0 sets a 10-minute API timeout for the DeepSeek provider and disables non-essential traffic to keep long-running agents responsive. The result is the strongest reasoning of any sub-Sonnet model in the Built-in lineup."
-      },
-      "kimi-k2-5": {
-        "name": "Kimi K2.5",
-        "pageTitle": "Kimi K2.5 on VM0. Moonshot's previous generation",
-        "tagline": "The previous Kimi generation. Cheaper than K2.6 but with weaker tool-use; pin it only if a specific agent was validated on this version.",
-        "cardIntro": "The previous Kimi generation. Cheaper than K2.6 but with weaker tool-use; pin it only if a specific agent was validated on this version.",
-        "metaTitle": "Kimi K2.5 on VM0: Specs, Pricing & Migration to K2.6",
-        "metaDescription": "Kimi K2.5 review on VM0. Moonshot's previous flagship at ×0.2 credit cost. SWE-bench Pro 50.7, 256K context. When to pin K2.5 instead of K2.6.",
-        "summary": "Kimi K2.5 is Moonshot's previous flagship, the open-weight model that K2.6 superseded in April 2026. It's still capable — strong on long-context summarisation — but K2.6 leads on every published benchmark at the same vendor price, and the hallucination rate gap is wide (K2.5 ~65% on Moonshot's evaluation versus K2.6's ~39%).\n\nVendor list price is $0.60 / $3 per 1M tokens, identical to K2.6. The honest pitch: if you built on K2.5 and it works, leave it; if you're starting fresh, start on K2.6.",
-        "releaseDate": "Late 2025 (Kimi K2 series)",
-        "familyPosition": "Previous generation of Moonshot's open-weight Kimi K2 series. Superseded by K2.6.",
-        "background": [
-          "Kimi K2.5 was Moonshot's flagship Kimi model before K2.6. It was the first widely-deployed Kimi to combine long-context reasoning with a Claude-compatible API surface, and it remains a capable model for long-context summarisation work.",
-          "On VM0 it sits at the same vendor list price as K2.6 but a lower credit multiplier (×0.2). The lower multiplier reflects positioning rather than raw token cost. K2.6 is the recommended default for new work; K2.5 is the legacy pin.",
-          "K2.5 has a vendor-reported SWE-bench Pro score of 50.7 and a hallucination rate of ~65%. Both meaningfully behind K2.6 (58.6 and 39%). Behaviourally it remains stable for pinned production agents."
-        ],
-        "architecture": "K2.5 is a Mixture-of-Experts model with 1T total parameters and 32B active per token from the same family as K2.6, fronted by a 256K-token context window and an Anthropic-compatible API surface. Open weights are published on Hugging Face.",
-        "specs": [
-          {
-            "label": "Family",
-            "value": "Kimi K2 series"
-          },
-          {
-            "label": "Modalities",
-            "value": "Image, text, code"
-          },
-          {
-            "label": "Languages",
-            "value": "Multilingual"
-          },
-          {
-            "label": "Context window",
-            "value": "256K tokens"
-          },
-          {
-            "label": "License",
-            "value": "Modified MIT (open weights)"
-          },
-          {
-            "label": "Available on VM0",
-            "value": "Available since launch"
-          }
-        ],
-        "benchmarksNote": "K2.5's benchmarks are now most useful as the comparison baseline for K2.6. The newer model leads on every published metric at the same vendor cost.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Pro",
-            "score": "50.7",
-            "note": "vendor-reported"
-          },
-          {
-            "name": "BrowseComp",
-            "score": "78.4",
-            "note": "vendor-reported"
-          },
-          {
-            "name": "Hallucination rate",
-            "score": "~65%",
-            "note": "down to 39% in K2.6"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Long-context",
-            "body": "Strong, similar shape to K2.6 but with K2.6 having the edge on harder recall benchmarks."
-          },
-          {
-            "title": "Tool use",
-            "body": "Solid on common flows; K2.6 is meaningfully better on complex multi-tool agents."
-          },
-          {
-            "title": "Hallucinations",
-            "body": "Vendor-reported hallucination rate of ~65%. Much higher than K2.6's 39%. Expect more confident-but-wrong outputs."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "The legacy agent that already works",
-            "body": "Your team validated an agent against K2.5 a few months ago, the prompts are tuned, the eval suite passes, customers are happy. Pinning to K2.5 keeps that exact behaviour in place while you decide whether the K2.6 upgrade is worth re-running the validation. Same Moonshot endpoint, same Anthropic-compatible interface — only the model weights move when you switch."
-          },
-          {
-            "title": "The bulk-summarisation job where K2.6's edge doesn't show",
-            "body": "Hundred-thousand-token transcripts going in, three-paragraph summaries coming out. Tool-routing accuracy isn't part of the workload, hallucination resistance matters less when a human is going to skim the output anyway, and at the same vendor price as K2.6 you can run K2.5 on these jobs without touching the existing pipeline."
-          }
-        ],
-        "avoidFor": "Don't start new agents on K2.5, since K2.6 is a free upgrade in every meaningful way except the multiplier. Skip it on multi-tool English routing where Sonnet 4.6 leads, and on tasks where hallucination is costly because K2.5's rate is materially worse than K2.6's.",
-        "comparisons": [
-          {
-            "vs": "Kimi K2.6",
-            "body": "K2.6 is the newer generation with stronger tool-use, lower hallucination rate (39% vs 65%), and better reasoning. K2.5 (×0.2) is slightly cheaper. Pick K2.5 only for pinned legacy agents."
-          },
-          {
-            "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0.1) has stronger reasoning. K2.5 (×0.2) wins on context size and stays within the Moonshot API surface."
-          }
-        ],
-        "verdict": "Maintenance mode. Pin if you have an agent already validated on it; otherwise start on K2.6.",
-        "faqs": [
-          {
-            "q": "Why does K2.5 have a lower multiplier than K2.6 at the same vendor price?",
-            "a": "Multipliers reflect VM0's positioning of each model in the lineup, not just per-token cost. K2.6 is the recommended Kimi default at ×0.3; K2.5 is positioned as legacy at ×0.2."
-          },
-          {
-            "q": "Should I migrate from K2.5 to K2.6?",
-            "a": "Yes for new work. Same vendor price, stronger tool-use and reasoning, much lower hallucination rate. Migrate pinned agents only after running them through your regression suite."
-          },
-          {
-            "q": "What's the hallucination rate?",
-            "a": "Vendor-reported ~65%. Meaningfully higher than K2.6 (39%). If your agent reports facts to users, this matters; consider K2.6 instead."
-          },
-          {
-            "q": "What's K2.5's context window?",
-            "a": "256K tokens. Same as K2.6."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "kimi-k2-6",
-            "reason": "Newer Kimi with better tool-use"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Larger context window if you need it"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Stronger reasoning at slightly higher multiplier"
-          }
-        ],
-        "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Available on VM0 Managed, Moonshot, OpenRouter, and Vercel AI Gateway.",
-        "vm0Notes": "K2.5 carries the same per-token vendor price as K2.6 but a lower multiplier (×0.2 versus ×0.3) because the multiplier reflects positioning rather than raw cost. Long-context behaviour is solid, but K2.6 is the recommended choice for any new work on VM0."
       },
       "minimax-m3": {
         "name": "MiniMax M3",
@@ -6433,12 +6155,16 @@
         "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
         "comparisons": [
           {
-            "vs": "Kimi K2.6",
+            "vs": "Kimi K2.7 Code",
             "body": "Both target coding and agentic work at low cost. Kimi has broader existing gateway support on VM0, while M3 uses the official MiniMax route and gives MiniMax users the newer model."
           },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 remains the baseline for reliability on complex English tool-use. M3 is much cheaper and attractive for MiniMax-native coding agents, but should be validated on critical workflows."
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 is the current Z.AI default route on VM0. It is the better comparison for new Z.AI-backed agents, while GLM-5.1 remains available only for compatibility with tuned workflows."
           }
         ],
         "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
@@ -6458,8 +6184,8 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2-6",
-            "reason": "Low-cost coding model with existing gateway coverage"
+            "slug": "kimi-k2-7-code",
+            "reason": "Low-cost coding model with broader existing gateway coverage"
           },
           {
             "slug": "claude-sonnet-4-6",
@@ -6918,12 +6644,12 @@
         ],
         "alternatives": [
           {
-            "slug": "flux-pro-1-1-ultra",
-            "reason": "Premium hero-shot quality"
-          },
-          {
             "slug": "gpt-image-1",
             "reason": "Stronger stylised illustration"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "Premium hero-shot quality"
           }
         ],
         "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
