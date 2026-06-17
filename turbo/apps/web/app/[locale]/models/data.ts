@@ -280,7 +280,7 @@ export const MODELS: ModelEntry[] = [
       inputUsd: 1.4,
       outputUsd: 4.4,
       cacheReadUsd: 0.26,
-      cacheWriteUsd: null,
+      cacheWriteUsd: 1.4,
     },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,

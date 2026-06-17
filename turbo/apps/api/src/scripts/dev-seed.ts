@@ -251,6 +251,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.input", usd(1.4), 1_000_000],
     ["tokens.output", usd(4.4), 1_000_000],
     ["tokens.cache_read", usd(0.26), 1_000_000],
+    ["tokens.cache_creation", usd(1.4), 1_000_000],
   ]),
   ...usageGroup("model", "glm-5.1", [
     ["tokens.input", usd(1.4), 1_000_000],
