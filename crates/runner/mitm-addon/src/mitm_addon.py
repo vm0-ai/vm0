@@ -654,12 +654,13 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
     return _RequestClassification(kind="allow", vm_info=vm_info)
 
 
-def _request_classification(flow: http.HTTPFlow) -> _RequestClassification:
+def _request_classification(flow: http.HTTPFlow, *, cache: bool = False) -> _RequestClassification:
     classification = flow.metadata.get(_REQUEST_CLASSIFICATION)
     if isinstance(classification, _RequestClassification):
         return classification
     classification = _classify_request(flow)
-    flow.metadata[_REQUEST_CLASSIFICATION] = classification
+    if cache:
+        flow.metadata[_REQUEST_CLASSIFICATION] = classification
     return classification
 
 
@@ -1274,7 +1275,7 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
         return
 
-    classification = _request_classification(flow)
+    classification = _request_classification(flow, cache=True)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     if (
@@ -1441,6 +1442,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         _release_tracked_usage_flow(flow)
         raise
 
@@ -1618,6 +1620,7 @@ def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) ->
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+    flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     if release_tracking:
