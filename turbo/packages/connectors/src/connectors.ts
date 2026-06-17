@@ -196,6 +196,7 @@ import { posthog } from "./connectors/posthog";
 import { porkbun } from "./connectors/porkbun";
 import { printful } from "./connectors/printful";
 import { prismaPostgres } from "./connectors/prisma-postgres";
+import { profound } from "./connectors/profound";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
@@ -1184,6 +1185,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...porkbun,
   ...printful,
   ...prismaPostgres,
+  ...profound,
   ...productlane,
   ...pushinator,
   ...qdrant,

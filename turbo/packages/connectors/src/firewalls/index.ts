@@ -229,6 +229,7 @@ import { porkbunFirewall } from "./porkbun.generated";
 import { printfulFirewall } from "./printful.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { prismaPostgresFirewall } from "./prisma-postgres.generated";
+import { profoundFirewall } from "./profound.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qdrantFirewall } from "./qdrant.generated";
 import { qiitaFirewall } from "./qiita.generated";
@@ -500,6 +501,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   porkbun: porkbunFirewall,
   printful: printfulFirewall,
   "prisma-postgres": prismaPostgresFirewall,
+  profound: profoundFirewall,
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qdrant: qdrantFirewall,
