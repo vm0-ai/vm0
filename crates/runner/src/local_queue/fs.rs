@@ -29,6 +29,13 @@ pub(crate) fn ensure_claims_dir(group_dir: &Path) -> io::Result<PathBuf> {
     Ok(dir)
 }
 
+pub(crate) fn validate_claims_dir(group_dir: &Path) -> io::Result<PathBuf> {
+    validate_group_dir(group_dir)?;
+    let dir = super::claims_dir(group_dir);
+    host_file::validate_dir(&dir, DirMode::Private, "local queue claims directory")?;
+    Ok(dir)
+}
+
 pub(crate) fn ensure_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
     ensure_group_dir(group_dir)?;
     let dir = super::cancels_dir(group_dir);
