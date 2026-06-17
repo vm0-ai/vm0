@@ -1348,6 +1348,20 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const multiPathSegmentFirewall = {
+    name: "multi-path-segment",
+    apis: [
+      {
+        base: "https://api.example.test/accounts/${{ vars.A }}${{ vars.B }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
   const nonCredentialFirewall = {
     name: "diagnostic",
     apis: [
@@ -1421,6 +1435,14 @@ describe("resolveFirewallBaseUrlVars", () => {
     }).toThrow("base URL variable");
   });
 
+  it("rejects base URL variables with Unicode whitespace", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL: "https://strapi.example.test/work\u00a0flows",
+      });
+    }).toThrow("base URL variable");
+  });
+
   it("preserves fixed path suffixes for whole base URL prefix templates", () => {
     const result = resolveFirewallBaseUrlVars([n8nFirewall], {
       N8N_BASE_URL: "https://n8n.example.test/workflows",
@@ -1428,6 +1450,22 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[0]!.apis[0]!.base).toBe(
       "https://n8n.example.test/workflows/api/v1",
     );
+  });
+
+  it("rejects whole base URL prefix variables with path dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([n8nFirewall], {
+        N8N_BASE_URL: "https://n8n.example.test/workflows/..",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects whole base URL prefix variables with encoded path dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([n8nFirewall], {
+        N8N_BASE_URL: "https://n8n.example.test/workflows/%2e%2e",
+      });
+    }).toThrow("base URL variable");
   });
 
   it("accepts path segment variables without crossing path boundaries", () => {
@@ -1455,11 +1493,54 @@ describe("resolveFirewallBaseUrlVars", () => {
     }).toThrow("base URL variable");
   });
 
+  it("rejects path segment variables with path-parameter dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "..;type=folder",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with nested encoded dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "%252e%252e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with compatibility dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "\uff0e\uff0e",
+      });
+    }).toThrow("base URL variable");
+  });
+
   it("accepts path variable dots that do not form dot segments", () => {
     const result = resolveFirewallBaseUrlVars([pathFragmentFirewall], {
       VERSION: "%2e1",
     });
     expect(result[0]!.apis[0]!.base).toBe("https://api.example.test/v%2e1");
+  });
+
+  it("rejects path variables that combine into dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([multiPathSegmentFirewall], {
+        A: ".",
+        B: ".",
+      });
+    }).toThrow("resolved base URL must not contain unsafe path segments");
+  });
+
+  it("accepts path variables that combine into safe segments", () => {
+    const result = resolveFirewallBaseUrlVars([multiPathSegmentFirewall], {
+      A: "v",
+      B: "1",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://api.example.test/accounts/v1/v1",
+    );
   });
 
   it("accepts authority port variables", () => {

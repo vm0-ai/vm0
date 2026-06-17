@@ -663,6 +663,7 @@ const PERCENT_DECODED_BOUNDARY_CHARS = new Set(["/", ":", "?", "#", "@", "\\"]);
 const BASE_URL_VAR_PARAMETER_CHARS = new Set(["{", "}"]);
 const PATH_VAR_STRUCTURE_CHARS = new Set(["/", "?", "#", "\\"]);
 const PORT_VAR_PATTERN = /^[0-9]+$/;
+const MAX_PATH_PERCENT_DECODE_PASSES = 5;
 
 /**
  * Check if a base URL contains `${{ vars.X }}` template references.
@@ -693,7 +694,7 @@ function validateBaseUrlVariableCommonSyntax({
   readonly name: string;
   readonly value: string;
 }): void {
-  if (hasRawWhitespace(value)) {
+  if (WHITESPACE_PATTERN.test(value)) {
     throw baseUrlVariableError(
       base,
       serviceName,
@@ -719,6 +720,83 @@ function validateBaseUrlVariableCommonSyntax({
       );
     }
   }
+}
+
+function pathSegmentDotPrefix(segment: string): string {
+  return segment.split(";", 1)[0]!;
+}
+
+function pathSegmentIsDotSegment(segment: string): boolean {
+  const dotPrefix = pathSegmentDotPrefix(segment);
+  return dotPrefix === "." || dotPrefix === "..";
+}
+
+function normalizedPathSegmentHasUnsafeSyntax(segment: string): boolean {
+  const normalized = segment.normalize("NFKC");
+  if (normalized === segment) return false;
+  if (normalized.includes("%")) return true;
+  for (const char of normalized) {
+    if (PATH_VAR_STRUCTURE_CHARS.has(char)) return true;
+  }
+  return (
+    pathSegmentIsDotSegment(normalized) || hasUnsafeUrlCodepoint(normalized)
+  );
+}
+
+function percentDecodePathSegment(segment: string): string | null {
+  if (!segment.includes("%")) return segment;
+  for (let i = 0; i < segment.length; i += 1) {
+    if (segment[i] !== "%") continue;
+    if (
+      i + 2 >= segment.length ||
+      !isHexDigit(segment[i + 1]!) ||
+      !isHexDigit(segment[i + 2]!)
+    ) {
+      return null;
+    }
+  }
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  for (const char of decoded) {
+    if (
+      PATH_VAR_STRUCTURE_CHARS.has(char) ||
+      WHITESPACE_PATTERN.test(char) ||
+      UNICODE_CONTROL_PATTERN.test(char)
+    ) {
+      return null;
+    }
+  }
+  return decoded;
+}
+
+function pathSegmentHasUnsafeSyntax(segment: string): boolean {
+  let current = segment;
+  for (let pass = 0; pass < MAX_PATH_PERCENT_DECODE_PASSES; pass += 1) {
+    if (
+      pathSegmentIsDotSegment(current) ||
+      normalizedPathSegmentHasUnsafeSyntax(current)
+    ) {
+      return true;
+    }
+    const decoded = percentDecodePathSegment(current);
+    if (decoded === null) return true;
+    if (decoded === current) return false;
+    current = decoded;
+  }
+
+  if (
+    pathSegmentIsDotSegment(current) ||
+    normalizedPathSegmentHasUnsafeSyntax(current)
+  ) {
+    return true;
+  }
+  const decoded = percentDecodePathSegment(current);
+  return decoded === null || decoded !== current;
 }
 
 function validateBaseUrlVariablePercentEncoding({
@@ -803,6 +881,38 @@ function validateBaseUrlVariablePercentEncoding({
   }
 }
 
+function validateBaseUrlPathSegment({
+  base,
+  serviceName,
+  name,
+  segment,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly segment: string;
+}): void {
+  if (pathSegmentHasUnsafeSyntax(segment)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain unsafe path segments",
+    );
+  }
+}
+
+function rawPathFromBaseUrl(value: string): string {
+  const schemeEnd = value.indexOf("://");
+  if (schemeEnd === -1) return "";
+  const afterScheme = value.slice(schemeEnd + 3);
+  const pathStart = afterScheme.indexOf("/");
+  if (pathStart === -1) return "";
+  const pathAndAfter = afterScheme.slice(pathStart);
+  const pathEnd = pathAndAfter.search(/[?#]/);
+  return pathEnd === -1 ? pathAndAfter : pathAndAfter.slice(0, pathEnd);
+}
+
 function validateBaseUrlPrefixVariable({
   base,
   serviceName,
@@ -823,6 +933,29 @@ function validateBaseUrlPrefixVariable({
       name,
       "must not contain query or fragment before a fixed path suffix",
     );
+  }
+  const rawPath = rawPathFromBaseUrl(value);
+  for (const segment of rawPath.split("/")) {
+    validateBaseUrlPathSegment({ base, serviceName, name, segment });
+  }
+}
+
+function validateResolvedBaseUrlPathSafety(
+  templateBase: string,
+  serviceName: string,
+  resolved: string,
+): void {
+  const rawPath = rawPathFromBaseUrl(resolved);
+  for (const segment of rawPath.split("/")) {
+    if (pathSegmentHasUnsafeSyntax(segment)) {
+      throw new Error(
+        errMsg(
+          templateBase,
+          serviceName,
+          "resolved base URL must not contain unsafe path segments",
+        ),
+      );
+    }
   }
 }
 
@@ -944,15 +1077,12 @@ function validateBaseUrlPathVariable({
   const suffixSegmentEnd = suffix.search(URL_COMPONENT_DELIMITER_PATTERN);
   const suffixSegment =
     suffixSegmentEnd === -1 ? suffix : suffix.slice(0, suffixSegmentEnd);
-  const decodedSegment = `${prefixSegment}${decoded}${suffixSegment}`;
-  if (decodedSegment === "." || decodedSegment === "..") {
-    throw baseUrlVariableError(
-      base,
-      serviceName,
-      name,
-      "must not be a path dot segment",
-    );
-  }
+  validateBaseUrlPathSegment({
+    base,
+    serviceName,
+    name,
+    segment: `${prefixSegment}${decoded}${suffixSegment}`,
+  });
 }
 
 function prefixIsInsideAuthority(prefix: string): boolean {
@@ -1103,6 +1233,7 @@ export function resolveFirewallBaseUrlVars(
           lastIndex = matchIndex + fullMatch.length;
         }
         resolved += api.base.slice(lastIndex);
+        validateResolvedBaseUrlPathSafety(api.base, fw.name, resolved);
         validateBaseUrl(resolved, fw.name);
         validateCredentialedBaseUrlTransport(resolved, fw.name, api.auth);
         return { ...api, base: resolved };

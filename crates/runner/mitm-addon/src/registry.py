@@ -16,6 +16,7 @@ from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 from firewall_auth_config import auth_config_injects_credentials
 from authority_utils import percent_decode_host
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
+from path_security import has_unsafe_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 VmContext = tuple[
@@ -177,7 +178,7 @@ def _validate_base_url_variable_common_syntax(
     name: str,
     value: str,
 ) -> None:
-    if has_raw_whitespace(value):
+    if has_raw_whitespace(value) or any(char.isspace() for char in value):
         raise _base_url_variable_error(
             firewall_name=firewall_name,
             base=base,
@@ -254,6 +255,13 @@ def _validate_base_url_prefix_variable(
             base=base,
             name=name,
             detail="must not contain query or fragment before a fixed path suffix",
+        )
+    if has_unsafe_path(parts.path):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain unsafe path segments before a fixed path suffix",
         )
 
 
@@ -340,7 +348,7 @@ def _validate_base_url_path_variable(
             name=name,
             detail="must not introduce path structure",
         )
-    decoded = _validate_base_url_variable_percent_encoding(
+    _validate_base_url_variable_percent_encoding(
         firewall_name=firewall_name,
         base=base,
         name=name,
@@ -350,13 +358,12 @@ def _validate_base_url_path_variable(
     prefix_segment = prefix[prefix.rfind("/") + 1 :]
     suffix_delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
     suffix_segment = suffix if suffix_delimiter is None else suffix[: suffix_delimiter.start()]
-    decoded_segment = f"{prefix_segment}{decoded}{suffix_segment}"
-    if decoded_segment in (".", ".."):
+    if has_unsafe_path(f"/{prefix_segment}{value}{suffix_segment}"):
         raise _base_url_variable_error(
             firewall_name=firewall_name,
             base=base,
             name=name,
-            detail="must not be a path dot segment",
+            detail="must not contain unsafe path segments",
         )
 
 
@@ -488,6 +495,10 @@ def _resolve_base_url_template(
     if not matching.firewall_base_config_is_valid(resolved):
         raise _FirewallEntryResolutionError(
             f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
+    if has_unsafe_path(urllib.parse.urlsplit(resolved).path):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" resolved base URL has unsafe path segments'
         )
     return resolved
 
