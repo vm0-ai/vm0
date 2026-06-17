@@ -28,15 +28,22 @@ def _aws_firewall(*permissions):
     ]
 
 
-def _sigv4_context(service, *, headers=(), body=None):
+def _sigv4_context(
+    service,
+    *,
+    headers=(),
+    body=None,
+    algorithm="AWS4-HMAC-SHA256",
+    region="us-east-1",
+):
     return matching.FirewallRequestContext(
         headers=(
             (
                 "Authorization",
-                "AWS4-HMAC-SHA256 "
+                f"{algorithm} "
                 "Credential="
                 "ASIAC0FFEE5AFE10CA1C"
-                f"/20240101/us-east-1/{service}/aws4_request, "
+                f"/20240101/{region}/{service}/aws4_request, "
                 "SignedHeaders=host;x-amz-date, Signature=deadbeef",
             ),
             ("x-amz-date", "20240101T000000Z"),
@@ -1040,3 +1047,29 @@ def test_aws_predicate_rule_requires_matching_sigv4_service():
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.reason == "unknown_endpoint"
+
+
+def test_aws_predicate_rule_ignores_unsupported_sigv4_metadata():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        )
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    for context in (
+        _sigv4_context("s3", algorithm="AWS4-ECDSA-P256-SHA256", region="*"),
+        _sigv4_context("s3", region="*"),
+        _sigv4_context("s3express"),
+    ):
+        result = match_compiled_firewalls(
+            "https://s3.amazonaws.com/my-bucket/my-key",
+            firewalls,
+            policies,
+            method="GET",
+            request_context=context,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
