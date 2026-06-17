@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.37](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.36...sandbox-fc-v0.37.37) (2026-06-17)
+
+
+### Bug Fixes
+
+* **runner:** validate benchmark env keys before startup ([#17999](https://github.com/vm0-ai/vm0/issues/17999)) ([4e6b823](https://github.com/vm0-ai/vm0/commit/4e6b823eba479c95cc7dbc8e377621f99b7ea5bf))
+
 ## [0.37.36](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.35...sandbox-fc-v0.37.36) (2026-06-17)
 
 ## [0.37.35](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.34...sandbox-fc-v0.37.35) (2026-06-16)

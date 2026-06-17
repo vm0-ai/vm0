@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.194.4](https://github.com/vm0-ai/vm0/compare/cli-v9.194.3...cli-v9.194.4) (2026-06-17)
+
+
+### Bug Fixes
+
+* rename playful launch presentation template ([#18005](https://github.com/vm0-ai/vm0/issues/18005)) ([5bc2161](https://github.com/vm0-ai/vm0/commit/5bc2161ea257f194e16c2eae85c0d824eeaa02ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.347.2
+
 ## [9.194.3](https://github.com/vm0-ai/vm0/compare/cli-v9.194.2...cli-v9.194.3) (2026-06-17)
 
 

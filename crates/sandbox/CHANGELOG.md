@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.5...sandbox-v0.19.6) (2026-06-17)
+
+
+### Bug Fixes
+
+* **runner:** validate benchmark env keys before startup ([#17999](https://github.com/vm0-ai/vm0/issues/17999)) ([4e6b823](https://github.com/vm0-ai/vm0/commit/4e6b823eba479c95cc7dbc8e377621f99b7ea5bf))
+
 ## [0.19.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.4...sandbox-v0.19.5) (2026-06-17)
 
 
