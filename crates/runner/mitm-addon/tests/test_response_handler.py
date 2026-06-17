@@ -1143,6 +1143,25 @@ class TestResponseHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
 
+    def test_response_does_not_clear_replaced_request_stream_callback(self, real_flow):
+        """Cleanup should not clear a request callback that replaced ours."""
+        flow = real_flow(with_response=False, host="api.example.com", method="POST")
+
+        def external_stream(chunk):
+            return chunk
+
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        stream(b"request-prefix")
+        flow.request.stream = external_stream
+
+        mitm_addon.response(flow)
+
+        assert flow.request.stream is external_stream
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
     def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
         """Early-returning SSE flows should not retain parser closures."""
         flow = real_flow(with_response=False, host="api.openai.com")
