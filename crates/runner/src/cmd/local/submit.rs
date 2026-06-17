@@ -129,7 +129,10 @@ impl SubmitQueueEntry {
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
         let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
             .remove_job_files_if_present(self.job_id);
-        if jobs_removed && !self.claim.exists() {
+        let has_claim =
+            local_queue::marker_file_exists(&self.claim, "local claim marker").unwrap_or(true);
+        if jobs_removed && !has_claim {
+            let _ = remove_file_if_exists(&self.claim);
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
                 remove_marker_if_unchanged(&self.result, marker);
@@ -513,7 +516,7 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::sync::Mutex;
 
     /// Serialize tests that mutate environment variables to prevent UB.
@@ -1368,6 +1371,30 @@ mod tests {
             !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
         );
+    }
+
+    #[test]
+    fn abandoned_cleanup_ignores_claim_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let target = dir.path().join("target-claim");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, &queue.claim).unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!queue.job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]

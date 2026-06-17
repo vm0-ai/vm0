@@ -77,6 +77,28 @@ pub(crate) fn create_private_marker(path: &Path, context: &str) -> io::Result<()
     open_private_file(path, true, false, context).map(|_| ())
 }
 
+pub(crate) fn marker_file_exists(path: &Path, context: &str) -> io::Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_file()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(io::Error::new(
+            e.kind(),
+            format!("stat {context} {}: {e}", path.display()),
+        )),
+    }
+}
+
+pub(crate) fn marker_path_occupied(path: &Path, context: &str) -> io::Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(io::Error::new(
+            e.kind(),
+            format!("stat {context} {}: {e}", path.display()),
+        )),
+    }
+}
+
 pub(crate) fn open_private_new_file(path: &Path, context: &str) -> io::Result<File> {
     open_private_file(path, true, false, context)
 }

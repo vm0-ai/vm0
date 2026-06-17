@@ -72,7 +72,9 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
     // Try exact UUID parse first.
     if let Ok(id) = prefix.parse::<RunId>() {
         let claim = local_queue::claim_path(group_dir, id);
-        if claim_marker_exists(&claim)? {
+        if local_queue::marker_file_exists(&claim, "claim file")
+            .map_err(|e| RunnerError::Config(e.to_string()))?
+        {
             return Ok(id);
         }
         return Err(RunnerError::Config(format!(
@@ -137,14 +139,6 @@ fn validated_claims_dir(group_dir: &std::path::Path) -> RunnerResult<Option<std:
             .map_err(|e| RunnerError::Config(format!("invalid claims directory: {e}"))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(RunnerError::Config(format!("stat claims directory: {e}"))),
-    }
-}
-
-fn claim_marker_exists(path: &std::path::Path) -> RunnerResult<bool> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) => Ok(metadata.file_type().is_file()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(RunnerError::Config(format!("stat claim file: {e}"))),
     }
 }
 

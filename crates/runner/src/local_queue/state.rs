@@ -20,7 +20,7 @@ pub(crate) enum LocalClaimResult {
     NotClaimed,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CancelTargetState {
     Pending,
     NotPending,
@@ -105,8 +105,13 @@ impl LocalQueue {
                 let Ok(run_id) = stem.parse::<RunId>() else {
                     continue;
                 };
-                if super::claim_path(&self.group_dir, run_id).exists() {
-                    continue;
+                match self.claim_path_occupied(run_id) {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(e) => {
+                        warn!(run_id = %run_id, error = %e, "local: cannot stat claim path");
+                        continue;
+                    }
                 }
                 if self.result_file_has_content(run_id) {
                     continue;
@@ -280,14 +285,33 @@ impl LocalQueue {
         if self.result_file_has_content(run_id) {
             return CancelTargetState::NotPending;
         }
-        if super::claim_path(&self.group_dir, run_id).exists() {
-            return CancelTargetState::Pending;
+        match self.claim_marker_exists(run_id) {
+            Ok(true) => return CancelTargetState::Pending,
+            Ok(false) => {}
+            Err(e) => {
+                warn!(run_id = %run_id, error = %e, "local: cannot stat claim marker");
+                return CancelTargetState::Unknown;
+            }
         }
         match self.lookup_job_file(run_id) {
             JobFileLookup::Found => CancelTargetState::Pending,
             JobFileLookup::NotFound => CancelTargetState::NotPending,
             JobFileLookup::ScanFailed => CancelTargetState::Unknown,
         }
+    }
+
+    fn claim_marker_exists(&self, run_id: RunId) -> std::io::Result<bool> {
+        super::marker_file_exists(
+            &super::claim_path(&self.group_dir, run_id),
+            "local claim marker",
+        )
+    }
+
+    fn claim_path_occupied(&self, run_id: RunId) -> std::io::Result<bool> {
+        super::marker_path_occupied(
+            &super::claim_path(&self.group_dir, run_id),
+            "local claim marker",
+        )
     }
 
     pub(crate) fn result_file_has_content(&self, run_id: RunId) -> bool {
@@ -469,7 +493,7 @@ impl LocalQueue {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
 
     use super::*;
@@ -538,5 +562,69 @@ mod tests {
         assert!(matches!(claim, LocalClaimResult::Claimed { .. }));
         assert_eq!(mode(&super::super::claims_dir(group_dir)), 0o700);
         assert_eq!(mode(&super::super::claim_path(group_dir, run_id)), 0o600);
+    }
+
+    #[test]
+    fn discover_candidate_skips_occupied_claim_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        write_job_request(group_dir, run_id, profile);
+        let claims_dir = super::super::claims_dir(group_dir);
+        std::fs::create_dir_all(&claims_dir).unwrap();
+        let target = dir.path().join("target-claim");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, super::super::claim_path(group_dir, run_id)).unwrap();
+
+        assert!(
+            queue
+                .discover_candidate_sync(&[profile.to_owned()], 0)
+                .is_none(),
+            "an occupied claim path should be skipped because claim create_new cannot win it"
+        );
+    }
+
+    #[test]
+    fn discover_candidate_skips_dangling_claim_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        write_job_request(group_dir, run_id, profile);
+        let claims_dir = super::super::claims_dir(group_dir);
+        std::fs::create_dir_all(&claims_dir).unwrap();
+        symlink(
+            dir.path().join("missing-target-claim"),
+            super::super::claim_path(group_dir, run_id),
+        )
+        .unwrap();
+
+        assert!(
+            queue
+                .discover_candidate_sync(&[profile.to_owned()], 0)
+                .is_none(),
+            "a dangling claim symlink should still occupy the atomic claim path"
+        );
+    }
+
+    #[test]
+    fn cancel_target_state_ignores_claim_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let claims_dir = super::super::claims_dir(group_dir);
+        std::fs::create_dir_all(&claims_dir).unwrap();
+        let target = dir.path().join("target-claim");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, super::super::claim_path(group_dir, run_id)).unwrap();
+
+        assert_eq!(
+            queue.cancel_target_state(run_id),
+            CancelTargetState::NotPending
+        );
     }
 }
