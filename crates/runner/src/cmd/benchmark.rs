@@ -40,8 +40,8 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
             })?;
             if !guest_contracts::env::is_shell_identifier_env_key(key) {
                 return Err(RunnerError::Config(format!(
-                    "invalid --env key '{}': expected shell identifier",
-                    key.escape_debug()
+                    "invalid --env key in entry {}: expected shell identifier",
+                    index + 1
                 )));
             }
             Ok((key.to_string(), value.to_string()))
@@ -479,10 +479,12 @@ mod tests {
             let input = vec![value.to_string()];
             let err = parse_env_args(&input).unwrap_err();
             assert!(
-                err.to_string().contains("expected shell identifier"),
+                err.to_string()
+                    .contains("invalid --env key in entry 1: expected shell identifier"),
                 "got: {err}"
             );
             assert!(!err.to_string().contains("secret-value"), "got: {err}");
+            assert!(!err.to_string().contains(value), "got: {err}");
         }
     }
 
