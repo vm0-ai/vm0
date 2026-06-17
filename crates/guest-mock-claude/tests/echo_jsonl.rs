@@ -464,8 +464,7 @@ fn one_shot_stream_json_drains_trailing_stdin() -> Result<(), Box<dyn std::error
 }
 
 #[test]
-fn active_input_stream_reads_followups_after_first_result() -> Result<(), Box<dyn std::error::Error>>
-{
+fn active_input_stream_reads_followups_after_ready() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
     let mut stream = spawn_stream_json_child(home.path(), false)?;
 
