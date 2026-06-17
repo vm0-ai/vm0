@@ -31,14 +31,10 @@ export {
   type IllustrationTemplateItem,
 } from "./illustration-template-items";
 export {
-  VIDEO_STYLE_GROUPS,
-  VIDEO_STYLE_PRESETS,
-  VIDEO_DIMENSION_DESCRIPTIONS,
-  type VideoStyleGroup,
-  type VideoStylePreset,
-  type VideoStyleDimensions,
-  type VideoStyleCategory,
-} from "./video-style-preset-items";
+  VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  type VideoTemplateItem,
+} from "./video-template-items";
 export {
   r2ImageTransformUrl,
   type R2ImageTransformOptions,

@@ -103,12 +103,12 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
-  VIDEO_STYLE_GROUPS,
-  VIDEO_STYLE_PRESETS,
-  type VideoStylePreset,
+  type VideoTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -161,8 +161,6 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
-  templatePickerVideoGroup$,
-  setTemplatePickerVideoGroup$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
@@ -172,7 +170,6 @@ import {
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
-  type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -696,7 +693,7 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
   if (value?.type === "video") {
-    return selectedVideoTemplateItem(value)?.nameEn;
+    return selectedVideoTemplateItem(value)?.title;
   }
   return (
     selectedPresentationTemplateItem(value)?.title ??
@@ -790,14 +787,17 @@ function illustrationTemplateMatchesSearch(
 }
 
 function isSelectedVideoTemplate(
-  item: VideoStylePreset,
+  item: VideoTemplateItem,
   value: GenerationTemplateRequest | undefined,
 ): boolean {
-  return value?.type === "video" && value.selection.stylePresetId === item.id;
+  return (
+    value?.type === "video" &&
+    findVideoTemplateItem(value.selection.stylePresetId)?.id === item.id
+  );
 }
 
 function toVideoGenerationTemplate(
-  item: VideoStylePreset,
+  item: VideoTemplateItem,
 ): GenerationTemplateRequest {
   return {
     type: "video",
@@ -807,17 +807,15 @@ function toVideoGenerationTemplate(
 
 function selectedVideoTemplateItem(
   value: GenerationTemplateRequest | undefined,
-): VideoStylePreset | undefined {
+): VideoTemplateItem | undefined {
   if (value?.type !== "video") {
     return undefined;
   }
-  return VIDEO_STYLE_PRESETS.find((item) => {
-    return item.id === value.selection.stylePresetId;
-  });
+  return findVideoTemplateItem(value.selection.stylePresetId);
 }
 
 function videoTemplateMatchesSearch(
-  item: VideoStylePreset,
+  item: VideoTemplateItem,
   query: string,
 ): boolean {
   const normalizedQuery = query.trim().toLowerCase();
@@ -825,28 +823,39 @@ function videoTemplateMatchesSearch(
     return true;
   }
   const searchable = [
-    item.nameEn,
-    item.nameZh,
-    item.category,
-    item.scene,
-    item.dimensions.styleReference,
+    item.title,
+    item.id,
+    item.slug,
+    item.description,
+    item.sourcePath,
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
-function videoTemplateMatchesGroup(
-  item: VideoStylePreset,
-  group: TemplatePickerVideoGroup,
-): boolean {
-  return group === "all" || item.category === group;
+function playVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  video.defaultMuted = true;
+  video.muted = true;
+  video.playsInline = true;
+  detach(video.play(), Reason.DomCallback);
 }
 
-function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
+function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  video.pause();
+  video.currentTime = 0;
+}
+
+function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   return (
     <video
-      src={item.sampleVideoUrl}
+      src={item.previewVideo}
       poster={r2ImageTransformUrl(
-        item.sampleVideoThumbnailUrl,
+        item.previewImage,
         TEMPLATE_CARD_PREVIEW_SIZE,
       )}
       className="h-full w-full object-cover"
@@ -855,12 +864,10 @@ function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
       muted
       loop
       onMouseEnter={(event) => {
-        detach(event.currentTarget.play(), Reason.DomCallback);
+        playVideoTemplatePreview(event.currentTarget);
       }}
       onMouseLeave={(event) => {
-        const video = event.currentTarget;
-        video.pause();
-        video.currentTime = 0;
+        resetVideoTemplatePreview(event.currentTarget);
       }}
     />
   );
@@ -871,9 +878,9 @@ function VideoTemplateCard({
   selected,
   onSelect,
 }: {
-  item: VideoStylePreset;
+  item: VideoTemplateItem;
   selected: boolean;
-  onSelect: (item: VideoStylePreset) => void;
+  onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
     <div
@@ -888,13 +895,13 @@ function VideoTemplateCard({
       <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
-            {item.nameEn}
+            {item.title}
           </p>
         </div>
         <div className="flex shrink-0 items-center">
           <button
             type="button"
-            aria-label={`Select video style ${item.nameEn}`}
+            aria-label={`Select video template ${item.title}`}
             aria-pressed={selected}
             onClick={() => {
               onSelect(item);
@@ -919,9 +926,9 @@ function VideoTemplateGrid({
   value,
   onSelect,
 }: {
-  items: VideoStylePreset[];
+  items: readonly VideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
-  onSelect: (item: VideoStylePreset) => void;
+  onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -2061,8 +2068,6 @@ function TemplatePickerDialog({
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
-  const videoGroup = useGet(templatePickerVideoGroup$);
-  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
@@ -2090,23 +2095,16 @@ function TemplatePickerDialog({
       return illustrationTemplateMatchesSearch(item, search);
     },
   );
-  const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
-    return (
-      videoTemplateMatchesGroup(item, videoGroup) &&
-      videoTemplateMatchesSearch(item, search)
-    );
+  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
+    return videoTemplateMatchesSearch(item, search);
   });
-  const videoGroupFilters: readonly {
-    readonly tag: TemplatePickerVideoGroup;
-    readonly label: string;
-  }[] = [{ tag: "all", label: "All" }, ...VIDEO_STYLE_GROUPS];
 
   const handleSelectPresentation = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
     onClose();
   };
 
-  const handleSelectVideo = (item: VideoStylePreset) => {
+  const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
     onClose();
   };
@@ -2229,29 +2227,6 @@ function TemplatePickerDialog({
                 data-video-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <div className="mb-4 flex flex-wrap gap-2">
-                  {videoGroupFilters.map((group) => {
-                    const selected = videoGroup === group.tag;
-                    return (
-                      <button
-                        key={group.tag}
-                        type="button"
-                        aria-pressed={selected}
-                        className={cn(
-                          "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
-                          selected
-                            ? "bg-muted text-foreground"
-                            : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                        )}
-                        onClick={() => {
-                          setVideoGroup(group.tag);
-                        }}
-                      >
-                        {group.label}
-                      </button>
-                    );
-                  })}
-                </div>
                 {filteredVideoItems.length > 0 ? (
                   <VideoTemplateGrid
                     items={filteredVideoItems}
@@ -2332,7 +2307,7 @@ function SelectedVideoTemplateChip({
   onOpen,
   onRemove,
 }: {
-  item: VideoStylePreset;
+  item: VideoTemplateItem;
   onOpen: () => void;
   onRemove: () => void;
 }) {
@@ -2342,7 +2317,7 @@ function SelectedVideoTemplateChip({
         <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           <button
             type="button"
-            aria-label={`Preview video style ${item.nameEn}`}
+            aria-label={`Preview video template ${item.title}`}
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onOpen}
           >
@@ -2358,12 +2333,12 @@ function SelectedVideoTemplateChip({
             </span>
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
-              {item.nameEn}
+              {item.title}
             </span>
           </button>
           <button
             type="button"
-            aria-label={`Remove video style ${item.nameEn}`}
+            aria-label={`Remove video template ${item.title}`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onRemove}
           >
@@ -2439,7 +2414,6 @@ function SelectedTemplateChipSlot({
   const setOpen = useSet(setTemplatePickerOpen$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
-  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
@@ -2452,7 +2426,6 @@ function SelectedTemplateChipSlot({
   // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
   const openPicker = (category: string) => {
     setSearch("");
-    setVideoGroup("all");
     setPreviewSlug(null);
     setSelectedSlideIndex(0);
     setCategory(category);
@@ -2519,7 +2492,6 @@ function TemplatePickerButton({
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
-  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
@@ -2539,7 +2511,6 @@ function TemplatePickerButton({
               aria-pressed={picker.value !== undefined}
               onClick={() => {
                 setSearch("");
-                setVideoGroup("all");
                 setPreviewSlug(null);
                 setSelectedSlideIndex(0);
                 setOpen(true);

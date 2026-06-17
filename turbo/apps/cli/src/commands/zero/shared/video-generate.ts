@@ -2,12 +2,16 @@ import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebVideo } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { findVideoTemplate, listVideoTemplates } from "./resource-registry";
+import { formatRegistryListing } from "./resource-listing";
+import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
 interface VideoOptions {
   prompt?: string;
   provider?: string;
+  template?: string;
   model: string;
   aspectRatio: string;
   duration: string;
@@ -52,6 +56,20 @@ function parseSeed(value: string): number {
 
 function collectUrl(value: string, previous: string[] = []): string[] {
   return [...previous, value];
+}
+
+function unknownTemplateError(id: string, usageCommand: string): Error {
+  const templates = listVideoTemplates();
+  const message = [
+    `Unknown video template: ${id}`,
+    "",
+    "Available video templates:",
+    formatRegistryListing(templates, "video templates"),
+    "",
+    `Example:`,
+    `  ${usageCommand} --template ${templates[0]?.id ?? "<template-id>"} --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
 }
 
 function parseAspectRatio(value: string): ImageDimensions {
@@ -298,6 +316,53 @@ async function validateVideoOptions(options: VideoOptions): Promise<void> {
   ]);
 }
 
+function formatOptionalVideoParameter(
+  value: string | number | undefined,
+  fallback = "none",
+): string {
+  return `${value ?? fallback}`;
+}
+
+function formatVideoUrlList(values: readonly string[] | undefined): string {
+  const list = values ?? [];
+  if (list.length === 0) {
+    return "none";
+  }
+  return list.join(", ");
+}
+
+function formatVideoToggle(enabled: boolean): string {
+  return enabled ? "on" : "off";
+}
+
+function createVideoTemplateDetails(options: VideoOptions): readonly string[] {
+  return [
+    `Model preference if direct video generation is used: ${options.model}`,
+    `Requested aspect ratio: ${options.aspectRatio}`,
+    `Requested duration: ${options.duration}`,
+    `Requested resolution: ${formatOptionalVideoParameter(
+      options.resolution,
+      "provider default",
+    )}`,
+    `Requested audio: ${formatVideoToggle(options.audio !== false)}`,
+    `Requested negative prompt: ${formatOptionalVideoParameter(
+      options.negativePrompt,
+    )}`,
+    `Requested seed: ${formatOptionalVideoParameter(options.seed)}`,
+    `Prompt auto-fix: ${formatVideoToggle(options.autoFix !== false)}`,
+    `Safety tolerance: ${options.safetyTolerance}`,
+    `Reference image URLs: ${formatVideoUrlList(options.imageUrl)}`,
+    `Reference video URLs: ${formatVideoUrlList(options.videoUrl)}`,
+    `Reference audio URLs: ${formatVideoUrlList(options.audioUrl)}`,
+    `First frame image URL: ${formatOptionalVideoParameter(
+      options.firstFrameImageUrl,
+    )}`,
+    `Last frame image URL: ${formatOptionalVideoParameter(
+      options.lastFrameImageUrl,
+    )}`,
+  ];
+}
+
 export function createVideoGenerateCommand(
   config: VideoGenerateCommandConfig,
 ): Command {
@@ -309,6 +374,7 @@ export function createVideoGenerateCommand(
       "--provider <name>",
       "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
     )
+    .option("--template <id>", "Registered video template id")
     .option(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
@@ -391,6 +457,22 @@ Models:
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
+
+        if (options.template) {
+          const template = findVideoTemplate(options.template);
+          if (!template) {
+            throw unknownTemplateError(options.template, config.usageCommand);
+          }
+
+          const packet = createVideoTemplateAuthoringPacket({
+            prompt,
+            template,
+            details: createVideoTemplateDetails(options),
+          });
+
+          console.log(packet.instructions);
+          return;
+        }
 
         await validateVideoOptions(options);
         const result = await generateWebVideo({

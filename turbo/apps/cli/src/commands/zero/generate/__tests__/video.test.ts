@@ -179,6 +179,51 @@ describe("zero generate video command", () => {
     );
   });
 
+  it("should print video template resource selection instructions with --template", async () => {
+    const postVideo = vi.fn();
+    server.use(
+      http.post(VIDEO_URL, () => {
+        postVideo();
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "video",
+      "--template",
+      "video-template:epic-grandeur",
+      "--prompt",
+      "A cinematic mountain reveal",
+      "--model",
+      "dreamina-seedance-2.0-fast",
+      "--aspect-ratio",
+      "9:16",
+      "--duration",
+      "8s",
+      "--resolution",
+      "720p",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(postVideo).not.toHaveBeenCalled();
+    expect(stdout).toContain(
+      "# Zero generate video --template video-template:epic-grandeur",
+    );
+    expect(stdout).toContain(
+      "This is a federated generation source-selection packet",
+    );
+    expect(stdout).toContain('"videoTemplates": [');
+    expect(stdout).toContain('"id": "video-template:epic-grandeur"');
+    expect(stdout).toContain("vm0-ai/vm0-skills");
+    expect(stdout).not.toContain("previewVideo");
+    expect(stdout).not.toContain(".mp4");
+    expect(stdout).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+  });
+
   it("should describe video generation models in help", () => {
     let helpOutput = "";
     videoCommand.configureOutput({
@@ -198,6 +243,7 @@ describe("zero generate video command", () => {
     expect(helpOutput).not.toContain("seedance-1.0-pro");
     expect(helpOutput).toContain("4s-15s");
     expect(helpOutput).toContain("21:9");
+    expect(helpOutput).toContain("--template");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
