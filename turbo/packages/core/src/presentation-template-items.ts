@@ -10,21 +10,21 @@ export interface PresentationTemplateItem {
 }
 
 const BOTANE_ORGANIC_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3dfb810f-81fb-45ba-85f2-d6f74b475475/slide-01.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3e9deb54-c87c-49ab-b2c0-20f6a8addc86/slide-02.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82e0a3df-354e-4ccb-b4c2-14bd79819962/slide-03.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77d0da85-c566-4533-83ee-da8ce1ebab8f/slide-04.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9725a4ef-90cb-44e0-8b29-39def902583e/slide-05.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b700a2b-d39f-4245-8da7-b3c5a8dafa02/slide-06.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d750f999-7894-4bf8-a496-4da308d5b106/slide-07.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f3bcf75-2b99-4c94-9705-22438631dd80/slide-08.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd858f5d-e905-4ae2-b01e-efb68130b001/slide-09.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa9d08c1-8821-4747-bdf2-aac5b90c7d36/slide-10.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fd43490-2dab-4322-81e7-f9cbd47546fb/slide-11.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/659d146c-30a0-43ee-a34b-c4486bd5c740/slide-12.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a966c1b3-106d-44e1-83b8-0d76d029b240/slide-13.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/201886c3-4a47-44d9-a782-c087e8836289/slide-14.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa15ec67-2115-4824-acca-10aa02d5571c/slide-15.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cffa8fca-ca7f-4ac5-ad36-519f5ecb07cb/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/574a6d33-82df-4a54-a025-817ef3c4f3ed/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9767f55a-bb7a-4af2-b217-97524db7ec0a/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00f0e836-7633-46cd-891c-00f91d6548aa/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12048060-6fff-4bce-b35d-e6d6a3ae572c/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0de0ec70-0046-45f1-ae59-dbaafa0d2e23/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c649ab1-5371-406f-89f1-2263621452af/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec35ba2d-64a6-4d18-a49b-107898e01446/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5748e93-58ec-4fca-84da-a910f9739476/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18ba55cd-5ad0-4552-9736-79c0d23a85e8/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3db6ea2-0174-4f3c-82b0-6320b6e684cc/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2a4a5ba-0092-446f-ab90-a36ded70a8e1/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/deedbfd5-cd9c-4273-80e6-cc13092edc48/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc326310-f32b-4773-8a95-1e9e53043de3/slide-15.png",
 ];
 
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
@@ -1831,7 +1831,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://botane-organic-presentation-preview-715f6d07-e999775d.sites.vm0.io",
       previewImage:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3dfb810f-81fb-45ba-85f2-d6f74b475475/slide-01.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
       designSystemId: "design-system:mauve-dusk",
       templateId: "template:html-ppt-botane-organic",
