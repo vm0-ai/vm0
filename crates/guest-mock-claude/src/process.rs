@@ -240,7 +240,7 @@ fn run_active_input_smoke_scenario(
     transcript.emit_value(result_event(&session_id, false, ACTIVE_INPUT_READY_RESULT));
     let _ = std::io::stdout().flush();
 
-    let mut follow_up_contents = Vec::with_capacity(expected_follow_ups);
+    let mut follow_up_contents = Vec::new();
     for index in 1..=expected_follow_ups {
         let frame = match read_next_stream_json_user_frame(
             stdin,

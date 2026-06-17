@@ -421,6 +421,7 @@ fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error:
     assert!(status.success(), "expected success, stderr: {stderr}");
     assert!(stderr.is_empty());
 
+    let session_id = init_session_id(&events)?;
     let replayed_users = events
         .iter()
         .filter(|event| event.get("type").and_then(Value::as_str) == Some("user"))
@@ -446,10 +447,9 @@ fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error:
     assert!(
         replayed_users
             .iter()
-            .all(|(_, _, session_id)| session_id.is_some())
+            .all(|(_, _, replayed_session_id)| *replayed_session_id == Some(session_id.as_str()))
     );
 
-    let session_id = init_session_id(&events)?;
     let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
     assert_eq!(parse_jsonl(history.as_bytes())?, events);
     Ok(())
