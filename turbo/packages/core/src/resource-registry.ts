@@ -130,6 +130,38 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "6b4015b5e81692586af89ba03f58eb0ccf966dfb0caa712d5414971824f83429",
   businessData:
     "a5e0777b924534404a7be2e0a8b34feb546b70ec1f9b91058673e12c39772d86",
+  designSystemCrayon:
+    "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
+  templateCrayon:
+    "ab85de845692ec7e0aa8d6d71609a433536f644cd52b50dba835d8fb7ababef6",
+  designSystemCreativeAgency:
+    "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
+  templateCreativeAgency:
+    "c497c6ca6be67a0d2296780e08f78945b6d4bc8d0c6b188cce6db09e241c7626",
+  designSystemDataReport:
+    "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
+  templateDataReport:
+    "be17f8411f5107ced0773d2d91b71be49397a9ac96dd2d2c9be6afb285dcb1db",
+  designSystemEditorialMagazine:
+    "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
+  templateEditorialMagazine:
+    "851f88ea5e76552d21d4e8639c92958274c3338b9b0ff0241e4a64a01d0a532a",
+  designSystemLandingConsulting:
+    "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
+  templateLandingConsulting:
+    "c9cef4a69c7bae25e5de9c2e367492d40174153bbd93a1dd2f077e1b830ed256",
+  designSystemLumina:
+    "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
+  templateLumina:
+    "3f650fae46df93a4496fc6c144eaf1bcdf6229be05eba3497eff3b7542dd75a4",
+  designSystemMosaicGeometric:
+    "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
+  templateMosaicGeometric:
+    "86c20308e5a56287b6d6a7fd5228594afc012ec23f202f4c32c58809638f78a2",
+  designSystemPlayfulPop:
+    "feb843f2affa5137c44b222c4230e6aeb38dd016486cf451f99194876ffa106b",
+  templatePlayfulPop:
+    "e8b53705906e71bf1efc950edaa76c621e567b9cda03e7b1ace08bd85bb3f9b2",
 } as const;
 
 function videoTemplateSource(
@@ -941,6 +973,102 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-template/business-data",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.businessData,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-crayon",
+    kind: "template",
+    name: "Crayon Presentation",
+    description:
+      "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/crayon",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCrayon,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-creative-agency",
+    kind: "template",
+    name: "Creative Agency Presentation",
+    description:
+      "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
+    source: privateR2ArchiveSource(
+      "presentation-template/creative-agency",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCreativeAgency,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-data-report",
+    kind: "template",
+    name: "Data Report Presentation",
+    description:
+      "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
+    source: privateR2ArchiveSource(
+      "presentation-template/data-report",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateDataReport,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-editorial-magazine",
+    kind: "template",
+    name: "Editorial Magazine Presentation",
+    description:
+      "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
+    source: privateR2ArchiveSource(
+      "presentation-template/editorial-magazine",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateEditorialMagazine,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-landing-consulting",
+    kind: "template",
+    name: "Landing Consulting Presentation",
+    description:
+      "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
+    source: privateR2ArchiveSource(
+      "presentation-template/landing-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLandingConsulting,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-lumina",
+    kind: "template",
+    name: "Lumina Presentation",
+    description:
+      "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
+    source: privateR2ArchiveSource(
+      "presentation-template/lumina",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLumina,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-mosaic-geometric",
+    kind: "template",
+    name: "Mosaic Geometric Presentation",
+    description:
+      "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/mosaic-geometric",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateMosaicGeometric,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-playful-pop",
+    kind: "template",
+    name: "Playful Pop Presentation",
+    description:
+      "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
+    source: privateR2ArchiveSource(
+      "presentation-template/playful-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePlayfulPop,
     ),
     targets: ["presentation"],
   },
@@ -2706,6 +2834,94 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-design-system/berry-pop",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.berryPop,
+    ),
+  },
+  {
+    id: "design-system:crayon",
+    kind: "design-system",
+    name: "Crayon",
+    description:
+      "Light, bouncy crayon look with Prism colours, Fredoka display, Quicksand body, round geometry, peripheral blobs, multi-colour titles, marker highlights, doodle sparks, and colour-block cards.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/crayon",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCrayon,
+    ),
+  },
+  {
+    id: "design-system:creative-agency",
+    kind: "design-system",
+    name: "Creative Agency",
+    description:
+      "Minimal modern agency look with Coral Studio palette, Space Grotesk display, Lexend body, sharp edges, monochrome photo blocks, foliage sprigs, and big-stat hero numbers.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/creative-agency",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCreativeAgency,
+    ),
+  },
+  {
+    id: "design-system:data-report",
+    kind: "design-system",
+    name: "Data Report",
+    description:
+      "Sharp vibrant data-report look with Prism colours, Sora display, Inter body, full-bleed colour grounds, frameless numbers, thin gridlines, chart outlines, and broad chart vocabulary.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/data-report",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemDataReport,
+    ),
+  },
+  {
+    id: "design-system:editorial-magazine",
+    kind: "design-system",
+    name: "Editorial Magazine",
+    description:
+      "Warm paper-forward editorial look with Warm Sand palette, Fraunces display, Work Sans body, mixed radius, running footer, rotated masthead, slash-number marks, stat boxes, dot matrix, and magazine table motifs.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/editorial-magazine",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemEditorialMagazine,
+    ),
+  },
+  {
+    id: "design-system:landing-consulting",
+    kind: "design-system",
+    name: "Landing Consulting",
+    description:
+      "Dark-vibrant landing-consulting look with Pop Art palette, Space Grotesk display, Lexend body, sharp panels, nav pills, dashed circuit wire, marker highlights, CTA pills, photo placeholders, percent badges, callouts, and frameless stats.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/landing-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLandingConsulting,
+    ),
+  },
+  {
+    id: "design-system:lumina",
+    kind: "design-system",
+    name: "Lumina",
+    description:
+      "Bold creative-studio look with Prism palette, Space Grotesk display, Lexend body, sharp geometry, sticker tags, brush-letter accents, asterisk punctuation, colour cells, and frame-edge chrome.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/lumina",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLumina,
+    ),
+  },
+  {
+    id: "design-system:mosaic-geometric",
+    kind: "design-system",
+    name: "Mosaic Geometric",
+    description:
+      "Graphic mosaic look with Carnival palette, Space Grotesk display, Lexend body, sharp geometry, mosaic tile clusters, semicircles, quarter circles, rings, segmented pies, burst stats, and framed icon tiles.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/mosaic-geometric",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemMosaicGeometric,
+    ),
+  },
+  {
+    id: "design-system:playful-pop",
+    kind: "design-system",
+    name: "Playful Pop",
+    description:
+      "Loud playful pop look with Pop Art palette, Space Grotesk display, Lexend body, round geometry, offset-shadow cards, organic blobs, dot grids, solid dots, burst rosettes, pill chips, and white hairline outlines.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/playful-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
     ),
   },
   {
