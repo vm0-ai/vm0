@@ -223,7 +223,10 @@ describe("builtin firewall catalog", () => {
 
   it("bounds source lines when a single JSON line is long", () => {
     const longRule = `GET /${"x".repeat(MAX_GENERATED_PYTHON_LINE_LENGTH * 2)}`;
-    const firewall = testFirewall("long-line", [longRule]);
+    const escapedLongRule = `POST /${'\\"'.repeat(
+      MAX_GENERATED_PYTHON_LINE_LENGTH,
+    )}`;
+    const firewall = testFirewall("long-line", [longRule, escapedLongRule]);
     const files = renderPythonBuiltinFirewallCatalogFiles({
       catalog: testCatalog([firewall]),
     });
