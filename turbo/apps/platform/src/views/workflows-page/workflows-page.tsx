@@ -1,11 +1,18 @@
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { useGet, useLoadable, useSet } from "ccstate-react";
+import type {
+  ZeroWorkflowAgentSummary,
+  ZeroWorkflowDetailResponse,
+  ZeroWorkflowSummary,
+  WorkflowFileMetadata,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconChevronRight,
   IconFile,
   IconFolderOpen,
+  IconLock,
   IconSearch,
   IconUsers,
+  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -21,20 +28,22 @@ import {
   SelectValue,
 } from "@vm0/ui";
 
-import { sortedAgents$ } from "../../signals/agent.ts";
 import {
-  filteredOrgSkills$,
-  selectedSkillAgentId$,
-  selectedSkillDetail$,
-  selectedSkillFilePath$,
-  selectedSkillName$,
-  setSelectedSkillAgentId$,
-  setSelectedSkillFilePath$,
-  setSelectedSkillName$,
-  setSkillSearch$,
-  skillSearch$,
-  skillUsages$,
-} from "../../signals/skills-page/skills-signals.ts";
+  filteredOrgWorkflows$,
+  selectedWorkflowAgentId$,
+  selectedWorkflowDetail$,
+  selectedWorkflowFilePath$,
+  selectedWorkflowName$,
+  setSelectedWorkflowAgentId$,
+  setSelectedWorkflowFilePath$,
+  setSelectedWorkflowName$,
+  setWorkflowAttachmentFilter$,
+  setWorkflowSearch$,
+  workflowAgentOptions$,
+  workflowAttachmentFilter$,
+  workflowSearch$,
+  type WorkflowAttachmentFilter,
+} from "../../signals/workflows-page/workflows-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
@@ -42,69 +51,52 @@ import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 const ALL_AGENTS_FILTER = "all";
 const LIST_AVATAR_LIMIT = 5;
-const SKILL_LIST_GRID =
-  "grid grid-cols-[minmax(10rem,1.1fr)_minmax(16rem,1.8fr)_8rem_2.5rem] gap-x-6 items-center";
+const WORKFLOW_LIST_GRID =
+  "grid grid-cols-[minmax(11rem,1.05fr)_minmax(16rem,1.55fr)_7rem_8rem_2.5rem] gap-x-5 items-center";
 const LEADING_YAML_FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_INDENT_PX = 16;
 
-type ZeroAgentCustomSkill = {
-  readonly name: string;
-  readonly displayName: string | null;
-  readonly description: string | null;
-};
+type WorkflowFileTreeNode =
+  | WorkflowFileTreeFolderNode
+  | WorkflowFileTreeFileNode;
 
-type SkillFileMetadata = {
-  readonly path: string;
-  readonly size: number;
-};
-
-type ZeroAgentSkillDetailResponse = ZeroAgentCustomSkill & {
-  readonly content: string | null;
-  readonly files: readonly SkillFileMetadata[] | null;
-  readonly fileContents:
-    | readonly { readonly path: string; readonly content: string }[]
-    | null;
-};
-
-type SkillFileTreeNode = SkillFileTreeFolderNode | SkillFileTreeFileNode;
-
-type SkillFileTreeFolderNode = {
+type WorkflowFileTreeFolderNode = {
   readonly kind: "folder";
   readonly name: string;
   readonly path: string;
-  readonly children: readonly SkillFileTreeNode[];
+  readonly children: readonly WorkflowFileTreeNode[];
 };
 
-type SkillFileTreeFileNode = {
+type WorkflowFileTreeFileNode = {
   readonly kind: "file";
   readonly name: string;
   readonly path: string;
   readonly size: number;
 };
 
-type MutableSkillFileTreeNode =
-  | MutableSkillFileTreeFolderNode
-  | SkillFileTreeFileNode;
+type MutableWorkflowFileTreeNode =
+  | MutableWorkflowFileTreeFolderNode
+  | WorkflowFileTreeFileNode;
 
-type MutableSkillFileTreeFolderNode = {
+type MutableWorkflowFileTreeFolderNode = {
   readonly kind: "folder";
   readonly name: string;
   readonly path: string;
-  readonly children: MutableSkillFileTreeNode[];
-  readonly folders: Map<string, MutableSkillFileTreeFolderNode>;
+  readonly children: MutableWorkflowFileTreeNode[];
+  readonly folders: Map<string, MutableWorkflowFileTreeFolderNode>;
 };
 
-function skillTitle(skill: {
+function workflowTitle(workflow: {
   readonly name: string;
   readonly displayName: string | null;
 }): string {
-  return skill.displayName ?? skill.name;
+  return workflow.displayName ?? workflow.name;
 }
 
-function agentTitle(agent: TeamComposeItem): string {
-  return agent.displayName ?? agent.id;
+function agentTitle(agent: ZeroWorkflowAgentSummary): string {
+  return agent.displayName ?? agent.agentId;
 }
 
 function isMarkdownPath(path: string): boolean {
@@ -121,9 +113,9 @@ function filePathSegments(path: string): readonly string[] {
   });
 }
 
-function toSkillFileTreeNode(
-  node: MutableSkillFileTreeNode,
-): SkillFileTreeNode {
+function toWorkflowFileTreeNode(
+  node: MutableWorkflowFileTreeNode,
+): WorkflowFileTreeNode {
   if (node.kind === "file") {
     return node;
   }
@@ -132,14 +124,14 @@ function toSkillFileTreeNode(
     kind: "folder",
     name: node.name,
     path: node.path,
-    children: node.children.map(toSkillFileTreeNode),
+    children: node.children.map(toWorkflowFileTreeNode),
   };
 }
 
-function buildSkillFileTree(
-  files: readonly SkillFileMetadata[],
-): readonly SkillFileTreeNode[] {
-  const root: MutableSkillFileTreeFolderNode = {
+function buildWorkflowFileTree(
+  files: readonly WorkflowFileMetadata[],
+): readonly WorkflowFileTreeNode[] {
+  const root: MutableWorkflowFileTreeFolderNode = {
     kind: "folder",
     name: "",
     path: "",
@@ -165,7 +157,7 @@ function buildSkillFileTree(
         continue;
       }
 
-      const folder: MutableSkillFileTreeFolderNode = {
+      const folder: MutableWorkflowFileTreeFolderNode = {
         kind: "folder",
         name: folderName,
         path: folderPath,
@@ -185,94 +177,85 @@ function buildSkillFileTree(
     });
   }
 
-  return root.children.map(toSkillFileTreeNode);
+  return root.children.map(toWorkflowFileTreeNode);
 }
 
-export function SkillsPage() {
-  const skillsLoadable = useLoadable(filteredOrgSkills$);
-  const selectedSkillName = useGet(selectedSkillName$);
-  const skillUsages = useLastResolved(skillUsages$) ?? new Map();
-  const skills =
-    skillsLoadable.state === "hasData" ? skillsLoadable.data : null;
-  const loading = skillsLoadable.state === "loading" && !skills;
+export function WorkflowsPage() {
+  const workflowsLoadable = useLoadable(filteredOrgWorkflows$);
+  const selectedWorkflowName = useGet(selectedWorkflowName$);
+  const workflows =
+    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+  const loading = workflowsLoadable.state === "loading" && !workflows;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto w-full max-w-[900px]">
+        <div className="mx-auto w-full max-w-[980px]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div className="hidden min-w-0 md:block">
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
-                Skills
+                Workflows
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Browse shared skills and see which agents use them.
+                Browse workflow packages and attached agents.
               </p>
             </div>
-            <SkillsToolbar />
+            <WorkflowsToolbar />
           </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
-          <SkillsListPanel
-            skills={skills}
+        <div className="mx-auto max-w-[980px]">
+          <WorkflowsListPanel
+            workflows={workflows}
             loading={loading}
-            selectedSkillName={selectedSkillName}
-            skillUsages={skillUsages}
+            selectedWorkflowName={selectedWorkflowName}
           />
         </div>
       </main>
-      <SkillDetailDialog
-        open={selectedSkillName !== null}
-        agents={
-          selectedSkillName ? (skillUsages.get(selectedSkillName) ?? []) : []
-        }
-      />
+      <WorkflowDetailDialog open={selectedWorkflowName !== null} />
     </div>
   );
 }
 
-function SkillsListPanel({
-  skills,
+function WorkflowsListPanel({
+  workflows,
   loading,
-  selectedSkillName,
-  skillUsages,
+  selectedWorkflowName,
 }: {
-  readonly skills: readonly ZeroAgentCustomSkill[] | null;
+  readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
-  readonly selectedSkillName: string | null | undefined;
-  readonly skillUsages: ReadonlyMap<string, readonly TeamComposeItem[]>;
+  readonly selectedWorkflowName: string | null | undefined;
 }) {
   return (
     <section className="zero-card min-h-[520px] overflow-hidden pb-3">
       <div className="overflow-x-auto">
-        <div style={{ minWidth: "820px" }}>
-          {(loading || (skills && skills.length > 0)) && (
+        <div style={{ minWidth: "940px" }}>
+          {(loading || (workflows && workflows.length > 0)) && (
             <div
               className={cn(
-                SKILL_LIST_GRID,
+                WORKFLOW_LIST_GRID,
                 "sticky top-0 z-10 border-b border-border/40 bg-card px-5 py-3 text-sm font-medium text-muted-foreground",
               )}
             >
-              <div className="text-left">Skill</div>
+              <div className="text-left">Workflow</div>
               <div className="text-left">Description</div>
-              <div className="text-left">Used by</div>
+              <div className="text-left">Visibility</div>
+              <div className="text-left">Attached to</div>
               <div />
             </div>
           )}
           {loading ? (
-            <SkillListSkeleton />
-          ) : skills && skills.length > 0 ? (
+            <WorkflowListSkeleton />
+          ) : workflows && workflows.length > 0 ? (
             <div>
-              {skills.map((skill) => {
+              {workflows.map((workflow) => {
                 return (
-                  <SkillListItem
-                    key={skill.name}
-                    skill={skill}
-                    selected={skill.name === selectedSkillName}
-                    agents={skillUsages.get(skill.name) ?? []}
+                  <WorkflowListItem
+                    key={workflow.name}
+                    workflow={workflow}
+                    selected={workflow.name === selectedWorkflowName}
                   />
                 );
               })}
@@ -280,10 +263,10 @@ function SkillsListPanel({
           ) : (
             <div className="flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
               <p className="text-sm font-medium text-foreground">
-                No custom skills
+                No workflows
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Skills created in Agent Chat will appear here.
+                New workflow packages appear here.
               </p>
             </div>
           )}
@@ -293,19 +276,38 @@ function SkillsListPanel({
   );
 }
 
-function SkillsToolbar() {
-  const search = useGet(skillSearch$);
-  const selectedAgentId = useGet(selectedSkillAgentId$);
-  const setSearch = useSet(setSkillSearch$);
-  const setSelectedAgentId = useSet(setSelectedSkillAgentId$);
-  const agentsLoadable = useLoadable(sortedAgents$);
+function WorkflowsToolbar() {
+  const search = useGet(workflowSearch$);
+  const selectedAgentId = useGet(selectedWorkflowAgentId$);
+  const attachmentFilter = useGet(workflowAttachmentFilter$);
+  const setSearch = useSet(setWorkflowSearch$);
+  const setSelectedAgentId = useSet(setSelectedWorkflowAgentId$);
+  const setAttachmentFilter = useSet(setWorkflowAttachmentFilter$);
+  const agentsLoadable = useLoadable(workflowAgentOptions$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const agentOptions = agents.filter((agent) => {
-    return (agent.customSkills ?? []).length > 0;
-  });
 
   return (
     <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+      <div className="sm:w-36">
+        <Select
+          value={attachmentFilter}
+          onValueChange={(value) => {
+            setAttachmentFilter(value as WorkflowAttachmentFilter);
+          }}
+        >
+          <SelectTrigger
+            aria-label="Attachment filter"
+            className="zero-btn-morandi h-9 w-full gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="attached">Attached</SelectItem>
+            <SelectItem value="unbound">Unbound</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="sm:w-48">
         <Select
           value={selectedAgentId ?? ALL_AGENTS_FILTER}
@@ -322,9 +324,9 @@ function SkillsToolbar() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_AGENTS_FILTER}>All agents</SelectItem>
-            {agentOptions.map((agent) => {
+            {agents.map((agent) => {
               return (
-                <SelectItem key={agent.id} value={agent.id}>
+                <SelectItem key={agent.agentId} value={agent.agentId}>
                   {agentTitle(agent)}
                 </SelectItem>
               );
@@ -339,13 +341,13 @@ function SkillsToolbar() {
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
         />
         <input
-          aria-label="Search skills"
+          aria-label="Search workflows"
           type="text"
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
           }}
-          placeholder="Search skills"
+          placeholder="Search workflows"
           className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         />
       </div>
@@ -353,16 +355,14 @@ function SkillsToolbar() {
   );
 }
 
-function SkillListItem({
-  skill,
+function WorkflowListItem({
+  workflow,
   selected,
-  agents,
 }: {
-  readonly skill: ZeroAgentCustomSkill;
+  readonly workflow: ZeroWorkflowSummary;
   readonly selected: boolean;
-  readonly agents: readonly TeamComposeItem[];
 }) {
-  const selectSkill = useSet(setSelectedSkillName$);
+  const selectWorkflow = useSet(setSelectedWorkflowName$);
 
   return (
     <button
@@ -374,22 +374,26 @@ function SkillListItem({
           : "text-foreground hover:bg-muted/50",
       )}
       onClick={() => {
-        selectSkill(skill.name);
+        selectWorkflow(workflow.name);
       }}
     >
-      <div className={cn(SKILL_LIST_GRID)}>
+      <div className={cn(WORKFLOW_LIST_GRID)}>
         <div className="min-w-0 text-left">
           <span className="block truncate text-sm font-medium text-foreground">
-            {skillTitle(skill)}
+            {workflowTitle(workflow)}
           </span>
           <span className="block truncate text-xs text-muted-foreground">
-            {skill.name}
+            {workflow.name}
           </span>
         </div>
         <span className="line-clamp-2 min-w-0 text-left text-sm leading-5 text-muted-foreground">
-          {skill.description ?? skill.name}
+          {workflow.description ?? workflow.name}
         </span>
-        <AgentAvatarStack agents={agents} />
+        <VisibilityBadge visibility={workflow.visibility} />
+        <AgentAvatarStack
+          agents={workflow.attachedAgents}
+          count={workflow.attachedAgentCount}
+        />
         <span className="justify-self-start rounded p-1 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
           <IconChevronRight size={14} stroke={1.5} />
         </span>
@@ -398,14 +402,15 @@ function SkillListItem({
   );
 }
 
-function SkillListSkeleton() {
+function WorkflowListSkeleton() {
   return (
-    <div className="divide-y divide-border/40" data-testid="skills-loading">
+    <div className="divide-y divide-border/40" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((index) => {
         return (
-          <div key={index} className={cn(SKILL_LIST_GRID, "px-5 py-3")}>
+          <div key={index} className={cn(WORKFLOW_LIST_GRID, "px-5 py-3")}>
             <div className="h-9 w-44 rounded bg-muted/50" />
             <div className="h-4 w-full rounded bg-muted/50" />
+            <div className="h-6 w-16 rounded-full bg-muted/50" />
             <div className="h-7 w-20 rounded-full bg-muted/50" />
             <div className="h-4 w-4 rounded bg-muted/50" />
           </div>
@@ -415,16 +420,10 @@ function SkillListSkeleton() {
   );
 }
 
-function SkillDetailDialog({
-  open,
-  agents,
-}: {
-  readonly open: boolean;
-  readonly agents: readonly TeamComposeItem[];
-}) {
-  const setSelectedSkillName = useSet(setSelectedSkillName$);
-  const detailLoadable = useLoadable(selectedSkillDetail$);
-  const selectedSkillName = useLastResolved(selectedSkillName$);
+function WorkflowDetailDialog({ open }: { readonly open: boolean }) {
+  const setSelectedWorkflowName = useSet(setSelectedWorkflowName$);
+  const detailLoadable = useLoadable(selectedWorkflowDetail$);
+  const selectedWorkflowName = useGet(selectedWorkflowName$);
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   const loading = detailLoadable.state === "loading" && !detail;
@@ -434,40 +433,38 @@ function SkillDetailDialog({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
-          setSelectedSkillName(null);
+          setSelectedWorkflowName(null);
         }
       }}
     >
       <DialogContent
-        aria-describedby="skill-detail-dialog-description"
+        aria-describedby="workflow-detail-dialog-description"
         className="max-w-[940px] gap-0 overflow-hidden p-0"
       >
-        <DialogTitle className="sr-only">Skill details</DialogTitle>
+        <DialogTitle className="sr-only">Workflow details</DialogTitle>
         <DialogDescription
-          id="skill-detail-dialog-description"
+          id="workflow-detail-dialog-description"
           className="sr-only"
         >
-          View skill content, usage, and files.
+          View workflow package content, visibility, attachments, and files.
         </DialogDescription>
-        {loading || !selectedSkillName || !detail ? (
-          <SkillDetailSkeleton />
+        {loading || !selectedWorkflowName || !detail ? (
+          <WorkflowDetailSkeleton />
         ) : (
-          <SkillEditor detail={detail} agents={agents} />
+          <WorkflowViewer detail={detail} />
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function SkillEditor({
+function WorkflowViewer({
   detail,
-  agents,
 }: {
-  readonly detail: ZeroAgentSkillDetailResponse;
-  readonly agents: readonly TeamComposeItem[];
+  readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  const explicitSelectedFilePath = useGet(selectedSkillFilePath$);
-  const setSelectedFilePath = useSet(setSelectedSkillFilePath$);
+  const explicitSelectedFilePath = useGet(selectedWorkflowFilePath$);
+  const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
   const files = detail.files ?? [];
   const preferredFilePath =
     files.find((file) => {
@@ -489,12 +486,17 @@ function SkillEditor({
   return (
     <div className="flex max-h-[88vh] min-w-0 flex-col overflow-hidden">
       <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4 pr-14">
-        <h2 className="truncate text-base font-semibold leading-none tracking-tight">
-          {skillTitle(detail)}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {detail.description ?? detail.name}
-        </p>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold leading-none tracking-tight">
+              {workflowTitle(detail)}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {detail.description ?? detail.name}
+            </p>
+          </div>
+          <VisibilityBadge visibility={detail.visibility} />
+        </div>
       </DialogHeader>
 
       <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -507,14 +509,14 @@ function SkillEditor({
           {selectedFilePath && selectedContent !== null ? (
             isMarkdownPath(selectedFilePath) ? (
               <div
-                aria-label="Skill content"
+                aria-label="Workflow package content"
                 className="min-h-[420px] flex-1 overflow-auto bg-background px-4 py-3"
               >
                 <Markdown source={stripMarkdownFrontmatter(selectedContent)} />
               </div>
             ) : (
               <pre
-                aria-label="Skill content"
+                aria-label="Workflow package content"
                 className="min-h-[420px] flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
               >
                 {selectedContent}
@@ -529,8 +531,11 @@ function SkillEditor({
           )}
         </div>
         <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
-          <BoundAgentsPanel agents={agents} />
-          <SkillFiles
+          <AttachedAgentsPanel
+            agents={detail.attachedAgents}
+            count={detail.attachedAgentCount}
+          />
+          <WorkflowFiles
             files={files}
             selectedPath={selectedFilePath}
             onSelectFile={setSelectedFilePath}
@@ -541,18 +546,36 @@ function SkillEditor({
   );
 }
 
-function BoundAgentsPanel({
-  agents,
+function VisibilityBadge({
+  visibility,
 }: {
-  readonly agents: readonly TeamComposeItem[];
+  readonly visibility: ZeroWorkflowSummary["visibility"];
+}) {
+  const isPrivate = visibility === "private";
+  const Icon = isPrivate ? IconLock : IconWorld;
+
+  return (
+    <span className="inline-flex h-6 max-w-full items-center gap-1 rounded-full border border-border/60 px-2 text-xs font-medium capitalize text-muted-foreground">
+      <Icon size={12} stroke={1.5} className="shrink-0" />
+      <span className="truncate">{visibility}</span>
+    </span>
+  );
+}
+
+function AttachedAgentsPanel({
+  agents,
+  count,
+}: {
+  readonly agents: readonly ZeroWorkflowAgentSummary[];
+  readonly count: number;
 }) {
   return (
     <div className="border-b border-border/70">
       <div className="flex h-9 items-center justify-between px-3">
         <span className="text-xs font-medium text-muted-foreground">
-          Used by
+          Attached agents
         </span>
-        <span className="text-xs text-muted-foreground">{agents.length}</span>
+        <span className="text-xs text-muted-foreground">{count}</span>
       </div>
       <div className="max-h-[180px] overflow-auto px-2 pb-2">
         {agents.length > 0 ? (
@@ -560,9 +583,9 @@ function BoundAgentsPanel({
             {agents.map((agent) => {
               return (
                 <Link
-                  key={agent.id}
+                  key={agent.agentId}
                   pathname={ROUTES.agentDetail}
-                  options={{ pathParams: { agentId: agent.id } }}
+                  options={{ pathParams: { agentId: agent.agentId } }}
                   className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
                 >
                   <AgentAvatar agent={agent} />
@@ -573,7 +596,7 @@ function BoundAgentsPanel({
           </div>
         ) : (
           <p className="px-2 pb-3 text-xs text-muted-foreground">
-            No agents use this skill.
+            Not attached to any agent.
           </p>
         )}
       </div>
@@ -581,7 +604,7 @@ function BoundAgentsPanel({
   );
 }
 
-function AgentAvatar({ agent }: { readonly agent: TeamComposeItem }) {
+function AgentAvatar({ agent }: { readonly agent: ZeroWorkflowAgentSummary }) {
   const title = agentTitle(agent);
   if (agent.avatarUrl) {
     return (
@@ -603,29 +626,31 @@ function AgentAvatar({ agent }: { readonly agent: TeamComposeItem }) {
 
 function AgentAvatarStack({
   agents,
+  count,
 }: {
-  readonly agents: readonly TeamComposeItem[];
+  readonly agents: readonly ZeroWorkflowAgentSummary[];
+  readonly count: number;
 }) {
-  if (agents.length === 0) {
+  if (count === 0) {
     return (
-      <span className="text-xs text-muted-foreground" aria-label="No agents">
-        None
+      <span className="text-xs text-muted-foreground" aria-label="Unbound">
+        Unbound
       </span>
     );
   }
 
   const visibleAgents = agents.slice(0, LIST_AVATAR_LIMIT);
-  const overflow = agents.length - visibleAgents.length;
+  const overflow = count - visibleAgents.length;
 
   return (
     <span
       className="flex min-w-0 items-center"
-      aria-label={`${agents.length} ${agents.length === 1 ? "agent" : "agents"} use this skill`}
+      aria-label={`${count} ${count === 1 ? "agent" : "agents"} attached to this workflow`}
     >
       {visibleAgents.map((agent, index) => {
         return (
           <span
-            key={agent.id}
+            key={agent.agentId}
             className={`rounded-full ring-2 ring-background ${
               index === 0 ? "" : "-ml-2"
             }`}
@@ -646,26 +671,28 @@ function AgentAvatarStack({
   );
 }
 
-function SkillFiles({
+function WorkflowFiles({
   files,
   selectedPath,
   onSelectFile,
 }: {
-  readonly files: readonly SkillFileMetadata[];
+  readonly files: readonly WorkflowFileMetadata[];
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
 }) {
-  const tree = buildSkillFileTree(files);
+  const tree = buildWorkflowFileTree(files);
 
   return (
     <div className="min-h-0">
       <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
-        <span className="text-xs font-medium text-muted-foreground">Files</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Package files
+        </span>
         <span className="text-xs text-muted-foreground">{files.length}</span>
       </div>
       <div className="max-h-[240px] overflow-auto p-2 lg:max-h-none">
         {files.length > 0 ? (
-          <SkillFileTree
+          <WorkflowFileTree
             nodes={tree}
             depth={0}
             selectedPath={selectedPath}
@@ -679,13 +706,13 @@ function SkillFiles({
   );
 }
 
-function SkillFileTree({
+function WorkflowFileTree({
   nodes,
   depth,
   selectedPath,
   onSelectFile,
 }: {
-  readonly nodes: readonly SkillFileTreeNode[];
+  readonly nodes: readonly WorkflowFileTreeNode[];
   readonly depth: number;
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
@@ -712,7 +739,7 @@ function SkillFileTree({
                   {node.name}
                 </span>
               </div>
-              <SkillFileTree
+              <WorkflowFileTree
                 nodes={node.children}
                 depth={depth + 1}
                 selectedPath={selectedPath}
@@ -761,17 +788,31 @@ function SkillFileTree({
   );
 }
 
-function SkillDetailSkeleton() {
+function WorkflowDetailSkeleton() {
   return (
-    <section className="min-h-[560px] overflow-hidden">
-      <div className="border-b border-border/70 p-4">
-        <div className="h-5 w-56 rounded bg-muted" />
-        <div className="mt-3 h-4 w-72 max-w-full rounded bg-muted" />
+    <div className="flex h-[640px] flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border/70 px-5 py-4 pr-14">
+        <div className="h-5 w-52 rounded bg-muted/60" />
+        <div className="mt-2 h-4 w-80 rounded bg-muted/40" />
       </div>
-      <div className="p-4">
-        <div className="h-[420px] rounded bg-muted" />
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="flex min-h-0 flex-col">
+          <div className="h-9 shrink-0 border-b border-border/70 px-4 py-2">
+            <div className="h-4 w-40 rounded bg-muted/40" />
+          </div>
+          <div className="flex-1 space-y-3 px-4 py-3">
+            <div className="h-4 w-full rounded bg-muted/40" />
+            <div className="h-4 w-5/6 rounded bg-muted/40" />
+            <div className="h-4 w-2/3 rounded bg-muted/40" />
+          </div>
+        </div>
+        <aside className="hidden border-l border-border/70 bg-muted/20 p-3 lg:block">
+          <div className="h-4 w-24 rounded bg-muted/40" />
+          <div className="mt-4 h-8 w-full rounded bg-muted/40" />
+          <div className="mt-2 h-8 w-full rounded bg-muted/40" />
+        </aside>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -779,9 +820,12 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
   }
+
   const kib = bytes / 1024;
   if (kib < 1024) {
     return `${kib.toFixed(1)} KiB`;
   }
-  return `${(kib / 1024).toFixed(1)} MiB`;
+
+  const mib = kib / 1024;
+  return `${mib.toFixed(1)} MiB`;
 }

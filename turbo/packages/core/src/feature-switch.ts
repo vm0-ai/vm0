@@ -195,9 +195,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SkillsViewer]: {
+  [FeatureSwitchKey.WorkflowsViewer]: {
     maintainer: "lancy@vm0.ai",
-    description: "Show the skills viewer in the Zero sidebar and page UI",
+    description: "Show the workflows viewer in the Zero sidebar and page UI",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -310,10 +310,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatSlashSkillCommands]: {
+  [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
+      "Enable slash command suggestions for the current agent's workflows in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

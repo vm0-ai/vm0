@@ -819,7 +819,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not show skills in the sidebar manage navigation", async () => {
+  it("does not show workflows in the sidebar manage navigation", async () => {
     prepareDefaultAgent();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse([]));
@@ -828,7 +828,7 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
     });
 
     const nav = await waitFor(() => {
@@ -836,6 +836,6 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).queryByText("Skills")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

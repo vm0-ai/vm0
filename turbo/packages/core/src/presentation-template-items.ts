@@ -10,22 +10,22 @@ export interface PresentationTemplateItem {
 }
 
 const BOTANE_ORGANIC_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cffa8fca-ca7f-4ac5-ad36-519f5ecb07cb/slide-02.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/574a6d33-82df-4a54-a025-817ef3c4f3ed/slide-03.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9767f55a-bb7a-4af2-b217-97524db7ec0a/slide-04.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00f0e836-7633-46cd-891c-00f91d6548aa/slide-05.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12048060-6fff-4bce-b35d-e6d6a3ae572c/slide-06.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0de0ec70-0046-45f1-ae59-dbaafa0d2e23/slide-07.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c649ab1-5371-406f-89f1-2263621452af/slide-08.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec35ba2d-64a6-4d18-a49b-107898e01446/slide-09.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5748e93-58ec-4fca-84da-a910f9739476/slide-10.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18ba55cd-5ad0-4552-9736-79c0d23a85e8/slide-11.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3db6ea2-0174-4f3c-82b0-6320b6e684cc/slide-12.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2a4a5ba-0092-446f-ab90-a36ded70a8e1/slide-13.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/deedbfd5-cd9c-4273-80e6-cc13092edc48/slide-14.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc326310-f32b-4773-8a95-1e9e53043de3/slide-15.png",
-];
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c55e2b08-4242-4ce7-99e2-6e37440c3709/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a43f103f-e4b3-40b0-a326-c37a2240e6b5/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/576f05a7-2d2c-4963-876b-6eda1fe8f93e/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12a44151-de3a-465d-9631-df029387a922/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc6d6522-6f49-4dd0-a122-903a2251f014/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2195f286-6e9e-4171-9240-90c03924b898/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/889dd3cf-913c-4f79-99fc-c57f4346cef5/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b1116116-80a5-4d4c-bd74-43a66bed970b/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d0f5b82-cb4d-4b5a-8c7b-de8941758cf8/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a5835b1-9545-46e1-ac8b-4d33de6fca14/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72162ad3-7cda-4eb8-9bc3-9a986c06e120/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/68e2256e-3872-45b5-bcc6-a7cedf6d3e8f/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2a7fd3d2-562f-4b49-8854-562b13fa7fbc/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ba0a9ade-6eba-4a63-8772-976b30ab17cf/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7da6a51c-4a78-4e50-9cbc-899879e72875/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
 
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   [
@@ -1811,21 +1811,21 @@ const PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES = [
 ] as const satisfies readonly [string, ...string[]];
 
 const BUSINESS_DATA_CDN_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a918a437-969d-4c2b-99b6-873b87ff010c/slide-01.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ae2de1d-9375-4ac9-8790-a89dd8c005aa/slide-02.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c748158b-2762-45e4-af7b-1518990c3d99/slide-03.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bf8ec9a-87bc-4cb6-ac4d-0632025e05f0/slide-04.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59d39d34-823a-49a3-bb68-60b52609ea31/slide-05.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56cf6793-4e43-4d41-98d3-69fe56587794/slide-06.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14071bf1-4f38-4777-a86c-ed4b9e215162/slide-07.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b592f0fa-5989-4c31-95da-f7b2c12e232f/slide-08.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2c94257-3cfd-41f6-bf80-fe0ae52b7c1e/slide-09.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19aa9c33-08e6-48ea-ad5d-00101e91987e/slide-10.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d867953f-d22d-44c9-952b-546832f3d3cc/slide-11.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4fc1a75-d67d-436d-871e-59247b181f47/slide-12.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9de2074d-c006-4de1-89de-f300a2edf8d7/slide-13.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d4b209c-72ae-4567-a74b-d7b94bcbe048/slide-14.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f19a05ae-bf5d-4662-bcf0-42edd46cf03e/slide-15.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc1a93e1-e55d-4e40-b562-ef5f265ff79c/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/04a3765b-ef6a-4bbb-8ae4-b116941760cf/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1919e6e0-2adf-4727-825d-3470568733e7/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d71bc2-9359-4a41-bde6-da6e4d9d0fd0/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d587627-8f20-4aed-ad2b-0593f58c22d9/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b16f1790-05be-4a49-85cd-3417c51376c9/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/de3b1bca-c6bf-4f45-ba6e-898ebb51c8ca/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f1fdaf81-3914-4882-89c1-eb2da901dfd8/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/982833de-dd95-4560-81b5-8b006d7fe3c7/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/15fbcdfa-fc5c-48a8-aa4b-4ea88550b1e2/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4a29b39a-97d0-4c26-892a-85e808f0a21f/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/056c9f76-3ee0-4990-a445-72044cc84a66/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a1a1fc29-4682-484e-b5eb-2e09c5b0c8d3/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7817bac4-9ecd-4e00-a532-d6ba2816c322/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37616a8a-7386-49f2-8e18-198a2a234d4a/slide-15.png",
 ] as const satisfies readonly [string, ...string[]];
 
 export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
@@ -1849,8 +1849,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
-      previewImage:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
+      previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
       designSystemId: "design-system:mauve-dusk",
       templateId: "template:html-ppt-botane-organic",

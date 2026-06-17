@@ -3290,7 +3290,7 @@ function ComposerInputSlot({
 }) {
   const features = useLastResolved(featureSwitch$);
   const slashSkillCommandsEnabled =
-    features?.[FeatureSwitchKey.ChatSlashSkillCommands] ?? false;
+    features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
 
   if (slashSkillCommandsEnabled) {
     return (
