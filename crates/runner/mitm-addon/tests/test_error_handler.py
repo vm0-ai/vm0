@@ -10,6 +10,7 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_streaming
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
@@ -305,6 +306,40 @@ class TestErrorHandler:
         assert entry["port"] == 9443
         assert entry["url"] == "https://invalid.example.com:bad/path"
         assert entry["error"] == "connection reset by peer"
+
+    def test_error_request_size_tracks_streamed_bytes_and_releases_request_stream_state(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.example.com",
+            method="POST",
+            request_body=b"should-be-ignored",
+        )
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"abcdef"
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.error = Error("connection reset by peer")
+
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        assert stream(body[:2]) == body[:2]
+        assert stream(body[2:]) == body[2:]
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["request_size"] == len(body)
+        assert entry["error"] == "connection reset by peer"
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
 
     def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="slack.com")

@@ -11,6 +11,7 @@ from mitmproxy.test import tutils
 import firewall_auth_cache as auth_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_state_helpers import (
     cached_headers,
@@ -640,6 +641,47 @@ class TestResponseHandler:
 
         entry = read_jsonl_entries_after_flush(Path(log_path))[0]
         assert entry["response_size"] == len(body)
+
+    def test_request_size_tracks_streamed_bytes_and_captures_stream_body(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.example.com",
+            method="POST",
+            request_body=b"should-be-ignored",
+            request_content_type="text/plain",
+        )
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (STREAM_BUFFER_LIMIT + 17)
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-length": "0", "content-type": "application/json"}),
+        )
+
+        request_streaming.configure_request_stream(flow)
+        stream = flow.request.stream
+        assert callable(stream)
+        assert stream(body[:123]) == body[:123]
+        assert stream(body[123:]) == body[123:]
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
+        assert entry["request_size"] == len(body)
+        assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
 
     @pytest.mark.parametrize(
         ("content_length", "expected_size"),

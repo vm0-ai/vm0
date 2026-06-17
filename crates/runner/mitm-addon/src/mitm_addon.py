@@ -49,6 +49,7 @@ import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
 import registry
+import request_streaming
 import response_streaming
 import usage
 from auth import (
@@ -60,6 +61,7 @@ from auth import (
     prepare_firewall_metadata,
 )
 from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
+from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,
@@ -156,6 +158,7 @@ _RequestClassificationKind = Literal[
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
+_REQUEST_CLASSIFICATION = "_request_classification"
 
 
 @dataclass(frozen=True)
@@ -651,6 +654,15 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
     return _RequestClassification(kind="allow", vm_info=vm_info)
 
 
+def _request_classification(flow: http.HTTPFlow) -> _RequestClassification:
+    classification = flow.metadata.get(_REQUEST_CLASSIFICATION)
+    if isinstance(classification, _RequestClassification):
+        return classification
+    classification = _classify_request(flow)
+    flow.metadata[_REQUEST_CLASSIFICATION] = classification
+    return classification
+
+
 def _classification_needs_request_timing(classification: _RequestClassification) -> bool:
     return classification.kind in (
         "authority_denied",
@@ -660,6 +672,13 @@ def _classification_needs_request_timing(classification: _RequestClassification)
         "firewall_allow",
         "allow",
     )
+
+
+def _should_stream_capture_request(classification: _RequestClassification) -> bool:
+    if classification.kind not in ("api_allow", "browser_allow", "allow"):
+        return False
+    vm_info = classification.vm_info
+    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
 
 
 def _start_request_timing(flow: http.HTTPFlow) -> None:
@@ -704,16 +723,45 @@ def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
 
 
 def _parse_auth_base_content_length_part(value: str) -> int | None:
+    return _parse_limited_content_length_part(
+        value,
+        max_value=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+
+
+def _parse_limited_content_length_part(value: str, *, max_value: int) -> int | None:
     value = value.strip(" \t")
     if not value:
         return None
     if not value.isascii() or not value.isdecimal():
         return None
     normalized = value.lstrip("0") or "0"
-    limit_text = str(auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES)
+    limit_text = str(max_value)
     if len(normalized) > len(limit_text):
-        return auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1
+        return max_value + 1
     return int(normalized)
+
+
+def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
+    if flow.request.headers.get_all("Transfer-Encoding"):
+        return False
+
+    raw_content_lengths = flow.request.headers.get_all("Content-Length")
+    if not raw_content_lengths:
+        return flow.request.method.upper() in _AUTH_BASE_BODYLESS_METHODS
+
+    parsed_length: int | None = None
+    for raw_content_length in raw_content_lengths:
+        for part in raw_content_length.split(","):
+            candidate = _parse_limited_content_length_part(part, max_value=STREAM_BUFFER_LIMIT)
+            if candidate is None:
+                return False
+            if parsed_length is None:
+                parsed_length = candidate
+            elif parsed_length != candidate:
+                return False
+
+    return (parsed_length or 0) <= STREAM_BUFFER_LIMIT
 
 
 def _record_connector_diagnostic_candidate(
@@ -1221,39 +1269,45 @@ def client_disconnected(client: connection.Client) -> None:
 
 
 def requestheaders(flow: http.HTTPFlow) -> None:
-    """Terminate unsafe auth.base request bodies before mitmproxy buffers them."""
+    """Handle request-header-only decisions before mitmproxy buffers bodies."""
     body_check = _auth_base_body_header_check(flow)
-    if body_check.kind == "ok":
+    if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
         return
 
-    classification = _classify_request(flow)
+    classification = _request_classification(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
-    if classification.kind != "firewall_allow" or allow is None or vm_info is None:
-        return
-    if not _firewall_allow_auth_base(allow):
+    if (
+        classification.kind == "firewall_allow"
+        and allow is not None
+        and vm_info is not None
+        and body_check.kind != "ok"
+        and _firewall_allow_auth_base(allow)
+    ):
+        _start_request_timing(flow)
+        prepare_firewall_metadata(flow, allow, vm_info)
+        proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+        firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+        if body_check.kind == "too_large":
+            mark_auth_base_request_too_large(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+                observed_size=body_check.observed_size,
+            )
+        else:
+            mark_auth_base_request_length_required(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+                reason=body_check.reason,
+            )
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        flow.kill()
         return
 
-    _start_request_timing(flow)
-    prepare_firewall_metadata(flow, allow, vm_info)
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-    if body_check.kind == "too_large":
-        mark_auth_base_request_too_large(
-            flow,
-            proxy_log_path=proxy_log_path,
-            firewall_base=firewall_base,
-            observed_size=body_check.observed_size,
-        )
-    else:
-        mark_auth_base_request_length_required(
-            flow,
-            proxy_log_path=proxy_log_path,
-            firewall_base=firewall_base,
-            reason=body_check.reason,
-        )
-    flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-    flow.kill()
+    if _should_stream_capture_request(classification):
+        request_streaming.configure_request_stream(flow)
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
@@ -1309,7 +1363,7 @@ async def request(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         return
 
-    classification = _classify_request(flow)
+    classification = _request_classification(flow)
 
     if _classification_needs_request_timing(classification):
         _start_request_timing(flow)
@@ -1502,6 +1556,13 @@ def _response_size(flow: http.HTTPFlow) -> int:
     return _content_length_response_size(flow.response.headers.get("content-length"))
 
 
+def _request_size(flow: http.HTTPFlow) -> int:
+    streamed_size = request_streaming.streamed_request_size(flow)
+    if streamed_size is not None:
+        return streamed_size
+    return len(flow.request.raw_content or b"")
+
+
 def _content_length_response_size(content_length: str | None) -> int:
     if content_length is None:
         return 0
@@ -1557,6 +1618,7 @@ def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) ->
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+    request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
@@ -1623,7 +1685,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     _maybe_replace_connector_diagnostic_response(flow, original_url=original_url)
 
-    request_size = len(flow.request.raw_content or b"")
+    request_size = _request_size(flow)
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
 
@@ -1744,7 +1806,7 @@ def error(flow: http.HTTPFlow) -> None:
 
     _maybe_make_connector_diagnostic_error_response(flow, original_url=original_url)
 
-    request_size = len(flow.request.raw_content or b"")
+    request_size = _request_size(flow)
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.

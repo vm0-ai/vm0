@@ -97,6 +97,16 @@ Response streaming
   ``total_bytes``. Written with ``STREAM_BUFFER`` and read for response size,
   capture truncation, and connector parsing. Removed by stream cleanup.
 
+Request streaming
+-----------------
+- ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
+  ``requestheaders()`` via request streaming setup for stream-safe body
+  capture paths. Read by request body capture. Removed by stream cleanup after
+  terminal hooks.
+- ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
+  ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
+  size and capture truncation. Removed by stream cleanup.
+
 Model-provider usage
 --------------------
 - ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
@@ -169,5 +179,7 @@ MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
+REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"
+REQUEST_STREAM_BUFFER_STATE: Final = "request_stream_buffer_state"
 X_NDJSON_STATE: Final = "x_ndjson_state"
 X_JSON_STATE: Final = "x_json_state"
