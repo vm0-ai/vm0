@@ -23,7 +23,7 @@ tracked_disallowed_firewall_metadata="$(
   git ls-files -z -- "$firewall_metadata_dir" |
     while IFS= read -r -d "" tracked_file; do
       case "$tracked_file" in
-        "$firewall_metadata_dir"/*.generated.ts | "$firewall_metadata_dir/details/"*) printf '%s\n' "$tracked_file" ;;
+        "$firewall_metadata_dir"/*.generated.ts | "$firewall_metadata_dir"/.details-* | "$firewall_metadata_dir"/.details-*/* | "$firewall_metadata_dir/details/"*) printf '%s\n' "$tracked_file" ;;
       esac
     done
 )"

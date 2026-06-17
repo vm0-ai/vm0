@@ -18,6 +18,7 @@ import type {
 import type { FirewallConnectorType } from "../../connectors/src/firewalls";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
+const GENERATED_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 interface ConnectorCategories {
   readonly categories: Record<string, string>;
@@ -260,7 +261,7 @@ async function loadGeneratedFirewallSource(
   type: FirewallConnectorType,
 ): Promise<GeneratedFirewallSource> {
   const moduleExports = await importModule(
-    path.join(firewallsDir, `${type}.generated.ts`),
+    path.join(firewallsDir, generatedDetailFileName(type)),
   );
   const firewall = getRequiredGeneratedExport(
     moduleExports,
@@ -386,6 +387,58 @@ function writeGeneratedFile(filePath: string, content: string): void {
   const stat = fs.statSync(filePath);
   if (stat.size === 0) {
     throw new Error(`Generated metadata file is empty: ${filePath}`);
+  }
+}
+
+function generatedDetailFileName(type: FirewallConnectorType): string {
+  if (!GENERATED_FILE_STEM_PATTERN.test(type)) {
+    throw new Error(
+      `Unsupported firewall metadata generated file name: ${type}`,
+    );
+  }
+  return `${type}.generated.ts`;
+}
+
+function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
+  return `./details/${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
+}
+
+function replaceGeneratedDetailsDir(
+  detailsDir: string,
+  nextDetailsDir: string,
+): void {
+  const parentDir = path.dirname(detailsDir);
+  const previousDetailsDir = path.join(
+    parentDir,
+    `.details-previous-${process.pid}-${Date.now()}`,
+  );
+  let previousMoved = false;
+  let nextMoved = false;
+
+  try {
+    if (fs.existsSync(detailsDir)) {
+      fs.renameSync(detailsDir, previousDetailsDir);
+      previousMoved = true;
+    }
+    fs.renameSync(nextDetailsDir, detailsDir);
+    nextMoved = true;
+    if (previousMoved) {
+      fs.rmSync(previousDetailsDir, { recursive: true, force: true });
+      previousMoved = false;
+    }
+  } catch (error) {
+    if (previousMoved && !nextMoved && !fs.existsSync(detailsDir)) {
+      fs.renameSync(previousDetailsDir, detailsDir);
+      previousMoved = false;
+    }
+    throw error;
+  } finally {
+    if (!nextMoved) {
+      fs.rmSync(nextDetailsDir, { recursive: true, force: true });
+    }
+    if (previousMoved && fs.existsSync(detailsDir)) {
+      fs.rmSync(previousDetailsDir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -538,11 +591,11 @@ export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} a
 `;
 }
 
-function renderLoaderFile(types: readonly string[]): string {
+function renderLoaderFile(types: readonly FirewallConnectorType[]): string {
   const loaders = types
     .map((type) => {
       const key = JSON.stringify(type);
-      const specifier = JSON.stringify(`./details/${type}.generated`);
+      const specifier = JSON.stringify(generatedDetailModuleSpecifier(type));
       return `  ${key}: async () => {
     return (await import(${specifier})).firewallPermissionMetadata;
   },`;
@@ -609,15 +662,15 @@ export async function generateFirewallMetadata(): Promise<void> {
     });
   }
 
-  fs.rmSync(detailsDir, { recursive: true, force: true });
-  fs.mkdirSync(detailsDir, { recursive: true });
+  const nextDetailsDir = fs.mkdtempSync(path.join(outputDir, ".details-"));
 
   for (const detail of details) {
     writeGeneratedFile(
-      path.join(detailsDir, `${detail.type}.generated.ts`),
+      path.join(nextDetailsDir, generatedDetailFileName(detail.type)),
       detail.content,
     );
   }
+  replaceGeneratedDetailsDir(detailsDir, nextDetailsDir);
 
   writeGeneratedFile(
     path.join(outputDir, "summary.generated.ts"),
