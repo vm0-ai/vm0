@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+guest-contracts.workspace = true
 sandbox = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }

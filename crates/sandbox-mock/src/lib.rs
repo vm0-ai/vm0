@@ -56,6 +56,23 @@ fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
     mock_file_operation_error(SandboxOperation::CopyFile, message)
 }
 
+fn mock_exec_env_error(operation: SandboxOperation, key: &str) -> SandboxError {
+    SandboxError::Operation {
+        operation,
+        reason: SandboxOperationReason::Other,
+        message: format!("invalid environment variable name: {}", key.escape_debug()),
+    }
+}
+
+fn validate_mock_exec_env_keys(operation: SandboxOperation, env: &[(&str, &str)]) -> Result<()> {
+    for (key, _) in env {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            return Err(mock_exec_env_error(operation, key));
+        }
+    }
+    Ok(())
+}
+
 fn validate_mock_guest_file_path(
     operation: SandboxOperation,
     operation_name: &str,
@@ -1152,6 +1169,7 @@ impl Sandbox for MockSandbox {
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
+        validate_mock_exec_env_keys(SandboxOperation::Exec, request.env)?;
         let call = ExecCall {
             cmd: request.cmd.to_string(),
             timeout: request.timeout,
@@ -1339,6 +1357,7 @@ impl Sandbox for MockSandbox {
     }
 
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle> {
+        validate_mock_exec_env_keys(SandboxOperation::StartProcess, request.env)?;
         validate_start_process_output(request.output)?;
         if let Some(overrides) = &self.overrides {
             overrides
@@ -1914,6 +1933,33 @@ mod tests {
         let exec = result.unwrap();
         assert_eq!(exec.exit_code, 0);
         assert!(exec.stdout.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sandbox_exec_rejects_invalid_env_key_without_recording_call() {
+        let sandbox = MockSandbox::new("test-1");
+        let result = sandbox
+            .exec(&ExecRequest {
+                cmd: "echo hello",
+                timeout: Duration::from_secs(5),
+                env: &[("BAD-NAME", "x")],
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+            })
+            .await;
+        let err = match result {
+            Ok(_) => panic!("invalid env key should be rejected"),
+            Err(err) => err,
+        };
+
+        assert_operation_error(
+            err,
+            SandboxOperation::Exec,
+            SandboxOperationReason::Other,
+            "invalid environment variable name",
+        );
+        assert!(sandbox.exec_calls().is_empty());
     }
 
     #[tokio::test]
@@ -3248,6 +3294,34 @@ mod tests {
                 Err(other) => panic!("expected start_process operation error, got {other:?}"),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn start_process_rejects_invalid_env_key() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+        let result = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[("1BAD", "x")],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await;
+        let err = match result {
+            Ok(_) => panic!("invalid env key should be rejected"),
+            Err(err) => err,
+        };
+
+        assert_operation_error(
+            err,
+            SandboxOperation::StartProcess,
+            SandboxOperationReason::Other,
+            "invalid environment variable name",
+        );
+        assert!(overrides.start_process_calls().is_empty());
     }
 
     #[tokio::test]

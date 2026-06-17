@@ -848,6 +848,26 @@ impl FirecrackerSandbox {
         }
     }
 
+    fn invalid_env_key_error(operation: SandboxOperation, key: &str) -> SandboxError {
+        SandboxError::Operation {
+            operation,
+            reason: SandboxOperationReason::Other,
+            message: format!("invalid environment variable name: {}", key.escape_debug()),
+        }
+    }
+
+    fn validate_exec_env_keys(
+        operation: SandboxOperation,
+        env: &[(&str, &str)],
+    ) -> sandbox::Result<()> {
+        for (key, _) in env {
+            if !guest_contracts::env::is_shell_identifier_env_key(key) {
+                return Err(Self::invalid_env_key_error(operation, key));
+            }
+        }
+        Ok(())
+    }
+
     fn operation_gate_closed_error(
         operation: SandboxOperation,
         state: crate::park_coordinator::CoordinatorState,
@@ -906,12 +926,26 @@ impl FirecrackerSandbox {
     where
         Fut: Future<Output = io::Result<T>>,
     {
+        self.run_bounded_guest_operation_with_validation(operation, || Ok(()), call)
+            .await
+    }
+
+    async fn run_bounded_guest_operation_with_validation<T, Fut>(
+        &self,
+        operation: SandboxOperation,
+        validate: impl FnOnce() -> sandbox::Result<()>,
+        call: impl FnOnce(Arc<VsockHost>) -> Fut,
+    ) -> sandbox::Result<T>
+    where
+        Fut: Future<Output = io::Result<T>>,
+    {
         enum GuestCallOutcome<T> {
             Returned(io::Result<T>),
             BackendCrashed,
         }
 
         let vsock = self.begin_guest_operation(operation).await?;
+        validate()?;
 
         let outcome = tokio::select! {
             result = call(vsock) => {
@@ -2052,29 +2086,33 @@ impl Sandbox for FirecrackerSandbox {
         let limits = request.output_limits;
         let timeout_ms = request.timeout_ms();
 
-        self.run_bounded_guest_operation(operation, |guest| async move {
-            guest
-                .exec_capture(vsock_host::ExecCaptureRequest {
-                    command: request.cmd,
-                    timeout_ms,
-                    env: request.env,
-                    sudo: request.sudo,
-                    label: "sandbox-exec",
-                    stdout_limit_bytes: limits.stdout_limit_bytes,
-                    stderr_limit_bytes: limits.stderr_limit_bytes,
-                    expected_exit_codes: &[],
-                    stdin_bytes: request.stdin_bytes,
-                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-                })
-                .await
-                .map(|result| ExecResult {
-                    exit_code: result.exit_code,
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    stdout_truncated: result.stdout_truncated,
-                    stderr_truncated: result.stderr_truncated,
-                })
-        })
+        self.run_bounded_guest_operation_with_validation(
+            operation,
+            || Self::validate_exec_env_keys(operation, request.env),
+            |guest| async move {
+                guest
+                    .exec_capture(vsock_host::ExecCaptureRequest {
+                        command: request.cmd,
+                        timeout_ms,
+                        env: request.env,
+                        sudo: request.sudo,
+                        label: "sandbox-exec",
+                        stdout_limit_bytes: limits.stdout_limit_bytes,
+                        stderr_limit_bytes: limits.stderr_limit_bytes,
+                        expected_exit_codes: &[],
+                        stdin_bytes: request.stdin_bytes,
+                        wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+                    })
+                    .await
+                    .map(|result| ExecResult {
+                        exit_code: result.exit_code,
+                        stdout: result.stdout,
+                        stderr: result.stderr,
+                        stdout_truncated: result.stdout_truncated,
+                        stderr_truncated: result.stderr_truncated,
+                    })
+            },
+        )
         .await
     }
 
@@ -2130,6 +2168,7 @@ impl Sandbox for FirecrackerSandbox {
     ) -> sandbox::Result<GuestProcessHandle> {
         let operation = SandboxOperation::StartProcess;
         let vsock = self.begin_guest_operation(operation).await?;
+        Self::validate_exec_env_keys(operation, request.env)?;
 
         let start_future = async move {
             vsock
@@ -5039,6 +5078,50 @@ mod tests {
         );
 
         assert_operation_error(err, SandboxOperation::Exec, SandboxOperationReason::Guest);
+    }
+
+    #[test]
+    fn invalid_exec_env_key_returns_operation_error() {
+        let err = FirecrackerSandbox::validate_exec_env_keys(
+            SandboxOperation::Exec,
+            &[("BAD-NAME", "x")],
+        )
+        .unwrap_err();
+
+        match err {
+            SandboxError::Operation {
+                operation,
+                reason,
+                message,
+            } => {
+                assert_eq!(operation, SandboxOperation::Exec);
+                assert_eq!(reason, SandboxOperationReason::Other);
+                assert!(message.contains("BAD-NAME"), "got: {message}");
+            }
+            other => panic!("expected operation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_start_process_env_key_returns_operation_error() {
+        let err = FirecrackerSandbox::validate_exec_env_keys(
+            SandboxOperation::StartProcess,
+            &[("1BAD", "x")],
+        )
+        .unwrap_err();
+
+        match err {
+            SandboxError::Operation {
+                operation,
+                reason,
+                message,
+            } => {
+                assert_eq!(operation, SandboxOperation::StartProcess);
+                assert_eq!(reason, SandboxOperationReason::Other);
+                assert!(message.contains("1BAD"), "got: {message}");
+            }
+            other => panic!("expected operation error, got {other:?}"),
+        }
     }
 
     #[test]
