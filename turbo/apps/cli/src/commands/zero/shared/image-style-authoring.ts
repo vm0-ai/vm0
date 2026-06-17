@@ -46,6 +46,15 @@ interface StyledImageAuthoringPacket {
   readonly instructions: string;
 }
 
+function formatCandidateSource(
+  source: ResourceCandidateSlice["sources"][number],
+): string {
+  if ("repo" in source) {
+    return `- \`${source.repo}@${source.ref}\``;
+  }
+  return `- ${source.description}`;
+}
+
 const outputDir = "./generated/images";
 const artifactRules = [
   "Resolve the selected style source before generating the image.",
@@ -110,9 +119,7 @@ export function createStyledImageAuthoringPacket(
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
     "Sources:",
-    ...candidateSlice.sources.map((src) => {
-      return `- \`${src.repo}@${src.ref}\``;
-    }),
+    ...candidateSlice.sources.map(formatCandidateSource),
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),
@@ -121,6 +128,7 @@ export function createStyledImageAuthoringPacket(
     "## Stage 2: Resolve Selected Resources",
     "- Fetch or read the selected resource source before generation.",
     "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
+    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, references, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

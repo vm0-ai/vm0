@@ -31,6 +31,7 @@ import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import { zeroVideoCommand } from "./commands/zero/video";
+import { zeroResourceCommand } from "./commands/zero/resource";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -59,6 +60,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
+  resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
   telegram: ["telegram:read", "telegram:write"],
@@ -93,6 +95,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroVariableCommand,
   zeroLogsCommand,
   zeroSearchCommand,
+  zeroResourceCommand,
   zeroWhoamiCommand,
   zeroSkillCommand,
   zeroDeveloperSupportCommand,

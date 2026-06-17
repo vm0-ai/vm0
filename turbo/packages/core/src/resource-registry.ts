@@ -35,6 +35,10 @@ interface ResourceSourceRef {
   readonly path: string;
   readonly repo?: string;
   readonly ref?: string;
+  readonly archive?: {
+    readonly type: "tar.gz";
+    readonly sha256: string;
+  };
 }
 
 export interface RegistryEntry {
@@ -70,10 +74,17 @@ export interface ResourceCandidateSlice {
     readonly repo: string;
     readonly ref: string;
   };
-  readonly sources: readonly {
-    readonly repo: string;
-    readonly ref: string;
-  }[];
+  readonly sources: readonly (
+    | {
+        readonly type?: "git";
+        readonly repo: string;
+        readonly ref: string;
+      }
+    | {
+        readonly type: "r2-archive";
+        readonly description: string;
+      }
+  )[];
   readonly candidates: {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
@@ -95,6 +106,31 @@ const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
 } as const;
 
 const RESOURCE_REGISTRY_VERSION = "v1";
+
+function privateR2ArchiveSource(
+  path: string,
+  sha256: string,
+): ResourceSourceRef {
+  return {
+    path,
+    archive: {
+      type: "tar.gz",
+      sha256,
+    },
+  };
+}
+
+const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
+  berryPop: "dd0424e32f8534f23b46e02338ea11cc79d5fc2106e9be2c25343632b667a728",
+  mauveDusk: "a83c3d566c133234db5c31e4c93d06b403c9c651dcc62fce9d597a226712c61b",
+  playfulEditorial:
+    "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
+  aplocoto: "f5fd07c53c3f5f047975895d4a4d0af25345389a22d193c1020f032419f54c49",
+  botaneOrganic:
+    "6b4015b5e81692586af89ba03f58eb0ccf966dfb0caa712d5414971824f83429",
+  businessData:
+    "a5e0777b924534404a7be2e0a8b34feb546b70ec1f9b91058673e12c39772d86",
+} as const;
 
 function videoTemplateSource(
   path: string,
@@ -869,11 +905,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Botane Organic Presentation",
     description:
       "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-template/botane-organic",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-template/botane-organic",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.botaneOrganic,
+    ),
     targets: ["presentation"],
   },
   {
@@ -891,11 +926,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Playful Launch Presentation",
     description:
       "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-template/aplocoto",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-template/aplocoto",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.aplocoto,
+    ),
     targets: ["presentation"],
   },
   {
@@ -904,11 +938,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Business Data Presentation",
     description:
       "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-template/business-data",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-template/business-data",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.businessData,
+    ),
     targets: ["presentation"],
   },
   {
@@ -2491,11 +2524,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Mauve Dusk",
     description:
       "Soft lavender editorial look with muted mauve accents, Fraunces display type, Work Sans body, and rounded organic motifs.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-design-system/mauve-dusk",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-design-system/mauve-dusk",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.mauveDusk,
+    ),
   },
   {
     id: "design-system:meta",
@@ -2660,11 +2692,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Playful Launch",
     description:
       "Joyful launch-deck look with saturated color fields, scalloped burst badges, pill chips, Archivo headlines, and Manrope body.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-design-system/playful-editorial",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-design-system/playful-editorial",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.playfulEditorial,
+    ),
   },
   {
     id: "design-system:berry-pop",
@@ -2672,11 +2703,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Berry Pop",
     description:
       "Magenta/plum data-deck look with Space Grotesk display, Lexend body, soft corners, plus marks, stat blocks, photo squares, bars, and rings.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "presentation-design-system/berry-pop",
-    },
+    source: privateR2ArchiveSource(
+      "presentation-design-system/berry-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.berryPop,
+    ),
   },
   {
     id: "design-system:perplexity",
@@ -3635,6 +3665,11 @@ export function selectResourceCandidates(
       {
         repo: VM0_SKILLS_REPO,
         ref: VM0_SKILLS_REF,
+      },
+      {
+        type: "r2-archive",
+        description:
+          "Private R2-backed resource archives resolved through authenticated `zero resource pull` requests",
       },
     ],
     candidates: {
