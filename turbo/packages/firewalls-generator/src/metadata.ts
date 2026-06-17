@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
 
-import { CONNECTOR_TYPES } from "../../connectors/src/connectors";
 import type { ConnectorType } from "../../connectors/src/connectors";
 import type {
   FirewallConfig,
@@ -18,25 +19,332 @@ import type { FirewallConnectorType } from "../../connectors/src/firewalls";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 
-type FirewallRegistry = typeof import("../../connectors/src/firewalls");
-
-type FirewallMetadataRuntime = Pick<
-  FirewallRegistry,
-  "getDefaultFirewallPolicies" | "getPermissionCategories"
->;
-
-function isConnectorType(type: string): type is ConnectorType {
-  return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, type);
+interface ConnectorCategories {
+  readonly categories: Record<string, string>;
+  readonly displayOrder: readonly string[];
 }
 
-function assertConnectorType(
+interface GeneratedFirewallSource {
+  readonly type: FirewallConnectorType;
+  readonly firewall: FirewallConfig;
+  readonly label: string;
+  readonly categories: ConnectorCategories | null;
+  readonly defaultAllowed: readonly string[] | null;
+  readonly defaultUnknownPolicy: FirewallPolicyValue;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => {
+      return typeof item === "string";
+    })
+  );
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((item) => {
+    return typeof item === "string";
+  });
+}
+
+function isFirewallConfig(value: unknown): value is FirewallConfig {
+  return isRecord(value) && Array.isArray(value.apis);
+}
+
+function isPolicyValue(value: unknown): value is FirewallPolicyValue {
+  return value === "allow" || value === "deny" || value === "ask";
+}
+
+function getRequiredGeneratedExport<T>(
+  moduleExports: Readonly<Record<string, unknown>>,
   type: FirewallConnectorType,
-): asserts type is FirewallConnectorType & ConnectorType {
-  if (!isConnectorType(type)) {
+  suffix: string,
+  isExpected: (value: unknown) => value is T,
+): T {
+  const matches: T[] = [];
+  for (const [name, value] of Object.entries(moduleExports)) {
+    if (name.endsWith(suffix) && isExpected(value)) {
+      matches.push(value);
+    }
+  }
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one ${suffix} export for firewall metadata: ${type}`,
+    );
+  }
+  const [match] = matches;
+  if (match === undefined) {
+    throw new Error(
+      `Expected exactly one ${suffix} export for firewall metadata: ${type}`,
+    );
+  }
+  return match;
+}
+
+function getOptionalGeneratedExport<T>(
+  moduleExports: Readonly<Record<string, unknown>>,
+  type: FirewallConnectorType,
+  suffix: string,
+  isExpected: (value: unknown) => value is T,
+): T | null {
+  const matches: T[] = [];
+  for (const [name, value] of Object.entries(moduleExports)) {
+    if (name.endsWith(suffix) && isExpected(value)) {
+      matches.push(value);
+    }
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `Expected at most one ${suffix} export for firewall metadata: ${type}`,
+    );
+  }
+  return matches[0] ?? null;
+}
+
+async function importModule(
+  filePath: string,
+): Promise<Record<string, unknown>> {
+  const moduleExports: unknown = await import(pathToFileURL(filePath).href);
+  if (!isRecord(moduleExports)) {
+    throw new Error(`Expected module exports object: ${filePath}`);
+  }
+  return moduleExports;
+}
+
+function propertyNameText(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+    return name.text;
+  }
+  return null;
+}
+
+function unwrapObjectLiteral(
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression | null {
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression;
+  }
+  if (
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression) ||
+    ts.isParenthesizedExpression(expression)
+  ) {
+    return unwrapObjectLiteral(expression.expression);
+  }
+  return null;
+}
+
+function findObjectProperty(
+  object: ts.ObjectLiteralExpression,
+  propertyName: string,
+): ts.Expression | null {
+  let result: ts.Expression | null = null;
+  for (const property of object.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    if (propertyNameText(property.name) !== propertyName) {
+      continue;
+    }
+    if (result) {
+      throw new Error(`Duplicate object property in firewall metadata source`);
+    }
+    result = property.initializer;
+  }
+  return result;
+}
+
+function stringLiteralText(expression: ts.Expression): string | null {
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return expression.text;
+  }
+  return null;
+}
+
+function loadConnectorLabel(
+  connectorsDir: string,
+  type: FirewallConnectorType,
+): string {
+  const connectorFile = path.join(connectorsDir, `${type}.ts`);
+  if (!fs.existsSync(connectorFile)) {
     throw new Error(
       `Firewall connector is missing connector metadata: ${type}`,
     );
   }
+
+  const source = fs.readFileSync(connectorFile, "utf-8");
+  const sourceFile = ts.createSourceFile(
+    connectorFile,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (!declaration.initializer) {
+        continue;
+      }
+      const connectorDefinitions = unwrapObjectLiteral(declaration.initializer);
+      if (!connectorDefinitions) {
+        continue;
+      }
+      const connector = findObjectProperty(connectorDefinitions, type);
+      const connectorObject = connector ? unwrapObjectLiteral(connector) : null;
+      if (!connectorObject) {
+        continue;
+      }
+      const label = findObjectProperty(connectorObject, "label");
+      if (!label) {
+        continue;
+      }
+      const labelText = stringLiteralText(label);
+      if (labelText !== null) {
+        return labelText;
+      }
+    }
+  }
+
+  throw new Error(`Firewall connector is missing connector metadata: ${type}`);
+}
+
+function buildDefaultPolicy(
+  firewall: FirewallConfig,
+  defaultAllowed: readonly string[] | null,
+  defaultUnknownPolicy: FirewallPolicyValue,
+): FirewallPolicy {
+  const allowSet = defaultAllowed ? new Set<string>(defaultAllowed) : null;
+  const policies: Record<string, FirewallPolicyValue> = {};
+  for (const api of firewall.apis) {
+    for (const permission of api.permissions ?? []) {
+      policies[permission.name] =
+        !allowSet || allowSet.has(permission.name) ? "allow" : "deny";
+    }
+  }
+  return { policies, unknownPolicy: defaultUnknownPolicy };
+}
+
+async function loadGeneratedFirewallSource(
+  firewallsDir: string,
+  connectorsDir: string,
+  type: FirewallConnectorType,
+): Promise<GeneratedFirewallSource> {
+  const moduleExports = await importModule(
+    path.join(firewallsDir, `${type}.generated.ts`),
+  );
+  const firewall = getRequiredGeneratedExport(
+    moduleExports,
+    type,
+    "Firewall",
+    isFirewallConfig,
+  );
+  const categories = getOptionalGeneratedExport(
+    moduleExports,
+    type,
+    "Categories",
+    isStringRecord,
+  );
+  const displayOrder = getOptionalGeneratedExport(
+    moduleExports,
+    type,
+    "CategoryOrder",
+    isStringArray,
+  );
+  if ((categories === null) !== (displayOrder === null)) {
+    throw new Error(
+      `Firewall metadata categories are incomplete for connector: ${type}`,
+    );
+  }
+
+  return {
+    type,
+    firewall,
+    label: loadConnectorLabel(connectorsDir, type),
+    categories:
+      categories && displayOrder ? { categories, displayOrder } : null,
+    defaultAllowed: getOptionalGeneratedExport(
+      moduleExports,
+      type,
+      "DefaultAllowed",
+      isStringArray,
+    ),
+    defaultUnknownPolicy:
+      getOptionalGeneratedExport(
+        moduleExports,
+        type,
+        "DefaultUnknownPolicy",
+        isPolicyValue,
+      ) ?? "allow",
+  };
+}
+
+function findConnectorFirewallsRegistry(
+  sourceFile: ts.SourceFile,
+): ts.ObjectLiteralExpression | null {
+  let registry: ts.ObjectLiteralExpression | null = null;
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "CONNECTOR_FIREWALLS" &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer)
+    ) {
+      const [firstArgument] = node.initializer.arguments;
+      if (firstArgument) {
+        registry = unwrapObjectLiteral(firstArgument);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return registry;
+}
+
+function extractRegisteredFirewallTypes(
+  firewallsIndexFile: string,
+): FirewallConnectorType[] {
+  const source = fs.readFileSync(firewallsIndexFile, "utf-8");
+  const sourceFile = ts.createSourceFile(
+    firewallsIndexFile,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const registry = findConnectorFirewallsRegistry(sourceFile);
+
+  if (!registry) {
+    throw new Error("Unable to find CONNECTOR_FIREWALLS registry");
+  }
+
+  return registry.properties.map((property) => {
+    if (!ts.isPropertyAssignment(property)) {
+      throw new Error("CONNECTOR_FIREWALLS must only contain property entries");
+    }
+    const name = propertyNameText(property.name);
+    if (!name) {
+      throw new Error("CONNECTOR_FIREWALLS contains an unsupported key");
+    }
+    return name as FirewallConnectorType;
+  });
 }
 
 function compareStrings(a: string, b: string): number {
@@ -156,27 +464,29 @@ function hasDefaultPolicyOverrides(
 }
 
 function buildDetailMetadata(
-  type: FirewallConnectorType,
-  firewall: FirewallConfig,
-  runtime: FirewallMetadataRuntime,
+  source: GeneratedFirewallSource,
 ): FirewallPermissionDetailMetadata {
-  assertConnectorType(type);
-  const permissions = collectPermissions(firewall);
-  const categoryData = runtime.getPermissionCategories(type);
+  const permissions = collectPermissions(source.firewall);
   const defaultPolicy = compactDefaultPolicy(
-    runtime.getDefaultFirewallPolicies(type),
+    buildDefaultPolicy(
+      source.firewall,
+      source.defaultAllowed,
+      source.defaultUnknownPolicy,
+    ),
   );
 
   return {
-    type,
-    label: CONNECTOR_TYPES[type].label,
+    type: source.type as FirewallConnectorType & ConnectorType,
+    label: source.label,
     permissionCount: permissions.length,
     permissions,
-    ...(categoryData
+    ...(source.categories
       ? {
           categories: {
-            categories: sortedRecord(Object.entries(categoryData.categories)),
-            displayOrder: [...categoryData.displayOrder],
+            categories: sortedRecord(
+              Object.entries(source.categories.categories),
+            ),
+            displayOrder: [...source.categories.displayOrder],
           },
         }
       : {}),
@@ -244,8 +554,16 @@ export async function loadGeneratedFirewallPermissionMetadata(
 
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
-  const runtime = await import("../../connectors/src/firewalls");
 
+  const firewallsDir = path.resolve(
+    import.meta.dirname,
+    "../../connectors/src/firewalls",
+  );
+  const connectorsDir = path.resolve(
+    import.meta.dirname,
+    "../../connectors/src/connectors",
+  );
+  const firewallsIndexFile = path.join(firewallsDir, "index.ts");
   const outputDir = path.resolve(
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
@@ -254,18 +572,20 @@ export async function generateFirewallMetadata(): Promise<void> {
   fs.rmSync(detailsDir, { recursive: true, force: true });
   fs.mkdirSync(detailsDir, { recursive: true });
 
-  const entries = Object.entries(runtime.getAllConnectorFirewalls()).sort(
-    ([a], [b]) => {
-      return compareStrings(a, b);
-    },
-  ) as [FirewallConnectorType, FirewallConfig][];
+  const sources = await Promise.all(
+    extractRegisteredFirewallTypes(firewallsIndexFile)
+      .sort(compareStrings)
+      .map((type) => {
+        return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
+      }),
+  );
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
 
-  for (const [type, firewall] of entries) {
-    const detail = buildDetailMetadata(type, firewall, runtime);
-    summaries[type] = buildSummaryMetadata(detail);
+  for (const source of sources) {
+    const detail = buildDetailMetadata(source);
+    summaries[source.type] = buildSummaryMetadata(detail);
     writeGeneratedFile(
-      path.join(detailsDir, `${type}.generated.ts`),
+      path.join(detailsDir, `${source.type}.generated.ts`),
       renderDetailFile(detail),
     );
   }
@@ -277,11 +597,11 @@ export async function generateFirewallMetadata(): Promise<void> {
   writeGeneratedFile(
     path.join(outputDir, "loader.generated.ts"),
     renderLoaderFile(
-      entries.map(([type]) => {
-        return type;
+      sources.map((source) => {
+        return source.type;
       }),
     ),
   );
 
-  console.error(`  Written ${entries.length} metadata detail files`);
+  console.error(`  Written ${sources.length} metadata detail files`);
 }
