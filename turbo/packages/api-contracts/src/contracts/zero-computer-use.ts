@@ -49,6 +49,7 @@ export const computerUseCommandErrorCodeSchema = z.enum([
 ]);
 
 const hostNameSchema = z.string().trim().min(1).max(253);
+const hostInstallationIdSchema = z.string().trim().uuid();
 const hostVersionSchema = z.string().trim().min(1).max(64);
 const hostOsVersionSchema = z.string().trim().min(1).max(128);
 const hostIdPathParamsSchema = z.object({
@@ -71,6 +72,7 @@ const computerUsePermissionsSchema = z.object({
 });
 
 const computerUseRuntimeBodySchema = z.object({
+  installationId: hostInstallationIdSchema.optional(),
   hostName: hostNameSchema,
   appVersion: hostVersionSchema,
   osVersion: hostOsVersionSchema,

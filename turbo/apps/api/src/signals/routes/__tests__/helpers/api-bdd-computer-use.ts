@@ -48,6 +48,7 @@ interface RequiredAuthHeaders {
 type ComputerUseAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface ComputerUseHostStartOptions {
+  readonly installationId?: string;
   readonly hostName?: string;
   readonly supportedCapabilities?: readonly string[];
 }
@@ -118,6 +119,9 @@ function hostTokenHeaders(hostToken: string | null): AuthHeaders {
 
 function hostRuntimeBody(options: ComputerUseHostStartOptions = {}) {
   return {
+    ...(options.installationId
+      ? { installationId: options.installationId }
+      : {}),
     hostName: options.hostName ?? "Zero Desktop",
     appVersion: "0.1.0",
     osVersion: "macOS 15",

@@ -48,6 +48,7 @@ import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
@@ -355,8 +356,12 @@ async function startComputerUseRuntime(
   const desktopSession = session.fromPartition(config.sessionPartition);
   computerUseBlockedHostState = null;
   if (!computerUseRuntime) {
+    const installationId = readOrCreateComputerUseInstallationId(
+      desktopPreferencesPath(),
+    );
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
+      installationId,
       hostName: readSystemHostName(config.identity.displayName),
       appVersion: app.getVersion(),
       sessionFetch: createDesktopComputerUseSessionFetch({
