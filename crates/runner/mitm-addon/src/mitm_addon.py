@@ -666,14 +666,11 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
     return _RequestClassification(kind="allow", vm_info=vm_info)
 
 
-def _request_classification(flow: http.HTTPFlow, *, cache: bool = False) -> _RequestClassification:
+def _request_classification(flow: http.HTTPFlow) -> _RequestClassification:
     classification = flow.metadata.get(_REQUEST_CLASSIFICATION)
     if isinstance(classification, _RequestClassification):
         return classification
-    classification = _classify_request(flow)
-    if cache:
-        flow.metadata[_REQUEST_CLASSIFICATION] = classification
-    return classification
+    return _classify_request(flow)
 
 
 def _classification_needs_request_timing(classification: _RequestClassification) -> bool:
