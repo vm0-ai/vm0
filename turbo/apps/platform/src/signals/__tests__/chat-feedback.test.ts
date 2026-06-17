@@ -8,6 +8,7 @@ import {
   feedbackItemsValue$,
   feedbackThreadIdValue$,
 } from "../zero-page/chat-feedback.ts";
+import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import { testContext } from "./test-helpers.ts";
 
 // Render a minimal assistant bubble inside a thread container, matching the DOM
@@ -62,6 +63,44 @@ describe("inline feedback thread scoping", () => {
     expect(ctx.store.get(feedbackThreadIdValue$)).toBe("thread-b");
     expect(items).toHaveLength(1);
     expect(items[0]?.quote).toBe("Reply from thread B");
+  });
+
+  it("carries pending composer text into the first comment's note", () => {
+    // Text the user already typed before quoting must survive: the feedback
+    // rows replace the textarea, so it moves into the new comment's note.
+    const { draft } = ctx.store.set(ensureDraft$, "thread-a");
+    ctx.store.set(draft.setInput$, "please fix this");
+
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    ctx.store.set(startFeedback$);
+
+    const items = ctx.store.get(feedbackItemsValue$);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.note).toBe("please fix this");
+    // The text left the composer so it is not also re-sent as a draft.
+    expect(ctx.store.get(draft.input$)).toBe("");
+  });
+
+  it("only carries pending text into the first comment of a stack", () => {
+    const { draft } = ctx.store.set(ensureDraft$, "thread-a");
+    ctx.store.set(draft.setInput$, "please fix this");
+
+    const bubble = mountThreadBubble("thread-a", "First passage");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    ctx.store.set(startFeedback$);
+
+    const second = mountThreadBubble("thread-a", "Second passage");
+    selectContents(second);
+    ctx.store.set(captureFeedbackSelection$);
+    ctx.store.set(startFeedback$);
+
+    const items = ctx.store.get(feedbackItemsValue$);
+    expect(items).toHaveLength(2);
+    expect(items[0]?.note).toBe("please fix this");
+    expect(items[1]?.note).toBe("");
   });
 
   it("clears the owning thread when feedback is dismissed", () => {
