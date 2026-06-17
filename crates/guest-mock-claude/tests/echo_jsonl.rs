@@ -220,16 +220,17 @@ fn wait_child(
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
     let pid = child.id();
+    let child_stderr = child.stderr.take();
+    let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
+        let mut stderr = String::new();
+        if let Some(mut child_stderr) = child_stderr {
+            child_stderr.read_to_string(&mut stderr)?;
+        }
+        Ok(stderr)
+    });
     let (tx, rx) = mpsc::channel();
     let wait_thread = std::thread::spawn(move || {
-        let result = (|| -> Result<(ExitStatus, String), std::io::Error> {
-            let status = child.wait()?;
-            let mut stderr = String::new();
-            if let Some(mut child_stderr) = child.stderr.take() {
-                child_stderr.read_to_string(&mut stderr)?;
-            }
-            Ok((status, stderr))
-        })();
+        let result = child.wait();
         let _ = tx.send(result);
     });
 
@@ -259,7 +260,10 @@ fn wait_child(
     stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
-    Ok(child_result?)
+    let stderr = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+    Ok((child_result?, stderr))
 }
 
 #[test]
@@ -580,6 +584,31 @@ fn active_input_stream_rejects_early_eof() -> Result<(), Box<dyn std::error::Err
     assert!(
         stderr.contains("active-input stdin closed after 0 of 2 follow-up user messages"),
         "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn active_input_invalid_large_count_drains_stderr() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+    let invalid_count = "x".repeat(128 * 1024);
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid(
+            &format!("@active-input-smoke:{invalid_count}"),
+            "active-initial",
+        )
+        .as_bytes(),
+    )?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("invalid @active-input-smoke follow-up count"),
+        "unexpected stderr prefix: {}",
+        stderr.chars().take(120).collect::<String>()
     );
     Ok(())
 }
