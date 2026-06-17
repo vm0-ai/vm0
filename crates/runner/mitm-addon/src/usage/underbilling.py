@@ -38,13 +38,23 @@ def _render_stderr_field_key(key: str) -> str:
 
 
 def _single_token_stderr_value(value: str) -> str:
-    return (
-        value.replace("\\", "\\\\")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-        .replace(" ", "\\s")
-    )
+    rendered: list[str] = []
+    for ch in value:
+        if ch == "\\":
+            rendered.append("\\\\")
+        elif ch == "\n":
+            rendered.append("\\n")
+        elif ch == "\r":
+            rendered.append("\\r")
+        elif ch == "\t":
+            rendered.append("\\t")
+        elif ch.isspace():
+            rendered.append("\\s")
+        elif not ch.isprintable():
+            rendered.append(f"\\u{ord(ch):04x}")
+        else:
+            rendered.append(ch)
+    return "".join(rendered)
 
 
 def _truncate_stderr_value(value: str) -> str:

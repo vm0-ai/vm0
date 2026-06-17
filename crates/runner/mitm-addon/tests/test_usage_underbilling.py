@@ -161,3 +161,22 @@ def test_underbilling_stderr_fallback_sanitizes_field_keys(mitm_ctx):
     message = log.error.call_args.args[0]
     assert "bad_key_name=value\\swith\\sspaces" in message
     assert "bad key" not in message
+
+
+def test_underbilling_stderr_fallback_escapes_nonstandard_whitespace_and_controls(
+    mitm_ctx,
+):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Usage underbilling signal",
+            "expected_reason",
+            "risk",
+            parse_error="left\u00a0middle\f\x1b[31mright",
+        )
+
+    message = log.error.call_args.args[0]
+    assert "parse_error=left\\smiddle\\s\\u001b[31mright" in message
+    assert "\u00a0" not in message
+    assert "\f" not in message
+    assert "\x1b" not in message
