@@ -576,6 +576,38 @@ async fn restore_session_redaction_does_not_rewrite_markers() {
 }
 
 #[tokio::test]
+async fn restore_session_redaction_preserves_words_for_short_ids() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "a";
+    let session_path = "/home/user/.claude/projects/-home-user-workspace/a.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
+        "short session id redaction should preserve surrounding words: {message}"
+    );
+    assert!(
+        !message.contains("f[redacted-session-id]iled"),
+        "short session id redaction must not rewrite ordinary words: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();

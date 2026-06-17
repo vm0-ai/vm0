@@ -9,6 +9,12 @@ use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
+const SESSION_PATH_SENTINEL: &str = "\u{0}\u{1}";
+const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
+const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
+const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
+const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
+
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -325,18 +331,42 @@ fn redact_session_restore_diagnostic(
     session_id: &str,
     session_path: &str,
 ) -> String {
-    const SESSION_PATH_SENTINEL: &str = "\u{0}\u{1}";
-    const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
-    const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
-    const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
-
     let mut redacted = message.replace(session_path, SESSION_PATH_SENTINEL);
     for sensitive in session_redaction_variants(session_id) {
-        redacted = redacted.replace(&sensitive, SESSION_ID_SENTINEL);
+        redacted = redact_session_id_variant(redacted, &sensitive);
     }
     redacted
         .replace(SESSION_PATH_SENTINEL, REDACTED_SESSION_PATH)
         .replace(SESSION_ID_SENTINEL, REDACTED_SESSION_ID)
+}
+
+fn redact_session_id_variant(message: String, sensitive: &str) -> String {
+    if sensitive.len() >= SUBSTRING_SESSION_ID_REDACTION_MIN_LEN {
+        return message.replace(sensitive, SESSION_ID_SENTINEL);
+    }
+
+    let mut redacted = String::with_capacity(message.len());
+    let mut last = 0;
+    for (start, _) in message.match_indices(sensitive) {
+        let end = start + sensitive.len();
+        let previous = message[..start].chars().next_back();
+        let next = message[end..].chars().next();
+        if is_session_token_boundary(previous) && is_session_token_boundary(next) {
+            redacted.push_str(&message[last..start]);
+            redacted.push_str(SESSION_ID_SENTINEL);
+            last = end;
+        }
+    }
+    if last == 0 {
+        message
+    } else {
+        redacted.push_str(&message[last..]);
+        redacted
+    }
+}
+
+fn is_session_token_boundary(ch: Option<char>) -> bool {
+    !ch.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn session_redaction_variants(session_id: &str) -> Vec<String> {
