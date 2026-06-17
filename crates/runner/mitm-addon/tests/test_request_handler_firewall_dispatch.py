@@ -1039,10 +1039,10 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
-async def test_browser_firewall_match_skips_auth_injection(
+async def test_browser_passthrough_skips_firewall_auth_injection(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UAs pass through without entering the credential flow."""
+    """Browser-looking UAs use the short-term passthrough heuristic."""
     pending_path = tmp_path / "usage-pending"
     usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
     reg_path = _write_registry(
@@ -1163,10 +1163,10 @@ async def test_non_browser_firewall_match_still_injects_auth(
     assert flow.metadata["firewall_name"] == "stripe"
 
 
-async def test_browser_firewall_match_bypasses_denied_unknown_policy(
+async def test_browser_passthrough_skips_denied_unknown_policy_match(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UAs skip the firewall matcher for unknown endpoints."""
+    """Browser passthrough intentionally skips unknown-policy firewall matching."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -1214,10 +1214,10 @@ async def test_browser_firewall_match_bypasses_denied_unknown_policy(
     assert "firewall_name" not in flow.metadata
 
 
-async def test_browser_firewall_match_bypasses_explicit_denied_permission(
+async def test_browser_passthrough_skips_denied_permission_match(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UAs pass through even when a matched permission is denied."""
+    """Browser passthrough intentionally skips denied-permission matching."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -1366,10 +1366,10 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["reason"] == "unsafe_path"
 
 
-async def test_browser_firewall_unsafe_path_bypasses_firewall_match(
+async def test_browser_passthrough_skips_unsafe_path_firewall_match(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UAs skip firewall matching, including unsafe-path blocks."""
+    """Browser passthrough intentionally skips unsafe-path firewall matching."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
