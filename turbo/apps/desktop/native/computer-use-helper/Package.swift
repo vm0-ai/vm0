@@ -13,13 +13,19 @@ let package = Package(
             targets: ["ComputerUseHelper"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.6.0")
+    ],
     targets: [
         .target(
             name: "ComputerUseHelperCore"
         ),
         .executableTarget(
             name: "ComputerUseHelper",
-            dependencies: ["ComputerUseHelperCore"]
+            dependencies: [
+                "ComputerUseHelperCore",
+                .product(name: "Sentry", package: "sentry-cocoa"),
+            ]
         ),
         .testTarget(
             name: "ComputerUseHelperCoreTests",

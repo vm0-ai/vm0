@@ -3,6 +3,7 @@ import ApplicationServices
 import ComputerUseHelperCore
 import Darwin
 import Foundation
+import Sentry
 
 struct HelperFailure: Error {
     let code: String
@@ -28,6 +29,49 @@ struct ChildSource: Sendable {
 }
 
 let limits = SnapshotLimits()
+
+func nonEmptyEnvironmentValue(_ key: String) -> String? {
+    guard let value = ProcessInfo.processInfo.environment[key] else {
+        return nil
+    }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+func startSentry() {
+    guard let dsn = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_DSN")
+        ?? nonEmptyEnvironmentValue("SENTRY_DSN_DESKTOP")
+    else {
+        return
+    }
+
+    let releaseName = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_RELEASE")
+    let environment =
+        nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_ENVIRONMENT") ?? "production"
+
+    SentrySDK.start { options in
+        options.dsn = dsn
+        options.releaseName = releaseName
+        options.environment = environment
+        options.sendDefaultPii = false
+        options.tracesSampleRate = NSNumber(value: 0)
+        options.enableAutoPerformanceTracing = false
+        options.enableUncaughtNSExceptionReporting = true
+        options.initialScope = { scope in
+            scope.setTag(value: "desktop", key: "app")
+            scope.setTag(value: "computer-use-helper", key: "component")
+            return scope
+        }
+    }
+}
+
+func captureUnexpectedHelperError(_ error: Error, stage: String) {
+    SentrySDK.capture(error: error) { scope in
+        scope.setTag(value: "computer-use-helper", key: "component")
+        scope.setTag(value: stage, key: "helperStage")
+    }
+    SentrySDK.flush(timeout: 2)
+}
 
 let resolvableChildSources = [
     ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
@@ -4758,6 +4802,7 @@ func responseObject(for request: [String: Any], session: ComputerUseRuntimeSessi
             ],
         ]
     } catch {
+        captureUnexpectedHelperError(error, stage: "request")
         response = [
             "status": "failed",
             "error": [
@@ -4798,6 +4843,7 @@ func runOneShot() {
             ],
         ])
     } catch {
+        captureUnexpectedHelperError(error, stage: "oneshot")
         try? writeJSONObject([
             "status": "failed",
             "error": [
@@ -4832,6 +4878,7 @@ func runStdioSession() {
                     ],
                 ])
             } catch {
+                captureUnexpectedHelperError(error, stage: "stdio")
                 try? writeJSONObject([
                     "status": "failed",
                     "error": [
@@ -4848,6 +4895,8 @@ func runStdioSession() {
 }
 
 func run() {
+    startSentry()
+
     let arguments = Array(CommandLine.arguments.dropFirst())
     if arguments.contains("serve") || arguments.contains("--stdio") {
         runStdioSession()
