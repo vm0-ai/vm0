@@ -152,6 +152,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
             private_key="private-key-value",
             credential_value="credential-value",
             sandbox_token_bytes=b"bytes-token-value",
+            auth_header="short-auth-header-value",
+            authentication_header="authentication-header-value",
             idempotency_key="diagnostic-key",
             input_tokens="42",
             tokenizer_name="usage-tokenizer",
@@ -164,8 +166,12 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
                 "oauth_token": "oauth-token-value",
                 "APIToken": "upper-api-token-value",
                 "XApiKey": "prefixed-api-key-value",
+                "AWSACCESSKEYID": "upper-compact-access-key-value",
+                "github_accesstoken": "compact-access-token-value",
+                "openai_apikey": "compact-api-key-value",
                 "private.key": "dotted-private-key-value",
                 "privateKey": "camel-private-key-value",
+                "ssh_privatekey": "compact-private-key-value",
             },
         )
 
@@ -174,6 +180,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "access_key_id=[redacted]" in message
     assert "private_key=[redacted]" in message
     assert "credential_value=[redacted]" in message
+    assert "auth_header=[redacted]" in message
+    assert "authentication_header=[redacted]" in message
     assert "oauth_token=[redacted]" in message
     assert "sandbox_token_bytes=[redacted]" in message
     assert "api-key=[redacted]" in message
@@ -185,6 +193,10 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "privateKey=[redacted]" in message
     assert "APIToken=[redacted]" in message
     assert "XApiKey=[redacted]" in message
+    assert "AWSACCESSKEYID=[redacted]" in message
+    assert "github_accesstoken=[redacted]" in message
+    assert "openai_apikey=[redacted]" in message
+    assert "ssh_privatekey=[redacted]" in message
     assert "idempotency_key=diagnostic-key" in message
     assert "input_tokens=42" in message
     assert "tokenizer_name=usage-tokenizer" in message
@@ -194,15 +206,21 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "456789" not in message
     assert "private-key-value" not in message
     assert "credential-value" not in message
+    assert "short-auth-header-value" not in message
+    assert "authentication-header-value" not in message
     assert "oauth-token-value" not in message
     assert "upper-api-token-value" not in message
     assert "prefixed-api-key-value" not in message
+    assert "upper-compact-access-key-value" not in message
+    assert "compact-access-token-value" not in message
+    assert "compact-api-key-value" not in message
     assert "bytes-token-value" not in message
     assert "hyphen-api-key-value" not in message
     assert "spaced-api-key-value" not in message
     assert "camel-access-key-value" not in message
     assert "dotted-private-key-value" not in message
     assert "camel-private-key-value" not in message
+    assert "compact-private-key-value" not in message
 
 
 def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):

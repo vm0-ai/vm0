@@ -24,18 +24,25 @@ _SECRET_FIELD_WORDS = frozenset(
         "secret",
     )
 )
-_SECRET_KEY_WORD_PAIRS = frozenset(
+_SECRET_FIELD_WORD_PAIRS = frozenset(
     (
         ("access", "key"),
         ("api", "key"),
+        ("auth", "header"),
+        ("authentication", "header"),
         ("private", "key"),
     )
 )
-_SECRET_TOKEN_KEYS = frozenset(
+_SECRET_COMPACT_TOKEN_KEYS = frozenset(
     (
         "accesstoken",
         "refreshtoken",
         "sandboxtoken",
+    )
+)
+_SECRET_TOKEN_KEYS = frozenset(
+    (
+        *_SECRET_COMPACT_TOKEN_KEYS,
         "token",
     )
 )
@@ -78,15 +85,18 @@ def _stderr_field_is_secret_like(key: str, value: object) -> bool:
         return False
     words = _stderr_field_key_words(key)
     normalized_key = "".join(words)
-    if any(pair[0] in words and pair[1] in words for pair in _SECRET_KEY_WORD_PAIRS):
+    if any(pair[0] in words and pair[1] in words for pair in _SECRET_FIELD_WORD_PAIRS):
         return True
     if any(word in _SECRET_FIELD_WORDS for word in words):
         return True
-    if normalized_key in _SECRET_COMPACT_KEYS:
+    if any(word in _SECRET_COMPACT_KEYS for word in words):
         return True
     if "token" in words:
         return True
-    if normalized_key in _SECRET_TOKEN_KEYS:
+    if any(word in _SECRET_TOKEN_KEYS for word in words):
+        return True
+    compact_secret_markers = _SECRET_COMPACT_KEYS | _SECRET_COMPACT_TOKEN_KEYS
+    if any(marker in normalized_key for marker in compact_secret_markers):
         return True
     return any(marker in normalized_key for marker in _SECRET_FIELD_MARKERS)
 
