@@ -166,6 +166,28 @@ def test_capture_enabled_body_over_stream_limit_installs_request_stream(
     assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
 
 
+async def test_request_releases_cached_classification_after_stream_setup(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        await mitm_addon.request(flow)
+
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+
+
 def test_capture_enabled_chunked_body_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, headers
 ):
@@ -313,3 +335,4 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
     _assert_no_request_stream(flow)
     assert flow.live is False
     assert flow.error is not None
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata

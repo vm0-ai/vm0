@@ -1303,6 +1303,7 @@ def requestheaders(flow: http.HTTPFlow) -> None:
                 firewall_base=firewall_base,
                 reason=body_check.reason,
             )
+        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
         return
@@ -1362,14 +1363,15 @@ async def request(flow: http.HTTPFlow) -> None:
     3. Firewall match (inject auth headers for allowed requests)
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
+        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
-    classification = _request_classification(flow)
-
-    if _classification_needs_request_timing(classification):
-        _start_request_timing(flow)
-
     try:
+        classification = _request_classification(flow)
+
+        if _classification_needs_request_timing(classification):
+            _start_request_timing(flow)
+
         if classification.kind == "no_client_ip":
             ctx.log.warn("No client IP available, passing through")
             return
@@ -1442,9 +1444,10 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
-        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         _release_tracked_usage_flow(flow)
         raise
+    finally:
+        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
 
 
 def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
