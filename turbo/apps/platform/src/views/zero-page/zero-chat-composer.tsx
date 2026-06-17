@@ -2421,7 +2421,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+                "rounded-lg p-[5px] transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-1.5",
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -2438,7 +2438,7 @@ function TemplatePickerButton({
                 src={templatePickerIcon}
                 alt=""
                 role="presentation"
-                className="h-[18px] w-[18px] object-contain"
+                className="h-[24px] w-[24px] object-contain"
               />
             </button>
           </TooltipTrigger>
