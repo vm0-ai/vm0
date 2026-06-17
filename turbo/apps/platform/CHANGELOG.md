@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.462.0](https://github.com/vm0-ai/vm0/compare/app-v0.461.0...app-v0.462.0) (2026-06-17)
+
+
+### Features
+
+* narrow usage record click target to title text ([#17839](https://github.com/vm0-ai/vm0/issues/17839)) ([21c5590](https://github.com/vm0-ai/vm0/commit/21c5590d420689c729ca38adfe50db332aa965ed))
+
+
+### Bug Fixes
+
+* keep presentation thumbnail title from covering preview content ([#17877](https://github.com/vm0-ai/vm0/issues/17877)) ([181d49b](https://github.com/vm0-ai/vm0/commit/181d49b0e9ea545c26049d0597ddaac768a62b7f))
+* keep typed composer text when quoting into inline feedback ([#17935](https://github.com/vm0-ai/vm0/issues/17935)) ([e3f7c79](https://github.com/vm0-ai/vm0/commit/e3f7c79169e178618372dc49564f8591a93dbcff))
+* preserve native lightbox media actions ([#17894](https://github.com/vm0-ai/vm0/issues/17894)) ([1499ffc](https://github.com/vm0-ai/vm0/commit/1499ffcaec12b285a7588f5056dd57c378fa8b59))
+* stabilize chat image preview frame ([#17898](https://github.com/vm0-ai/vm0/issues/17898)) ([b72233c](https://github.com/vm0-ai/vm0/commit/b72233c4bdb81d63cca3254dab2a1365961d2e6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.4
+    * @vm0/core bumped to 8.346.1
+
 ## [0.461.0](https://github.com/vm0-ai/vm0/compare/app-v0.460.1...app-v0.461.0) (2026-06-16)
 
 

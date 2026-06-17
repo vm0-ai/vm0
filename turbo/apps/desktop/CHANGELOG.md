@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.1...desktop-v0.14.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* bound desktop command log memory ([#17987](https://github.com/vm0-ai/vm0/issues/17987)) ([b1c416c](https://github.com/vm0-ai/vm0/commit/b1c416c4a4a90374eb541a01124ee036f7adcf57))
+* compact computer use app state output ([#17967](https://github.com/vm0-ai/vm0/issues/17967)) ([3cd4ef0](https://github.com/vm0-ai/vm0/commit/3cd4ef068f9ab958da78ed2847384d6ad4fb9465))
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.0...desktop-v0.14.1) (2026-06-15)
 
 
