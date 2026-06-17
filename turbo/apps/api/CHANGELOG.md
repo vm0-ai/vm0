@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.148.0](https://github.com/vm0-ai/vm0/compare/api-v1.147.3...api-v1.148.0) (2026-06-16)
+
+
+### Features
+
+* register playful editorial presentation template ([#17919](https://github.com/vm0-ai/vm0/issues/17919)) ([c967214](https://github.com/vm0-ai/vm0/commit/c967214afe7108fea84d31c64a846b54a6fefc45))
+
+
+### Bug Fixes
+
+* update hono for security advisories ([#17945](https://github.com/vm0-ai/vm0/issues/17945)) ([3889c43](https://github.com/vm0-ai/vm0/commit/3889c43b0dc589741da44f891777de665671bc04))
+* upgrade hono to patched release ([#17948](https://github.com/vm0-ai/vm0/issues/17948)) ([77f4146](https://github.com/vm0-ai/vm0/commit/77f4146334036b1dc80c1db523a1064e8980334b))
+
+
+### Refactoring
+
+* dispatch agentphone callbacks through ccstate ([#17940](https://github.com/vm0-ai/vm0/issues/17940)) ([630462b](https://github.com/vm0-ai/vm0/commit/630462ba5cfa195151f8551297c18a187a0178f8))
+* dispatch chat callbacks through ccstate ([#17942](https://github.com/vm0-ai/vm0/issues/17942)) ([719aa89](https://github.com/vm0-ai/vm0/commit/719aa89a8d51800681beb26bb420a6585b4e8da8))
+* dispatch telegram callbacks through ccstate ([#17937](https://github.com/vm0-ai/vm0/issues/17937)) ([8fa4a28](https://github.com/vm0-ai/vm0/commit/8fa4a28ec363eb6ada0a69d3a1c76ff920936751))
+* remove agent internal callback route ([#17944](https://github.com/vm0-ai/vm0/issues/17944)) ([1b01189](https://github.com/vm0-ai/vm0/commit/1b0118943e5a9eadb3934b330f97955e4124df4c))
+* remove agentphone internal callback route ([#17953](https://github.com/vm0-ai/vm0/issues/17953)) ([6448beb](https://github.com/vm0-ai/vm0/commit/6448beb15244e62f896bf439d8f4f7f93807bdb9))
+* remove chat internal callback route ([#17950](https://github.com/vm0-ai/vm0/issues/17950)) ([61fa5e2](https://github.com/vm0-ai/vm0/commit/61fa5e23a6068b81dcae82c7c0e2c138442f4bab))
+* remove cron trigger internal callback route ([#17961](https://github.com/vm0-ai/vm0/issues/17961)) ([0eba595](https://github.com/vm0-ai/vm0/commit/0eba595f87d511d2bda1299ae00a77d78da234a8))
+* remove github issues internal callback route ([#17959](https://github.com/vm0-ai/vm0/issues/17959)) ([b4288ff](https://github.com/vm0-ai/vm0/commit/b4288ffafae089f185ae713471ee6e56803c310c))
+* remove loop trigger internal callback route ([#17963](https://github.com/vm0-ai/vm0/issues/17963)) ([b429b07](https://github.com/vm0-ai/vm0/commit/b429b07fb2b31356c85637113634f340d0b5fede))
+* remove slack org internal callback route ([#17957](https://github.com/vm0-ai/vm0/issues/17957)) ([d1315cb](https://github.com/vm0-ai/vm0/commit/d1315cbf70aec4a2bca44bf8743ba184705fe29e))
+* remove telegram internal callback route ([#17955](https://github.com/vm0-ai/vm0/issues/17955)) ([a1f6690](https://github.com/vm0-ai/vm0/commit/a1f669078447c14ccf4c2291b2d6f5ddebf7a7cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/connectors bumped to 1.83.0
+    * @vm0/core bumped to 8.346.0
+    * @vm0/db bumped to 1.53.3
+
 ## [1.147.3](https://github.com/vm0-ai/vm0/compare/api-v1.147.2...api-v1.147.3) (2026-06-16)
 
 

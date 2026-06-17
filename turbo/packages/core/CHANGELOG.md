@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.346.0](https://github.com/vm0-ai/vm0/compare/core-v8.345.0...core-v8.346.0) (2026-06-16)
+
+
+### Features
+
+* register playful editorial presentation template ([#17919](https://github.com/vm0-ai/vm0/issues/17919)) ([c967214](https://github.com/vm0-ai/vm0/commit/c967214afe7108fea84d31c64a846b54a6fefc45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/connectors bumped to 1.83.0
+
 ## [8.345.0](https://github.com/vm0-ai/vm0/compare/core-v8.344.1...core-v8.345.0) (2026-06-16)
 
 
