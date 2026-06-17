@@ -1260,7 +1260,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.37.0"
+version = "0.37.1"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.119.1"
+version = "0.119.2"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.38"
+version = "0.37.39"
 dependencies = [
  "async-trait",
  "base64",

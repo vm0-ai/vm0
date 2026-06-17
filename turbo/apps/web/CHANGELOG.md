@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.430.0](https://github.com/vm0-ai/vm0/compare/web-v12.429.1...web-v12.430.0) (2026-06-17)
+
+
+### Features
+
+* pull presentation resources from private r2 archives ([#18036](https://github.com/vm0-ai/vm0/issues/18036)) ([542cbfe](https://github.com/vm0-ai/vm0/commit/542cbfe151f42c06bde02d8dcbf3c35d2bc7b41a))
+
+
+### Documentation
+
+* align model comparison pages ([#18088](https://github.com/vm0-ai/vm0/issues/18088)) ([e4dd2dc](https://github.com/vm0-ai/vm0/commit/e4dd2dcbbf5a5a11586afcfaeede31973a7b294b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.99.0
+    * @vm0/core bumped to 8.349.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.84.1
+
 ## [12.429.1](https://github.com/vm0-ai/vm0/compare/web-v12.429.0...web-v12.429.1) (2026-06-17)
 
 

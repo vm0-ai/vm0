@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.349.0](https://github.com/vm0-ai/vm0/compare/core-v8.348.1...core-v8.349.0) (2026-06-17)
+
+
+### Features
+
+* pull presentation resources from private r2 archives ([#18036](https://github.com/vm0-ai/vm0/issues/18036)) ([542cbfe](https://github.com/vm0-ai/vm0/commit/542cbfe151f42c06bde02d8dcbf3c35d2bc7b41a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.99.0
+    * @vm0/connectors bumped to 1.84.1
+
 ## [8.348.1](https://github.com/vm0-ai/vm0/compare/core-v8.348.0...core-v8.348.1) (2026-06-17)
 
 

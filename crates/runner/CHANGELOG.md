@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.119.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.1...runner-rs-v0.119.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** require complete compressed usage streams ([#18089](https://github.com/vm0-ai/vm0/issues/18089)) ([bfc30eb](https://github.com/vm0-ai/vm0/commit/bfc30ebdcbb54dc5174de84301a6c3969319d799))
+
 ## [0.119.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.0...runner-rs-v0.119.1) (2026-06-17)
 
 

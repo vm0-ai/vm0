@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.0...guest-agent-v0.37.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify codex model capacity failures ([#18086](https://github.com/vm0-ai/vm0/issues/18086)) ([3a91436](https://github.com/vm0-ai/vm0/commit/3a91436b86726dffb016ef246d7e8e423be1afb1))
+
 ## [0.37.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.7...guest-agent-v0.37.0) (2026-06-17)
 
 
