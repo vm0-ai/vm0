@@ -65,11 +65,11 @@ def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
     return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
 
 
-def _make_response_chunk_parser(
+def _make_response_decode_session(
     feed: _ResponseChunkParser,
     headers: http.Headers,
-) -> _ResponseChunkParser | None:
-    return body_decoding.create_stream_decode_feed(headers, feed)
+) -> body_decoding.StreamDecodeSession | None:
+    return body_decoding.create_stream_decode_session(headers, feed)
 
 
 def _make_model_sse_parse_error_logger(
@@ -116,40 +116,58 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
     if is_observable_model_provider:
-        if not body_decoding.can_stream_decode_usage(flow.response.headers):
-            return None
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
+                usage_protocol = "openai_responses_sse"
+                log_parse_error = _make_model_sse_parse_error_logger(
+                    flow,
+                    usage_protocol=usage_protocol,
+                )
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
-                    on_parse_error=_make_model_sse_parse_error_logger(
-                        flow,
-                        usage_protocol="openai_responses_sse",
-                    )
+                    on_parse_error=log_parse_error
                 )
             else:
-                parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
-                    on_parse_error=_make_model_sse_parse_error_logger(
-                        flow,
-                        usage_protocol="anthropic_messages_sse",
-                    )
+                usage_protocol = "anthropic_messages_sse"
+                log_parse_error = _make_model_sse_parse_error_logger(
+                    flow,
+                    usage_protocol=usage_protocol,
                 )
-            parser = _make_response_chunk_parser(parser_fn, flow.response.headers)
-            if parser is None:
+                parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
+                    on_parse_error=log_parse_error
+                )
+            decode_session = _make_response_decode_session(parser_fn, flow.response.headers)
+            if decode_session is None:
                 return None
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
-            flow.metadata[_MODEL_SSE_USAGE_FINISH] = parser_fn.finish
-            return parser
+
+            def finish_sse_usage() -> None:
+                decode_error = decode_session.finish_error()
+                if decode_error is not None:
+                    usage_dict.clear()
+                    log_parse_error("compressed_body", decode_error)
+                    return
+                parser_fn.finish()
+
+            flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
+            return decode_session.feed
 
         if uses_openai_responses_usage_protocol(flow):
             extractor = usage.create_openai_responses_json_usage_extractor()
         else:
             extractor = usage.create_anthropic_messages_json_usage_extractor()
-        parser = _make_response_chunk_parser(extractor.feed, flow.response.headers)
-        if parser is None:
+        decode_session = _make_response_decode_session(extractor.feed, flow.response.headers)
+        if decode_session is None:
             return None
-        flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
-        return parser
+
+        def finish_json_usage() -> tuple[dict | None, str | None]:
+            decode_error = decode_session.finish_error()
+            if decode_error is not None:
+                return None, decode_error
+            return extractor.finish()
+
+        flow.metadata[_MODEL_JSON_USAGE_FINISH] = finish_json_usage
+        return decode_session.feed
 
     if not is_billable_flow:
         return None
@@ -157,12 +175,22 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         return None
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
-        parser = _make_response_chunk_parser(connector_parser.feed, flow.response.headers)
-        if parser is None:
+        decode_session = _make_response_decode_session(connector_parser.feed, flow.response.headers)
+        if decode_session is None:
             return None
-        if connector_parser.finish is not None:
-            flow.metadata[_CONNECTOR_RESPONSE_FINISH] = connector_parser.finish
-        return parser
+        if connector_parser.finish is not None or connector_parser.finish_decode_error is not None:
+
+            def finish_connector_response() -> None:
+                decode_error = decode_session.finish_error()
+                if decode_error is not None:
+                    if connector_parser.finish_decode_error is not None:
+                        connector_parser.finish_decode_error(decode_error)
+                    return
+                if connector_parser.finish is not None:
+                    connector_parser.finish()
+
+            flow.metadata[_CONNECTOR_RESPONSE_FINISH] = finish_connector_response
+        return decode_session.feed
 
     return None
 
