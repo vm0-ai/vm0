@@ -44,4 +44,9 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: shouldUploadSentrySourceMaps,
   },
+  define: {
+    __DESKTOP_SENTRY_ENABLED__: JSON.stringify(
+      Boolean(process.env.SENTRY_DSN_DESKTOP),
+    ),
+  },
 });
