@@ -34,6 +34,11 @@ interface GeneratedFirewallSource {
   readonly defaultUnknownPolicy: FirewallPolicyValue;
 }
 
+interface GeneratedPathReplacement {
+  commit: () => void;
+  rollback: () => void;
+}
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null;
 }
@@ -403,42 +408,63 @@ function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
   return `./details/${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
 }
 
-function replaceGeneratedDetailsDir(
-  detailsDir: string,
-  nextDetailsDir: string,
-): void {
-  const parentDir = path.dirname(detailsDir);
-  const previousDetailsDir = path.join(
-    parentDir,
-    `.details-previous-${process.pid}-${Date.now()}`,
-  );
+function replaceGeneratedPath(
+  targetPath: string,
+  nextPath: string,
+): GeneratedPathReplacement {
+  const previousPath = fs.existsSync(targetPath)
+    ? path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath)}.previous-${process.pid}-${Date.now()}`,
+      )
+    : null;
   let previousMoved = false;
   let nextMoved = false;
 
   try {
-    if (fs.existsSync(detailsDir)) {
-      fs.renameSync(detailsDir, previousDetailsDir);
+    if (previousPath) {
+      fs.renameSync(targetPath, previousPath);
       previousMoved = true;
     }
-    fs.renameSync(nextDetailsDir, detailsDir);
+    fs.renameSync(nextPath, targetPath);
     nextMoved = true;
-    if (previousMoved) {
-      fs.rmSync(previousDetailsDir, { recursive: true, force: true });
-      previousMoved = false;
-    }
   } catch (error) {
-    if (previousMoved && !nextMoved && !fs.existsSync(detailsDir)) {
-      fs.renameSync(previousDetailsDir, detailsDir);
+    if (
+      previousPath &&
+      previousMoved &&
+      !nextMoved &&
+      !fs.existsSync(targetPath)
+    ) {
+      fs.renameSync(previousPath, targetPath);
       previousMoved = false;
     }
     throw error;
   } finally {
     if (!nextMoved) {
-      fs.rmSync(nextDetailsDir, { recursive: true, force: true });
+      fs.rmSync(nextPath, { recursive: true, force: true });
     }
-    if (previousMoved && fs.existsSync(detailsDir)) {
-      fs.rmSync(previousDetailsDir, { recursive: true, force: true });
-    }
+  }
+
+  return {
+    commit: () => {
+      if (previousPath) {
+        fs.rmSync(previousPath, { recursive: true, force: true });
+      }
+    },
+    rollback: () => {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+      if (previousPath && fs.existsSync(previousPath)) {
+        fs.renameSync(previousPath, targetPath);
+      }
+    },
+  };
+}
+
+function rollbackGeneratedReplacements(
+  replacements: readonly GeneratedPathReplacement[],
+): void {
+  for (const replacement of [...replacements].reverse()) {
+    replacement.rollback();
   }
 }
 
@@ -638,6 +664,8 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
   );
+  const summaryFile = path.join(outputDir, "summary.generated.ts");
+  const loaderFile = path.join(outputDir, "loader.generated.ts");
   const detailsDir = path.join(outputDir, "details");
 
   const sources = await Promise.all(
@@ -662,7 +690,8 @@ export async function generateFirewallMetadata(): Promise<void> {
     });
   }
 
-  const nextDetailsDir = fs.mkdtempSync(path.join(outputDir, ".details-"));
+  const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
+  const nextDetailsDir = path.join(nextOutputDir, "details");
 
   for (const detail of details) {
     writeGeneratedFile(
@@ -670,20 +699,44 @@ export async function generateFirewallMetadata(): Promise<void> {
       detail.content,
     );
   }
-  replaceGeneratedDetailsDir(detailsDir, nextDetailsDir);
-
   writeGeneratedFile(
-    path.join(outputDir, "summary.generated.ts"),
+    path.join(nextOutputDir, "summary.generated.ts"),
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
-    path.join(outputDir, "loader.generated.ts"),
+    path.join(nextOutputDir, "loader.generated.ts"),
     renderLoaderFile(
       sources.map((source) => {
         return source.type;
       }),
     ),
   );
+
+  const replacements: GeneratedPathReplacement[] = [];
+  try {
+    replacements.push(replaceGeneratedPath(detailsDir, nextDetailsDir));
+    replacements.push(
+      replaceGeneratedPath(
+        summaryFile,
+        path.join(nextOutputDir, "summary.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        loaderFile,
+        path.join(nextOutputDir, "loader.generated.ts"),
+      ),
+    );
+  } catch (error) {
+    rollbackGeneratedReplacements(replacements);
+    throw error;
+  } finally {
+    fs.rmSync(nextOutputDir, { recursive: true, force: true });
+  }
+
+  for (const replacement of replacements) {
+    replacement.commit();
+  }
 
   console.error(`  Written ${sources.length} metadata detail files`);
 }
