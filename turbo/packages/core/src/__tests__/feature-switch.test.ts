@@ -39,7 +39,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.SkillsViewer, {
+      isFeatureEnabled(FeatureSwitchKey.WorkflowsViewer, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -67,7 +67,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.SkillsViewer, {
+      isFeatureEnabled(FeatureSwitchKey.WorkflowsViewer, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -134,7 +134,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatAutomationSidebar]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadDoubleClickRename]).toBe(
@@ -147,7 +147,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatAutomationSidebar]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadDoubleClickRename]).toBe(

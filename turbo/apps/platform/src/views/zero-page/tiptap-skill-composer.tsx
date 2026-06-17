@@ -18,7 +18,7 @@ import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
-import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
+import { orgWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   slashSkillCaretIndex$,
   setSlashSkillCaretIndex$,
@@ -486,7 +486,7 @@ export function TiptapSkillComposer({
   const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const features = useLastResolved(featureSwitch$);
-  const orgSkillsLoadable = useLastLoadable(orgSkills$);
+  const orgSkillsLoadable = useLastLoadable(orgWorkflows$);
   const orgSkillsData =
     orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
   const composerSkills = buildComposerSlashSkills({
@@ -504,7 +504,8 @@ export function TiptapSkillComposer({
       })
     : [];
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
-  const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
+  const showSkillsPageLink =
+    features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
   const showSlashSkillMenu =
     slashRange !== null &&
     (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
