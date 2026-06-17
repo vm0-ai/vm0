@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-api-token":"${{ secrets.PIPEDRIVE_TOKEN }}"}},"base":"https://api.pipedrive.com","permissions":[]}],"name":"pipedrive"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-api-token": "${{ secrets.PIPEDRIVE_TOKEN }}"
+        }
+      },
+      "base": "https://api.pipedrive.com",
+      "permissions": []
+    }
+  ],
+  "name": "pipedrive"
+}"""

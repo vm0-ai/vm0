@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"}},"base":"https://mixpanel.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"}},"base":"https://data.mixpanel.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"}},"base":"https://api.mixpanel.com","permissions":[]}],"name":"mixpanel"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"
+        }
+      },
+      "base": "https://mixpanel.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"
+        }
+      },
+      "base": "https://data.mixpanel.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME, secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET) }}"
+        }
+      },
+      "base": "https://api.mixpanel.com",
+      "permissions": []
+    }
+  ],
+  "name": "mixpanel"
+}"""

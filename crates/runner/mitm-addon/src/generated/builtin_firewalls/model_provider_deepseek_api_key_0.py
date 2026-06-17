@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.DEEPSEEK_API_KEY }}"}},"base":"https://api.deepseek.com/anthropic/v1/messages","permissions":[]}],"name":"model-provider:deepseek-api-key"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.DEEPSEEK_API_KEY }}"
+        }
+      },
+      "base": "https://api.deepseek.com/anthropic/v1/messages",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:deepseek-api-key"
+}"""

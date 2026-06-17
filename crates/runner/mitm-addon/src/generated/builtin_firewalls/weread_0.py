@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.WEREAD_TOKEN }}"}},"base":"https://i.weread.qq.com","permissions":[]}],"name":"weread"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.WEREAD_TOKEN }}"
+        }
+      },
+      "base": "https://i.weread.qq.com",
+      "permissions": []
+    }
+  ],
+  "name": "weread"
+}"""

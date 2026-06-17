@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-api-key":"${{ secrets.METABASE_TOKEN }}"}},"base":"${{ vars.METABASE_BASE_URL }}","permissions":[]}],"name":"metabase"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-api-key": "${{ secrets.METABASE_TOKEN }}"
+        }
+      },
+      "base": "${{ vars.METABASE_BASE_URL }}",
+      "permissions": []
+    }
+  ],
+  "name": "metabase"
+}"""

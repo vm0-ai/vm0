@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.SLOCK_TOKEN }}","X-Server-Id":"${{ secrets.SLOCK_SERVER_ID }}"}},"base":"https://api.slock.ai","permissions":[]}],"name":"slock"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.SLOCK_TOKEN }}",
+          "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}"
+        }
+      },
+      "base": "https://api.slock.ai",
+      "permissions": []
+    }
+  ],
+  "name": "slock"
+}"""

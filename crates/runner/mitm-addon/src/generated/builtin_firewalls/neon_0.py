@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.NEON_TOKEN }}"}},"base":"https://console.neon.tech/api","permissions":[]}],"name":"neon"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.NEON_TOKEN }}"
+        }
+      },
+      "base": "https://console.neon.tech/api",
+      "permissions": []
+    }
+  ],
+  "name": "neon"
+}"""

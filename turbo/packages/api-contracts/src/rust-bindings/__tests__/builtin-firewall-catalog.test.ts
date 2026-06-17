@@ -8,6 +8,8 @@ import {
   renderPythonBuiltinFirewallCatalogFiles,
 } from "../builtin-firewall-catalog";
 
+const MAX_GENERATED_PYTHON_LINE_LENGTH = 512;
+
 function testFirewall(name: string, rules: readonly string[] = []): Firewall {
   return {
     name,
@@ -55,14 +57,12 @@ function findGeneratedFile(
 
 function jsonPartFromModule(file: PythonBuiltinFirewallCatalogFile): string {
   const prefix = "JSON_PART = ";
-  const line = file.content.split("\n").find((candidate) => {
-    return candidate.startsWith(prefix);
-  });
-  if (line === undefined) {
+  const start = file.content.indexOf(prefix);
+  if (start === -1) {
     throw new Error(`missing JSON_PART assignment in ${file.path}`);
   }
 
-  const literal = line.slice(prefix.length);
+  const literal = file.content.slice(start + prefix.length).trim();
   if (literal.startsWith('r"""') && literal.endsWith('"""')) {
     return literal.slice(4, -3);
   }
@@ -137,6 +137,11 @@ describe("builtin firewall catalog", () => {
     );
     for (const file of firstRender) {
       expect(file.content.length).toBeLessThan(250_000);
+      for (const line of file.content.split("\n")) {
+        expect(line.length).toBeLessThanOrEqual(
+          MAX_GENERATED_PYTHON_LINE_LENGTH,
+        );
+      }
     }
   });
 
@@ -203,14 +208,26 @@ describe("builtin firewall catalog", () => {
 
     expect(partFiles.length).toBeGreaterThan(1);
     expect(manifest).toContain('"chunky": (');
+    expect(
+      JSON.parse(partFiles.map(jsonPartFromModule).join("")),
+    ).toStrictEqual(
+      testFirewall("chunky", [
+        "GET /alpha-alpha-alpha-alpha-alpha",
+        "POST /beta-beta-beta-beta-beta",
+      ]),
+    );
     for (const file of partFiles) {
       expect(file.content).toContain("JSON_PART = ");
     }
   });
 
-  it("renders chunk literals that preserve quote and unicode boundaries", () => {
+  it("renders chunk literals that preserve quote, backslash, and unicode boundaries", () => {
     const emoji = "\u{1f600}";
-    const firewall = testFirewall("chunky", [`GET /emoji-${emoji}`]);
+    const firewall = testFirewall("chunky", [
+      `GET /emoji-${emoji}`,
+      'POST /quote-"""',
+      "PATCH /trailing-backslash\\",
+    ]);
     const files = renderPythonBuiltinFirewallCatalogFiles({
       catalog: testCatalog([firewall]),
       maxJsonChunkLength: 1,

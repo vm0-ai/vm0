@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-key":"${{ secrets.BFL_API_KEY }}"}},"base":"https://api.bfl.ai","permissions":[]},{"auth":{"headers":{"x-key":"${{ secrets.BFL_API_KEY }}"}},"base":"https://api.eu.bfl.ai","permissions":[]},{"auth":{"headers":{"x-key":"${{ secrets.BFL_API_KEY }}"}},"base":"https://api.us.bfl.ai","permissions":[]}],"name":"bfl"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-key": "${{ secrets.BFL_API_KEY }}"
+        }
+      },
+      "base": "https://api.bfl.ai",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "x-key": "${{ secrets.BFL_API_KEY }}"
+        }
+      },
+      "base": "https://api.eu.bfl.ai",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "x-key": "${{ secrets.BFL_API_KEY }}"
+        }
+      },
+      "base": "https://api.us.bfl.ai",
+      "permissions": []
+    }
+  ],
+  "name": "bfl"
+}"""

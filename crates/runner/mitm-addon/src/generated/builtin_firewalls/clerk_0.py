@@ -3,4 +3,564 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLERK_TOKEN }}"}},"base":"https://api.clerk.com","permissions":[{"name":"actor-tokens:write","rules":["POST /v1/actor_tokens","POST /v1/actor_tokens/{actor_token_id}/revoke"]},{"name":"admin-portal-link-tokens:write","rules":["POST /v1/admin_portal_link_tokens","POST /v1/admin_portal_link_tokens/{adminPortalLinkTokenID}/revoke"]},{"name":"agent-tasks:write","rules":["POST /v1/agents/tasks","POST /v1/agents/tasks/{agent_task_id}/revoke"]},{"name":"allow-list-block-list:read","rules":["GET /v1/allowlist_identifiers","GET /v1/blocklist_identifiers"]},{"name":"allow-list-block-list:write","rules":["POST /v1/allowlist_identifiers","DELETE /v1/allowlist_identifiers/{identifier_id}","POST /v1/blocklist_identifiers","DELETE /v1/blocklist_identifiers/{identifier_id}"]},{"name":"api-keys:read","rules":["GET /v1/api_keys","GET /v1/api_keys/{apiKeyID}","GET /v1/api_keys/{apiKeyID}/secret"]},{"name":"api-keys:write","rules":["POST /v1/api_keys","POST /v1/api_keys/verify","PATCH /v1/api_keys/{apiKeyID}","DELETE /v1/api_keys/{apiKeyID}","POST /v1/api_keys/{apiKeyID}/revoke"]},{"name":"beta-features:write","rules":["PUT /v1/beta_features/domain","PATCH /v1/beta_features/instance_settings","POST /v1/instance/change_domain"]},{"name":"billing:read","rules":["GET /v1/billing/plans","GET /v1/billing/prices","GET /v1/billing/statements","GET /v1/billing/statements/{statementID}","GET /v1/billing/statements/{statementID}/payment_attempts","GET /v1/billing/subscription_items","GET /v1/organizations/{organization_id}/billing/credits","GET /v1/organizations/{organization_id}/billing/subscription","GET /v1/users/{user_id}/billing/credits","GET /v1/users/{user_id}/billing/subscription"]},{"name":"billing:write","rules":["POST /v1/billing/prices","DELETE /v1/billing/subscription_items/{subscription_item_id}","POST /v1/billing/subscription_items/{subscription_item_id}/extend_free_trial","POST /v1/billing/subscription_items/{subscription_item_id}/price_transition","POST /v1/organizations/{organization_id}/billing/credits","POST /v1/users/{user_id}/billing/credits"]},{"name":"clients:read","rules":["GET /v1/clients","GET /v1/clients/{client_id}"]},{"name":"clients:write","rules":["POST /v1/clients/verify"]},{"name":"domains:read","rules":["GET /v1/domains"]},{"name":"domains:write","rules":["POST /v1/domains","PATCH /v1/domains/{domain_id}","DELETE /v1/domains/{domain_id}"]},{"name":"email-addresses:read","rules":["GET /v1/email_addresses/{email_address_id}"]},{"name":"email-addresses:write","rules":["POST /v1/email_addresses","PATCH /v1/email_addresses/{email_address_id}","DELETE /v1/email_addresses/{email_address_id}","POST /v1/email_addresses/{email_address_id}/attempt_verification","POST /v1/email_addresses/{email_address_id}/prepare_verification","PUT /v1/users/{user_id}/email_address"]},{"name":"email-and-sms-templates:read","rules":["GET /v1/templates/{template_type}","GET /v1/templates/{template_type}/{slug}"]},{"name":"email-and-sms-templates:write","rules":["PUT /v1/templates/{template_type}/{slug}","POST /v1/templates/{template_type}/{slug}/preview","POST /v1/templates/{template_type}/{slug}/revert","POST /v1/templates/{template_type}/{slug}/toggle_delivery"]},{"name":"enterprise-connections:read","rules":["GET /v1/enterprise_connections","GET /v1/enterprise_connections/{enterprise_connection_id}","GET /v1/enterprise_connections/{enterprise_connection_id}/test_runs"]},{"name":"enterprise-connections:write","rules":["POST /v1/enterprise_connections","PATCH /v1/enterprise_connections/{enterprise_connection_id}","DELETE /v1/enterprise_connections/{enterprise_connection_id}","POST /v1/enterprise_connections/{enterprise_connection_id}/test_runs"]},{"name":"instance-settings:read","rules":["GET /v1/instance","GET /v1/instance/communication","GET /v1/instance/oauth_application_settings","GET /v1/instance/organization_settings","GET /v1/instance/protect"]},{"name":"instance-settings:write","rules":["PATCH /v1/instance","PATCH /v1/instance/communication","PATCH /v1/instance/oauth_application_settings","PATCH /v1/instance/organization_settings","PATCH /v1/instance/protect","PATCH /v1/instance/restrictions"]},{"name":"invitations:read","rules":["GET /v1/invitations"]},{"name":"invitations:write","rules":["POST /v1/invitations","POST /v1/invitations/bulk","POST /v1/invitations/{invitation_id}/revoke"]},{"name":"jwks:read","rules":["GET /v1/jwks"]},{"name":"jwt-templates:read","rules":["GET /v1/jwt_templates","GET /v1/jwt_templates/{template_id}"]},{"name":"jwt-templates:write","rules":["POST /v1/jwt_templates","PATCH /v1/jwt_templates/{template_id}","DELETE /v1/jwt_templates/{template_id}"]},{"name":"m2m-tokens:read","rules":["GET /v1/m2m_tokens"]},{"name":"m2m-tokens:write","rules":["POST /v1/m2m_tokens","POST /v1/m2m_tokens/verify","POST /v1/m2m_tokens/{m2m_token_id}/revoke"]},{"name":"machines:read","rules":["GET /v1/machines","GET /v1/machines/{machine_id}","GET /v1/machines/{machine_id}/secret_key"]},{"name":"machines:write","rules":["POST /v1/machines","PATCH /v1/machines/{machine_id}","DELETE /v1/machines/{machine_id}","POST /v1/machines/{machine_id}/scopes","DELETE /v1/machines/{machine_id}/scopes/{other_machine_id}","POST /v1/machines/{machine_id}/secret_key/rotate"]},{"name":"miscellaneous:read","rules":["GET /v1/public/interstitial"]},{"name":"oauth-access-tokens:write","rules":["POST /v1/oauth_applications/access_tokens/verify"]},{"name":"oauth-applications:read","rules":["GET /v1/oauth_applications","GET /v1/oauth_applications/{oauth_application_id}"]},{"name":"oauth-applications:write","rules":["POST /v1/oauth_applications","PATCH /v1/oauth_applications/{oauth_application_id}","DELETE /v1/oauth_applications/{oauth_application_id}","PUT /v1/oauth_applications/{oauth_application_id}/logo","POST /v1/oauth_applications/{oauth_application_id}/rotate_secret"]},{"name":"organization-domains:read","rules":["GET /v1/organization_domains","GET /v1/organizations/{organization_id}/domains"]},{"name":"organization-domains:write","rules":["POST /v1/organizations/{organization_id}/domains","PATCH /v1/organizations/{organization_id}/domains/{domain_id}","DELETE /v1/organizations/{organization_id}/domains/{domain_id}","POST /v1/organizations/{organization_id}/domains/{domain_id}/verify_ownership"]},{"name":"organization-invitations:read","rules":["GET /v1/organization_invitations","GET /v1/organizations/{organization_id}/invitations","GET /v1/organizations/{organization_id}/invitations/pending","GET /v1/organizations/{organization_id}/invitations/{invitation_id}"]},{"name":"organization-invitations:write","rules":["POST /v1/organizations/{organization_id}/invitations","POST /v1/organizations/{organization_id}/invitations/bulk","POST /v1/organizations/{organization_id}/invitations/{invitation_id}/revoke"]},{"name":"organization-memberships:read","rules":["GET /v1/organization_memberships","GET /v1/organizations/{organization_id}/memberships"]},{"name":"organization-memberships:write","rules":["POST /v1/organizations/{organization_id}/memberships","PATCH /v1/organizations/{organization_id}/memberships/{user_id}","DELETE /v1/organizations/{organization_id}/memberships/{user_id}","PATCH /v1/organizations/{organization_id}/memberships/{user_id}/metadata"]},{"name":"organization-permissions:read","rules":["GET /v1/organization_permissions","GET /v1/organization_permissions/{permission_id}"]},{"name":"organization-permissions:write","rules":["POST /v1/organization_permissions","PATCH /v1/organization_permissions/{permission_id}","DELETE /v1/organization_permissions/{permission_id}"]},{"name":"organization-roles:read","rules":["GET /v1/organization_roles","GET /v1/organization_roles/{organization_role_id}"]},{"name":"organization-roles:write","rules":["POST /v1/organization_roles","PATCH /v1/organization_roles/{organization_role_id}","DELETE /v1/organization_roles/{organization_role_id}","POST /v1/organization_roles/{organization_role_id}/permissions/{permission_id}","DELETE /v1/organization_roles/{organization_role_id}/permissions/{permission_id}"]},{"name":"organizations:read","rules":["GET /v1/organizations","GET /v1/organizations/{organization_id}","GET /v1/organizations/{organization_id}/billing/credits","GET /v1/organizations/{organization_id}/billing/subscription"]},{"name":"organizations:write","rules":["POST /v1/organizations","PATCH /v1/organizations/{organization_id}","DELETE /v1/organizations/{organization_id}","POST /v1/organizations/{organization_id}/billing/credits","PUT /v1/organizations/{organization_id}/logo","DELETE /v1/organizations/{organization_id}/logo","PUT /v1/organizations/{organization_id}/metadata","PATCH /v1/organizations/{organization_id}/metadata"]},{"name":"phone-numbers:read","rules":["GET /v1/phone_numbers/{phone_number_id}"]},{"name":"phone-numbers:write","rules":["POST /v1/phone_numbers","PATCH /v1/phone_numbers/{phone_number_id}","DELETE /v1/phone_numbers/{phone_number_id}","POST /v1/phone_numbers/{phone_number_id}/attempt_verification","POST /v1/phone_numbers/{phone_number_id}/prepare_verification","PUT /v1/users/{user_id}/phone_number"]},{"name":"proxy-checks:write","rules":["POST /v1/proxy_checks"]},{"name":"redirect-urls:read","rules":["GET /v1/redirect_urls","GET /v1/redirect_urls/{id}"]},{"name":"redirect-urls:write","rules":["POST /v1/redirect_urls","DELETE /v1/redirect_urls/{id}"]},{"name":"role-sets:read","rules":["GET /v1/role_sets","GET /v1/role_sets/{role_set_key_or_id}"]},{"name":"role-sets:write","rules":["POST /v1/role_sets","PATCH /v1/role_sets/{role_set_key_or_id}","POST /v1/role_sets/{role_set_key_or_id}/replace","POST /v1/role_sets/{role_set_key_or_id}/roles","POST /v1/role_sets/{role_set_key_or_id}/roles/replace"]},{"name":"saml-connections:read","rules":["GET /v1/saml_connections","GET /v1/saml_connections/{saml_connection_id}"]},{"name":"saml-connections:write","rules":["POST /v1/saml_connections","PATCH /v1/saml_connections/{saml_connection_id}","DELETE /v1/saml_connections/{saml_connection_id}"]},{"name":"sessions:read","rules":["GET /v1/sessions","GET /v1/sessions/{session_id}"]},{"name":"sessions:write","rules":["POST /v1/sessions","POST /v1/sessions/{session_id}/refresh","POST /v1/sessions/{session_id}/revoke","POST /v1/sessions/{session_id}/tokens","POST /v1/sessions/{session_id}/tokens/{template_name}"]},{"name":"sign-in-tokens:write","rules":["POST /v1/sign_in_tokens","POST /v1/sign_in_tokens/{sign_in_token_id}/revoke"]},{"name":"sign-ups:read","rules":["GET /v1/sign_ups/{id}"]},{"name":"sign-ups:write","rules":["PATCH /v1/sign_ups/{id}"]},{"name":"testing-tokens:write","rules":["POST /v1/testing_tokens"]},{"name":"users:read","rules":["GET /v1/users","GET /v1/users/count","GET /v1/users/{user_id}","GET /v1/users/{user_id}/billing/credits","GET /v1/users/{user_id}/billing/subscription","GET /v1/users/{user_id}/oauth_access_tokens/{provider}","GET /v1/users/{user_id}/organization_invitations","GET /v1/users/{user_id}/organization_memberships"]},{"name":"users:write","rules":["POST /v1/users","POST /v1/users/ban","POST /v1/users/unban","PATCH /v1/users/{user_id}","DELETE /v1/users/{user_id}","DELETE /v1/users/{user_id}/backup_code","POST /v1/users/{user_id}/ban","POST /v1/users/{user_id}/billing/credits","DELETE /v1/users/{user_id}/external_accounts/{external_account_id}","POST /v1/users/{user_id}/lock","PUT /v1/users/{user_id}/metadata","PATCH /v1/users/{user_id}/metadata","DELETE /v1/users/{user_id}/mfa","DELETE /v1/users/{user_id}/passkeys/{passkey_identification_id}","POST /v1/users/{user_id}/password/set_compromised","POST /v1/users/{user_id}/password/unset_compromised","POST /v1/users/{user_id}/profile_image","DELETE /v1/users/{user_id}/profile_image","DELETE /v1/users/{user_id}/totp","POST /v1/users/{user_id}/unban","POST /v1/users/{user_id}/unlock","POST /v1/users/{user_id}/verify_password","POST /v1/users/{user_id}/verify_totp","DELETE /v1/users/{user_id}/web3_wallets/{web3_wallet_identification_id}"]},{"name":"waitlist-entries:read","rules":["GET /v1/waitlist_entries"]},{"name":"waitlist-entries:write","rules":["POST /v1/waitlist_entries","POST /v1/waitlist_entries/bulk","DELETE /v1/waitlist_entries/{waitlist_entry_id}","POST /v1/waitlist_entries/{waitlist_entry_id}/invite","POST /v1/waitlist_entries/{waitlist_entry_id}/reject"]},{"name":"webhooks:write","rules":["POST /v1/webhooks/svix","DELETE /v1/webhooks/svix","POST /v1/webhooks/svix_url"]}]}],"name":"clerk"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLERK_TOKEN }}"
+        }
+      },
+      "base": "https://api.clerk.com",
+      "permissions": [
+        {
+          "name": "actor-tokens:write",
+          "rules": [
+            "POST /v1/actor_tokens",
+            "POST /v1/actor_tokens/{actor_token_id}/revoke"
+          ]
+        },
+        {
+          "name": "agent-tasks:write",
+          "rules": [
+            "POST /v1/agents/tasks",
+            "POST /v1/agents/tasks/{agent_task_id}/revoke"
+          ]
+        },
+        {
+          "name": "allow-list-block-list:read",
+          "rules": [
+            "GET /v1/allowlist_identifiers",
+            "GET /v1/blocklist_identifiers"
+          ]
+        },
+        {
+          "name": "allow-list-block-list:write",
+          "rules": [
+            "POST /v1/allowlist_identifiers",
+            "DELETE /v1/allowlist_identifiers/{identifier_id}",
+            "POST /v1/blocklist_identifiers",
+            "DELETE /v1/blocklist_identifiers/{identifier_id}"
+          ]
+        },
+        {
+          "name": "api-keys:read",
+          "rules": [
+            "GET /v1/api_keys",
+            "GET /v1/api_keys/{apiKeyID}",
+            "GET /v1/api_keys/{apiKeyID}/secret"
+          ]
+        },
+        {
+          "name": "api-keys:write",
+          "rules": [
+            "POST /v1/api_keys",
+            "POST /v1/api_keys/verify",
+            "PATCH /v1/api_keys/{apiKeyID}",
+            "DELETE /v1/api_keys/{apiKeyID}",
+            "POST /v1/api_keys/{apiKeyID}/revoke"
+          ]
+        },
+        {
+          "name": "beta-features:write",
+          "rules": [
+            "PUT /v1/beta_features/domain",
+            "PATCH /v1/beta_features/instance_settings",
+            "POST /v1/instance/change_domain"
+          ]
+        },
+        {
+          "name": "billing:read",
+          "rules": [
+            "GET /v1/billing/plans",
+            "GET /v1/billing/prices",
+            "GET /v1/billing/statements",
+            "GET /v1/billing/statements/{statementID}",
+            "GET /v1/billing/statements/{statementID}/payment_attempts",
+            "GET /v1/billing/subscription_items",
+            "GET /v1/organizations/{organization_id}/billing/credits",
+            "GET /v1/organizations/{organization_id}/billing/subscription",
+            "GET /v1/users/{user_id}/billing/credits",
+            "GET /v1/users/{user_id}/billing/subscription"
+          ]
+        },
+        {
+          "name": "billing:write",
+          "rules": [
+            "POST /v1/billing/prices",
+            "DELETE /v1/billing/subscription_items/{subscription_item_id}",
+            "POST /v1/billing/subscription_items/{subscription_item_id}/extend_free_trial",
+            "POST /v1/billing/subscription_items/{subscription_item_id}/price_transition",
+            "POST /v1/organizations/{organization_id}/billing/credits",
+            "POST /v1/users/{user_id}/billing/credits"
+          ]
+        },
+        {
+          "name": "clients:read",
+          "rules": [
+            "GET /v1/clients",
+            "GET /v1/clients/{client_id}"
+          ]
+        },
+        {
+          "name": "clients:write",
+          "rules": [
+            "POST /v1/clients/verify"
+          ]
+        },
+        {
+          "name": "domains:read",
+          "rules": [
+            "GET /v1/domains"
+          ]
+        },
+        {
+          "name": "domains:write",
+          "rules": [
+            "POST /v1/domains",
+            "PATCH /v1/domains/{domain_id}",
+            "DELETE /v1/domains/{domain_id}"
+          ]
+        },
+        {
+          "name": "email-addresses:read",
+          "rules": [
+            "GET /v1/email_addresses/{email_address_id}"
+          ]
+        },
+        {
+          "name": "email-addresses:write",
+          "rules": [
+            "POST /v1/email_addresses",
+            "PATCH /v1/email_addresses/{email_address_id}",
+            "DELETE /v1/email_addresses/{email_address_id}"
+          ]
+        },
+        {
+          "name": "email-and-sms-templates:read",
+          "rules": [
+            "GET /v1/templates/{template_type}",
+            "GET /v1/templates/{template_type}/{slug}"
+          ]
+        },
+        {
+          "name": "email-and-sms-templates:write",
+          "rules": [
+            "PUT /v1/templates/{template_type}/{slug}",
+            "POST /v1/templates/{template_type}/{slug}/preview",
+            "POST /v1/templates/{template_type}/{slug}/revert",
+            "POST /v1/templates/{template_type}/{slug}/toggle_delivery"
+          ]
+        },
+        {
+          "name": "enterprise-connections:read",
+          "rules": [
+            "GET /v1/enterprise_connections",
+            "GET /v1/enterprise_connections/{enterprise_connection_id}"
+          ]
+        },
+        {
+          "name": "enterprise-connections:write",
+          "rules": [
+            "POST /v1/enterprise_connections",
+            "PATCH /v1/enterprise_connections/{enterprise_connection_id}",
+            "DELETE /v1/enterprise_connections/{enterprise_connection_id}"
+          ]
+        },
+        {
+          "name": "instance-settings:read",
+          "rules": [
+            "GET /v1/instance",
+            "GET /v1/instance/communication",
+            "GET /v1/instance/oauth_application_settings",
+            "GET /v1/instance/organization_settings",
+            "GET /v1/instance/protect"
+          ]
+        },
+        {
+          "name": "instance-settings:write",
+          "rules": [
+            "PATCH /v1/instance",
+            "PATCH /v1/instance/communication",
+            "PATCH /v1/instance/oauth_application_settings",
+            "PATCH /v1/instance/organization_settings",
+            "PATCH /v1/instance/protect",
+            "PATCH /v1/instance/restrictions"
+          ]
+        },
+        {
+          "name": "invitations:read",
+          "rules": [
+            "GET /v1/invitations"
+          ]
+        },
+        {
+          "name": "invitations:write",
+          "rules": [
+            "POST /v1/invitations",
+            "POST /v1/invitations/bulk",
+            "POST /v1/invitations/{invitation_id}/revoke"
+          ]
+        },
+        {
+          "name": "jwks:read",
+          "rules": [
+            "GET /v1/jwks"
+          ]
+        },
+        {
+          "name": "jwt-templates:read",
+          "rules": [
+            "GET /v1/jwt_templates",
+            "GET /v1/jwt_templates/{template_id}"
+          ]
+        },
+        {
+          "name": "jwt-templates:write",
+          "rules": [
+            "POST /v1/jwt_templates",
+            "PATCH /v1/jwt_templates/{template_id}",
+            "DELETE /v1/jwt_templates/{template_id}"
+          ]
+        },
+        {
+          "name": "m2m-tokens:read",
+          "rules": [
+            "GET /v1/m2m_tokens"
+          ]
+        },
+        {
+          "name": "m2m-tokens:write",
+          "rules": [
+            "POST /v1/m2m_tokens",
+            "POST /v1/m2m_tokens/verify",
+            "POST /v1/m2m_tokens/{m2m_token_id}/revoke"
+          ]
+        },
+        {
+          "name": "machines:read",
+          "rules": [
+            "GET /v1/machines",
+            "GET /v1/machines/{machine_id}",
+            "GET /v1/machines/{machine_id}/secret_key"
+          ]
+        },
+        {
+          "name": "machines:write",
+          "rules": [
+            "POST /v1/machines",
+            "PATCH /v1/machines/{machine_id}",
+            "DELETE /v1/machines/{machine_id}",
+            "POST /v1/machines/{machine_id}/scopes",
+            "DELETE /v1/machines/{machine_id}/scopes/{other_machine_id}",
+            "POST /v1/machines/{machine_id}/secret_key/rotate"
+          ]
+        },
+        {
+          "name": "miscellaneous:read",
+          "rules": [
+            "GET /v1/public/interstitial"
+          ]
+        },
+        {
+          "name": "oauth-access-tokens:write",
+          "rules": [
+            "POST /v1/oauth_applications/access_tokens/verify"
+          ]
+        },
+        {
+          "name": "oauth-applications:read",
+          "rules": [
+            "GET /v1/oauth_applications",
+            "GET /v1/oauth_applications/{oauth_application_id}"
+          ]
+        },
+        {
+          "name": "oauth-applications:write",
+          "rules": [
+            "POST /v1/oauth_applications",
+            "PATCH /v1/oauth_applications/{oauth_application_id}",
+            "DELETE /v1/oauth_applications/{oauth_application_id}",
+            "PUT /v1/oauth_applications/{oauth_application_id}/logo",
+            "POST /v1/oauth_applications/{oauth_application_id}/rotate_secret"
+          ]
+        },
+        {
+          "name": "organization-domains:read",
+          "rules": [
+            "GET /v1/organization_domains",
+            "GET /v1/organizations/{organization_id}/domains"
+          ]
+        },
+        {
+          "name": "organization-domains:write",
+          "rules": [
+            "POST /v1/organizations/{organization_id}/domains",
+            "PATCH /v1/organizations/{organization_id}/domains/{domain_id}",
+            "DELETE /v1/organizations/{organization_id}/domains/{domain_id}"
+          ]
+        },
+        {
+          "name": "organization-invitations:read",
+          "rules": [
+            "GET /v1/organization_invitations",
+            "GET /v1/organizations/{organization_id}/invitations",
+            "GET /v1/organizations/{organization_id}/invitations/pending",
+            "GET /v1/organizations/{organization_id}/invitations/{invitation_id}"
+          ]
+        },
+        {
+          "name": "organization-invitations:write",
+          "rules": [
+            "POST /v1/organizations/{organization_id}/invitations",
+            "POST /v1/organizations/{organization_id}/invitations/bulk",
+            "POST /v1/organizations/{organization_id}/invitations/{invitation_id}/revoke"
+          ]
+        },
+        {
+          "name": "organization-memberships:read",
+          "rules": [
+            "GET /v1/organization_memberships",
+            "GET /v1/organizations/{organization_id}/memberships"
+          ]
+        },
+        {
+          "name": "organization-memberships:write",
+          "rules": [
+            "POST /v1/organizations/{organization_id}/memberships",
+            "PATCH /v1/organizations/{organization_id}/memberships/{user_id}",
+            "DELETE /v1/organizations/{organization_id}/memberships/{user_id}",
+            "PATCH /v1/organizations/{organization_id}/memberships/{user_id}/metadata"
+          ]
+        },
+        {
+          "name": "organization-permissions:read",
+          "rules": [
+            "GET /v1/organization_permissions",
+            "GET /v1/organization_permissions/{permission_id}"
+          ]
+        },
+        {
+          "name": "organization-permissions:write",
+          "rules": [
+            "POST /v1/organization_permissions",
+            "PATCH /v1/organization_permissions/{permission_id}",
+            "DELETE /v1/organization_permissions/{permission_id}"
+          ]
+        },
+        {
+          "name": "organization-roles:read",
+          "rules": [
+            "GET /v1/organization_roles",
+            "GET /v1/organization_roles/{organization_role_id}"
+          ]
+        },
+        {
+          "name": "organization-roles:write",
+          "rules": [
+            "POST /v1/organization_roles",
+            "PATCH /v1/organization_roles/{organization_role_id}",
+            "DELETE /v1/organization_roles/{organization_role_id}",
+            "POST /v1/organization_roles/{organization_role_id}/permissions/{permission_id}",
+            "DELETE /v1/organization_roles/{organization_role_id}/permissions/{permission_id}"
+          ]
+        },
+        {
+          "name": "organizations:read",
+          "rules": [
+            "GET /v1/organizations",
+            "GET /v1/organizations/{organization_id}",
+            "GET /v1/organizations/{organization_id}/billing/credits",
+            "GET /v1/organizations/{organization_id}/billing/subscription"
+          ]
+        },
+        {
+          "name": "organizations:write",
+          "rules": [
+            "POST /v1/organizations",
+            "PATCH /v1/organizations/{organization_id}",
+            "DELETE /v1/organizations/{organization_id}",
+            "POST /v1/organizations/{organization_id}/billing/credits",
+            "PUT /v1/organizations/{organization_id}/logo",
+            "DELETE /v1/organizations/{organization_id}/logo",
+            "PATCH /v1/organizations/{organization_id}/metadata"
+          ]
+        },
+        {
+          "name": "phone-numbers:read",
+          "rules": [
+            "GET /v1/phone_numbers/{phone_number_id}"
+          ]
+        },
+        {
+          "name": "phone-numbers:write",
+          "rules": [
+            "POST /v1/phone_numbers",
+            "PATCH /v1/phone_numbers/{phone_number_id}",
+            "DELETE /v1/phone_numbers/{phone_number_id}"
+          ]
+        },
+        {
+          "name": "proxy-checks:write",
+          "rules": [
+            "POST /v1/proxy_checks"
+          ]
+        },
+        {
+          "name": "redirect-urls:read",
+          "rules": [
+            "GET /v1/redirect_urls",
+            "GET /v1/redirect_urls/{id}"
+          ]
+        },
+        {
+          "name": "redirect-urls:write",
+          "rules": [
+            "POST /v1/redirect_urls",
+            "DELETE /v1/redirect_urls/{id}"
+          ]
+        },
+        {
+          "name": "role-sets:read",
+          "rules": [
+            "GET /v1/role_sets",
+            "GET /v1/role_sets/{role_set_key_or_id}"
+          ]
+        },
+        {
+          "name": "role-sets:write",
+          "rules": [
+            "POST /v1/role_sets",
+            "PATCH /v1/role_sets/{role_set_key_or_id}",
+            "POST /v1/role_sets/{role_set_key_or_id}/replace",
+            "POST /v1/role_sets/{role_set_key_or_id}/roles",
+            "POST /v1/role_sets/{role_set_key_or_id}/roles/replace"
+          ]
+        },
+        {
+          "name": "saml-connections:read",
+          "rules": [
+            "GET /v1/saml_connections",
+            "GET /v1/saml_connections/{saml_connection_id}"
+          ]
+        },
+        {
+          "name": "saml-connections:write",
+          "rules": [
+            "POST /v1/saml_connections",
+            "PATCH /v1/saml_connections/{saml_connection_id}",
+            "DELETE /v1/saml_connections/{saml_connection_id}"
+          ]
+        },
+        {
+          "name": "sessions:read",
+          "rules": [
+            "GET /v1/sessions",
+            "GET /v1/sessions/{session_id}"
+          ]
+        },
+        {
+          "name": "sessions:write",
+          "rules": [
+            "POST /v1/sessions",
+            "POST /v1/sessions/{session_id}/refresh",
+            "POST /v1/sessions/{session_id}/revoke",
+            "POST /v1/sessions/{session_id}/tokens",
+            "POST /v1/sessions/{session_id}/tokens/{template_name}"
+          ]
+        },
+        {
+          "name": "sign-in-tokens:write",
+          "rules": [
+            "POST /v1/sign_in_tokens",
+            "POST /v1/sign_in_tokens/{sign_in_token_id}/revoke"
+          ]
+        },
+        {
+          "name": "sign-ups:read",
+          "rules": [
+            "GET /v1/sign_ups/{id}"
+          ]
+        },
+        {
+          "name": "sign-ups:write",
+          "rules": [
+            "PATCH /v1/sign_ups/{id}"
+          ]
+        },
+        {
+          "name": "testing-tokens:write",
+          "rules": [
+            "POST /v1/testing_tokens"
+          ]
+        },
+        {
+          "name": "users:read",
+          "rules": [
+            "GET /v1/users",
+            "GET /v1/users/count",
+            "GET /v1/users/{user_id}",
+            "GET /v1/users/{user_id}/billing/credits",
+            "GET /v1/users/{user_id}/billing/subscription",
+            "GET /v1/users/{user_id}/oauth_access_tokens/{provider}",
+            "GET /v1/users/{user_id}/organization_invitations",
+            "GET /v1/users/{user_id}/organization_memberships"
+          ]
+        },
+        {
+          "name": "users:write",
+          "rules": [
+            "POST /v1/users",
+            "POST /v1/users/ban",
+            "POST /v1/users/unban",
+            "PATCH /v1/users/{user_id}",
+            "DELETE /v1/users/{user_id}",
+            "DELETE /v1/users/{user_id}/backup_code",
+            "POST /v1/users/{user_id}/ban",
+            "POST /v1/users/{user_id}/billing/credits",
+            "DELETE /v1/users/{user_id}/external_accounts/{external_account_id}",
+            "POST /v1/users/{user_id}/lock",
+            "PATCH /v1/users/{user_id}/metadata",
+            "DELETE /v1/users/{user_id}/mfa",
+            "DELETE /v1/users/{user_id}/passkeys/{passkey_identification_id}",
+            "POST /v1/users/{user_id}/password/set_compromised",
+            "POST /v1/users/{user_id}/password/unset_compromised",
+            "POST /v1/users/{user_id}/profile_image",
+            "DELETE /v1/users/{user_id}/profile_image",
+            "DELETE /v1/users/{user_id}/totp",
+            "POST /v1/users/{user_id}/unban",
+            "POST /v1/users/{user_id}/unlock",
+            "POST /v1/users/{user_id}/verify_password",
+            "POST /v1/users/{user_id}/verify_totp",
+            "DELETE /v1/users/{user_id}/web3_wallets/{web3_wallet_identification_id}"
+          ]
+        },
+        {
+          "name": "waitlist-entries:read",
+          "rules": [
+            "GET /v1/waitlist_entries"
+          ]
+        },
+        {
+          "name": "waitlist-entries:write",
+          "rules": [
+            "POST /v1/waitlist_entries",
+            "POST /v1/waitlist_entries/bulk",
+            "DELETE /v1/waitlist_entries/{waitlist_entry_id}",
+            "POST /v1/waitlist_entries/{waitlist_entry_id}/invite",
+            "POST /v1/waitlist_entries/{waitlist_entry_id}/reject"
+          ]
+        },
+        {
+          "name": "webhooks:write",
+          "rules": [
+            "POST /v1/webhooks/svix",
+            "DELETE /v1/webhooks/svix",
+            "POST /v1/webhooks/svix_url"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "clerk"
+}"""

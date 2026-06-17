@@ -3,4 +3,42 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.TEST_OAUTH_TOKEN }}"}},"base":"https://${{ vars.TEST_OAUTH_TENANT_ID }}.{pr}.vm6.ai/api/test/oauth-provider","permissions":[{"description":"Test echo endpoint used to verify token injection","name":"echo","rules":["GET /echo"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.TEST_OAUTH_TOKEN }}"}},"base":"https://{pr}.vm6.ai/api/test/oauth-provider","permissions":[{"description":"Test echo endpoint used to verify token injection","name":"echo","rules":["GET /echo"]}]}],"name":"test-oauth"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}"
+        }
+      },
+      "base": "https://${{ vars.TEST_OAUTH_TENANT_ID }}.{pr}.vm6.ai/api/test/oauth-provider",
+      "permissions": [
+        {
+          "description": "Test echo endpoint used to verify token injection",
+          "name": "echo",
+          "rules": [
+            "GET /echo"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}"
+        }
+      },
+      "base": "https://{pr}.vm6.ai/api/test/oauth-provider",
+      "permissions": [
+        {
+          "description": "Test echo endpoint used to verify token injection",
+          "name": "echo",
+          "rules": [
+            "GET /echo"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "test-oauth"
+}"""

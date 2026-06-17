@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-goog-api-key":"${{ secrets.GEMINI_TOKEN }}"}},"base":"https://generativelanguage.googleapis.com","permissions":[]}],"name":"gemini"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-goog-api-key": "${{ secrets.GEMINI_TOKEN }}"
+        }
+      },
+      "base": "https://generativelanguage.googleapis.com",
+      "permissions": []
+    }
+  ],
+  "name": "gemini"
+}"""

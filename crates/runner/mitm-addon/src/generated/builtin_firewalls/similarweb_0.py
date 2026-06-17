@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"api-key":"${{ secrets.SIMILARWEB_TOKEN }}"}},"base":"https://api.similarweb.com","permissions":[]}],"name":"similarweb"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "api-key": "${{ secrets.SIMILARWEB_TOKEN }}"
+        }
+      },
+      "base": "https://api.similarweb.com",
+      "permissions": []
+    }
+  ],
+  "name": "similarweb"
+}"""

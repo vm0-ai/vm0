@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}"}},"base":"https://${{ vars.JIRA_DOMAIN }}","permissions":[]}],"name":"jira"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}"
+        }
+      },
+      "base": "https://${{ vars.JIRA_DOMAIN }}",
+      "permissions": []
+    }
+  ],
+  "name": "jira"
+}"""

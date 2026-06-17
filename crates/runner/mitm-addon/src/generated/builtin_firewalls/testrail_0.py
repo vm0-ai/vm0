@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.TESTRAIL_EMAIL, secrets.TESTRAIL_TOKEN) }}"}},"base":"https://${{ vars.TESTRAIL_INSTANCE }}.testrail.io","permissions":[]}],"name":"testrail"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TESTRAIL_EMAIL, secrets.TESTRAIL_TOKEN) }}"
+        }
+      },
+      "base": "https://${{ vars.TESTRAIL_INSTANCE }}.testrail.io",
+      "permissions": []
+    }
+  ],
+  "name": "testrail"
+}"""

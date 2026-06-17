@@ -3,4 +3,5703 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://cloudresourcemanager.googleapis.com","permissions":[{"name":"resourcemanager.capabilities.get","rules":["GET /v3/folders/{foldersId}/capabilities/{capabilitiesId}"]},{"name":"resourcemanager.capabilities.update","rules":["PATCH /v3/folders/{foldersId}/capabilities/{capabilitiesId}"]},{"name":"resourcemanager.folders.create","rules":["POST /v3/folders"]},{"name":"resourcemanager.folders.delete","rules":["DELETE /v3/folders/{foldersId}"]},{"name":"resourcemanager.folders.get","rules":["GET /v3/folders/{foldersId}","GET /v3/folders:search"]},{"name":"resourcemanager.folders.getIamPolicy","rules":["POST /v3/folders/{foldersId}:getIamPolicy"]},{"name":"resourcemanager.folders.list","rules":["GET /v3/folders"]},{"name":"resourcemanager.folders.move","rules":["POST /v3/folders/{foldersId}:move"]},{"name":"resourcemanager.folders.setIamPolicy","rules":["POST /v3/folders/{foldersId}:setIamPolicy"]},{"name":"resourcemanager.folders.undelete","rules":["POST /v3/folders/{foldersId}:undelete"]},{"name":"resourcemanager.folders.update","rules":["PATCH /v3/folders/{foldersId}"]},{"name":"resourcemanager.organizations.get","rules":["GET /v3/organizations/{organizationsId}","GET /v3/organizations:search"]},{"name":"resourcemanager.organizations.getIamPolicy","rules":["POST /v3/organizations/{organizationsId}:getIamPolicy"]},{"name":"resourcemanager.organizations.setIamPolicy","rules":["POST /v3/organizations/{organizationsId}:setIamPolicy"]},{"name":"resourcemanager.projects.create","rules":["POST /v3/projects"]},{"name":"resourcemanager.projects.delete","rules":["DELETE /v3/projects/{projectsId}"]},{"name":"resourcemanager.projects.get","rules":["GET /v3/liens","GET /v3/liens/{liensId}","GET /v3/projects/{projectsId}","GET /v3/projects:search"]},{"name":"resourcemanager.projects.getIamPolicy","rules":["POST /v3/projects/{projectsId}:getIamPolicy"]},{"name":"resourcemanager.projects.list","rules":["GET /v3/projects"]},{"name":"resourcemanager.projects.move","rules":["POST /v3/projects/{projectsId}:move"]},{"name":"resourcemanager.projects.setIamPolicy","rules":["POST /v3/projects/{projectsId}:setIamPolicy"]},{"name":"resourcemanager.projects.undelete","rules":["POST /v3/projects/{projectsId}:undelete"]},{"name":"resourcemanager.projects.update","rules":["PATCH /v3/projects/{projectsId}"]},{"name":"resourcemanager.projects.updateLiens","rules":["POST /v3/liens","DELETE /v3/liens/{liensId}"]},{"name":"resourcemanager.tagHolds.create","rules":["POST /v3/tagValues/{tagValuesId}/tagHolds"]},{"name":"resourcemanager.tagHolds.delete","rules":["DELETE /v3/tagValues/{tagValuesId}/tagHolds/{tagHoldsId}"]},{"name":"resourcemanager.tagHolds.list","rules":["GET /v3/tagValues/{tagValuesId}/tagHolds"]},{"name":"resourcemanager.tagKeys.create","rules":["POST /v3/tagKeys"]},{"name":"resourcemanager.tagKeys.delete","rules":["DELETE /v3/tagKeys/{tagKeysId}"]},{"name":"resourcemanager.tagKeys.get","rules":["GET /v3/tagKeys/{tagKeysId}"]},{"name":"resourcemanager.tagKeys.getIamPolicy","rules":["POST /v3/tagKeys/{tagKeysId}:getIamPolicy"]},{"name":"resourcemanager.tagKeys.list","rules":["GET /v3/tagKeys"]},{"name":"resourcemanager.tagKeys.setIamPolicy","rules":["POST /v3/tagKeys/{tagKeysId}:setIamPolicy"]},{"name":"resourcemanager.tagKeys.update","rules":["PATCH /v3/tagKeys/{tagKeysId}"]},{"name":"resourcemanager.tagValueBindings.create","rules":["POST /v3/tagBindings"]},{"name":"resourcemanager.tagValueBindings.delete","rules":["DELETE /v3/tagBindings/{tagBindingsId}"]},{"name":"resourcemanager.tagValues.create","rules":["POST /v3/tagValues"]},{"name":"resourcemanager.tagValues.delete","rules":["DELETE /v3/tagValues/{tagValuesId}"]},{"name":"resourcemanager.tagValues.get","rules":["GET /v3/tagValues/{tagValuesId}"]},{"name":"resourcemanager.tagValues.getIamPolicy","rules":["POST /v3/tagValues/{tagValuesId}:getIamPolicy"]},{"name":"resourcemanager.tagValues.list","rules":["GET /v3/tagValues"]},{"name":"resourcemanager.tagValues.setIamPolicy","rules":["POST /v3/tagValues/{tagValuesId}:setIamPolicy"]},{"name":"resourcemanager.tagValues.update","rules":["PATCH /v3/tagValues/{tagValuesId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://serviceusage.googleapis.com","permissions":[{"name":"serviceusage.operations.get","rules":["GET /v1/operations/{operationsId}"]},{"name":"serviceusage.services.disable","rules":["POST /v1/{v1Id}/{v1Id1}/services/{servicesId}:disable"]},{"name":"serviceusage.services.enable","rules":["POST /v1/{v1Id}/{v1Id1}/services/{servicesId}:enable","POST /v1/{v1Id}/{v1Id1}/services:batchEnable"]},{"name":"serviceusage.services.get","rules":["GET /v1/{v1Id}/{v1Id1}/services/{servicesId}","GET /v1/{v1Id}/{v1Id1}/services:batchGet"]},{"name":"serviceusage.services.list","rules":["GET /v1/{v1Id}/{v1Id1}/services"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://iam.googleapis.com","permissions":[{"name":"iam.operations.get","rules":["GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/operations/{operationsId}","GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/providers/{providersId}/keys/{keysId}/operations/{operationsId}","GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/providers/{providersId}/operations/{operationsId}","GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/subjects/{subjectsId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/managedIdentities/{managedIdentitiesId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/managedIdentities/{managedIdentitiesId}/workloadSources/{workloadSourcesId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/providers/{providersId}/keys/{keysId}/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/providers/{providersId}/operations/{operationsId}"]},{"name":"iam.roles.create","rules":["POST /v1/organizations/{organizationsId}/roles","POST /v1/projects/{projectsId}/roles"]},{"name":"iam.roles.delete","rules":["DELETE /v1/organizations/{organizationsId}/roles/{rolesId}","DELETE /v1/projects/{projectsId}/roles/{rolesId}"]},{"name":"iam.roles.get","rules":["GET /v1/organizations/{organizationsId}/roles/{rolesId}","GET /v1/projects/{projectsId}/roles/{rolesId}","GET /v1/roles/{rolesId}"]},{"name":"iam.roles.list","rules":["GET /v1/organizations/{organizationsId}/roles","GET /v1/projects/{projectsId}/roles","GET /v1/roles"]},{"name":"iam.roles.undelete","rules":["POST /v1/organizations/{organizationsId}/roles/{rolesId}:undelete","POST /v1/projects/{projectsId}/roles/{rolesId}:undelete"]},{"name":"iam.roles.update","rules":["PATCH /v1/organizations/{organizationsId}/roles/{rolesId}","PATCH /v1/projects/{projectsId}/roles/{rolesId}"]},{"name":"iam.serviceAccountKeys.create","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys","POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys:upload"]},{"name":"iam.serviceAccountKeys.delete","rules":["DELETE /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}"]},{"name":"iam.serviceAccountKeys.disable","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}:disable"]},{"name":"iam.serviceAccountKeys.enable","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}:enable"]},{"name":"iam.serviceAccountKeys.get","rules":["GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}"]},{"name":"iam.serviceAccountKeys.list","rules":["GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys"]},{"name":"iam.serviceAccounts.create","rules":["POST /v1/projects/{projectsId}/serviceAccounts"]},{"name":"iam.serviceAccounts.delete","rules":["DELETE /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"]},{"name":"iam.serviceAccounts.disable","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:disable"]},{"name":"iam.serviceAccounts.enable","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:enable"]},{"name":"iam.serviceAccounts.get","rules":["GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"]},{"name":"iam.serviceAccounts.getIamPolicy","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:getIamPolicy"]},{"name":"iam.serviceAccounts.list","rules":["GET /v1/projects/{projectsId}/serviceAccounts"]},{"name":"iam.serviceAccounts.setIamPolicy","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:setIamPolicy"]},{"name":"iam.serviceAccounts.signBlob","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signBlob"]},{"name":"iam.serviceAccounts.signJwt","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signJwt"]},{"name":"iam.serviceAccounts.undelete","rules":["POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:undelete"]},{"name":"iam.serviceAccounts.update","rules":["PUT /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}","PATCH /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://compute.googleapis.com","permissions":[{"name":"compute.acceleratorTypes.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/acceleratorTypes/{acceleratorType}"]},{"name":"compute.acceleratorTypes.list","rules":["GET /compute/v1/projects/{project}/aggregated/acceleratorTypes","GET /compute/v1/projects/{project}/zones/{zone}/acceleratorTypes"]},{"name":"compute.addresses.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/addresses"]},{"name":"compute.addresses.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/addresses/{address}"]},{"name":"compute.addresses.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/addresses/{address}"]},{"name":"compute.addresses.list","rules":["GET /compute/v1/projects/{project}/aggregated/addresses","GET /compute/v1/projects/{project}/regions/{region}/addresses"]},{"name":"compute.addresses.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/addresses/{resource}/setLabels"]},{"name":"compute.advice.calendarMode","rules":["POST /compute/v1/projects/{project}/regions/{region}/advice/calendarMode"]},{"name":"compute.autoscalers.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/autoscalers","POST /compute/v1/projects/{project}/zones/{zone}/autoscalers"]},{"name":"compute.autoscalers.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/autoscalers/{autoscaler}","DELETE /compute/v1/projects/{project}/zones/{zone}/autoscalers/{autoscaler}"]},{"name":"compute.autoscalers.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/autoscalers/{autoscaler}","GET /compute/v1/projects/{project}/zones/{zone}/autoscalers/{autoscaler}"]},{"name":"compute.autoscalers.list","rules":["GET /compute/v1/projects/{project}/aggregated/autoscalers","GET /compute/v1/projects/{project}/regions/{region}/autoscalers","GET /compute/v1/projects/{project}/zones/{zone}/autoscalers"]},{"name":"compute.autoscalers.update","rules":["PUT /compute/v1/projects/{project}/regions/{region}/autoscalers","PATCH /compute/v1/projects/{project}/regions/{region}/autoscalers","PUT /compute/v1/projects/{project}/zones/{zone}/autoscalers","PATCH /compute/v1/projects/{project}/zones/{zone}/autoscalers"]},{"name":"compute.backendBuckets.addSignedUrlKey","rules":["POST /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}/addSignedUrlKey"]},{"name":"compute.backendBuckets.create","rules":["POST /compute/v1/projects/{project}/global/backendBuckets"]},{"name":"compute.backendBuckets.delete","rules":["DELETE /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"]},{"name":"compute.backendBuckets.deleteSignedUrlKey","rules":["POST /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}/deleteSignedUrlKey"]},{"name":"compute.backendBuckets.get","rules":["GET /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"]},{"name":"compute.backendBuckets.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/backendBuckets/{resource}/getIamPolicy"]},{"name":"compute.backendBuckets.list","rules":["GET /compute/v1/projects/{project}/aggregated/backendBuckets","GET /compute/v1/projects/{project}/global/backendBuckets"]},{"name":"compute.backendBuckets.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/backendBuckets/{resource}/setIamPolicy"]},{"name":"compute.backendBuckets.update","rules":["PUT /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}","PATCH /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"]},{"name":"compute.backendServices.addSignedUrlKey","rules":["POST /compute/v1/projects/{project}/global/backendServices/{backendService}/addSignedUrlKey"]},{"name":"compute.backendServices.create","rules":["POST /compute/v1/projects/{project}/global/backendServices"]},{"name":"compute.backendServices.delete","rules":["DELETE /compute/v1/projects/{project}/global/backendServices/{backendService}"]},{"name":"compute.backendServices.deleteSignedUrlKey","rules":["POST /compute/v1/projects/{project}/global/backendServices/{backendService}/deleteSignedUrlKey"]},{"name":"compute.backendServices.get","rules":["GET /compute/v1/projects/{project}/global/backendServices/{backendService}"]},{"name":"compute.backendServices.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/backendServices/{resource}/getIamPolicy"]},{"name":"compute.backendServices.list","rules":["GET /compute/v1/projects/{project}/aggregated/backendServices","GET /compute/v1/projects/{project}/global/backendServices"]},{"name":"compute.backendServices.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/backendServices/{resource}/setIamPolicy"]},{"name":"compute.backendServices.setSecurityPolicy","rules":["POST /compute/v1/projects/{project}/global/backendServices/{backendService}/setSecurityPolicy"]},{"name":"compute.backendServices.update","rules":["PUT /compute/v1/projects/{project}/global/backendServices/{backendService}","PATCH /compute/v1/projects/{project}/global/backendServices/{backendService}"]},{"name":"compute.commitments.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/commitments"]},{"name":"compute.commitments.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/commitments/{commitment}"]},{"name":"compute.commitments.list","rules":["GET /compute/v1/projects/{project}/aggregated/commitments","GET /compute/v1/projects/{project}/regions/{region}/commitments"]},{"name":"compute.commitments.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/commitments/{commitment}"]},{"name":"compute.crossSiteNetworks.create","rules":["POST /compute/v1/projects/{project}/global/crossSiteNetworks"]},{"name":"compute.crossSiteNetworks.delete","rules":["DELETE /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"]},{"name":"compute.crossSiteNetworks.get","rules":["GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"]},{"name":"compute.crossSiteNetworks.list","rules":["GET /compute/v1/projects/{project}/global/crossSiteNetworks"]},{"name":"compute.crossSiteNetworks.update","rules":["PATCH /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"]},{"name":"compute.disks.addResourcePolicies","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/addResourcePolicies","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/addResourcePolicies"]},{"name":"compute.disks.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks","POST /compute/v1/projects/{project}/regions/{region}/disks/bulkInsert","POST /compute/v1/projects/{project}/zones/{zone}/disks","POST /compute/v1/projects/{project}/zones/{zone}/disks/bulkInsert"]},{"name":"compute.disks.createSnapshot","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/createSnapshot","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/createSnapshot"]},{"name":"compute.disks.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/disks/{disk}","DELETE /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"]},{"name":"compute.disks.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/disks/{disk}","GET /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"]},{"name":"compute.disks.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/disks/{resource}/getIamPolicy","GET /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/getIamPolicy"]},{"name":"compute.disks.list","rules":["GET /compute/v1/projects/{project}/aggregated/disks","GET /compute/v1/projects/{project}/regions/{region}/disks","GET /compute/v1/projects/{project}/zones/{zone}/disks"]},{"name":"compute.disks.removeResourcePolicies","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/removeResourcePolicies","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/removeResourcePolicies"]},{"name":"compute.disks.resize","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/resize","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/resize"]},{"name":"compute.disks.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{resource}/setIamPolicy","POST /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/setIamPolicy"]},{"name":"compute.disks.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{resource}/setLabels","POST /compute/v1/projects/{project}/zones/{zone}/disks/bulkSetLabels","POST /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/setLabels"]},{"name":"compute.disks.startAsyncReplication","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/startAsyncReplication","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/startAsyncReplication"]},{"name":"compute.disks.stopAsyncReplication","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/stopAsyncReplication","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/stopAsyncReplication"]},{"name":"compute.disks.stopGroupAsyncReplication","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/stopGroupAsyncReplication","POST /compute/v1/projects/{project}/zones/{zone}/disks/stopGroupAsyncReplication"]},{"name":"compute.disks.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/disks/{disk}","PATCH /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"]},{"name":"compute.disks.updateKmsKey","rules":["POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/updateKmsKey","POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/updateKmsKey"]},{"name":"compute.diskTypes.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/diskTypes/{diskType}","GET /compute/v1/projects/{project}/zones/{zone}/diskTypes/{diskType}"]},{"name":"compute.diskTypes.list","rules":["GET /compute/v1/projects/{project}/aggregated/diskTypes","GET /compute/v1/projects/{project}/regions/{region}/diskTypes","GET /compute/v1/projects/{project}/zones/{zone}/diskTypes"]},{"name":"compute.externalVpnGateways.create","rules":["POST /compute/v1/projects/{project}/global/externalVpnGateways"]},{"name":"compute.externalVpnGateways.delete","rules":["DELETE /compute/v1/projects/{project}/global/externalVpnGateways/{externalVpnGateway}"]},{"name":"compute.externalVpnGateways.get","rules":["GET /compute/v1/projects/{project}/global/externalVpnGateways/{externalVpnGateway}"]},{"name":"compute.externalVpnGateways.list","rules":["GET /compute/v1/projects/{project}/global/externalVpnGateways"]},{"name":"compute.externalVpnGateways.setLabels","rules":["POST /compute/v1/projects/{project}/global/externalVpnGateways/{resource}/setLabels"]},{"name":"compute.firewallPolicies.cloneRules","rules":["POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/cloneRules"]},{"name":"compute.firewallPolicies.create","rules":["POST /compute/v1/locations/global/firewallPolicies"]},{"name":"compute.firewallPolicies.delete","rules":["DELETE /compute/v1/locations/global/firewallPolicies/{firewallPolicy}"]},{"name":"compute.firewallPolicies.get","rules":["GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}","GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/getAssociation","GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/getRule"]},{"name":"compute.firewallPolicies.getIamPolicy","rules":["GET /compute/v1/locations/global/firewallPolicies/{resource}/getIamPolicy"]},{"name":"compute.firewallPolicies.list","rules":["GET /compute/v1/locations/global/firewallPolicies","GET /compute/v1/locations/global/firewallPolicies/listAssociations"]},{"name":"compute.firewallPolicies.move","rules":["POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/move"]},{"name":"compute.firewallPolicies.setIamPolicy","rules":["POST /compute/v1/locations/global/firewallPolicies/{resource}/setIamPolicy"]},{"name":"compute.firewallPolicies.update","rules":["PATCH /compute/v1/locations/global/firewallPolicies/{firewallPolicy}","POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/addAssociation","POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/addRule","POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/patchRule","POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/removeAssociation","POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/removeRule"]},{"name":"compute.firewalls.create","rules":["POST /compute/v1/projects/{project}/global/firewalls"]},{"name":"compute.firewalls.delete","rules":["DELETE /compute/v1/projects/{project}/global/firewalls/{firewall}"]},{"name":"compute.firewalls.get","rules":["GET /compute/v1/projects/{project}/global/firewalls/{firewall}"]},{"name":"compute.firewalls.list","rules":["GET /compute/v1/projects/{project}/global/firewalls"]},{"name":"compute.firewalls.update","rules":["PUT /compute/v1/projects/{project}/global/firewalls/{firewall}","PATCH /compute/v1/projects/{project}/global/firewalls/{firewall}"]},{"name":"compute.forwardingRules.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/forwardingRules"]},{"name":"compute.forwardingRules.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"]},{"name":"compute.forwardingRules.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"]},{"name":"compute.forwardingRules.list","rules":["GET /compute/v1/projects/{project}/aggregated/forwardingRules","GET /compute/v1/projects/{project}/regions/{region}/forwardingRules"]},{"name":"compute.forwardingRules.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/forwardingRules/{resource}/setLabels"]},{"name":"compute.forwardingRules.setTarget","rules":["POST /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}/setTarget"]},{"name":"compute.forwardingRules.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"]},{"name":"compute.futureReservations.cancel","rules":["POST /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}/cancel"]},{"name":"compute.futureReservations.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/futureReservations"]},{"name":"compute.futureReservations.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"]},{"name":"compute.futureReservations.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"]},{"name":"compute.futureReservations.list","rules":["GET /compute/v1/projects/{project}/aggregated/futureReservations","GET /compute/v1/projects/{project}/zones/{zone}/futureReservations"]},{"name":"compute.futureReservations.update","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"]},{"name":"compute.globalAddresses.create","rules":["POST /compute/v1/projects/{project}/global/addresses"]},{"name":"compute.globalAddresses.delete","rules":["DELETE /compute/v1/projects/{project}/global/addresses/{address}"]},{"name":"compute.globalAddresses.get","rules":["GET /compute/v1/projects/{project}/global/addresses/{address}"]},{"name":"compute.globalAddresses.list","rules":["GET /compute/v1/projects/{project}/global/addresses"]},{"name":"compute.globalAddresses.setLabels","rules":["POST /compute/v1/projects/{project}/global/addresses/{resource}/setLabels"]},{"name":"compute.globalForwardingRules.create","rules":["POST /compute/v1/projects/{project}/global/forwardingRules"]},{"name":"compute.globalForwardingRules.delete","rules":["DELETE /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"]},{"name":"compute.globalForwardingRules.get","rules":["GET /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"]},{"name":"compute.globalForwardingRules.list","rules":["GET /compute/v1/projects/{project}/global/forwardingRules"]},{"name":"compute.globalForwardingRules.setLabels","rules":["POST /compute/v1/projects/{project}/global/forwardingRules/{resource}/setLabels"]},{"name":"compute.globalForwardingRules.setTarget","rules":["POST /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}/setTarget"]},{"name":"compute.globalForwardingRules.update","rules":["PATCH /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"]},{"name":"compute.globalNetworkEndpointGroups.attachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"]},{"name":"compute.globalNetworkEndpointGroups.create","rules":["POST /compute/v1/projects/{project}/global/networkEndpointGroups"]},{"name":"compute.globalNetworkEndpointGroups.delete","rules":["DELETE /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.globalNetworkEndpointGroups.detachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"]},{"name":"compute.globalNetworkEndpointGroups.get","rules":["GET /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.globalNetworkEndpointGroups.list","rules":["GET /compute/v1/projects/{project}/global/networkEndpointGroups"]},{"name":"compute.globalOperations.delete","rules":["DELETE /compute/v1/projects/{project}/global/operations/{operation}"]},{"name":"compute.globalOperations.get","rules":["GET /compute/v1/projects/{project}/global/operations/{operation}"]},{"name":"compute.globalOperations.list","rules":["GET /compute/v1/projects/{project}/aggregated/operations","GET /compute/v1/projects/{project}/global/operations"]},{"name":"compute.globalPublicDelegatedPrefixes.create","rules":["POST /compute/v1/projects/{project}/global/publicDelegatedPrefixes"]},{"name":"compute.globalPublicDelegatedPrefixes.delete","rules":["DELETE /compute/v1/projects/{project}/global/publicDelegatedPrefixes/{publicDelegatedPrefix}"]},{"name":"compute.globalPublicDelegatedPrefixes.get","rules":["GET /compute/v1/projects/{project}/global/publicDelegatedPrefixes/{publicDelegatedPrefix}"]},{"name":"compute.globalPublicDelegatedPrefixes.list","rules":["GET /compute/v1/projects/{project}/global/publicDelegatedPrefixes"]},{"name":"compute.healthChecks.create","rules":["POST /compute/v1/projects/{project}/global/healthChecks"]},{"name":"compute.healthChecks.delete","rules":["DELETE /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"]},{"name":"compute.healthChecks.get","rules":["GET /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"]},{"name":"compute.healthChecks.list","rules":["GET /compute/v1/projects/{project}/aggregated/healthChecks","GET /compute/v1/projects/{project}/global/healthChecks"]},{"name":"compute.healthChecks.update","rules":["PUT /compute/v1/projects/{project}/global/healthChecks/{healthCheck}","PATCH /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"]},{"name":"compute.httpHealthChecks.create","rules":["POST /compute/v1/projects/{project}/global/httpHealthChecks"]},{"name":"compute.httpHealthChecks.delete","rules":["DELETE /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"]},{"name":"compute.httpHealthChecks.get","rules":["GET /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"]},{"name":"compute.httpHealthChecks.list","rules":["GET /compute/v1/projects/{project}/global/httpHealthChecks"]},{"name":"compute.httpHealthChecks.update","rules":["PUT /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}","PATCH /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"]},{"name":"compute.httpsHealthChecks.create","rules":["POST /compute/v1/projects/{project}/global/httpsHealthChecks"]},{"name":"compute.httpsHealthChecks.delete","rules":["DELETE /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"]},{"name":"compute.httpsHealthChecks.get","rules":["GET /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"]},{"name":"compute.httpsHealthChecks.list","rules":["GET /compute/v1/projects/{project}/global/httpsHealthChecks"]},{"name":"compute.httpsHealthChecks.update","rules":["PUT /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}","PATCH /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"]},{"name":"compute.images.create","rules":["POST /compute/v1/projects/{project}/global/images"]},{"name":"compute.images.delete","rules":["DELETE /compute/v1/projects/{project}/global/images/{image}"]},{"name":"compute.images.deprecate","rules":["POST /compute/v1/projects/{project}/global/images/{image}/deprecate"]},{"name":"compute.images.get","rules":["GET /compute/v1/projects/{project}/global/images/{image}"]},{"name":"compute.images.getFromFamily","rules":["GET /compute/v1/projects/{project}/global/images/family/{family}"]},{"name":"compute.images.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/images/{resource}/getIamPolicy"]},{"name":"compute.images.list","rules":["GET /compute/v1/projects/{project}/global/images"]},{"name":"compute.images.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/images/{resource}/setIamPolicy"]},{"name":"compute.images.setLabels","rules":["POST /compute/v1/projects/{project}/global/images/{resource}/setLabels"]},{"name":"compute.images.update","rules":["PATCH /compute/v1/projects/{project}/global/images/{image}"]},{"name":"compute.instanceGroupManagers.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers"]},{"name":"compute.instanceGroupManagers.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}","DELETE /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}"]},{"name":"compute.instanceGroupManagers.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}","GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}"]},{"name":"compute.instanceGroupManagers.list","rules":["GET /compute/v1/projects/{project}/aggregated/instanceGroupManagers","GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers","GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listErrors","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listManagedInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listPerInstanceConfigs","GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers","GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listErrors","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listManagedInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listPerInstanceConfigs"]},{"name":"compute.instanceGroupManagers.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/abandonInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/applyUpdatesToInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/createInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/deleteInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/deletePerInstanceConfigs","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/patchPerInstanceConfigs","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/recreateInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/resize","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/resumeInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/setInstanceTemplate","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/setTargetPools","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/startInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/stopInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/suspendInstances","POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/updatePerInstanceConfigs","PATCH /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/abandonInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/applyUpdatesToInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/createInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/deleteInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/deletePerInstanceConfigs","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/patchPerInstanceConfigs","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/recreateInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resize","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resumeInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/setInstanceTemplate","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/setTargetPools","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/startInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/stopInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/suspendInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/updatePerInstanceConfigs"]},{"name":"compute.instanceGroups.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups"]},{"name":"compute.instanceGroups.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}"]},{"name":"compute.instanceGroups.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}","GET /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}"]},{"name":"compute.instanceGroups.list","rules":["GET /compute/v1/projects/{project}/aggregated/instanceGroups","GET /compute/v1/projects/{project}/regions/{region}/instanceGroups","POST /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}/listInstances","GET /compute/v1/projects/{project}/zones/{zone}/instanceGroups","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/listInstances"]},{"name":"compute.instanceGroups.update","rules":["POST /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}/setNamedPorts","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/addInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/removeInstances","POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/setNamedPorts"]},{"name":"compute.instances.addAccessConfig","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addAccessConfig"]},{"name":"compute.instances.addNetworkInterface","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addNetworkInterface"]},{"name":"compute.instances.addResourcePolicies","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addResourcePolicies"]},{"name":"compute.instances.attachDisk","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/attachDisk"]},{"name":"compute.instances.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/instances/bulkInsert","POST /compute/v1/projects/{project}/zones/{zone}/instances","POST /compute/v1/projects/{project}/zones/{zone}/instances/bulkInsert"]},{"name":"compute.instances.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"]},{"name":"compute.instances.deleteAccessConfig","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/deleteAccessConfig"]},{"name":"compute.instances.deleteNetworkInterface","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/deleteNetworkInterface"]},{"name":"compute.instances.detachDisk","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/detachDisk"]},{"name":"compute.instances.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"]},{"name":"compute.instances.getEffectiveFirewalls","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getEffectiveFirewalls"]},{"name":"compute.instances.getGuestAttributes","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getGuestAttributes"]},{"name":"compute.instances.getIamPolicy","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/getIamPolicy"]},{"name":"compute.instances.getScreenshot","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/screenshot"]},{"name":"compute.instances.getSerialPortOutput","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/serialPort"]},{"name":"compute.instances.getShieldedInstanceIdentity","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getShieldedInstanceIdentity"]},{"name":"compute.instances.list","rules":["GET /compute/v1/projects/{project}/aggregated/instances","GET /compute/v1/projects/{project}/zones/{zone}/instances"]},{"name":"compute.instances.listReferrers","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/referrers"]},{"name":"compute.instances.removeResourcePolicies","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/removeResourcePolicies"]},{"name":"compute.instances.reset","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/reset"]},{"name":"compute.instances.resume","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/resume"]},{"name":"compute.instances.sendDiagnosticInterrupt","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/sendDiagnosticInterrupt"]},{"name":"compute.instances.setDeletionProtection","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/setDeletionProtection"]},{"name":"compute.instances.setDiskAutoDelete","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setDiskAutoDelete"]},{"name":"compute.instances.setIamPolicy","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/setIamPolicy"]},{"name":"compute.instances.setLabels","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setLabels"]},{"name":"compute.instances.setMachineResources","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMachineResources"]},{"name":"compute.instances.setMachineType","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMachineType"]},{"name":"compute.instances.setMetadata","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMetadata"]},{"name":"compute.instances.setMinCpuPlatform","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMinCpuPlatform"]},{"name":"compute.instances.setName","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setName"]},{"name":"compute.instances.setScheduling","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setScheduling"]},{"name":"compute.instances.setSecurityPolicy","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setSecurityPolicy"]},{"name":"compute.instances.setServiceAccount","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setServiceAccount"]},{"name":"compute.instances.setShieldedInstanceIntegrityPolicy","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setShieldedInstanceIntegrityPolicy"]},{"name":"compute.instances.setTags","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setTags"]},{"name":"compute.instances.simulateMaintenanceEvent","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/simulateMaintenanceEvent"]},{"name":"compute.instances.start","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/start"]},{"name":"compute.instances.startWithEncryptionKey","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/startWithEncryptionKey"]},{"name":"compute.instances.stop","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/stop"]},{"name":"compute.instances.suspend","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/suspend"]},{"name":"compute.instances.update","rules":["PUT /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"]},{"name":"compute.instances.updateAccessConfig","rules":["POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateAccessConfig"]},{"name":"compute.instances.updateDisplayDevice","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateDisplayDevice"]},{"name":"compute.instances.updateNetworkInterface","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateNetworkInterface"]},{"name":"compute.instances.updateShieldedInstanceConfig","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateShieldedInstanceConfig"]},{"name":"compute.instanceSettings.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/instanceSettings"]},{"name":"compute.instanceSettings.update","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/instanceSettings"]},{"name":"compute.instanceTemplates.create","rules":["POST /compute/v1/projects/{project}/global/instanceTemplates","POST /compute/v1/projects/{project}/regions/{region}/instanceTemplates"]},{"name":"compute.instanceTemplates.delete","rules":["DELETE /compute/v1/projects/{project}/global/instanceTemplates/{instanceTemplate}","DELETE /compute/v1/projects/{project}/regions/{region}/instanceTemplates/{instanceTemplate}"]},{"name":"compute.instanceTemplates.get","rules":["GET /compute/v1/projects/{project}/global/instanceTemplates/{instanceTemplate}","GET /compute/v1/projects/{project}/regions/{region}/instanceTemplates/{instanceTemplate}"]},{"name":"compute.instanceTemplates.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/instanceTemplates/{resource}/getIamPolicy"]},{"name":"compute.instanceTemplates.list","rules":["GET /compute/v1/projects/{project}/aggregated/instanceTemplates","GET /compute/v1/projects/{project}/global/instanceTemplates","GET /compute/v1/projects/{project}/regions/{region}/instanceTemplates"]},{"name":"compute.instanceTemplates.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/instanceTemplates/{resource}/setIamPolicy"]},{"name":"compute.instantSnapshotGroups.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups","POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups"]},{"name":"compute.instantSnapshotGroups.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{instantSnapshotGroup}","DELETE /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{instantSnapshotGroup}"]},{"name":"compute.instantSnapshotGroups.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{instantSnapshotGroup}","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{instantSnapshotGroup}"]},{"name":"compute.instantSnapshotGroups.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{resource}/getIamPolicy","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{resource}/getIamPolicy"]},{"name":"compute.instantSnapshotGroups.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups"]},{"name":"compute.instantSnapshotGroups.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{resource}/setIamPolicy","POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{resource}/setIamPolicy"]},{"name":"compute.instantSnapshots.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots","POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots"]},{"name":"compute.instantSnapshots.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{instantSnapshot}","DELETE /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{instantSnapshot}"]},{"name":"compute.instantSnapshots.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{instantSnapshot}","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{instantSnapshot}"]},{"name":"compute.instantSnapshots.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/getIamPolicy","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/getIamPolicy"]},{"name":"compute.instantSnapshots.list","rules":["GET /compute/v1/projects/{project}/aggregated/instantSnapshots","GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots","GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots"]},{"name":"compute.instantSnapshots.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/setIamPolicy","POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/setIamPolicy"]},{"name":"compute.instantSnapshots.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/setLabels","POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/setLabels"]},{"name":"compute.interconnectAttachmentGroups.create","rules":["POST /compute/v1/projects/{project}/global/interconnectAttachmentGroups"]},{"name":"compute.interconnectAttachmentGroups.delete","rules":["DELETE /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"]},{"name":"compute.interconnectAttachmentGroups.get","rules":["GET /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"]},{"name":"compute.interconnectAttachmentGroups.list","rules":["GET /compute/v1/projects/{project}/global/interconnectAttachmentGroups"]},{"name":"compute.interconnectAttachmentGroups.patch","rules":["PATCH /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"]},{"name":"compute.interconnectAttachments.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/interconnectAttachments"]},{"name":"compute.interconnectAttachments.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"]},{"name":"compute.interconnectAttachments.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"]},{"name":"compute.interconnectAttachments.list","rules":["GET /compute/v1/projects/{project}/aggregated/interconnectAttachments","GET /compute/v1/projects/{project}/regions/{region}/interconnectAttachments"]},{"name":"compute.interconnectAttachments.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{resource}/setLabels"]},{"name":"compute.interconnectAttachments.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"]},{"name":"compute.interconnectGroups.create","rules":["POST /compute/v1/projects/{project}/global/interconnectGroups"]},{"name":"compute.interconnectGroups.delete","rules":["DELETE /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"]},{"name":"compute.interconnectGroups.get","rules":["GET /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"]},{"name":"compute.interconnectGroups.list","rules":["GET /compute/v1/projects/{project}/global/interconnectGroups"]},{"name":"compute.interconnectGroups.patch","rules":["PATCH /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"]},{"name":"compute.interconnectLocations.get","rules":["GET /compute/v1/projects/{project}/global/interconnectLocations/{interconnectLocation}"]},{"name":"compute.interconnectLocations.list","rules":["GET /compute/v1/projects/{project}/global/interconnectLocations"]},{"name":"compute.interconnectRemoteLocations.get","rules":["GET /compute/v1/projects/{project}/global/interconnectRemoteLocations/{interconnectRemoteLocation}"]},{"name":"compute.interconnectRemoteLocations.list","rules":["GET /compute/v1/projects/{project}/global/interconnectRemoteLocations"]},{"name":"compute.interconnects.create","rules":["POST /compute/v1/projects/{project}/global/interconnects"]},{"name":"compute.interconnects.delete","rules":["DELETE /compute/v1/projects/{project}/global/interconnects/{interconnect}"]},{"name":"compute.interconnects.get","rules":["GET /compute/v1/projects/{project}/global/interconnects/{interconnect}"]},{"name":"compute.interconnects.getMacsecConfig","rules":["GET /compute/v1/projects/{project}/global/interconnects/{interconnect}/getMacsecConfig"]},{"name":"compute.interconnects.list","rules":["GET /compute/v1/projects/{project}/global/interconnects"]},{"name":"compute.interconnects.setLabels","rules":["POST /compute/v1/projects/{project}/global/interconnects/{resource}/setLabels"]},{"name":"compute.interconnects.update","rules":["PATCH /compute/v1/projects/{project}/global/interconnects/{interconnect}"]},{"name":"compute.licenseCodes.get","rules":["GET /compute/v1/projects/{project}/global/licenseCodes/{licenseCode}"]},{"name":"compute.licenseCodes.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/licenseCodes/{resource}/getIamPolicy"]},{"name":"compute.licenseCodes.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/licenseCodes/{resource}/setIamPolicy"]},{"name":"compute.licenses.create","rules":["POST /compute/v1/projects/{project}/global/licenses"]},{"name":"compute.licenses.delete","rules":["DELETE /compute/v1/projects/{project}/global/licenses/{license}"]},{"name":"compute.licenses.get","rules":["GET /compute/v1/projects/{project}/global/licenses/{license}"]},{"name":"compute.licenses.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/licenses/{resource}/getIamPolicy"]},{"name":"compute.licenses.list","rules":["GET /compute/v1/projects/{project}/global/licenses"]},{"name":"compute.licenses.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/licenses/{resource}/setIamPolicy"]},{"name":"compute.licenses.update","rules":["PATCH /compute/v1/projects/{project}/global/licenses/{license}"]},{"name":"compute.machineImages.create","rules":["POST /compute/v1/projects/{project}/global/machineImages"]},{"name":"compute.machineImages.delete","rules":["DELETE /compute/v1/projects/{project}/global/machineImages/{machineImage}"]},{"name":"compute.machineImages.get","rules":["GET /compute/v1/projects/{project}/global/machineImages/{machineImage}"]},{"name":"compute.machineImages.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/machineImages/{resource}/getIamPolicy"]},{"name":"compute.machineImages.list","rules":["GET /compute/v1/projects/{project}/global/machineImages"]},{"name":"compute.machineImages.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/machineImages/{resource}/setIamPolicy"]},{"name":"compute.machineImages.setLabels","rules":["POST /compute/v1/projects/{project}/global/machineImages/{resource}/setLabels"]},{"name":"compute.machineTypes.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/machineTypes/{machineType}"]},{"name":"compute.machineTypes.list","rules":["GET /compute/v1/projects/{project}/aggregated/machineTypes","GET /compute/v1/projects/{project}/zones/{zone}/machineTypes"]},{"name":"compute.networkAttachments.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkAttachments"]},{"name":"compute.networkAttachments.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"]},{"name":"compute.networkAttachments.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"]},{"name":"compute.networkAttachments.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/networkAttachments/{resource}/getIamPolicy"]},{"name":"compute.networkAttachments.list","rules":["GET /compute/v1/projects/{project}/aggregated/networkAttachments","GET /compute/v1/projects/{project}/regions/{region}/networkAttachments"]},{"name":"compute.networkAttachments.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkAttachments/{resource}/setIamPolicy"]},{"name":"compute.networkAttachments.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"]},{"name":"compute.networkEdgeSecurityServices.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices"]},{"name":"compute.networkEdgeSecurityServices.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"]},{"name":"compute.networkEdgeSecurityServices.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"]},{"name":"compute.networkEdgeSecurityServices.list","rules":["GET /compute/v1/projects/{project}/aggregated/networkEdgeSecurityServices"]},{"name":"compute.networkEdgeSecurityServices.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"]},{"name":"compute.networkEndpointGroups.attachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"]},{"name":"compute.networkEndpointGroups.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups"]},{"name":"compute.networkEndpointGroups.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.networkEndpointGroups.detachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"]},{"name":"compute.networkEndpointGroups.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.networkEndpointGroups.list","rules":["GET /compute/v1/projects/{project}/aggregated/networkEndpointGroups","GET /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups"]},{"name":"compute.networkProfiles.get","rules":["GET /compute/v1/projects/{project}/global/networkProfiles/{networkProfile}"]},{"name":"compute.networkProfiles.list","rules":["GET /compute/v1/projects/{project}/global/networkProfiles"]},{"name":"compute.networks.addPeering","rules":["POST /compute/v1/projects/{project}/global/networks/{network}/addPeering"]},{"name":"compute.networks.create","rules":["POST /compute/v1/projects/{project}/global/networks"]},{"name":"compute.networks.delete","rules":["DELETE /compute/v1/projects/{project}/global/networks/{network}"]},{"name":"compute.networks.get","rules":["GET /compute/v1/projects/{project}/global/networks/{network}"]},{"name":"compute.networks.getEffectiveFirewalls","rules":["GET /compute/v1/projects/{project}/global/networks/{network}/getEffectiveFirewalls"]},{"name":"compute.networks.list","rules":["GET /compute/v1/projects/{project}/global/networks"]},{"name":"compute.networks.listPeeringRoutes","rules":["GET /compute/v1/projects/{project}/global/networks/{network}/listPeeringRoutes"]},{"name":"compute.networks.removePeering","rules":["POST /compute/v1/projects/{project}/global/networks/{network}/removePeering"]},{"name":"compute.networks.switchToCustomMode","rules":["POST /compute/v1/projects/{project}/global/networks/{network}/switchToCustomMode"]},{"name":"compute.networks.update","rules":["PATCH /compute/v1/projects/{project}/global/networks/{network}"]},{"name":"compute.networks.updatePeering","rules":["PATCH /compute/v1/projects/{project}/global/networks/{network}/updatePeering"]},{"name":"compute.nodeGroups.addNodes","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/addNodes"]},{"name":"compute.nodeGroups.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups"]},{"name":"compute.nodeGroups.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"]},{"name":"compute.nodeGroups.deleteNodes","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/deleteNodes"]},{"name":"compute.nodeGroups.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"]},{"name":"compute.nodeGroups.getIamPolicy","rules":["GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{resource}/getIamPolicy"]},{"name":"compute.nodeGroups.list","rules":["GET /compute/v1/projects/{project}/aggregated/nodeGroups","GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups"]},{"name":"compute.nodeGroups.performMaintenance","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/performMaintenance"]},{"name":"compute.nodeGroups.setIamPolicy","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{resource}/setIamPolicy"]},{"name":"compute.nodeGroups.setNodeTemplate","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/setNodeTemplate"]},{"name":"compute.nodeGroups.simulateMaintenanceEvent","rules":["POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/simulateMaintenanceEvent"]},{"name":"compute.nodeGroups.update","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"]},{"name":"compute.nodeTemplates.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/nodeTemplates"]},{"name":"compute.nodeTemplates.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{nodeTemplate}"]},{"name":"compute.nodeTemplates.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{nodeTemplate}"]},{"name":"compute.nodeTemplates.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{resource}/getIamPolicy"]},{"name":"compute.nodeTemplates.list","rules":["GET /compute/v1/projects/{project}/aggregated/nodeTemplates","GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates"]},{"name":"compute.nodeTemplates.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{resource}/setIamPolicy"]},{"name":"compute.nodeTypes.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/nodeTypes/{nodeType}"]},{"name":"compute.nodeTypes.list","rules":["GET /compute/v1/projects/{project}/aggregated/nodeTypes","GET /compute/v1/projects/{project}/zones/{zone}/nodeTypes"]},{"name":"compute.packetMirrorings.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/packetMirrorings"]},{"name":"compute.packetMirrorings.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"]},{"name":"compute.packetMirrorings.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"]},{"name":"compute.packetMirrorings.list","rules":["GET /compute/v1/projects/{project}/aggregated/packetMirrorings","GET /compute/v1/projects/{project}/regions/{region}/packetMirrorings"]},{"name":"compute.packetMirrorings.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"]},{"name":"compute.previewFeatures.get","rules":["GET /compute/v1/projects/{project}/global/previewFeatures/{previewFeature}"]},{"name":"compute.previewFeatures.list","rules":["GET /compute/v1/projects/{project}/global/previewFeatures"]},{"name":"compute.previewFeatures.update","rules":["PATCH /compute/v1/projects/{project}/global/previewFeatures/{previewFeature}"]},{"name":"compute.projects.get","rules":["GET /compute/v1/projects/{project}"]},{"name":"compute.projects.setCloudArmorTier","rules":["POST /compute/v1/projects/{project}/setCloudArmorTier"]},{"name":"compute.projects.setCommonInstanceMetadata","rules":["POST /compute/v1/projects/{project}/setCommonInstanceMetadata"]},{"name":"compute.projects.setDefaultNetworkTier","rules":["POST /compute/v1/projects/{project}/setDefaultNetworkTier"]},{"name":"compute.projects.setUsageExportBucket","rules":["POST /compute/v1/projects/{project}/setUsageExportBucket"]},{"name":"compute.publicAdvertisedPrefixes.create","rules":["POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes"]},{"name":"compute.publicAdvertisedPrefixes.delete","rules":["DELETE /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}"]},{"name":"compute.publicAdvertisedPrefixes.get","rules":["GET /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}"]},{"name":"compute.publicAdvertisedPrefixes.list","rules":["GET /compute/v1/projects/{project}/global/publicAdvertisedPrefixes"]},{"name":"compute.publicAdvertisedPrefixes.update","rules":["PATCH /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}","POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/announce","POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/withdraw"]},{"name":"compute.publicDelegatedPrefixes.announce","rules":["POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/announce"]},{"name":"compute.publicDelegatedPrefixes.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes"]},{"name":"compute.publicDelegatedPrefixes.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"]},{"name":"compute.publicDelegatedPrefixes.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"]},{"name":"compute.publicDelegatedPrefixes.list","rules":["GET /compute/v1/projects/{project}/aggregated/publicDelegatedPrefixes","GET /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes"]},{"name":"compute.publicDelegatedPrefixes.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"]},{"name":"compute.publicDelegatedPrefixes.withdraw","rules":["POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/withdraw"]},{"name":"compute.regionBackendBuckets.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/backendBuckets"]},{"name":"compute.regionBackendBuckets.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"]},{"name":"compute.regionBackendBuckets.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"]},{"name":"compute.regionBackendBuckets.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendBuckets/{resource}/getIamPolicy"]},{"name":"compute.regionBackendBuckets.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendBuckets"]},{"name":"compute.regionBackendBuckets.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/backendBuckets/{resource}/setIamPolicy"]},{"name":"compute.regionBackendBuckets.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"]},{"name":"compute.regionBackendServices.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/backendServices"]},{"name":"compute.regionBackendServices.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"]},{"name":"compute.regionBackendServices.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"]},{"name":"compute.regionBackendServices.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendServices/{resource}/getIamPolicy"]},{"name":"compute.regionBackendServices.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/backendServices"]},{"name":"compute.regionBackendServices.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/backendServices/{resource}/setIamPolicy"]},{"name":"compute.regionBackendServices.setSecurityPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}/setSecurityPolicy"]},{"name":"compute.regionBackendServices.update","rules":["PUT /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}","PATCH /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"]},{"name":"compute.regionCompositeHealthChecks.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks"]},{"name":"compute.regionCompositeHealthChecks.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"]},{"name":"compute.regionCompositeHealthChecks.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"]},{"name":"compute.regionCompositeHealthChecks.list","rules":["GET /compute/v1/projects/{project}/aggregated/compositeHealthChecks","GET /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks"]},{"name":"compute.regionCompositeHealthChecks.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"]},{"name":"compute.regionHealthAggregationPolicies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies"]},{"name":"compute.regionHealthAggregationPolicies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"]},{"name":"compute.regionHealthAggregationPolicies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"]},{"name":"compute.regionHealthAggregationPolicies.list","rules":["GET /compute/v1/projects/{project}/aggregated/healthAggregationPolicies","GET /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies"]},{"name":"compute.regionHealthAggregationPolicies.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"]},{"name":"compute.regionHealthChecks.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/healthChecks"]},{"name":"compute.regionHealthChecks.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"]},{"name":"compute.regionHealthChecks.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"]},{"name":"compute.regionHealthChecks.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/healthChecks"]},{"name":"compute.regionHealthChecks.update","rules":["PUT /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}","PATCH /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"]},{"name":"compute.regionHealthCheckServices.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/healthCheckServices"]},{"name":"compute.regionHealthCheckServices.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"]},{"name":"compute.regionHealthCheckServices.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"]},{"name":"compute.regionHealthCheckServices.list","rules":["GET /compute/v1/projects/{project}/aggregated/healthCheckServices","GET /compute/v1/projects/{project}/regions/{region}/healthCheckServices"]},{"name":"compute.regionHealthCheckServices.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"]},{"name":"compute.regionHealthSources.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/healthSources"]},{"name":"compute.regionHealthSources.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"]},{"name":"compute.regionHealthSources.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"]},{"name":"compute.regionHealthSources.list","rules":["GET /compute/v1/projects/{project}/aggregated/healthSources","GET /compute/v1/projects/{project}/regions/{region}/healthSources"]},{"name":"compute.regionHealthSources.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"]},{"name":"compute.regionNetworkEndpointGroups.attachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"]},{"name":"compute.regionNetworkEndpointGroups.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups"]},{"name":"compute.regionNetworkEndpointGroups.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.regionNetworkEndpointGroups.detachNetworkEndpoints","rules":["POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"]},{"name":"compute.regionNetworkEndpointGroups.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}"]},{"name":"compute.regionNetworkEndpointGroups.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups"]},{"name":"compute.regionNotificationEndpoints.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/notificationEndpoints"]},{"name":"compute.regionNotificationEndpoints.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/notificationEndpoints/{notificationEndpoint}"]},{"name":"compute.regionNotificationEndpoints.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/notificationEndpoints/{notificationEndpoint}"]},{"name":"compute.regionNotificationEndpoints.list","rules":["GET /compute/v1/projects/{project}/aggregated/notificationEndpoints","GET /compute/v1/projects/{project}/regions/{region}/notificationEndpoints"]},{"name":"compute.regionOperations.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/operations/{operation}"]},{"name":"compute.regionOperations.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/operations/{operation}"]},{"name":"compute.regionOperations.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/operations"]},{"name":"compute.regions.get","rules":["GET /compute/v1/projects/{project}/regions/{region}"]},{"name":"compute.regions.list","rules":["GET /compute/v1/projects/{project}/regions"]},{"name":"compute.regionSecurityPolicies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/securityPolicies"]},{"name":"compute.regionSecurityPolicies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}"]},{"name":"compute.regionSecurityPolicies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}","GET /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/getRule"]},{"name":"compute.regionSecurityPolicies.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/securityPolicies"]},{"name":"compute.regionSecurityPolicies.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}","POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/addRule","POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/patchRule","POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/removeRule"]},{"name":"compute.regionSslCertificates.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/sslCertificates"]},{"name":"compute.regionSslCertificates.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/sslCertificates/{sslCertificate}"]},{"name":"compute.regionSslCertificates.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/sslCertificates/{sslCertificate}"]},{"name":"compute.regionSslCertificates.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/sslCertificates"]},{"name":"compute.regionSslPolicies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/sslPolicies"]},{"name":"compute.regionSslPolicies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"]},{"name":"compute.regionSslPolicies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"]},{"name":"compute.regionSslPolicies.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/sslPolicies"]},{"name":"compute.regionSslPolicies.listAvailableFeatures","rules":["GET /compute/v1/projects/{project}/regions/{region}/sslPolicies/listAvailableFeatures"]},{"name":"compute.regionSslPolicies.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"]},{"name":"compute.regionTargetHttpProxies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetHttpProxies"]},{"name":"compute.regionTargetHttpProxies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}"]},{"name":"compute.regionTargetHttpProxies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}"]},{"name":"compute.regionTargetHttpProxies.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetHttpProxies"]},{"name":"compute.regionTargetHttpProxies.setUrlMap","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}/setUrlMap"]},{"name":"compute.regionTargetHttpsProxies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies"]},{"name":"compute.regionTargetHttpsProxies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.regionTargetHttpsProxies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.regionTargetHttpsProxies.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies"]},{"name":"compute.regionTargetHttpsProxies.setSslCertificates","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}/setSslCertificates"]},{"name":"compute.regionTargetHttpsProxies.setUrlMap","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}/setUrlMap"]},{"name":"compute.regionTargetHttpsProxies.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.regionTargetTcpProxies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetTcpProxies"]},{"name":"compute.regionTargetTcpProxies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/targetTcpProxies/{targetTcpProxy}"]},{"name":"compute.regionTargetTcpProxies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetTcpProxies/{targetTcpProxy}"]},{"name":"compute.regionTargetTcpProxies.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetTcpProxies"]},{"name":"compute.regionUrlMaps.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/urlMaps"]},{"name":"compute.regionUrlMaps.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"]},{"name":"compute.regionUrlMaps.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"]},{"name":"compute.regionUrlMaps.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/urlMaps"]},{"name":"compute.regionUrlMaps.update","rules":["PUT /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}","PATCH /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"]},{"name":"compute.regionUrlMaps.validate","rules":["POST /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}/validate"]},{"name":"compute.reservationBlocks.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks/{reservationBlock}"]},{"name":"compute.reservationBlocks.list","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks"]},{"name":"compute.reservationBlocks.performMaintenance","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks/{reservationBlock}/performMaintenance"]},{"name":"compute.reservations.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations"]},{"name":"compute.reservations.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"]},{"name":"compute.reservations.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"]},{"name":"compute.reservations.list","rules":["GET /compute/v1/projects/{project}/aggregated/reservations","GET /compute/v1/projects/{project}/zones/{zone}/reservations"]},{"name":"compute.reservations.performMaintenance","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/performMaintenance"]},{"name":"compute.reservations.resize","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/resize"]},{"name":"compute.reservations.update","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"]},{"name":"compute.reservationSlots.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots/{reservationSlot}"]},{"name":"compute.reservationSlots.list","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots"]},{"name":"compute.reservationSlots.update","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots/{reservationSlot}"]},{"name":"compute.reservationSubBlocks.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}"]},{"name":"compute.reservationSubBlocks.list","rules":["GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks"]},{"name":"compute.reservationSubBlocks.performMaintenance","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}/performMaintenance"]},{"name":"compute.reservationSubBlocks.reportFaulty","rules":["POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}/reportFaulty"]},{"name":"compute.resourcePolicies.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/resourcePolicies"]},{"name":"compute.resourcePolicies.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"]},{"name":"compute.resourcePolicies.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"]},{"name":"compute.resourcePolicies.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resource}/getIamPolicy"]},{"name":"compute.resourcePolicies.list","rules":["GET /compute/v1/projects/{project}/aggregated/resourcePolicies","GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies"]},{"name":"compute.resourcePolicies.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resource}/setIamPolicy"]},{"name":"compute.resourcePolicies.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"]},{"name":"compute.rolloutPlans.create","rules":["POST /compute/v1/projects/{project}/global/rolloutPlans"]},{"name":"compute.rolloutPlans.delete","rules":["DELETE /compute/v1/projects/{project}/global/rolloutPlans/{rolloutPlan}"]},{"name":"compute.rolloutPlans.get","rules":["GET /compute/v1/projects/{project}/global/rolloutPlans/{rolloutPlan}"]},{"name":"compute.rolloutPlans.list","rules":["GET /compute/v1/projects/{project}/global/rolloutPlans"]},{"name":"compute.rollouts.cancel","rules":["PATCH /compute/v1/projects/{project}/global/rollouts/{rollout}"]},{"name":"compute.rollouts.delete","rules":["DELETE /compute/v1/projects/{project}/global/rollouts/{rollout}"]},{"name":"compute.rollouts.get","rules":["GET /compute/v1/projects/{project}/global/rollouts/{rollout}"]},{"name":"compute.rollouts.list","rules":["GET /compute/v1/projects/{project}/global/rollouts"]},{"name":"compute.routers.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/routers"]},{"name":"compute.routers.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/routers/{router}"]},{"name":"compute.routers.deleteRoutePolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/routers/{router}/deleteRoutePolicy"]},{"name":"compute.routers.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/routers/{router}"]},{"name":"compute.routers.getRoutePolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/getRoutePolicy"]},{"name":"compute.routers.list","rules":["GET /compute/v1/projects/{project}/aggregated/routers","GET /compute/v1/projects/{project}/regions/{region}/routers"]},{"name":"compute.routers.listBgpRoutes","rules":["GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/listBgpRoutes"]},{"name":"compute.routers.listRoutePolicies","rules":["GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/listRoutePolicies"]},{"name":"compute.routers.update","rules":["PUT /compute/v1/projects/{project}/regions/{region}/routers/{router}","PATCH /compute/v1/projects/{project}/regions/{region}/routers/{router}"]},{"name":"compute.routers.updateRoutePolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/routers/{router}/updateRoutePolicy"]},{"name":"compute.routes.create","rules":["POST /compute/v1/projects/{project}/global/routes"]},{"name":"compute.routes.delete","rules":["DELETE /compute/v1/projects/{project}/global/routes/{route}"]},{"name":"compute.routes.get","rules":["GET /compute/v1/projects/{project}/global/routes/{route}"]},{"name":"compute.routes.list","rules":["GET /compute/v1/projects/{project}/global/routes"]},{"name":"compute.securityPolicies.create","rules":["POST /compute/v1/projects/{project}/global/securityPolicies"]},{"name":"compute.securityPolicies.delete","rules":["DELETE /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}"]},{"name":"compute.securityPolicies.get","rules":["GET /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}","GET /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/getRule"]},{"name":"compute.securityPolicies.list","rules":["GET /compute/v1/projects/{project}/aggregated/securityPolicies","GET /compute/v1/projects/{project}/global/securityPolicies"]},{"name":"compute.securityPolicies.setLabels","rules":["POST /compute/v1/projects/{project}/global/securityPolicies/{resource}/setLabels","POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{resource}/setLabels"]},{"name":"compute.securityPolicies.update","rules":["PATCH /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}","POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/addRule","POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/patchRule","POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/removeRule"]},{"name":"compute.serviceAttachments.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/serviceAttachments"]},{"name":"compute.serviceAttachments.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"]},{"name":"compute.serviceAttachments.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"]},{"name":"compute.serviceAttachments.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{resource}/getIamPolicy"]},{"name":"compute.serviceAttachments.list","rules":["GET /compute/v1/projects/{project}/aggregated/serviceAttachments","GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments"]},{"name":"compute.serviceAttachments.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{resource}/setIamPolicy"]},{"name":"compute.serviceAttachments.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"]},{"name":"compute.snapshots.create","rules":["POST /compute/v1/projects/{project}/global/snapshots","POST /compute/v1/projects/{project}/regions/{region}/snapshots"]},{"name":"compute.snapshots.delete","rules":["DELETE /compute/v1/projects/{project}/global/snapshots/{snapshot}","DELETE /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}"]},{"name":"compute.snapshots.get","rules":["GET /compute/v1/projects/{project}/global/snapshots/{snapshot}","GET /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}"]},{"name":"compute.snapshots.getIamPolicy","rules":["GET /compute/v1/projects/{project}/global/snapshots/{resource}/getIamPolicy","GET /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/getIamPolicy"]},{"name":"compute.snapshots.list","rules":["GET /compute/v1/projects/{project}/global/snapshots","GET /compute/v1/projects/{project}/regions/{region}/snapshots"]},{"name":"compute.snapshots.setIamPolicy","rules":["POST /compute/v1/projects/{project}/global/snapshots/{resource}/setIamPolicy","POST /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/setIamPolicy"]},{"name":"compute.snapshots.setLabels","rules":["POST /compute/v1/projects/{project}/global/snapshots/{resource}/setLabels","POST /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/setLabels"]},{"name":"compute.snapshots.updateKmsKey","rules":["POST /compute/v1/projects/{project}/global/snapshots/{snapshot}/updateKmsKey","POST /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}/updateKmsKey"]},{"name":"compute.snapshotSettings.get","rules":["GET /compute/v1/projects/{project}/global/snapshotSettings","GET /compute/v1/projects/{project}/regions/{region}/snapshotSettings"]},{"name":"compute.snapshotSettings.update","rules":["PATCH /compute/v1/projects/{project}/global/snapshotSettings","PATCH /compute/v1/projects/{project}/regions/{region}/snapshotSettings"]},{"name":"compute.sslCertificates.create","rules":["POST /compute/v1/projects/{project}/global/sslCertificates"]},{"name":"compute.sslCertificates.delete","rules":["DELETE /compute/v1/projects/{project}/global/sslCertificates/{sslCertificate}"]},{"name":"compute.sslCertificates.get","rules":["GET /compute/v1/projects/{project}/global/sslCertificates/{sslCertificate}"]},{"name":"compute.sslCertificates.list","rules":["GET /compute/v1/projects/{project}/aggregated/sslCertificates","GET /compute/v1/projects/{project}/global/sslCertificates"]},{"name":"compute.sslPolicies.create","rules":["POST /compute/v1/projects/{project}/global/sslPolicies"]},{"name":"compute.sslPolicies.delete","rules":["DELETE /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"]},{"name":"compute.sslPolicies.get","rules":["GET /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"]},{"name":"compute.sslPolicies.list","rules":["GET /compute/v1/projects/{project}/aggregated/sslPolicies","GET /compute/v1/projects/{project}/global/sslPolicies"]},{"name":"compute.sslPolicies.listAvailableFeatures","rules":["GET /compute/v1/projects/{project}/global/sslPolicies/listAvailableFeatures"]},{"name":"compute.sslPolicies.update","rules":["PATCH /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"]},{"name":"compute.storagePools.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/storagePools"]},{"name":"compute.storagePools.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"]},{"name":"compute.storagePools.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"]},{"name":"compute.storagePools.getIamPolicy","rules":["GET /compute/v1/projects/{project}/zones/{zone}/storagePools/{resource}/getIamPolicy"]},{"name":"compute.storagePools.list","rules":["GET /compute/v1/projects/{project}/aggregated/storagePools","GET /compute/v1/projects/{project}/zones/{zone}/storagePools"]},{"name":"compute.storagePools.setIamPolicy","rules":["POST /compute/v1/projects/{project}/zones/{zone}/storagePools/{resource}/setIamPolicy"]},{"name":"compute.storagePools.update","rules":["PATCH /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"]},{"name":"compute.subnetworks.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/subnetworks"]},{"name":"compute.subnetworks.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"]},{"name":"compute.subnetworks.expandIpCidrRange","rules":["POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}/expandIpCidrRange"]},{"name":"compute.subnetworks.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"]},{"name":"compute.subnetworks.getIamPolicy","rules":["GET /compute/v1/projects/{project}/regions/{region}/subnetworks/{resource}/getIamPolicy"]},{"name":"compute.subnetworks.list","rules":["GET /compute/v1/projects/{project}/aggregated/subnetworks","GET /compute/v1/projects/{project}/regions/{region}/subnetworks"]},{"name":"compute.subnetworks.setIamPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{resource}/setIamPolicy"]},{"name":"compute.subnetworks.setPrivateIpGoogleAccess","rules":["POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}/setPrivateIpGoogleAccess"]},{"name":"compute.subnetworks.update","rules":["PATCH /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"]},{"name":"compute.targetGrpcProxies.create","rules":["POST /compute/v1/projects/{project}/global/targetGrpcProxies"]},{"name":"compute.targetGrpcProxies.delete","rules":["DELETE /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"]},{"name":"compute.targetGrpcProxies.get","rules":["GET /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"]},{"name":"compute.targetGrpcProxies.list","rules":["GET /compute/v1/projects/{project}/global/targetGrpcProxies"]},{"name":"compute.targetGrpcProxies.update","rules":["PATCH /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"]},{"name":"compute.targetHttpProxies.create","rules":["POST /compute/v1/projects/{project}/global/targetHttpProxies"]},{"name":"compute.targetHttpProxies.delete","rules":["DELETE /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"]},{"name":"compute.targetHttpProxies.get","rules":["GET /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"]},{"name":"compute.targetHttpProxies.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetHttpProxies","GET /compute/v1/projects/{project}/global/targetHttpProxies"]},{"name":"compute.targetHttpProxies.setUrlMap","rules":["POST /compute/v1/projects/{project}/targetHttpProxies/{targetHttpProxy}/setUrlMap"]},{"name":"compute.targetHttpProxies.update","rules":["PATCH /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"]},{"name":"compute.targetHttpsProxies.create","rules":["POST /compute/v1/projects/{project}/global/targetHttpsProxies"]},{"name":"compute.targetHttpsProxies.delete","rules":["DELETE /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.targetHttpsProxies.get","rules":["GET /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.targetHttpsProxies.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetHttpsProxies","GET /compute/v1/projects/{project}/global/targetHttpsProxies"]},{"name":"compute.targetHttpsProxies.setCertificateMap","rules":["POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setCertificateMap"]},{"name":"compute.targetHttpsProxies.setQuicOverride","rules":["POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setQuicOverride"]},{"name":"compute.targetHttpsProxies.setSslCertificates","rules":["POST /compute/v1/projects/{project}/targetHttpsProxies/{targetHttpsProxy}/setSslCertificates"]},{"name":"compute.targetHttpsProxies.setSslPolicy","rules":["POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setSslPolicy"]},{"name":"compute.targetHttpsProxies.setUrlMap","rules":["POST /compute/v1/projects/{project}/targetHttpsProxies/{targetHttpsProxy}/setUrlMap"]},{"name":"compute.targetHttpsProxies.update","rules":["PATCH /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"]},{"name":"compute.targetInstances.create","rules":["POST /compute/v1/projects/{project}/zones/{zone}/targetInstances"]},{"name":"compute.targetInstances.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}"]},{"name":"compute.targetInstances.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}"]},{"name":"compute.targetInstances.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetInstances","GET /compute/v1/projects/{project}/zones/{zone}/targetInstances"]},{"name":"compute.targetInstances.setSecurityPolicy","rules":["POST /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}/setSecurityPolicy"]},{"name":"compute.targetPools.addHealthCheck","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/addHealthCheck"]},{"name":"compute.targetPools.addInstance","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/addInstance"]},{"name":"compute.targetPools.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools"]},{"name":"compute.targetPools.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}"]},{"name":"compute.targetPools.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}"]},{"name":"compute.targetPools.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetPools","GET /compute/v1/projects/{project}/regions/{region}/targetPools"]},{"name":"compute.targetPools.removeHealthCheck","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/removeHealthCheck"]},{"name":"compute.targetPools.removeInstance","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/removeInstance"]},{"name":"compute.targetPools.setSecurityPolicy","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/setSecurityPolicy"]},{"name":"compute.targetSslProxies.create","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies"]},{"name":"compute.targetSslProxies.delete","rules":["DELETE /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}"]},{"name":"compute.targetSslProxies.get","rules":["GET /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}"]},{"name":"compute.targetSslProxies.list","rules":["GET /compute/v1/projects/{project}/global/targetSslProxies"]},{"name":"compute.targetSslProxies.setBackendService","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setBackendService"]},{"name":"compute.targetSslProxies.setCertificateMap","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setCertificateMap"]},{"name":"compute.targetSslProxies.setProxyHeader","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setProxyHeader"]},{"name":"compute.targetSslProxies.setSslCertificates","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setSslCertificates"]},{"name":"compute.targetSslProxies.setSslPolicy","rules":["POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setSslPolicy"]},{"name":"compute.targetTcpProxies.create","rules":["POST /compute/v1/projects/{project}/global/targetTcpProxies"]},{"name":"compute.targetTcpProxies.delete","rules":["DELETE /compute/v1/projects/{project}/global/targetTcpProxies/{targetTcpProxy}"]},{"name":"compute.targetTcpProxies.get","rules":["GET /compute/v1/projects/{project}/global/targetTcpProxies/{targetTcpProxy}"]},{"name":"compute.targetTcpProxies.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetTcpProxies","GET /compute/v1/projects/{project}/global/targetTcpProxies"]},{"name":"compute.targetVpnGateways.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetVpnGateways"]},{"name":"compute.targetVpnGateways.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{targetVpnGateway}"]},{"name":"compute.targetVpnGateways.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{targetVpnGateway}"]},{"name":"compute.targetVpnGateways.list","rules":["GET /compute/v1/projects/{project}/aggregated/targetVpnGateways","GET /compute/v1/projects/{project}/regions/{region}/targetVpnGateways"]},{"name":"compute.targetVpnGateways.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{resource}/setLabels"]},{"name":"compute.urlMaps.create","rules":["POST /compute/v1/projects/{project}/global/urlMaps"]},{"name":"compute.urlMaps.delete","rules":["DELETE /compute/v1/projects/{project}/global/urlMaps/{urlMap}"]},{"name":"compute.urlMaps.get","rules":["GET /compute/v1/projects/{project}/global/urlMaps/{urlMap}"]},{"name":"compute.urlMaps.invalidateCache","rules":["POST /compute/v1/projects/{project}/global/urlMaps/{urlMap}/invalidateCache"]},{"name":"compute.urlMaps.list","rules":["GET /compute/v1/projects/{project}/aggregated/urlMaps","GET /compute/v1/projects/{project}/global/urlMaps"]},{"name":"compute.urlMaps.update","rules":["PUT /compute/v1/projects/{project}/global/urlMaps/{urlMap}","PATCH /compute/v1/projects/{project}/global/urlMaps/{urlMap}"]},{"name":"compute.urlMaps.validate","rules":["POST /compute/v1/projects/{project}/global/urlMaps/{urlMap}/validate"]},{"name":"compute.vpnGateways.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/vpnGateways"]},{"name":"compute.vpnGateways.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/vpnGateways/{vpnGateway}"]},{"name":"compute.vpnGateways.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/vpnGateways/{vpnGateway}"]},{"name":"compute.vpnGateways.list","rules":["GET /compute/v1/projects/{project}/aggregated/vpnGateways","GET /compute/v1/projects/{project}/regions/{region}/vpnGateways"]},{"name":"compute.vpnGateways.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/vpnGateways/{resource}/setLabels"]},{"name":"compute.vpnTunnels.create","rules":["POST /compute/v1/projects/{project}/regions/{region}/vpnTunnels"]},{"name":"compute.vpnTunnels.delete","rules":["DELETE /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{vpnTunnel}"]},{"name":"compute.vpnTunnels.get","rules":["GET /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{vpnTunnel}"]},{"name":"compute.vpnTunnels.list","rules":["GET /compute/v1/projects/{project}/aggregated/vpnTunnels","GET /compute/v1/projects/{project}/regions/{region}/vpnTunnels"]},{"name":"compute.vpnTunnels.setLabels","rules":["POST /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{resource}/setLabels"]},{"name":"compute.wireGroups.create","rules":["POST /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups"]},{"name":"compute.wireGroups.delete","rules":["DELETE /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"]},{"name":"compute.wireGroups.get","rules":["GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"]},{"name":"compute.wireGroups.list","rules":["GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups"]},{"name":"compute.wireGroups.update","rules":["PATCH /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"]},{"name":"compute.zoneOperations.delete","rules":["DELETE /compute/v1/projects/{project}/zones/{zone}/operations/{operation}"]},{"name":"compute.zoneOperations.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}/operations/{operation}"]},{"name":"compute.zoneOperations.list","rules":["GET /compute/v1/projects/{project}/zones/{zone}/operations"]},{"name":"compute.zones.get","rules":["GET /compute/v1/projects/{project}/zones/{zone}"]},{"name":"compute.zones.list","rules":["GET /compute/v1/projects/{project}/regions/{region}/zones","GET /compute/v1/projects/{project}/zones"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://appengine.googleapis.com","permissions":[{"name":"appengine.applications.create","rules":["POST /v1/apps"]},{"name":"appengine.applications.get","rules":["GET /v1/apps/{appsId}","GET /v1/apps/{appsId}/locations/{locationsId}"]},{"name":"appengine.applications.listRuntimes","rules":["GET /v1/apps/{appsId}:listRuntimes"]},{"name":"appengine.applications.update","rules":["PATCH /v1/apps/{appsId}","PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}"]},{"name":"appengine.instances.delete","rules":["DELETE /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}","DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}"]},{"name":"appengine.instances.enableDebug","rules":["POST /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}:debug","POST /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}:debug"]},{"name":"appengine.instances.get","rules":["GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}"]},{"name":"appengine.instances.list","rules":["GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances"]},{"name":"appengine.operations.get","rules":["GET /v1/apps/{appsId}/operations/{operationsId}"]},{"name":"appengine.operations.list","rules":["GET /v1/apps/{appsId}/operations"]},{"name":"appengine.services.delete","rules":["DELETE /v1/apps/{appsId}/services/{servicesId}","DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}"]},{"name":"appengine.services.get","rules":["GET /v1/apps/{appsId}/services/{servicesId}"]},{"name":"appengine.services.list","rules":["GET /v1/apps/{appsId}/services"]},{"name":"appengine.services.update","rules":["PATCH /v1/apps/{appsId}/services/{servicesId}","PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}"]},{"name":"appengine.versions.create","rules":["POST /v1/apps/{appsId}/services/{servicesId}/versions"]},{"name":"appengine.versions.delete","rules":["DELETE /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}","DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}"]},{"name":"appengine.versions.exportAppImage","rules":["POST /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}:exportAppImage","POST /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}:exportAppImage"]},{"name":"appengine.versions.get","rules":["GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}"]},{"name":"appengine.versions.list","rules":["GET /v1/apps/{appsId}/services/{servicesId}/versions"]},{"name":"appengine.versions.update","rules":["PATCH /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}","PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://sqladmin.googleapis.com","permissions":[{"name":"cloudsql.backupRuns.create","rules":["POST /v1/projects/{projectsId}/backups","POST /v1/projects/{project}/instances/{instance}/backupRuns"]},{"name":"cloudsql.backupRuns.delete","rules":["DELETE /v1/projects/{projectsId}/backups/{backupsId}","DELETE /v1/projects/{project}/instances/{instance}/backupRuns/{id}"]},{"name":"cloudsql.backupRuns.get","rules":["GET /v1/projects/{projectsId}/backups/{backupsId}","GET /v1/projects/{project}/instances/{instance}/backupRuns/{id}"]},{"name":"cloudsql.backupRuns.list","rules":["GET /v1/projects/{projectsId}/backups","GET /v1/projects/{project}/instances/{instance}/backupRuns"]},{"name":"cloudsql.backupRuns.update","rules":["PATCH /v1/projects/{projectsId}/backups/{backupsId}"]},{"name":"cloudsql.databases.create","rules":["POST /v1/projects/{project}/instances/{instance}/databases"]},{"name":"cloudsql.databases.delete","rules":["DELETE /v1/projects/{project}/instances/{instance}/databases/{database}"]},{"name":"cloudsql.databases.get","rules":["GET /v1/projects/{project}/instances/{instance}/databases/{database}"]},{"name":"cloudsql.databases.list","rules":["GET /v1/projects/{project}/instances/{instance}/databases"]},{"name":"cloudsql.databases.update","rules":["PUT /v1/projects/{project}/instances/{instance}/databases/{database}","PATCH /v1/projects/{project}/instances/{instance}/databases/{database}"]},{"name":"cloudsql.instances.addEntraIdCertificate","rules":["POST /v1/projects/{project}/instances/{instance}/addEntraIdCertificate"]},{"name":"cloudsql.instances.addServerCa","rules":["POST /v1/projects/{project}/instances/{instance}/addServerCa"]},{"name":"cloudsql.instances.addServerCertificate","rules":["POST /v1/projects/{project}/instances/{instance}/addServerCertificate"]},{"name":"cloudsql.instances.clone","rules":["POST /v1/projects/{project}/instances/{instance}/clone"]},{"name":"cloudsql.instances.connect","rules":["GET /v1/dns/{dnsName}/locations/{location}:resolveConnectSettings","POST /v1/projects/{project}/instances/{instance}:generateEphemeralCert"]},{"name":"cloudsql.instances.create","rules":["POST /v1/projects/{project}/instances"]},{"name":"cloudsql.instances.delete","rules":["DELETE /v1/projects/{project}/instances/{instance}"]},{"name":"cloudsql.instances.demoteMaster","rules":["POST /v1/projects/{project}/instances/{instance}/demoteMaster"]},{"name":"cloudsql.instances.executeSql","rules":["POST /v1/projects/{project}/instances/{instance}/executeSql"]},{"name":"cloudsql.instances.export","rules":["POST /v1/projects/{project}/instances/{instance}/export"]},{"name":"cloudsql.instances.failover","rules":["POST /v1/projects/{project}/instances/{instance}/failover"]},{"name":"cloudsql.instances.get","rules":["GET /v1/projects/{project}/instances/{instance}","GET /v1/projects/{project}/instances/{instance}/connectSettings","GET /v1/projects/{project}/instances/{instance}/getLatestRecoveryTime","POST /v1/projects/{project}/instances/{instance}/verifyExternalSyncSettings"]},{"name":"cloudsql.instances.getDiskShrinkConfig","rules":["GET /v1/projects/{project}/instances/{instance}/getDiskShrinkConfig"]},{"name":"cloudsql.instances.import","rules":["POST /v1/projects/{project}/instances/{instance}/import"]},{"name":"cloudsql.instances.list","rules":["GET /v1/projects/{project}/instances"]},{"name":"cloudsql.instances.listEntraIdCertificates","rules":["GET /v1/projects/{project}/instances/{instance}/listEntraIdCertificates"]},{"name":"cloudsql.instances.listServerCas","rules":["GET /v1/projects/{project}/instances/{instance}/listServerCas"]},{"name":"cloudsql.instances.listServerCertificates","rules":["GET /v1/projects/{project}/instances/{instance}/listServerCertificates"]},{"name":"cloudsql.instances.performDiskShrink","rules":["POST /v1/projects/{project}/instances/{instance}/performDiskShrink"]},{"name":"cloudsql.instances.preCheckMajorVersionUpgrade","rules":["POST /v1/projects/{project}/instances/{instance}/preCheckMajorVersionUpgrade"]},{"name":"cloudsql.instances.promoteReplica","rules":["POST /v1/projects/{project}/instances/{instance}/promoteReplica"]},{"name":"cloudsql.instances.reencrypt","rules":["POST /v1/projects/{project}/instances/{instance}/reencrypt"]},{"name":"cloudsql.instances.resetReplicaSize","rules":["POST /v1/projects/{project}/instances/{instance}/resetReplicaSize"]},{"name":"cloudsql.instances.resetSslConfig","rules":["POST /v1/projects/{project}/instances/{instance}/resetSslConfig"]},{"name":"cloudsql.instances.restart","rules":["POST /v1/projects/{project}/instances/{instance}/restart"]},{"name":"cloudsql.instances.restoreBackup","rules":["POST /v1/projects/{projectsId}:pointInTimeRestore","POST /v1/projects/{project}/instances/{instance}/restoreBackup"]},{"name":"cloudsql.instances.rotateEntraIdCertificate","rules":["POST /v1/projects/{project}/instances/{instance}/rotateEntraIdCertificate"]},{"name":"cloudsql.instances.rotateServerCa","rules":["POST /v1/projects/{project}/instances/{instance}/rotateServerCa"]},{"name":"cloudsql.instances.rotateServerCertificate","rules":["POST /v1/projects/{project}/instances/{instance}/rotateServerCertificate"]},{"name":"cloudsql.instances.startReplica","rules":["POST /v1/projects/{project}/instances/{instance}/startReplica"]},{"name":"cloudsql.instances.stopReplica","rules":["POST /v1/projects/{project}/instances/{instance}/stopReplica"]},{"name":"cloudsql.instances.truncateLog","rules":["POST /v1/projects/{project}/instances/{instance}/truncateLog"]},{"name":"cloudsql.instances.update","rules":["PUT /v1/projects/{project}/instances/{instance}","PATCH /v1/projects/{project}/instances/{instance}","POST /v1/projects/{project}/instances/{instance}/rescheduleMaintenance","POST /v1/projects/{project}/instances/{instance}/startExternalSync"]},{"name":"cloudsql.sslCerts.create","rules":["POST /v1/projects/{project}/instances/{instance}/sslCerts"]},{"name":"cloudsql.sslCerts.delete","rules":["DELETE /v1/projects/{project}/instances/{instance}/sslCerts/{sha1Fingerprint}"]},{"name":"cloudsql.sslCerts.get","rules":["GET /v1/projects/{project}/instances/{instance}/sslCerts/{sha1Fingerprint}"]},{"name":"cloudsql.sslCerts.list","rules":["GET /v1/projects/{project}/instances/{instance}/sslCerts"]},{"name":"cloudsql.users.create","rules":["POST /v1/projects/{project}/instances/{instance}/users"]},{"name":"cloudsql.users.delete","rules":["DELETE /v1/projects/{project}/instances/{instance}/users"]},{"name":"cloudsql.users.get","rules":["GET /v1/projects/{project}/instances/{instance}/users/{name}"]},{"name":"cloudsql.users.list","rules":["GET /v1/projects/{project}/instances/{instance}/users"]},{"name":"cloudsql.users.update","rules":["PUT /v1/projects/{project}/instances/{instance}/users"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://bigquery.googleapis.com","permissions":[{"name":"bigquery.datasets.create","rules":["POST /bigquery/v2/projects/{projectsId}/datasets"]},{"name":"bigquery.datasets.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}"]},{"name":"bigquery.datasets.get","rules":["GET /bigquery/v2/projects/{projectsId}/datasets","GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}"]},{"name":"bigquery.datasets.update","rules":["PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}","PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}","POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}:undelete"]},{"name":"bigquery.jobs.create","rules":["POST /bigquery/v2/projects/{projectsId}/jobs","POST /bigquery/v2/projects/{projectsId}/queries","POST /resumable/upload/bigquery/v2/projects/{projectsId}/jobs","POST /upload/bigquery/v2/projects/{projectsId}/jobs"]},{"name":"bigquery.jobs.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/jobs/{jobsId}/delete"]},{"name":"bigquery.jobs.get","rules":["GET /bigquery/v2/projects/{projectsId}/jobs/{jobsId}","GET /bigquery/v2/projects/{projectsId}/queries/{queriesId}"]},{"name":"bigquery.jobs.list","rules":["GET /bigquery/v2/projects/{projectsId}/jobs"]},{"name":"bigquery.jobs.update","rules":["POST /bigquery/v2/projects/{projectsId}/jobs/{jobsId}/cancel"]},{"name":"bigquery.models.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"]},{"name":"bigquery.models.getMetadata","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"]},{"name":"bigquery.models.list","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models"]},{"name":"bigquery.models.updateMetadata","rules":["PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"]},{"name":"bigquery.routines.create","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines"]},{"name":"bigquery.routines.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"]},{"name":"bigquery.routines.get","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"]},{"name":"bigquery.routines.list","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines"]},{"name":"bigquery.routines.update","rules":["PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"]},{"name":"bigquery.rowAccessPolicies.create","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies"]},{"name":"bigquery.rowAccessPolicies.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}","POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies:batchDelete"]},{"name":"bigquery.rowAccessPolicies.get","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}"]},{"name":"bigquery.rowAccessPolicies.getIamPolicy","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}:getIamPolicy"]},{"name":"bigquery.rowAccessPolicies.list","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies"]},{"name":"bigquery.rowAccessPolicies.update","rules":["PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}"]},{"name":"bigquery.tables.create","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables"]},{"name":"bigquery.tables.delete","rules":["DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"]},{"name":"bigquery.tables.get","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"]},{"name":"bigquery.tables.getData","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/data"]},{"name":"bigquery.tables.getIamPolicy","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}:getIamPolicy"]},{"name":"bigquery.tables.list","rules":["GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables"]},{"name":"bigquery.tables.setIamPolicy","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}:setIamPolicy"]},{"name":"bigquery.tables.update","rules":["PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}","PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"]},{"name":"bigquery.tables.updateData","rules":["POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/insertAll"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://storage.googleapis.com","permissions":[{"name":"storage.anywhereCaches.create","rules":["POST /storage/v1/b/{bucket}/anywhereCaches"]},{"name":"storage.anywhereCaches.disable","rules":["POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/disable"]},{"name":"storage.anywhereCaches.get","rules":["GET /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}"]},{"name":"storage.anywhereCaches.list","rules":["GET /storage/v1/b/{bucket}/anywhereCaches"]},{"name":"storage.anywhereCaches.pause","rules":["POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/pause"]},{"name":"storage.anywhereCaches.resume","rules":["POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/resume"]},{"name":"storage.anywhereCaches.update","rules":["PATCH /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}"]},{"name":"storage.buckets.create","rules":["POST /storage/v1/b"]},{"name":"storage.buckets.delete","rules":["DELETE /storage/v1/b/{bucket}"]},{"name":"storage.buckets.get","rules":["GET /storage/v1/b/{bucket}"]},{"name":"storage.buckets.getIamPolicy","rules":["GET /storage/v1/b/{bucket}/iam"]},{"name":"storage.buckets.list","rules":["GET /storage/v1/b"]},{"name":"storage.buckets.relocate","rules":["POST /storage/v1/b/{bucket}/relocate"]},{"name":"storage.buckets.restore","rules":["POST /storage/v1/b/{bucket}/restore"]},{"name":"storage.buckets.setIamPolicy","rules":["PUT /storage/v1/b/{bucket}/iam"]},{"name":"storage.buckets.update","rules":["PUT /storage/v1/b/{bucket}","PATCH /storage/v1/b/{bucket}"]},{"name":"storage.folders.create","rules":["POST /storage/v1/b/{bucket}/folders"]},{"name":"storage.folders.delete","rules":["DELETE /storage/v1/b/{bucket}/folders/{folder}","POST /storage/v1/b/{bucket}/folders/{folder}/deleteRecursive"]},{"name":"storage.folders.get","rules":["GET /storage/v1/b/{bucket}/folders/{folder}"]},{"name":"storage.folders.list","rules":["GET /storage/v1/b/{bucket}/folders"]},{"name":"storage.folders.rename","rules":["POST /storage/v1/b/{bucket}/folders/{sourceFolder}/renameTo/folders/{destinationFolder}"]},{"name":"storage.hmacKeys.create","rules":["POST /storage/v1/projects/{projectId}/hmacKeys"]},{"name":"storage.hmacKeys.delete","rules":["DELETE /storage/v1/projects/{projectId}/hmacKeys/{accessId}"]},{"name":"storage.hmacKeys.get","rules":["GET /storage/v1/projects/{projectId}/hmacKeys/{accessId}"]},{"name":"storage.hmacKeys.list","rules":["GET /storage/v1/projects/{projectId}/hmacKeys"]},{"name":"storage.hmacKeys.update","rules":["PUT /storage/v1/projects/{projectId}/hmacKeys/{accessId}"]},{"name":"storage.managedFolders.create","rules":["POST /storage/v1/b/{bucket}/managedFolders"]},{"name":"storage.managedFolders.delete","rules":["DELETE /storage/v1/b/{bucket}/managedFolders/{managedFolder}"]},{"name":"storage.managedFolders.get","rules":["GET /storage/v1/b/{bucket}/managedFolders/{managedFolder}"]},{"name":"storage.managedFolders.getIamPolicy","rules":["GET /storage/v1/b/{bucket}/managedFolders/{managedFolder}/iam"]},{"name":"storage.managedFolders.list","rules":["GET /storage/v1/b/{bucket}/managedFolders"]},{"name":"storage.managedFolders.setIamPolicy","rules":["PUT /storage/v1/b/{bucket}/managedFolders/{managedFolder}/iam"]},{"name":"storage.objects.create","rules":["POST /resumable/upload/storage/v1/b/{bucket}/o","POST /storage/v1/b/{bucket}/o","POST /storage/v1/b/{destinationBucket}/o/{destinationObject}/compose","POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/copyTo/b/{destinationBucket}/o/{destinationObject}","POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/rewriteTo/b/{destinationBucket}/o/{destinationObject}","POST /upload/storage/v1/b/{bucket}/o"]},{"name":"storage.objects.delete","rules":["DELETE /storage/v1/b/{bucket}/o/{object}"]},{"name":"storage.objects.get","rules":["GET /storage/v1/b/{bucket}/o/{object}"]},{"name":"storage.objects.getIamPolicy","rules":["GET /storage/v1/b/{bucket}/o/{object}/iam"]},{"name":"storage.objects.list","rules":["GET /storage/v1/b/{bucket}/o","POST /storage/v1/b/{bucket}/o/watch"]},{"name":"storage.objects.move","rules":["POST /storage/v1/b/{bucket}/o/{sourceObject}/moveTo/o/{destinationObject}"]},{"name":"storage.objects.restore","rules":["POST /storage/v1/b/{bucket}/o/bulkRestore","POST /storage/v1/b/{bucket}/o/{object}/restore"]},{"name":"storage.objects.setIamPolicy","rules":["PUT /storage/v1/b/{bucket}/o/{object}/iam"]},{"name":"storage.objects.update","rules":["PUT /storage/v1/b/{bucket}/o/{object}","PATCH /storage/v1/b/{bucket}/o/{object}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://run.googleapis.com","permissions":[{"name":"cloudbuild.builds.create","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/builds:submit"]},{"name":"run.executions.cancel","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}:cancel"]},{"name":"run.executions.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}"]},{"name":"run.executions.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}"]},{"name":"run.executions.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions"]},{"name":"run.jobs.create","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/jobs"]},{"name":"run.jobs.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"]},{"name":"run.jobs.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"]},{"name":"run.jobs.getIamPolicy","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:getIamPolicy"]},{"name":"run.jobs.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs"]},{"name":"run.jobs.run","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:run"]},{"name":"run.jobs.setIamPolicy","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:setIamPolicy"]},{"name":"run.jobs.update","rules":["PATCH /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"]},{"name":"run.operations.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"]},{"name":"run.operations.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"]},{"name":"run.operations.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/operations"]},{"name":"run.revisions.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions/{revisionsId}","DELETE /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions/{revisionsId}"]},{"name":"run.revisions.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions/{revisionsId}","GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions/{revisionsId}"]},{"name":"run.revisions.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions","GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions"]},{"name":"run.services.create","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/services"]},{"name":"run.services.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"]},{"name":"run.services.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"]},{"name":"run.services.getIamPolicy","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}:getIamPolicy"]},{"name":"run.services.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/services"]},{"name":"run.services.setIamPolicy","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}:setIamPolicy"]},{"name":"run.services.update","rules":["PATCH /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"]},{"name":"run.tasks.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}/tasks/{tasksId}"]},{"name":"run.tasks.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}/tasks"]},{"name":"run.workerpools.create","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/workerPools"]},{"name":"run.workerpools.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]},{"name":"run.workerpools.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]},{"name":"run.workerpools.getIamPolicy","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}:getIamPolicy"]},{"name":"run.workerpools.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools"]},{"name":"run.workerpools.setIamPolicy","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}:setIamPolicy"]},{"name":"run.workerpools.update","rules":["PATCH /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://cloudbuild.googleapis.com","permissions":[{"name":"cloudbuild.builds.approve","rules":["POST /v1/projects/{projectsId}/builds/{buildsId}:approve","POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:approve"]},{"name":"cloudbuild.builds.create","rules":["POST /v1/projects/{projectId}/builds","POST /v1/projects/{projectId}/builds/{id}:retry","POST /v1/projects/{projectsId}/locations/{locationsId}/builds","POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:retry"]},{"name":"cloudbuild.builds.get","rules":["GET /v1/projects/{projectId}/builds/{id}","GET /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}"]},{"name":"cloudbuild.builds.list","rules":["GET /v1/projects/{projectId}/builds","GET /v1/projects/{projectsId}/locations/{locationsId}/builds"]},{"name":"cloudbuild.builds.update","rules":["POST /v1/projects/{projectId}/builds/{id}:cancel","POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:cancel"]},{"name":"cloudbuild.operations.get","rules":["GET /v1/operations/{operationsId}","GET /v1/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"]},{"name":"cloudbuild.workerpools.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/workerPools"]},{"name":"cloudbuild.workerpools.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]},{"name":"cloudbuild.workerpools.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]},{"name":"cloudbuild.workerpools.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/workerPools"]},{"name":"cloudbuild.workerpools.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://artifactregistry.googleapis.com","permissions":[{"name":"artifactregistry.aptartifacts.create","rules":["POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:import"]},{"name":"artifactregistry.attachments.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments"]},{"name":"artifactregistry.attachments.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments/{attachmentsId}"]},{"name":"artifactregistry.attachments.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments/{attachmentsId}"]},{"name":"artifactregistry.attachments.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments"]},{"name":"artifactregistry.dockerimages.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/dockerImages/{dockerImagesId}"]},{"name":"artifactregistry.dockerimages.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/dockerImages"]},{"name":"artifactregistry.files.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"]},{"name":"artifactregistry.files.download","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}:download"]},{"name":"artifactregistry.files.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"]},{"name":"artifactregistry.files.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files"]},{"name":"artifactregistry.files.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"]},{"name":"artifactregistry.files.upload","rules":["POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload","POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create","POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload","POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create","POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create","POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create"]},{"name":"artifactregistry.kfpartifacts.create","rules":["POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create"]},{"name":"artifactregistry.mavenartifacts.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/mavenArtifacts/{mavenArtifactsId}"]},{"name":"artifactregistry.mavenartifacts.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/mavenArtifacts"]},{"name":"artifactregistry.npmpackages.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/npmPackages/{npmPackagesId}"]},{"name":"artifactregistry.npmpackages.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/npmPackages"]},{"name":"artifactregistry.packages.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}"]},{"name":"artifactregistry.packages.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}"]},{"name":"artifactregistry.packages.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages"]},{"name":"artifactregistry.packages.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}"]},{"name":"artifactregistry.projectconfigs.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/projectConfig"]},{"name":"artifactregistry.projectconfigs.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/projectConfig"]},{"name":"artifactregistry.projectsettings.get","rules":["GET /v1/projects/{projectsId}/projectSettings"]},{"name":"artifactregistry.projectsettings.update","rules":["PATCH /v1/projects/{projectsId}/projectSettings"]},{"name":"artifactregistry.pythonpackages.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/pythonPackages/{pythonPackagesId}"]},{"name":"artifactregistry.pythonpackages.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/pythonPackages"]},{"name":"artifactregistry.repositories.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories"]},{"name":"artifactregistry.repositories.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}"]},{"name":"artifactregistry.repositories.exportArtifacts","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:exportArtifact"]},{"name":"artifactregistry.repositories.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}"]},{"name":"artifactregistry.repositories.getIamPolicy","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:getIamPolicy"]},{"name":"artifactregistry.repositories.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories"]},{"name":"artifactregistry.repositories.setIamPolicy","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:setIamPolicy"]},{"name":"artifactregistry.repositories.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}"]},{"name":"artifactregistry.rules.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/rules"]},{"name":"artifactregistry.rules.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/rules/{rulesId}"]},{"name":"artifactregistry.rules.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/rules/{rulesId}"]},{"name":"artifactregistry.rules.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/rules"]},{"name":"artifactregistry.rules.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/rules/{rulesId}"]},{"name":"artifactregistry.tags.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/tags"]},{"name":"artifactregistry.tags.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/tags/{tagsId}"]},{"name":"artifactregistry.tags.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/tags/{tagsId}"]},{"name":"artifactregistry.tags.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/tags"]},{"name":"artifactregistry.tags.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/tags/{tagsId}"]},{"name":"artifactregistry.versions.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/versions/{versionsId}","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/versions:batchDelete"]},{"name":"artifactregistry.versions.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/versions/{versionsId}"]},{"name":"artifactregistry.versions.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/versions"]},{"name":"artifactregistry.versions.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/packages/{packagesId}/versions/{versionsId}"]},{"name":"artifactregistry.yumartifacts.create","rules":["POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/yumArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/yumArtifacts:create","POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/yumArtifacts:import"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://container.googleapis.com","permissions":[{"name":"container.clusters.create","rules":["POST /v1/projects/{projectId}/zones/{zone}/clusters","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters"]},{"name":"container.clusters.delete","rules":["DELETE /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}","DELETE /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}"]},{"name":"container.clusters.get","rules":["GET /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}","GET /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}","GET /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}","GET /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}"]},{"name":"container.clusters.list","rules":["GET /v1/projects/{projectId}/zones/{zone}/clusters","GET /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools","GET /v1/projects/{projectsId}/locations/{locationsId}/clusters","GET /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools"]},{"name":"container.clusters.update","rules":["PUT /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/addons","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/legacyAbac","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/locations","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/logging","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/master","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/monitoring","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools","DELETE /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}/autoscaling","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}/setManagement","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}/setSize","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}/update","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}:rollback","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/resourceLabels","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}:completeIpRotation","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}:setMaintenancePolicy","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}:setMasterAuth","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}:setNetworkPolicy","POST /v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}:startIpRotation","PUT /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools","PUT /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}","DELETE /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}:completeUpgrade","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}:rollback","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}:setAutoscaling","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}:setManagement","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}/nodePools/{nodePoolsId}:setSize","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:completeIpRotation","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setAddons","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setLegacyAbac","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setLocations","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setLogging","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setMaintenancePolicy","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setMasterAuth","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setMonitoring","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setNetworkPolicy","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:setResourceLabels","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:startIpRotation","POST /v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}:updateMaster"]},{"name":"container.operations.get","rules":["GET /v1/projects/{projectId}/zones/{zone}/operations/{operationId}","GET /v1/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"]},{"name":"container.operations.list","rules":["GET /v1/projects/{projectId}/zones/{zone}/operations","GET /v1/projects/{projectsId}/locations/{locationsId}/operations"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://cloudfunctions.googleapis.com","permissions":[{"name":"cloudfunctions.functions.create","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/functions"]},{"name":"cloudfunctions.functions.delete","rules":["DELETE /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}"]},{"name":"cloudfunctions.functions.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}"]},{"name":"cloudfunctions.functions.getIamPolicy","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}:getIamPolicy"]},{"name":"cloudfunctions.functions.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/functions"]},{"name":"cloudfunctions.functions.setIamPolicy","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}:setIamPolicy"]},{"name":"cloudfunctions.functions.sourceCodeGet","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}:generateDownloadUrl"]},{"name":"cloudfunctions.functions.sourceCodeSet","rules":["POST /v2/projects/{projectsId}/locations/{locationsId}/functions:generateUploadUrl"]},{"name":"cloudfunctions.functions.update","rules":["PATCH /v2/projects/{projectsId}/locations/{locationsId}/functions/{functionsId}"]},{"name":"cloudfunctions.operations.get","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"]},{"name":"cloudfunctions.operations.list","rules":["GET /v2/projects/{projectsId}/locations/{locationsId}/operations"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://secretmanager.googleapis.com","permissions":[{"name":"secretmanager.secrets.create","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets","POST /v1/projects/{projectsId}/secrets"]},{"name":"secretmanager.secrets.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}","DELETE /v1/projects/{projectsId}/secrets/{secretsId}"]},{"name":"secretmanager.secrets.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}","GET /v1/projects/{projectsId}/secrets/{secretsId}"]},{"name":"secretmanager.secrets.getIamPolicy","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}:getIamPolicy","GET /v1/projects/{projectsId}/secrets/{secretsId}:getIamPolicy"]},{"name":"secretmanager.secrets.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets","GET /v1/projects/{projectsId}/secrets"]},{"name":"secretmanager.secrets.setIamPolicy","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}:setIamPolicy","POST /v1/projects/{projectsId}/secrets/{secretsId}:setIamPolicy"]},{"name":"secretmanager.secrets.update","rules":["PATCH /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}","PATCH /v1/projects/{projectsId}/secrets/{secretsId}"]},{"name":"secretmanager.versions.access","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions/{versionsId}:access","GET /v1/projects/{projectsId}/secrets/{secretsId}/versions/{versionsId}:access"]},{"name":"secretmanager.versions.add","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}:addVersion","POST /v1/projects/{projectsId}/secrets/{secretsId}:addVersion"]},{"name":"secretmanager.versions.destroy","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions/{versionsId}:destroy","POST /v1/projects/{projectsId}/secrets/{secretsId}/versions/{versionsId}:destroy"]},{"name":"secretmanager.versions.disable","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions/{versionsId}:disable","POST /v1/projects/{projectsId}/secrets/{secretsId}/versions/{versionsId}:disable"]},{"name":"secretmanager.versions.enable","rules":["POST /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions/{versionsId}:enable","POST /v1/projects/{projectsId}/secrets/{secretsId}/versions/{versionsId}:enable"]},{"name":"secretmanager.versions.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions/{versionsId}","GET /v1/projects/{projectsId}/secrets/{secretsId}/versions/{versionsId}"]},{"name":"secretmanager.versions.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/secrets/{secretsId}/versions","GET /v1/projects/{projectsId}/secrets/{secretsId}/versions"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://logging.googleapis.com","permissions":[{"name":"logging.buckets.copyLogEntries","rules":["POST /v2/entries:copy"]},{"name":"logging.buckets.create","rules":["POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets","POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets:createAsync","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets:createAsync","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets:createAsync","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets:createAsync","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets:createAsync"]},{"name":"logging.buckets.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}","DELETE /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}","DELETE /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}","DELETE /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}","DELETE /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}"]},{"name":"logging.buckets.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}"]},{"name":"logging.buckets.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets"]},{"name":"logging.buckets.undelete","rules":["POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}:undelete","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}:undelete","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}:undelete","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}:undelete","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}:undelete"]},{"name":"logging.buckets.update","rules":["PATCH /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}","POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}:updateAsync","PATCH /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}:updateAsync","PATCH /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}:updateAsync","PATCH /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}:updateAsync","PATCH /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}:updateAsync"]},{"name":"logging.exclusions.create","rules":["POST /v2/billingAccounts/{billingAccountsId}/exclusions","POST /v2/folders/{foldersId}/exclusions","POST /v2/organizations/{organizationsId}/exclusions","POST /v2/projects/{projectsId}/exclusions","POST /v2/{v2Id}/{v2Id1}/exclusions"]},{"name":"logging.exclusions.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/exclusions/{exclusionsId}","DELETE /v2/folders/{foldersId}/exclusions/{exclusionsId}","DELETE /v2/organizations/{organizationsId}/exclusions/{exclusionsId}","DELETE /v2/projects/{projectsId}/exclusions/{exclusionsId}","DELETE /v2/{v2Id}/{v2Id1}/exclusions/{exclusionsId}"]},{"name":"logging.exclusions.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/exclusions/{exclusionsId}","GET /v2/folders/{foldersId}/exclusions/{exclusionsId}","GET /v2/organizations/{organizationsId}/exclusions/{exclusionsId}","GET /v2/projects/{projectsId}/exclusions/{exclusionsId}","GET /v2/{v2Id}/{v2Id1}/exclusions/{exclusionsId}"]},{"name":"logging.exclusions.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/exclusions","GET /v2/folders/{foldersId}/exclusions","GET /v2/organizations/{organizationsId}/exclusions","GET /v2/projects/{projectsId}/exclusions","GET /v2/{v2Id}/{v2Id1}/exclusions"]},{"name":"logging.exclusions.update","rules":["PATCH /v2/billingAccounts/{billingAccountsId}/exclusions/{exclusionsId}","PATCH /v2/folders/{foldersId}/exclusions/{exclusionsId}","PATCH /v2/organizations/{organizationsId}/exclusions/{exclusionsId}","PATCH /v2/projects/{projectsId}/exclusions/{exclusionsId}","PATCH /v2/{v2Id}/{v2Id1}/exclusions/{exclusionsId}"]},{"name":"logging.links.create","rules":["POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/links","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/links","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/links","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/links","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/links"]},{"name":"logging.links.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","DELETE /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","DELETE /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","DELETE /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","DELETE /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}"]},{"name":"logging.links.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/links/{linksId}"]},{"name":"logging.links.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/links","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/links","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/links","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/links","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/links"]},{"name":"logging.locations.get","rules":["GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}"]},{"name":"logging.locations.list","rules":["GET /v2/{v2Id}/{v2Id1}/locations"]},{"name":"logging.logEntries.create","rules":["POST /v2/entries:write"]},{"name":"logging.logEntries.list","rules":["POST /v2/entries:list","POST /v2/entries:tail"]},{"name":"logging.logMetrics.create","rules":["POST /v2/projects/{projectsId}/metrics"]},{"name":"logging.logMetrics.delete","rules":["DELETE /v2/projects/{projectsId}/metrics/{metricsId}"]},{"name":"logging.logMetrics.get","rules":["GET /v2/projects/{projectsId}/metrics/{metricsId}"]},{"name":"logging.logMetrics.list","rules":["GET /v2/projects/{projectsId}/metrics"]},{"name":"logging.logMetrics.update","rules":["PUT /v2/projects/{projectsId}/metrics/{metricsId}"]},{"name":"logging.logs.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/logs/{logsId}","DELETE /v2/folders/{foldersId}/logs/{logsId}","DELETE /v2/organizations/{organizationsId}/logs/{logsId}","DELETE /v2/projects/{projectsId}/logs/{logsId}","DELETE /v2/{v2Id}/{v2Id1}/logs/{logsId}"]},{"name":"logging.logs.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}/logs","GET /v2/billingAccounts/{billingAccountsId}/logs","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}/logs","GET /v2/folders/{foldersId}/logs","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}/logs","GET /v2/organizations/{organizationsId}/logs","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}/logs","GET /v2/projects/{projectsId}/logs","GET /v2/{v2Id}/{v2Id1}/logs"]},{"name":"logging.logScopes.create","rules":["POST /v2/folders/{foldersId}/locations/{locationsId}/logScopes","POST /v2/organizations/{organizationsId}/locations/{locationsId}/logScopes","POST /v2/projects/{projectsId}/locations/{locationsId}/logScopes"]},{"name":"logging.logScopes.delete","rules":["DELETE /v2/folders/{foldersId}/locations/{locationsId}/logScopes/{logScopesId}","DELETE /v2/organizations/{organizationsId}/locations/{locationsId}/logScopes/{logScopesId}","DELETE /v2/projects/{projectsId}/locations/{locationsId}/logScopes/{logScopesId}"]},{"name":"logging.logScopes.get","rules":["GET /v2/folders/{foldersId}/locations/{locationsId}/logScopes/{logScopesId}","GET /v2/organizations/{organizationsId}/locations/{locationsId}/logScopes/{logScopesId}","GET /v2/projects/{projectsId}/locations/{locationsId}/logScopes/{logScopesId}"]},{"name":"logging.logScopes.list","rules":["GET /v2/folders/{foldersId}/locations/{locationsId}/logScopes","GET /v2/organizations/{organizationsId}/locations/{locationsId}/logScopes","GET /v2/projects/{projectsId}/locations/{locationsId}/logScopes"]},{"name":"logging.logScopes.update","rules":["PATCH /v2/folders/{foldersId}/locations/{locationsId}/logScopes/{logScopesId}","PATCH /v2/organizations/{organizationsId}/locations/{locationsId}/logScopes/{logScopesId}","PATCH /v2/projects/{projectsId}/locations/{locationsId}/logScopes/{logScopesId}"]},{"name":"logging.operations.cancel","rules":["POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/operations/{operationsId}:cancel","POST /v2/folders/{foldersId}/locations/{locationsId}/operations/{operationsId}:cancel","POST /v2/organizations/{organizationsId}/locations/{locationsId}/operations/{operationsId}:cancel","POST /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}:cancel","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/operations/{operationsId}:cancel"]},{"name":"logging.operations.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/operations/{operationsId}","GET /v2/folders/{foldersId}/locations/{locationsId}/operations/{operationsId}","GET /v2/organizations/{organizationsId}/locations/{locationsId}/operations/{operationsId}","GET /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/operations/{operationsId}"]},{"name":"logging.operations.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/operations","GET /v2/folders/{foldersId}/locations/{locationsId}/operations","GET /v2/organizations/{organizationsId}/locations/{locationsId}/operations","GET /v2/projects/{projectsId}/locations/{locationsId}/operations","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/operations"]},{"name":"logging.sinks.create","rules":["POST /v2/billingAccounts/{billingAccountsId}/sinks","POST /v2/folders/{foldersId}/sinks","POST /v2/organizations/{organizationsId}/sinks","POST /v2/projects/{projectsId}/sinks","POST /v2/{v2Id}/{v2Id1}/sinks"]},{"name":"logging.sinks.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/sinks/{sinksId}","DELETE /v2/folders/{foldersId}/sinks/{sinksId}","DELETE /v2/organizations/{organizationsId}/sinks/{sinksId}","DELETE /v2/projects/{projectsId}/sinks/{sinksId}","DELETE /v2/{v2Id}/{v2Id1}/sinks/{sinksId}"]},{"name":"logging.sinks.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/sinks/{sinksId}","GET /v2/folders/{foldersId}/sinks/{sinksId}","GET /v2/organizations/{organizationsId}/sinks/{sinksId}","GET /v2/projects/{projectsId}/sinks/{sinksId}","GET /v2/{v2Id}/{v2Id1}/sinks/{sinksId}"]},{"name":"logging.sinks.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/sinks","GET /v2/folders/{foldersId}/sinks","GET /v2/organizations/{organizationsId}/sinks","GET /v2/projects/{projectsId}/sinks","GET /v2/{v2Id}/{v2Id1}/sinks"]},{"name":"logging.sinks.update","rules":["PUT /v2/billingAccounts/{billingAccountsId}/sinks/{sinksId}","PATCH /v2/billingAccounts/{billingAccountsId}/sinks/{sinksId}","PUT /v2/folders/{foldersId}/sinks/{sinksId}","PATCH /v2/folders/{foldersId}/sinks/{sinksId}","PUT /v2/organizations/{organizationsId}/sinks/{sinksId}","PATCH /v2/organizations/{organizationsId}/sinks/{sinksId}","PUT /v2/projects/{projectsId}/sinks/{sinksId}","PATCH /v2/projects/{projectsId}/sinks/{sinksId}","PUT /v2/{v2Id}/{v2Id1}/sinks/{sinksId}"]},{"name":"logging.views.create","rules":["POST /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views","POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views"]},{"name":"logging.views.delete","rules":["DELETE /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","DELETE /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","DELETE /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","DELETE /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","DELETE /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}"]},{"name":"logging.views.get","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}"]},{"name":"logging.views.getIamPolicy","rules":["POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:getIamPolicy","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:getIamPolicy","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:getIamPolicy","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:getIamPolicy"]},{"name":"logging.views.list","rules":["GET /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views","GET /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views","GET /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views","GET /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views","GET /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views"]},{"name":"logging.views.setIamPolicy","rules":["POST /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:setIamPolicy","POST /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:setIamPolicy","POST /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:setIamPolicy","POST /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}:setIamPolicy"]},{"name":"logging.views.update","rules":["PATCH /v2/billingAccounts/{billingAccountsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","PATCH /v2/folders/{foldersId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","PATCH /v2/organizations/{organizationsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","PATCH /v2/projects/{projectsId}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}","PATCH /v2/{v2Id}/{v2Id1}/locations/{locationsId}/buckets/{bucketsId}/views/{viewsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://monitoring.googleapis.com","permissions":[{"name":"monitoring.alertPolicies.create","rules":["POST /v3/projects/{projectsId}/alertPolicies"]},{"name":"monitoring.alertPolicies.delete","rules":["DELETE /v3/projects/{projectsId}/alertPolicies/{alertPoliciesId}"]},{"name":"monitoring.alertPolicies.get","rules":["GET /v3/projects/{projectsId}/alertPolicies/{alertPoliciesId}"]},{"name":"monitoring.alertPolicies.list","rules":["GET /v3/projects/{projectsId}/alertPolicies"]},{"name":"monitoring.alertPolicies.update","rules":["PATCH /v3/projects/{projectsId}/alertPolicies/{alertPoliciesId}"]},{"name":"monitoring.alerts.get","rules":["GET /v3/projects/{projectsId}/alerts/{alertsId}"]},{"name":"monitoring.alerts.list","rules":["GET /v3/projects/{projectsId}/alerts"]},{"name":"monitoring.groups.create","rules":["POST /v3/projects/{projectsId}/groups"]},{"name":"monitoring.groups.delete","rules":["DELETE /v3/projects/{projectsId}/groups/{groupsId}"]},{"name":"monitoring.groups.get","rules":["GET /v3/projects/{projectsId}/groups/{groupsId}","GET /v3/projects/{projectsId}/groups/{groupsId}/members"]},{"name":"monitoring.groups.list","rules":["GET /v3/projects/{projectsId}/groups"]},{"name":"monitoring.groups.update","rules":["PUT /v3/projects/{projectsId}/groups/{groupsId}"]},{"name":"monitoring.metricDescriptors.create","rules":["POST /v3/projects/{projectsId}/metricDescriptors"]},{"name":"monitoring.metricDescriptors.delete","rules":["DELETE /v3/projects/{projectsId}/metricDescriptors/{metricDescriptorsId}"]},{"name":"monitoring.metricDescriptors.get","rules":["GET /v3/projects/{projectsId}/metricDescriptors/{metricDescriptorsId}"]},{"name":"monitoring.metricDescriptors.list","rules":["GET /v3/projects/{projectsId}/metricDescriptors"]},{"name":"monitoring.monitoredResourceDescriptors.get","rules":["GET /v3/projects/{projectsId}/monitoredResourceDescriptors/{monitoredResourceDescriptorsId}"]},{"name":"monitoring.monitoredResourceDescriptors.list","rules":["GET /v3/projects/{projectsId}/monitoredResourceDescriptors"]},{"name":"monitoring.notificationChannelDescriptors.get","rules":["GET /v3/projects/{projectsId}/notificationChannelDescriptors/{notificationChannelDescriptorsId}"]},{"name":"monitoring.notificationChannelDescriptors.list","rules":["GET /v3/projects/{projectsId}/notificationChannelDescriptors"]},{"name":"monitoring.notificationChannels.create","rules":["POST /v3/projects/{projectsId}/notificationChannels"]},{"name":"monitoring.notificationChannels.delete","rules":["DELETE /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}"]},{"name":"monitoring.notificationChannels.get","rules":["GET /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}"]},{"name":"monitoring.notificationChannels.getVerificationCode","rules":["POST /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}:getVerificationCode"]},{"name":"monitoring.notificationChannels.list","rules":["GET /v3/projects/{projectsId}/notificationChannels"]},{"name":"monitoring.notificationChannels.sendVerificationCode","rules":["POST /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}:sendVerificationCode"]},{"name":"monitoring.notificationChannels.update","rules":["PATCH /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}"]},{"name":"monitoring.notificationChannels.verify","rules":["POST /v3/projects/{projectsId}/notificationChannels/{notificationChannelsId}:verify"]},{"name":"monitoring.services.create","rules":["POST /v3/projects/{projectsId}/timeSeries:createService","POST /v3/{v3Id}/{v3Id1}/services"]},{"name":"monitoring.services.delete","rules":["DELETE /v3/{v3Id}/{v3Id1}/services/{servicesId}"]},{"name":"monitoring.services.get","rules":["GET /v3/{v3Id}/{v3Id1}/services/{servicesId}"]},{"name":"monitoring.services.list","rules":["GET /v3/{v3Id}/{v3Id1}/services"]},{"name":"monitoring.services.update","rules":["PATCH /v3/{v3Id}/{v3Id1}/services/{servicesId}"]},{"name":"monitoring.slos.create","rules":["POST /v3/{v3Id}/{v3Id1}/services/{servicesId}/serviceLevelObjectives"]},{"name":"monitoring.slos.delete","rules":["DELETE /v3/{v3Id}/{v3Id1}/services/{servicesId}/serviceLevelObjectives/{serviceLevelObjectivesId}"]},{"name":"monitoring.slos.get","rules":["GET /v3/{v3Id}/{v3Id1}/services/{servicesId}/serviceLevelObjectives/{serviceLevelObjectivesId}"]},{"name":"monitoring.slos.list","rules":["GET /v3/{v3Id}/{v3Id1}/services/{servicesId}/serviceLevelObjectives"]},{"name":"monitoring.slos.update","rules":["PATCH /v3/{v3Id}/{v3Id1}/services/{servicesId}/serviceLevelObjectives/{serviceLevelObjectivesId}"]},{"name":"monitoring.snoozes.create","rules":["POST /v3/projects/{projectsId}/snoozes"]},{"name":"monitoring.snoozes.get","rules":["GET /v3/projects/{projectsId}/snoozes/{snoozesId}"]},{"name":"monitoring.snoozes.list","rules":["GET /v3/projects/{projectsId}/snoozes"]},{"name":"monitoring.snoozes.update","rules":["PATCH /v3/projects/{projectsId}/snoozes/{snoozesId}"]},{"name":"monitoring.timeSeries.create","rules":["POST /v3/projects/{projectsId}/timeSeries","POST /v3/projects/{projectsId}/timeSeries:query"]},{"name":"monitoring.timeSeries.list","rules":["GET /v3/folders/{foldersId}/timeSeries","GET /v3/organizations/{organizationsId}/timeSeries","GET /v3/projects/{projectsId}/timeSeries"]},{"name":"monitoring.uptimeCheckConfigs.create","rules":["POST /v3/projects/{projectsId}/uptimeCheckConfigs"]},{"name":"monitoring.uptimeCheckConfigs.delete","rules":["DELETE /v3/projects/{projectsId}/uptimeCheckConfigs/{uptimeCheckConfigsId}"]},{"name":"monitoring.uptimeCheckConfigs.get","rules":["GET /v3/projects/{projectsId}/uptimeCheckConfigs/{uptimeCheckConfigsId}"]},{"name":"monitoring.uptimeCheckConfigs.list","rules":["GET /v3/projects/{projectsId}/uptimeCheckConfigs"]},{"name":"monitoring.uptimeCheckConfigs.update","rules":["PATCH /v3/projects/{projectsId}/uptimeCheckConfigs/{uptimeCheckConfigsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://cloudbilling.googleapis.com","permissions":[{"name":"billing.accounts.create","rules":["POST /v1/billingAccounts","POST /v1/billingAccounts/{billingAccountsId}/subAccounts","POST /v1/organizations/{organizationsId}/billingAccounts"]},{"name":"billing.accounts.get","rules":["GET /v1/billingAccounts/{billingAccountsId}"]},{"name":"billing.accounts.getIamPolicy","rules":["GET /v1/billingAccounts/{billingAccountsId}:getIamPolicy"]},{"name":"billing.accounts.list","rules":["GET /v1/billingAccounts","GET /v1/billingAccounts/{billingAccountsId}/subAccounts","GET /v1/organizations/{organizationsId}/billingAccounts"]},{"name":"billing.accounts.move","rules":["POST /v1/billingAccounts/{billingAccountsId}:move","GET /v1/organizations/{organizationsId}/billingAccounts/{billingAccountsId}:move"]},{"name":"billing.accounts.setIamPolicy","rules":["POST /v1/billingAccounts/{billingAccountsId}:setIamPolicy"]},{"name":"billing.accounts.update","rules":["PATCH /v1/billingAccounts/{billingAccountsId}"]},{"name":"billing.resourceAssociations.create","rules":["PUT /v1/projects/{projectsId}/billingInfo"]},{"name":"billing.resourceAssociations.list","rules":["GET /v1/billingAccounts/{billingAccountsId}/projects","GET /v1/projects/{projectsId}/billingInfo"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://pubsub.googleapis.com","permissions":[{"name":"pubsub.schemas.commit","rules":["POST /v1/projects/{projectsId}/schemas/{schemasId}:commit"]},{"name":"pubsub.schemas.create","rules":["POST /v1/projects/{projectsId}/schemas"]},{"name":"pubsub.schemas.delete","rules":["DELETE /v1/projects/{projectsId}/schemas/{schemasId}","DELETE /v1/projects/{projectsId}/schemas/{schemasId}:deleteRevision"]},{"name":"pubsub.schemas.get","rules":["GET /v1/projects/{projectsId}/schemas/{schemasId}"]},{"name":"pubsub.schemas.getIamPolicy","rules":["GET /v1/projects/{projectsId}/schemas/{schemasId}:getIamPolicy"]},{"name":"pubsub.schemas.list","rules":["GET /v1/projects/{projectsId}/schemas"]},{"name":"pubsub.schemas.listRevisions","rules":["GET /v1/projects/{projectsId}/schemas/{schemasId}:listRevisions"]},{"name":"pubsub.schemas.rollback","rules":["POST /v1/projects/{projectsId}/schemas/{schemasId}:rollback"]},{"name":"pubsub.schemas.setIamPolicy","rules":["POST /v1/projects/{projectsId}/schemas/{schemasId}:setIamPolicy"]},{"name":"pubsub.schemas.validate","rules":["POST /v1/projects/{projectsId}/schemas:validate","POST /v1/projects/{projectsId}/schemas:validateMessage"]},{"name":"pubsub.snapshots.create","rules":["PUT /v1/projects/{projectsId}/snapshots/{snapshotsId}"]},{"name":"pubsub.snapshots.delete","rules":["DELETE /v1/projects/{projectsId}/snapshots/{snapshotsId}"]},{"name":"pubsub.snapshots.get","rules":["GET /v1/projects/{projectsId}/snapshots/{snapshotsId}"]},{"name":"pubsub.snapshots.getIamPolicy","rules":["GET /v1/projects/{projectsId}/snapshots/{snapshotsId}:getIamPolicy"]},{"name":"pubsub.snapshots.list","rules":["GET /v1/projects/{projectsId}/snapshots","GET /v1/projects/{projectsId}/topics/{topicsId}/snapshots"]},{"name":"pubsub.snapshots.setIamPolicy","rules":["POST /v1/projects/{projectsId}/snapshots/{snapshotsId}:setIamPolicy"]},{"name":"pubsub.snapshots.update","rules":["PATCH /v1/projects/{projectsId}/snapshots/{snapshotsId}"]},{"name":"pubsub.subscriptions.consume","rules":["POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:acknowledge","POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:modifyAckDeadline","POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:pull","POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:seek"]},{"name":"pubsub.subscriptions.create","rules":["PUT /v1/projects/{projectsId}/subscriptions/{subscriptionsId}"]},{"name":"pubsub.subscriptions.delete","rules":["DELETE /v1/projects/{projectsId}/subscriptions/{subscriptionsId}"]},{"name":"pubsub.subscriptions.get","rules":["GET /v1/projects/{projectsId}/subscriptions/{subscriptionsId}"]},{"name":"pubsub.subscriptions.getIamPolicy","rules":["GET /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:getIamPolicy"]},{"name":"pubsub.subscriptions.list","rules":["GET /v1/projects/{projectsId}/subscriptions","GET /v1/projects/{projectsId}/topics/{topicsId}/subscriptions"]},{"name":"pubsub.subscriptions.setIamPolicy","rules":["POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:setIamPolicy"]},{"name":"pubsub.subscriptions.update","rules":["PATCH /v1/projects/{projectsId}/subscriptions/{subscriptionsId}","POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:detach","POST /v1/projects/{projectsId}/subscriptions/{subscriptionsId}:modifyPushConfig"]},{"name":"pubsub.topics.create","rules":["PUT /v1/projects/{projectsId}/topics/{topicsId}"]},{"name":"pubsub.topics.delete","rules":["DELETE /v1/projects/{projectsId}/topics/{topicsId}"]},{"name":"pubsub.topics.get","rules":["GET /v1/projects/{projectsId}/topics/{topicsId}"]},{"name":"pubsub.topics.getIamPolicy","rules":["GET /v1/projects/{projectsId}/topics/{topicsId}:getIamPolicy"]},{"name":"pubsub.topics.list","rules":["GET /v1/projects/{projectsId}/topics"]},{"name":"pubsub.topics.publish","rules":["POST /v1/projects/{projectsId}/topics/{topicsId}:publish"]},{"name":"pubsub.topics.setIamPolicy","rules":["POST /v1/projects/{projectsId}/topics/{topicsId}:setIamPolicy"]},{"name":"pubsub.topics.update","rules":["PATCH /v1/projects/{projectsId}/topics/{topicsId}"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://firestore.googleapis.com","permissions":[{"name":"datastore.backups.delete","rules":["DELETE /v1/projects/{projectsId}/locations/{locationsId}/backups/{backupsId}"]},{"name":"datastore.backups.get","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/backups/{backupsId}"]},{"name":"datastore.backups.list","rules":["GET /v1/projects/{projectsId}/locations/{locationsId}/backups"]},{"name":"datastore.backups.restoreDatabase","rules":["POST /v1/projects/{projectsId}/databases:restore"]},{"name":"datastore.backupSchedules.create","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/backupSchedules"]},{"name":"datastore.backupSchedules.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"datastore.backupSchedules.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"datastore.backupSchedules.list","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/backupSchedules"]},{"name":"datastore.backupSchedules.update","rules":["PATCH /v1/projects/{projectsId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"datastore.databases.bulkDelete","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}:bulkDeleteDocuments"]},{"name":"datastore.databases.clone","rules":["POST /v1/projects/{projectsId}/databases:clone"]},{"name":"datastore.databases.create","rules":["POST /v1/projects/{projectsId}/databases"]},{"name":"datastore.databases.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}"]},{"name":"datastore.databases.export","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}:exportDocuments"]},{"name":"datastore.databases.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}"]},{"name":"datastore.databases.import","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}:importDocuments"]},{"name":"datastore.databases.list","rules":["GET /v1/projects/{projectsId}/databases"]},{"name":"datastore.databases.update","rules":["PATCH /v1/projects/{projectsId}/databases/{databasesId}"]},{"name":"datastore.entities.create","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{collectionId}"]},{"name":"datastore.entities.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}"]},{"name":"datastore.entities.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:batchGet","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:beginTransaction","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:listen","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:rollback"]},{"name":"datastore.entities.list","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/documents/{collectionId}","GET /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}/{collectionId}","POST /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}:partitionQuery","POST /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}:runAggregationQuery","POST /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}:runQuery"]},{"name":"datastore.entities.update","rules":["PATCH /v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}/{documentsId1}","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:batchWrite","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:commit","POST /v1/projects/{projectsId}/databases/{databasesId}/documents:write"]},{"name":"datastore.operations.cancel","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/operations/{operationsId}:cancel"]},{"name":"datastore.operations.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}/operations/{operationsId}"]},{"name":"datastore.operations.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/operations/{operationsId}"]},{"name":"datastore.operations.list","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/operations"]},{"name":"datastore.schemas.create","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/indexes"]},{"name":"datastore.schemas.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/indexes/{indexesId}"]},{"name":"datastore.schemas.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/fields/{fieldsId}","GET /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/indexes/{indexesId}"]},{"name":"datastore.schemas.list","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/fields","GET /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/indexes"]},{"name":"datastore.schemas.update","rules":["PATCH /v1/projects/{projectsId}/databases/{databasesId}/collectionGroups/{collectionGroupsId}/fields/{fieldsId}"]},{"name":"datastore.userCreds.create","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/userCreds"]},{"name":"datastore.userCreds.delete","rules":["DELETE /v1/projects/{projectsId}/databases/{databasesId}/userCreds/{userCredsId}"]},{"name":"datastore.userCreds.get","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/userCreds/{userCredsId}"]},{"name":"datastore.userCreds.list","rules":["GET /v1/projects/{projectsId}/databases/{databasesId}/userCreds"]},{"name":"datastore.userCreds.update","rules":["POST /v1/projects/{projectsId}/databases/{databasesId}/userCreds/{userCredsId}:disable","POST /v1/projects/{projectsId}/databases/{databasesId}/userCreds/{userCredsId}:enable","POST /v1/projects/{projectsId}/databases/{databasesId}/userCreds/{userCredsId}:resetPassword"]}]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"}},"base":"https://spanner.googleapis.com","permissions":[{"name":"spanner.backupOperations.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/backupOperations"]},{"name":"spanner.backups.copy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/backups:copy"]},{"name":"spanner.backups.create","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/backups"]},{"name":"spanner.backups.delete","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}/backups/{backupsId}"]},{"name":"spanner.backups.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/backups/{backupsId}"]},{"name":"spanner.backups.getIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/backups/{backupsId}:getIamPolicy"]},{"name":"spanner.backups.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/backups"]},{"name":"spanner.backups.restoreDatabase","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases:restore"]},{"name":"spanner.backups.setIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/backups/{backupsId}:setIamPolicy"]},{"name":"spanner.backups.update","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}/backups/{backupsId}"]},{"name":"spanner.backupSchedules.create","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules"]},{"name":"spanner.backupSchedules.delete","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"spanner.backupSchedules.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"spanner.backupSchedules.getIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}:getIamPolicy"]},{"name":"spanner.backupSchedules.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules"]},{"name":"spanner.backupSchedules.setIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}:setIamPolicy"]},{"name":"spanner.backupSchedules.update","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/backupSchedules/{backupSchedulesId}"]},{"name":"spanner.databaseOperations.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databaseOperations"]},{"name":"spanner.databaseRoles.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/databaseRoles"]},{"name":"spanner.databases.addSplitPoints","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}:addSplitPoints"]},{"name":"spanner.databases.beginOrRollbackReadWriteTransaction","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:rollback"]},{"name":"spanner.databases.beginReadOnlyTransaction","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:beginTransaction"]},{"name":"spanner.databases.changequorum","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}:changequorum"]},{"name":"spanner.databases.create","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases"]},{"name":"spanner.databases.drop","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}"]},{"name":"spanner.databases.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}"]},{"name":"spanner.databases.getDdl","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/ddl"]},{"name":"spanner.databases.getIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}:getIamPolicy"]},{"name":"spanner.databases.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases"]},{"name":"spanner.databases.partitionQuery","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:partitionQuery"]},{"name":"spanner.databases.partitionRead","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:partitionRead"]},{"name":"spanner.databases.read","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:read","POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:streamingRead"]},{"name":"spanner.databases.select","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:executeSql","POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:executeStreamingSql"]},{"name":"spanner.databases.setIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}:setIamPolicy"]},{"name":"spanner.databases.update","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}"]},{"name":"spanner.databases.updateDdl","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/ddl"]},{"name":"spanner.databases.write","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:batchWrite","POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:commit","POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}:executeBatchDml"]},{"name":"spanner.instanceConfigOperations.list","rules":["GET /v1/projects/{projectsId}/instanceConfigOperations"]},{"name":"spanner.instanceConfigs.create","rules":["POST /v1/projects/{projectsId}/instanceConfigs"]},{"name":"spanner.instanceConfigs.delete","rules":["DELETE /v1/projects/{projectsId}/instanceConfigs/{instanceConfigsId}"]},{"name":"spanner.instanceConfigs.get","rules":["GET /v1/projects/{projectsId}/instanceConfigs/{instanceConfigsId}"]},{"name":"spanner.instanceConfigs.list","rules":["GET /v1/projects/{projectsId}/instanceConfigs"]},{"name":"spanner.instanceConfigs.update","rules":["PATCH /v1/projects/{projectsId}/instanceConfigs/{instanceConfigsId}"]},{"name":"spanner.instancePartitionOperations.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/instancePartitionOperations"]},{"name":"spanner.instancePartitions.create","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/instancePartitions"]},{"name":"spanner.instancePartitions.delete","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}/instancePartitions/{instancePartitionsId}"]},{"name":"spanner.instancePartitions.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/instancePartitions/{instancePartitionsId}"]},{"name":"spanner.instancePartitions.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/instancePartitions"]},{"name":"spanner.instancePartitions.update","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}/instancePartitions/{instancePartitionsId}"]},{"name":"spanner.instances.create","rules":["POST /v1/projects/{projectsId}/instances"]},{"name":"spanner.instances.delete","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}"]},{"name":"spanner.instances.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}"]},{"name":"spanner.instances.getIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}:getIamPolicy"]},{"name":"spanner.instances.list","rules":["GET /v1/projects/{projectsId}/instances"]},{"name":"spanner.instances.setIamPolicy","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}:setIamPolicy"]},{"name":"spanner.instances.update","rules":["PATCH /v1/projects/{projectsId}/instances/{instancesId}","POST /v1/projects/{projectsId}/instances/{instancesId}:move"]},{"name":"spanner.sessions.create","rules":["POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions","POST /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions:batchCreate"]},{"name":"spanner.sessions.delete","rules":["DELETE /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}"]},{"name":"spanner.sessions.get","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions/{sessionsId}"]},{"name":"spanner.sessions.list","rules":["GET /v1/projects/{projectsId}/instances/{instancesId}/databases/{databasesId}/sessions"]}]}],"name":"google-cloud"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://cloudresourcemanager.googleapis.com",
+      "permissions": [
+        {
+          "name": "resourcemanager.capabilities.get",
+          "rules": [
+            "GET /v3/folders/{foldersId}/capabilities/{capabilitiesId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.capabilities.update",
+          "rules": [
+            "PATCH /v3/folders/{foldersId}/capabilities/{capabilitiesId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.create",
+          "rules": [
+            "POST /v3/folders"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.delete",
+          "rules": [
+            "DELETE /v3/folders/{foldersId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.get",
+          "rules": [
+            "GET /v3/folders/{foldersId}",
+            "GET /v3/folders:search"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.getIamPolicy",
+          "rules": [
+            "POST /v3/folders/{foldersId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.list",
+          "rules": [
+            "GET /v3/folders"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.move",
+          "rules": [
+            "POST /v3/folders/{foldersId}:move"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.setIamPolicy",
+          "rules": [
+            "POST /v3/folders/{foldersId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.undelete",
+          "rules": [
+            "POST /v3/folders/{foldersId}:undelete"
+          ]
+        },
+        {
+          "name": "resourcemanager.folders.update",
+          "rules": [
+            "PATCH /v3/folders/{foldersId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.organizations.get",
+          "rules": [
+            "GET /v3/organizations/{organizationsId}",
+            "GET /v3/organizations:search"
+          ]
+        },
+        {
+          "name": "resourcemanager.organizations.getIamPolicy",
+          "rules": [
+            "POST /v3/organizations/{organizationsId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.organizations.setIamPolicy",
+          "rules": [
+            "POST /v3/organizations/{organizationsId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.create",
+          "rules": [
+            "POST /v3/projects"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.delete",
+          "rules": [
+            "DELETE /v3/projects/{projectsId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.get",
+          "rules": [
+            "GET /v3/liens",
+            "GET /v3/liens/{liensId}",
+            "GET /v3/projects/{projectsId}",
+            "GET /v3/projects:search"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.getIamPolicy",
+          "rules": [
+            "POST /v3/projects/{projectsId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.list",
+          "rules": [
+            "GET /v3/projects"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.move",
+          "rules": [
+            "POST /v3/projects/{projectsId}:move"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.setIamPolicy",
+          "rules": [
+            "POST /v3/projects/{projectsId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.undelete",
+          "rules": [
+            "POST /v3/projects/{projectsId}:undelete"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.update",
+          "rules": [
+            "PATCH /v3/projects/{projectsId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.projects.updateLiens",
+          "rules": [
+            "POST /v3/liens",
+            "DELETE /v3/liens/{liensId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagHolds.create",
+          "rules": [
+            "POST /v3/tagValues/{tagValuesId}/tagHolds"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagHolds.delete",
+          "rules": [
+            "DELETE /v3/tagValues/{tagValuesId}/tagHolds/{tagHoldsId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagHolds.list",
+          "rules": [
+            "GET /v3/tagValues/{tagValuesId}/tagHolds"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.create",
+          "rules": [
+            "POST /v3/tagKeys"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.delete",
+          "rules": [
+            "DELETE /v3/tagKeys/{tagKeysId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.get",
+          "rules": [
+            "GET /v3/tagKeys/{tagKeysId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.getIamPolicy",
+          "rules": [
+            "POST /v3/tagKeys/{tagKeysId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.list",
+          "rules": [
+            "GET /v3/tagKeys"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.setIamPolicy",
+          "rules": [
+            "POST /v3/tagKeys/{tagKeysId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagKeys.update",
+          "rules": [
+            "PATCH /v3/tagKeys/{tagKeysId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValueBindings.create",
+          "rules": [
+            "POST /v3/tagBindings"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValueBindings.delete",
+          "rules": [
+            "DELETE /v3/tagBindings/{tagBindingsId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.create",
+          "rules": [
+            "POST /v3/tagValues"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.delete",
+          "rules": [
+            "DELETE /v3/tagValues/{tagValuesId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.get",
+          "rules": [
+            "GET /v3/tagValues/{tagValuesId}"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.getIamPolicy",
+          "rules": [
+            "POST /v3/tagValues/{tagValuesId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.list",
+          "rules": [
+            "GET /v3/tagValues"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.setIamPolicy",
+          "rules": [
+            "POST /v3/tagValues/{tagValuesId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "resourcemanager.tagValues.update",
+          "rules": [
+            "PATCH /v3/tagValues/{tagValuesId}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://serviceusage.googleapis.com",
+      "permissions": [
+        {
+          "name": "serviceusage.operations.get",
+          "rules": [
+            "GET /v1/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "serviceusage.services.disable",
+          "rules": [
+            "POST /v1/{v1Id}/{v1Id1}/services/{servicesId}:disable"
+          ]
+        },
+        {
+          "name": "serviceusage.services.enable",
+          "rules": [
+            "POST /v1/{v1Id}/{v1Id1}/services/{servicesId}:enable",
+            "POST /v1/{v1Id}/{v1Id1}/services:batchEnable"
+          ]
+        },
+        {
+          "name": "serviceusage.services.get",
+          "rules": [
+            "GET /v1/{v1Id}/{v1Id1}/services/{servicesId}",
+            "GET /v1/{v1Id}/{v1Id1}/services:batchGet"
+          ]
+        },
+        {
+          "name": "serviceusage.services.list",
+          "rules": [
+            "GET /v1/{v1Id}/{v1Id1}/services"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://iam.googleapis.com",
+      "permissions": [
+        {
+          "name": "iam.operations.get",
+          "rules": [
+            "GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/operations/{operationsId}",
+            "GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/providers/{providersId}/keys/{keysId}/operations/{operationsId}",
+            "GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/providers/{providersId}/operations/{operationsId}",
+            "GET /v1/locations/{locationsId}/workforcePools/{workforcePoolsId}/subjects/{subjectsId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/managedIdentities/{managedIdentitiesId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/managedIdentities/{managedIdentitiesId}/workloadSources/{workloadSourcesId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/namespaces/{namespacesId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/providers/{providersId}/keys/{keysId}/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workloadIdentityPools/{workloadIdentityPoolsId}/providers/{providersId}/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "iam.roles.create",
+          "rules": [
+            "POST /v1/organizations/{organizationsId}/roles",
+            "POST /v1/projects/{projectsId}/roles"
+          ]
+        },
+        {
+          "name": "iam.roles.delete",
+          "rules": [
+            "DELETE /v1/organizations/{organizationsId}/roles/{rolesId}",
+            "DELETE /v1/projects/{projectsId}/roles/{rolesId}"
+          ]
+        },
+        {
+          "name": "iam.roles.get",
+          "rules": [
+            "GET /v1/organizations/{organizationsId}/roles/{rolesId}",
+            "GET /v1/projects/{projectsId}/roles/{rolesId}",
+            "GET /v1/roles/{rolesId}"
+          ]
+        },
+        {
+          "name": "iam.roles.list",
+          "rules": [
+            "GET /v1/organizations/{organizationsId}/roles",
+            "GET /v1/projects/{projectsId}/roles",
+            "GET /v1/roles"
+          ]
+        },
+        {
+          "name": "iam.roles.undelete",
+          "rules": [
+            "POST /v1/organizations/{organizationsId}/roles/{rolesId}:undelete",
+            "POST /v1/projects/{projectsId}/roles/{rolesId}:undelete"
+          ]
+        },
+        {
+          "name": "iam.roles.update",
+          "rules": [
+            "PATCH /v1/organizations/{organizationsId}/roles/{rolesId}",
+            "PATCH /v1/projects/{projectsId}/roles/{rolesId}"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.create",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys",
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys:upload"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.disable",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}:disable"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.enable",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}:enable"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys/{keysId}"
+          ]
+        },
+        {
+          "name": "iam.serviceAccountKeys.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}/keys"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.create",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.disable",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:disable"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.enable",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:enable"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.getIamPolicy",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/serviceAccounts"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.setIamPolicy",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.signBlob",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signBlob"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.signJwt",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signJwt"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.undelete",
+          "rules": [
+            "POST /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:undelete"
+          ]
+        },
+        {
+          "name": "iam.serviceAccounts.update",
+          "rules": [
+            "PUT /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}",
+            "PATCH /v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://compute.googleapis.com",
+      "permissions": [
+        {
+          "name": "compute.acceleratorTypes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/acceleratorTypes/{acceleratorType}"
+          ]
+        },
+        {
+          "name": "compute.acceleratorTypes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/acceleratorTypes",
+            "GET /compute/v1/projects/{project}/zones/{zone}/acceleratorTypes"
+          ]
+        },
+        {
+          "name": "compute.addresses.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/addresses"
+          ]
+        },
+        {
+          "name": "compute.addresses.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/addresses/{address}"
+          ]
+        },
+        {
+          "name": "compute.addresses.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/addresses/{address}"
+          ]
+        },
+        {
+          "name": "compute.addresses.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/addresses",
+            "GET /compute/v1/projects/{project}/regions/{region}/addresses"
+          ]
+        },
+        {
+          "name": "compute.addresses.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/addresses/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.advice.calendarMode",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/advice/calendarMode"
+          ]
+        },
+        {
+          "name": "compute.autoscalers.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/autoscalers",
+            "POST /compute/v1/projects/{project}/zones/{zone}/autoscalers"
+          ]
+        },
+        {
+          "name": "compute.autoscalers.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/autoscalers/{autoscaler}",
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/autoscalers/{autoscaler}"
+          ]
+        },
+        {
+          "name": "compute.autoscalers.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/autoscalers/{autoscaler}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/autoscalers/{autoscaler}"
+          ]
+        },
+        {
+          "name": "compute.autoscalers.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/autoscalers",
+            "GET /compute/v1/projects/{project}/regions/{region}/autoscalers",
+            "GET /compute/v1/projects/{project}/zones/{zone}/autoscalers"
+          ]
+        },
+        {
+          "name": "compute.autoscalers.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/regions/{region}/autoscalers",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/autoscalers",
+            "PUT /compute/v1/projects/{project}/zones/{zone}/autoscalers",
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/autoscalers"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.addSignedUrlKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}/addSignedUrlKey"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendBuckets"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.deleteSignedUrlKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}/deleteSignedUrlKey"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/backendBuckets/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/backendBuckets",
+            "GET /compute/v1/projects/{project}/global/backendBuckets"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendBuckets/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.backendBuckets.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}",
+            "PATCH /compute/v1/projects/{project}/global/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.backendServices.addSignedUrlKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendServices/{backendService}/addSignedUrlKey"
+          ]
+        },
+        {
+          "name": "compute.backendServices.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendServices"
+          ]
+        },
+        {
+          "name": "compute.backendServices.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.backendServices.deleteSignedUrlKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendServices/{backendService}/deleteSignedUrlKey"
+          ]
+        },
+        {
+          "name": "compute.backendServices.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.backendServices.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/backendServices/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.backendServices.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/backendServices",
+            "GET /compute/v1/projects/{project}/global/backendServices"
+          ]
+        },
+        {
+          "name": "compute.backendServices.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendServices/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.backendServices.setSecurityPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/backendServices/{backendService}/setSecurityPolicy"
+          ]
+        },
+        {
+          "name": "compute.backendServices.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/backendServices/{backendService}",
+            "PATCH /compute/v1/projects/{project}/global/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.commitments.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/commitments"
+          ]
+        },
+        {
+          "name": "compute.commitments.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/commitments/{commitment}"
+          ]
+        },
+        {
+          "name": "compute.commitments.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/commitments",
+            "GET /compute/v1/projects/{project}/regions/{region}/commitments"
+          ]
+        },
+        {
+          "name": "compute.commitments.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/commitments/{commitment}"
+          ]
+        },
+        {
+          "name": "compute.crossSiteNetworks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/crossSiteNetworks"
+          ]
+        },
+        {
+          "name": "compute.crossSiteNetworks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"
+          ]
+        },
+        {
+          "name": "compute.crossSiteNetworks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"
+          ]
+        },
+        {
+          "name": "compute.crossSiteNetworks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/crossSiteNetworks"
+          ]
+        },
+        {
+          "name": "compute.crossSiteNetworks.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}"
+          ]
+        },
+        {
+          "name": "compute.disks.addResourcePolicies",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/addResourcePolicies",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/addResourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.disks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks",
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/bulkInsert",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/bulkInsert"
+          ]
+        },
+        {
+          "name": "compute.disks.createSnapshot",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/createSnapshot",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/createSnapshot"
+          ]
+        },
+        {
+          "name": "compute.disks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/disks/{disk}",
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"
+          ]
+        },
+        {
+          "name": "compute.disks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/disks/{disk}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"
+          ]
+        },
+        {
+          "name": "compute.disks.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/disks/{resource}/getIamPolicy",
+            "GET /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.disks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/disks",
+            "GET /compute/v1/projects/{project}/regions/{region}/disks",
+            "GET /compute/v1/projects/{project}/zones/{zone}/disks"
+          ]
+        },
+        {
+          "name": "compute.disks.removeResourcePolicies",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/removeResourcePolicies",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/removeResourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.disks.resize",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/resize",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/resize"
+          ]
+        },
+        {
+          "name": "compute.disks.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{resource}/setIamPolicy",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.disks.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{resource}/setLabels",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/bulkSetLabels",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.disks.startAsyncReplication",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/startAsyncReplication",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/startAsyncReplication"
+          ]
+        },
+        {
+          "name": "compute.disks.stopAsyncReplication",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/stopAsyncReplication",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/stopAsyncReplication"
+          ]
+        },
+        {
+          "name": "compute.disks.stopGroupAsyncReplication",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/stopGroupAsyncReplication",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/stopGroupAsyncReplication"
+          ]
+        },
+        {
+          "name": "compute.disks.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/disks/{disk}",
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/disks/{disk}"
+          ]
+        },
+        {
+          "name": "compute.disks.updateKmsKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/disks/{disk}/updateKmsKey",
+            "POST /compute/v1/projects/{project}/zones/{zone}/disks/{disk}/updateKmsKey"
+          ]
+        },
+        {
+          "name": "compute.diskTypes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/diskTypes/{diskType}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/diskTypes/{diskType}"
+          ]
+        },
+        {
+          "name": "compute.diskTypes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/diskTypes",
+            "GET /compute/v1/projects/{project}/regions/{region}/diskTypes",
+            "GET /compute/v1/projects/{project}/zones/{zone}/diskTypes"
+          ]
+        },
+        {
+          "name": "compute.externalVpnGateways.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/externalVpnGateways"
+          ]
+        },
+        {
+          "name": "compute.externalVpnGateways.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/externalVpnGateways/{externalVpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.externalVpnGateways.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/externalVpnGateways/{externalVpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.externalVpnGateways.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/externalVpnGateways"
+          ]
+        },
+        {
+          "name": "compute.externalVpnGateways.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/externalVpnGateways/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.cloneRules",
+          "rules": [
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/cloneRules"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.create",
+          "rules": [
+            "POST /compute/v1/locations/global/firewallPolicies"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/locations/global/firewallPolicies/{firewallPolicy}"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.get",
+          "rules": [
+            "GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}",
+            "GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/getAssociation",
+            "GET /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/getRule"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/locations/global/firewallPolicies/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.list",
+          "rules": [
+            "GET /compute/v1/locations/global/firewallPolicies",
+            "GET /compute/v1/locations/global/firewallPolicies/listAssociations"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.move",
+          "rules": [
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/move"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/locations/global/firewallPolicies/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.firewallPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/locations/global/firewallPolicies/{firewallPolicy}",
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/addAssociation",
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/addRule",
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/patchRule",
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/removeAssociation",
+            "POST /compute/v1/locations/global/firewallPolicies/{firewallPolicy}/removeRule"
+          ]
+        },
+        {
+          "name": "compute.firewalls.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/firewalls"
+          ]
+        },
+        {
+          "name": "compute.firewalls.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/firewalls/{firewall}"
+          ]
+        },
+        {
+          "name": "compute.firewalls.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/firewalls/{firewall}"
+          ]
+        },
+        {
+          "name": "compute.firewalls.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/firewalls"
+          ]
+        },
+        {
+          "name": "compute.firewalls.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/firewalls/{firewall}",
+            "PATCH /compute/v1/projects/{project}/global/firewalls/{firewall}"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/forwardingRules"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/forwardingRules",
+            "GET /compute/v1/projects/{project}/regions/{region}/forwardingRules"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/forwardingRules/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.setTarget",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}/setTarget"
+          ]
+        },
+        {
+          "name": "compute.forwardingRules.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.cancel",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}/cancel"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/futureReservations"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/futureReservations",
+            "GET /compute/v1/projects/{project}/zones/{zone}/futureReservations"
+          ]
+        },
+        {
+          "name": "compute.futureReservations.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/futureReservations/{futureReservation}"
+          ]
+        },
+        {
+          "name": "compute.globalAddresses.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/addresses"
+          ]
+        },
+        {
+          "name": "compute.globalAddresses.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/addresses/{address}"
+          ]
+        },
+        {
+          "name": "compute.globalAddresses.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/addresses/{address}"
+          ]
+        },
+        {
+          "name": "compute.globalAddresses.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/addresses"
+          ]
+        },
+        {
+          "name": "compute.globalAddresses.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/addresses/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/forwardingRules"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/forwardingRules"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/forwardingRules/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.setTarget",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}/setTarget"
+          ]
+        },
+        {
+          "name": "compute.globalForwardingRules.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/forwardingRules/{forwardingRule}"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.attachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.detachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.globalNetworkEndpointGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.globalOperations.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.globalOperations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.globalOperations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/operations",
+            "GET /compute/v1/projects/{project}/global/operations"
+          ]
+        },
+        {
+          "name": "compute.globalPublicDelegatedPrefixes.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/publicDelegatedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.globalPublicDelegatedPrefixes.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/publicDelegatedPrefixes/{publicDelegatedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.globalPublicDelegatedPrefixes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/publicDelegatedPrefixes/{publicDelegatedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.globalPublicDelegatedPrefixes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/publicDelegatedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.healthChecks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/healthChecks"
+          ]
+        },
+        {
+          "name": "compute.healthChecks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.healthChecks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.healthChecks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/healthChecks",
+            "GET /compute/v1/projects/{project}/global/healthChecks"
+          ]
+        },
+        {
+          "name": "compute.healthChecks.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/healthChecks/{healthCheck}",
+            "PATCH /compute/v1/projects/{project}/global/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpHealthChecks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/httpHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.httpHealthChecks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpHealthChecks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpHealthChecks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/httpHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.httpHealthChecks.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}",
+            "PATCH /compute/v1/projects/{project}/global/httpHealthChecks/{httpHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpsHealthChecks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/httpsHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.httpsHealthChecks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpsHealthChecks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.httpsHealthChecks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/httpsHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.httpsHealthChecks.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}",
+            "PATCH /compute/v1/projects/{project}/global/httpsHealthChecks/{httpsHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.images.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/images"
+          ]
+        },
+        {
+          "name": "compute.images.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/images/{image}"
+          ]
+        },
+        {
+          "name": "compute.images.deprecate",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/images/{image}/deprecate"
+          ]
+        },
+        {
+          "name": "compute.images.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/images/{image}"
+          ]
+        },
+        {
+          "name": "compute.images.getFromFamily",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/images/family/{family}"
+          ]
+        },
+        {
+          "name": "compute.images.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/images/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.images.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/images"
+          ]
+        },
+        {
+          "name": "compute.images.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/images/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.images.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/images/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.images.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/images/{image}"
+          ]
+        },
+        {
+          "name": "compute.instanceGroupManagers.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers"
+          ]
+        },
+        {
+          "name": "compute.instanceGroupManagers.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}",
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}"
+          ]
+        },
+        {
+          "name": "compute.instanceGroupManagers.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}"
+          ]
+        },
+        {
+          "name": "compute.instanceGroupManagers.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/instanceGroupManagers",
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers",
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listErrors",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listManagedInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/listPerInstanceConfigs",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listErrors",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listManagedInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/listPerInstanceConfigs"
+          ]
+        },
+        {
+          "name": "compute.instanceGroupManagers.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/abandonInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/applyUpdatesToInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/createInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/deleteInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/deletePerInstanceConfigs",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/patchPerInstanceConfigs",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/recreateInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/resize",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/resumeInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/setInstanceTemplate",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/setTargetPools",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/startInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/stopInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/suspendInstances",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/updatePerInstanceConfigs",
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/abandonInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/applyUpdatesToInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/createInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/deleteInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/deletePerInstanceConfigs",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/patchPerInstanceConfigs",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/recreateInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resize",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resumeInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/setInstanceTemplate",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/setTargetPools",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/startInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/stopInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/suspendInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/updatePerInstanceConfigs"
+          ]
+        },
+        {
+          "name": "compute.instanceGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups"
+          ]
+        },
+        {
+          "name": "compute.instanceGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}"
+          ]
+        },
+        {
+          "name": "compute.instanceGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}"
+          ]
+        },
+        {
+          "name": "compute.instanceGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/instanceGroups",
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceGroups",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}/listInstances",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceGroups",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/listInstances"
+          ]
+        },
+        {
+          "name": "compute.instanceGroups.update",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceGroups/{instanceGroup}/setNamedPorts",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/addInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/removeInstances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instanceGroups/{instanceGroup}/setNamedPorts"
+          ]
+        },
+        {
+          "name": "compute.instances.addAccessConfig",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addAccessConfig"
+          ]
+        },
+        {
+          "name": "compute.instances.addNetworkInterface",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addNetworkInterface"
+          ]
+        },
+        {
+          "name": "compute.instances.addResourcePolicies",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/addResourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.instances.attachDisk",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/attachDisk"
+          ]
+        },
+        {
+          "name": "compute.instances.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instances/bulkInsert",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/bulkInsert"
+          ]
+        },
+        {
+          "name": "compute.instances.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"
+          ]
+        },
+        {
+          "name": "compute.instances.deleteAccessConfig",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/deleteAccessConfig"
+          ]
+        },
+        {
+          "name": "compute.instances.deleteNetworkInterface",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/deleteNetworkInterface"
+          ]
+        },
+        {
+          "name": "compute.instances.detachDisk",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/detachDisk"
+          ]
+        },
+        {
+          "name": "compute.instances.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"
+          ]
+        },
+        {
+          "name": "compute.instances.getEffectiveFirewalls",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getEffectiveFirewalls"
+          ]
+        },
+        {
+          "name": "compute.instances.getGuestAttributes",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getGuestAttributes"
+          ]
+        },
+        {
+          "name": "compute.instances.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instances.getScreenshot",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/screenshot"
+          ]
+        },
+        {
+          "name": "compute.instances.getSerialPortOutput",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/serialPort"
+          ]
+        },
+        {
+          "name": "compute.instances.getShieldedInstanceIdentity",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/getShieldedInstanceIdentity"
+          ]
+        },
+        {
+          "name": "compute.instances.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/instances",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances"
+          ]
+        },
+        {
+          "name": "compute.instances.listReferrers",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/referrers"
+          ]
+        },
+        {
+          "name": "compute.instances.removeResourcePolicies",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/removeResourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.instances.reset",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/reset"
+          ]
+        },
+        {
+          "name": "compute.instances.resume",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/resume"
+          ]
+        },
+        {
+          "name": "compute.instances.sendDiagnosticInterrupt",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/sendDiagnosticInterrupt"
+          ]
+        },
+        {
+          "name": "compute.instances.setDeletionProtection",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/setDeletionProtection"
+          ]
+        },
+        {
+          "name": "compute.instances.setDiskAutoDelete",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setDiskAutoDelete"
+          ]
+        },
+        {
+          "name": "compute.instances.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instances.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.instances.setMachineResources",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMachineResources"
+          ]
+        },
+        {
+          "name": "compute.instances.setMachineType",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMachineType"
+          ]
+        },
+        {
+          "name": "compute.instances.setMetadata",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMetadata"
+          ]
+        },
+        {
+          "name": "compute.instances.setMinCpuPlatform",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setMinCpuPlatform"
+          ]
+        },
+        {
+          "name": "compute.instances.setName",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setName"
+          ]
+        },
+        {
+          "name": "compute.instances.setScheduling",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setScheduling"
+          ]
+        },
+        {
+          "name": "compute.instances.setSecurityPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setSecurityPolicy"
+          ]
+        },
+        {
+          "name": "compute.instances.setServiceAccount",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setServiceAccount"
+          ]
+        },
+        {
+          "name": "compute.instances.setShieldedInstanceIntegrityPolicy",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setShieldedInstanceIntegrityPolicy"
+          ]
+        },
+        {
+          "name": "compute.instances.setTags",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/setTags"
+          ]
+        },
+        {
+          "name": "compute.instances.simulateMaintenanceEvent",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/simulateMaintenanceEvent"
+          ]
+        },
+        {
+          "name": "compute.instances.start",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/start"
+          ]
+        },
+        {
+          "name": "compute.instances.startWithEncryptionKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/startWithEncryptionKey"
+          ]
+        },
+        {
+          "name": "compute.instances.stop",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/stop"
+          ]
+        },
+        {
+          "name": "compute.instances.suspend",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/suspend"
+          ]
+        },
+        {
+          "name": "compute.instances.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/zones/{zone}/instances/{instance}"
+          ]
+        },
+        {
+          "name": "compute.instances.updateAccessConfig",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateAccessConfig"
+          ]
+        },
+        {
+          "name": "compute.instances.updateDisplayDevice",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateDisplayDevice"
+          ]
+        },
+        {
+          "name": "compute.instances.updateNetworkInterface",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateNetworkInterface"
+          ]
+        },
+        {
+          "name": "compute.instances.updateShieldedInstanceConfig",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instances/{instance}/updateShieldedInstanceConfig"
+          ]
+        },
+        {
+          "name": "compute.instanceSettings.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/instanceSettings"
+          ]
+        },
+        {
+          "name": "compute.instanceSettings.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/instanceSettings"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/instanceTemplates",
+            "POST /compute/v1/projects/{project}/regions/{region}/instanceTemplates"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/instanceTemplates/{instanceTemplate}",
+            "DELETE /compute/v1/projects/{project}/regions/{region}/instanceTemplates/{instanceTemplate}"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/instanceTemplates/{instanceTemplate}",
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceTemplates/{instanceTemplate}"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/instanceTemplates/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/instanceTemplates",
+            "GET /compute/v1/projects/{project}/global/instanceTemplates",
+            "GET /compute/v1/projects/{project}/regions/{region}/instanceTemplates"
+          ]
+        },
+        {
+          "name": "compute.instanceTemplates.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/instanceTemplates/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{instantSnapshotGroup}",
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{instantSnapshotGroup}"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{instantSnapshotGroup}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{instantSnapshotGroup}"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{resource}/getIamPolicy",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshotGroups.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instantSnapshotGroups/{resource}/setIamPolicy",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshotGroups/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{instantSnapshot}",
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{instantSnapshot}"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{instantSnapshot}",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{instantSnapshot}"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/getIamPolicy",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/instantSnapshots",
+            "GET /compute/v1/projects/{project}/regions/{region}/instantSnapshots",
+            "GET /compute/v1/projects/{project}/zones/{zone}/instantSnapshots"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/setIamPolicy",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.instantSnapshots.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/instantSnapshots/{resource}/setLabels",
+            "POST /compute/v1/projects/{project}/zones/{zone}/instantSnapshots/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachmentGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/interconnectAttachmentGroups"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachmentGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachmentGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachmentGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectAttachmentGroups"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachmentGroups.patch",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/interconnectAttachmentGroups/{interconnectAttachmentGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/interconnectAttachments"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/interconnectAttachments",
+            "GET /compute/v1/projects/{project}/regions/{region}/interconnectAttachments"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.interconnectAttachments.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/interconnectAttachments/{interconnectAttachment}"
+          ]
+        },
+        {
+          "name": "compute.interconnectGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/interconnectGroups"
+          ]
+        },
+        {
+          "name": "compute.interconnectGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectGroups"
+          ]
+        },
+        {
+          "name": "compute.interconnectGroups.patch",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/interconnectGroups/{interconnectGroup}"
+          ]
+        },
+        {
+          "name": "compute.interconnectLocations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectLocations/{interconnectLocation}"
+          ]
+        },
+        {
+          "name": "compute.interconnectLocations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectLocations"
+          ]
+        },
+        {
+          "name": "compute.interconnectRemoteLocations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectRemoteLocations/{interconnectRemoteLocation}"
+          ]
+        },
+        {
+          "name": "compute.interconnectRemoteLocations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnectRemoteLocations"
+          ]
+        },
+        {
+          "name": "compute.interconnects.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/interconnects"
+          ]
+        },
+        {
+          "name": "compute.interconnects.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/interconnects/{interconnect}"
+          ]
+        },
+        {
+          "name": "compute.interconnects.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnects/{interconnect}"
+          ]
+        },
+        {
+          "name": "compute.interconnects.getMacsecConfig",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnects/{interconnect}/getMacsecConfig"
+          ]
+        },
+        {
+          "name": "compute.interconnects.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/interconnects"
+          ]
+        },
+        {
+          "name": "compute.interconnects.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/interconnects/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.interconnects.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/interconnects/{interconnect}"
+          ]
+        },
+        {
+          "name": "compute.licenseCodes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/licenseCodes/{licenseCode}"
+          ]
+        },
+        {
+          "name": "compute.licenseCodes.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/licenseCodes/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.licenseCodes.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/licenseCodes/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.licenses.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/licenses"
+          ]
+        },
+        {
+          "name": "compute.licenses.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/licenses/{license}"
+          ]
+        },
+        {
+          "name": "compute.licenses.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/licenses/{license}"
+          ]
+        },
+        {
+          "name": "compute.licenses.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/licenses/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.licenses.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/licenses"
+          ]
+        },
+        {
+          "name": "compute.licenses.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/licenses/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.licenses.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/licenses/{license}"
+          ]
+        },
+        {
+          "name": "compute.machineImages.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/machineImages"
+          ]
+        },
+        {
+          "name": "compute.machineImages.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/machineImages/{machineImage}"
+          ]
+        },
+        {
+          "name": "compute.machineImages.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/machineImages/{machineImage}"
+          ]
+        },
+        {
+          "name": "compute.machineImages.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/machineImages/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.machineImages.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/machineImages"
+          ]
+        },
+        {
+          "name": "compute.machineImages.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/machineImages/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.machineImages.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/machineImages/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.machineTypes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/machineTypes/{machineType}"
+          ]
+        },
+        {
+          "name": "compute.machineTypes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/machineTypes",
+            "GET /compute/v1/projects/{project}/zones/{zone}/machineTypes"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkAttachments"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/networkAttachments/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/networkAttachments",
+            "GET /compute/v1/projects/{project}/regions/{region}/networkAttachments"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkAttachments/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.networkAttachments.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/networkAttachments/{networkAttachment}"
+          ]
+        },
+        {
+          "name": "compute.networkEdgeSecurityServices.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices"
+          ]
+        },
+        {
+          "name": "compute.networkEdgeSecurityServices.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"
+          ]
+        },
+        {
+          "name": "compute.networkEdgeSecurityServices.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"
+          ]
+        },
+        {
+          "name": "compute.networkEdgeSecurityServices.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/networkEdgeSecurityServices"
+          ]
+        },
+        {
+          "name": "compute.networkEdgeSecurityServices.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/networkEdgeSecurityServices/{networkEdgeSecurityService}"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.attachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.detachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.networkEndpointGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/networkEndpointGroups",
+            "GET /compute/v1/projects/{project}/zones/{zone}/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.networkProfiles.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networkProfiles/{networkProfile}"
+          ]
+        },
+        {
+          "name": "compute.networkProfiles.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networkProfiles"
+          ]
+        },
+        {
+          "name": "compute.networks.addPeering",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networks/{network}/addPeering"
+          ]
+        },
+        {
+          "name": "compute.networks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networks"
+          ]
+        },
+        {
+          "name": "compute.networks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/networks/{network}"
+          ]
+        },
+        {
+          "name": "compute.networks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networks/{network}"
+          ]
+        },
+        {
+          "name": "compute.networks.getEffectiveFirewalls",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networks/{network}/getEffectiveFirewalls"
+          ]
+        },
+        {
+          "name": "compute.networks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networks"
+          ]
+        },
+        {
+          "name": "compute.networks.listPeeringRoutes",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/networks/{network}/listPeeringRoutes"
+          ]
+        },
+        {
+          "name": "compute.networks.removePeering",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networks/{network}/removePeering"
+          ]
+        },
+        {
+          "name": "compute.networks.switchToCustomMode",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/networks/{network}/switchToCustomMode"
+          ]
+        },
+        {
+          "name": "compute.networks.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/networks/{network}"
+          ]
+        },
+        {
+          "name": "compute.networks.updatePeering",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/networks/{network}/updatePeering"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.addNodes",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/addNodes"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.deleteNodes",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/deleteNodes"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/nodeGroups",
+            "GET /compute/v1/projects/{project}/zones/{zone}/nodeGroups"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.performMaintenance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/performMaintenance"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.setNodeTemplate",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/setNodeTemplate"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.simulateMaintenanceEvent",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}/simulateMaintenanceEvent"
+          ]
+        },
+        {
+          "name": "compute.nodeGroups.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/nodeGroups/{nodeGroup}"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/nodeTemplates"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{nodeTemplate}"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{nodeTemplate}"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/nodeTemplates",
+            "GET /compute/v1/projects/{project}/regions/{region}/nodeTemplates"
+          ]
+        },
+        {
+          "name": "compute.nodeTemplates.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/nodeTemplates/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.nodeTypes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/nodeTypes/{nodeType}"
+          ]
+        },
+        {
+          "name": "compute.nodeTypes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/nodeTypes",
+            "GET /compute/v1/projects/{project}/zones/{zone}/nodeTypes"
+          ]
+        },
+        {
+          "name": "compute.packetMirrorings.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/packetMirrorings"
+          ]
+        },
+        {
+          "name": "compute.packetMirrorings.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"
+          ]
+        },
+        {
+          "name": "compute.packetMirrorings.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"
+          ]
+        },
+        {
+          "name": "compute.packetMirrorings.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/packetMirrorings",
+            "GET /compute/v1/projects/{project}/regions/{region}/packetMirrorings"
+          ]
+        },
+        {
+          "name": "compute.packetMirrorings.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/packetMirrorings/{packetMirroring}"
+          ]
+        },
+        {
+          "name": "compute.previewFeatures.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/previewFeatures/{previewFeature}"
+          ]
+        },
+        {
+          "name": "compute.previewFeatures.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/previewFeatures"
+          ]
+        },
+        {
+          "name": "compute.previewFeatures.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/previewFeatures/{previewFeature}"
+          ]
+        },
+        {
+          "name": "compute.projects.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}"
+          ]
+        },
+        {
+          "name": "compute.projects.setCloudArmorTier",
+          "rules": [
+            "POST /compute/v1/projects/{project}/setCloudArmorTier"
+          ]
+        },
+        {
+          "name": "compute.projects.setCommonInstanceMetadata",
+          "rules": [
+            "POST /compute/v1/projects/{project}/setCommonInstanceMetadata"
+          ]
+        },
+        {
+          "name": "compute.projects.setDefaultNetworkTier",
+          "rules": [
+            "POST /compute/v1/projects/{project}/setDefaultNetworkTier"
+          ]
+        },
+        {
+          "name": "compute.projects.setUsageExportBucket",
+          "rules": [
+            "POST /compute/v1/projects/{project}/setUsageExportBucket"
+          ]
+        },
+        {
+          "name": "compute.publicAdvertisedPrefixes.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.publicAdvertisedPrefixes.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.publicAdvertisedPrefixes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.publicAdvertisedPrefixes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/publicAdvertisedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.publicAdvertisedPrefixes.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}",
+            "POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/announce",
+            "POST /compute/v1/projects/{project}/global/publicAdvertisedPrefixes/{publicAdvertisedPrefix}/withdraw"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.announce",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/announce"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/publicDelegatedPrefixes",
+            "GET /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}"
+          ]
+        },
+        {
+          "name": "compute.publicDelegatedPrefixes.withdraw",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/publicDelegatedPrefixes/{publicDelegatedPrefix}/withdraw"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/backendBuckets"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendBuckets/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendBuckets"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/backendBuckets/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.regionBackendBuckets.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/backendBuckets/{backendBucket}"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/backendServices"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendServices/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/backendServices"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/backendServices/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.setSecurityPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}/setSecurityPolicy"
+          ]
+        },
+        {
+          "name": "compute.regionBackendServices.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/backendServices/{backendService}"
+          ]
+        },
+        {
+          "name": "compute.regionCompositeHealthChecks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.regionCompositeHealthChecks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionCompositeHealthChecks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionCompositeHealthChecks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/compositeHealthChecks",
+            "GET /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks"
+          ]
+        },
+        {
+          "name": "compute.regionCompositeHealthChecks.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/compositeHealthChecks/{compositeHealthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthAggregationPolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionHealthAggregationPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthAggregationPolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthAggregationPolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/healthAggregationPolicies",
+            "GET /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionHealthAggregationPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/healthAggregationPolicies/{healthAggregationPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthChecks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/healthChecks"
+          ]
+        },
+        {
+          "name": "compute.regionHealthChecks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthChecks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthChecks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/healthChecks"
+          ]
+        },
+        {
+          "name": "compute.regionHealthChecks.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/healthChecks/{healthCheck}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthCheckServices.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/healthCheckServices"
+          ]
+        },
+        {
+          "name": "compute.regionHealthCheckServices.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthCheckServices.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthCheckServices.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/healthCheckServices",
+            "GET /compute/v1/projects/{project}/regions/{region}/healthCheckServices"
+          ]
+        },
+        {
+          "name": "compute.regionHealthCheckServices.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/healthCheckServices/{healthCheckService}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthSources.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/healthSources"
+          ]
+        },
+        {
+          "name": "compute.regionHealthSources.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthSources.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"
+          ]
+        },
+        {
+          "name": "compute.regionHealthSources.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/healthSources",
+            "GET /compute/v1/projects/{project}/regions/{region}/healthSources"
+          ]
+        },
+        {
+          "name": "compute.regionHealthSources.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/healthSources/{healthSource}"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.attachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}/attachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.detachNetworkEndpoints",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}/detachNetworkEndpoints"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups/{networkEndpointGroup}"
+          ]
+        },
+        {
+          "name": "compute.regionNetworkEndpointGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/networkEndpointGroups"
+          ]
+        },
+        {
+          "name": "compute.regionNotificationEndpoints.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/notificationEndpoints"
+          ]
+        },
+        {
+          "name": "compute.regionNotificationEndpoints.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/notificationEndpoints/{notificationEndpoint}"
+          ]
+        },
+        {
+          "name": "compute.regionNotificationEndpoints.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/notificationEndpoints/{notificationEndpoint}"
+          ]
+        },
+        {
+          "name": "compute.regionNotificationEndpoints.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/notificationEndpoints",
+            "GET /compute/v1/projects/{project}/regions/{region}/notificationEndpoints"
+          ]
+        },
+        {
+          "name": "compute.regionOperations.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.regionOperations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.regionOperations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/operations"
+          ]
+        },
+        {
+          "name": "compute.regions.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}"
+          ]
+        },
+        {
+          "name": "compute.regions.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions"
+          ]
+        },
+        {
+          "name": "compute.regionSecurityPolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/securityPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionSecurityPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionSecurityPolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}",
+            "GET /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/getRule"
+          ]
+        },
+        {
+          "name": "compute.regionSecurityPolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/securityPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionSecurityPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}",
+            "POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/addRule",
+            "POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/patchRule",
+            "POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{securityPolicy}/removeRule"
+          ]
+        },
+        {
+          "name": "compute.regionSslCertificates.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/sslCertificates"
+          ]
+        },
+        {
+          "name": "compute.regionSslCertificates.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/sslCertificates/{sslCertificate}"
+          ]
+        },
+        {
+          "name": "compute.regionSslCertificates.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/sslCertificates/{sslCertificate}"
+          ]
+        },
+        {
+          "name": "compute.regionSslCertificates.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/sslCertificates"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/sslPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/sslPolicies"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.listAvailableFeatures",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/sslPolicies/listAvailableFeatures"
+          ]
+        },
+        {
+          "name": "compute.regionSslPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetHttpProxies"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetHttpProxies"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpProxies.setUrlMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetHttpProxies/{targetHttpProxy}/setUrlMap"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.setSslCertificates",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}/setSslCertificates"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.setUrlMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}/setUrlMap"
+          ]
+        },
+        {
+          "name": "compute.regionTargetHttpsProxies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetTcpProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetTcpProxies"
+          ]
+        },
+        {
+          "name": "compute.regionTargetTcpProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/targetTcpProxies/{targetTcpProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetTcpProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetTcpProxies/{targetTcpProxy}"
+          ]
+        },
+        {
+          "name": "compute.regionTargetTcpProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetTcpProxies"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/urlMaps"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/urlMaps"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.regionUrlMaps.validate",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/urlMaps/{urlMap}/validate"
+          ]
+        },
+        {
+          "name": "compute.reservationBlocks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks/{reservationBlock}"
+          ]
+        },
+        {
+          "name": "compute.reservationBlocks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks"
+          ]
+        },
+        {
+          "name": "compute.reservationBlocks.performMaintenance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/reservationBlocks/{reservationBlock}/performMaintenance"
+          ]
+        },
+        {
+          "name": "compute.reservations.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations"
+          ]
+        },
+        {
+          "name": "compute.reservations.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"
+          ]
+        },
+        {
+          "name": "compute.reservations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"
+          ]
+        },
+        {
+          "name": "compute.reservations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/reservations",
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations"
+          ]
+        },
+        {
+          "name": "compute.reservations.performMaintenance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/performMaintenance"
+          ]
+        },
+        {
+          "name": "compute.reservations.resize",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}/resize"
+          ]
+        },
+        {
+          "name": "compute.reservations.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/reservations/{reservation}"
+          ]
+        },
+        {
+          "name": "compute.reservationSlots.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots/{reservationSlot}"
+          ]
+        },
+        {
+          "name": "compute.reservationSlots.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots"
+          ]
+        },
+        {
+          "name": "compute.reservationSlots.update",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlocksId}/reservationSlots/{reservationSlot}"
+          ]
+        },
+        {
+          "name": "compute.reservationSubBlocks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}"
+          ]
+        },
+        {
+          "name": "compute.reservationSubBlocks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks"
+          ]
+        },
+        {
+          "name": "compute.reservationSubBlocks.performMaintenance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}/performMaintenance"
+          ]
+        },
+        {
+          "name": "compute.reservationSubBlocks.reportFaulty",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/reservations/{reservationsId}/reservationBlocks/{reservationBlocksId}/reservationSubBlocks/{reservationSubBlock}/reportFaulty"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/resourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/resourcePolicies",
+            "GET /compute/v1/projects/{project}/regions/{region}/resourcePolicies"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.resourcePolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/resourcePolicies/{resourcePolicy}"
+          ]
+        },
+        {
+          "name": "compute.rolloutPlans.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/rolloutPlans"
+          ]
+        },
+        {
+          "name": "compute.rolloutPlans.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/rolloutPlans/{rolloutPlan}"
+          ]
+        },
+        {
+          "name": "compute.rolloutPlans.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/rolloutPlans/{rolloutPlan}"
+          ]
+        },
+        {
+          "name": "compute.rolloutPlans.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/rolloutPlans"
+          ]
+        },
+        {
+          "name": "compute.rollouts.cancel",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/rollouts/{rollout}"
+          ]
+        },
+        {
+          "name": "compute.rollouts.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/rollouts/{rollout}"
+          ]
+        },
+        {
+          "name": "compute.rollouts.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/rollouts/{rollout}"
+          ]
+        },
+        {
+          "name": "compute.rollouts.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/rollouts"
+          ]
+        },
+        {
+          "name": "compute.routers.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/routers"
+          ]
+        },
+        {
+          "name": "compute.routers.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/routers/{router}"
+          ]
+        },
+        {
+          "name": "compute.routers.deleteRoutePolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/routers/{router}/deleteRoutePolicy"
+          ]
+        },
+        {
+          "name": "compute.routers.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/routers/{router}"
+          ]
+        },
+        {
+          "name": "compute.routers.getRoutePolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/getRoutePolicy"
+          ]
+        },
+        {
+          "name": "compute.routers.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/routers",
+            "GET /compute/v1/projects/{project}/regions/{region}/routers"
+          ]
+        },
+        {
+          "name": "compute.routers.listBgpRoutes",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/listBgpRoutes"
+          ]
+        },
+        {
+          "name": "compute.routers.listRoutePolicies",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/routers/{router}/listRoutePolicies"
+          ]
+        },
+        {
+          "name": "compute.routers.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/regions/{region}/routers/{router}",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/routers/{router}"
+          ]
+        },
+        {
+          "name": "compute.routers.updateRoutePolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/routers/{router}/updateRoutePolicy"
+          ]
+        },
+        {
+          "name": "compute.routes.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/routes"
+          ]
+        },
+        {
+          "name": "compute.routes.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/routes/{route}"
+          ]
+        },
+        {
+          "name": "compute.routes.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/routes/{route}"
+          ]
+        },
+        {
+          "name": "compute.routes.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/routes"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/securityPolicies"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}",
+            "GET /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/getRule"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/securityPolicies",
+            "GET /compute/v1/projects/{project}/global/securityPolicies"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/securityPolicies/{resource}/setLabels",
+            "POST /compute/v1/projects/{project}/regions/{region}/securityPolicies/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.securityPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}",
+            "POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/addRule",
+            "POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/patchRule",
+            "POST /compute/v1/projects/{project}/global/securityPolicies/{securityPolicy}/removeRule"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/serviceAttachments"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/serviceAttachments",
+            "GET /compute/v1/projects/{project}/regions/{region}/serviceAttachments"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.serviceAttachments.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/serviceAttachments/{serviceAttachment}"
+          ]
+        },
+        {
+          "name": "compute.snapshots.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/snapshots",
+            "POST /compute/v1/projects/{project}/regions/{region}/snapshots"
+          ]
+        },
+        {
+          "name": "compute.snapshots.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/snapshots/{snapshot}",
+            "DELETE /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}"
+          ]
+        },
+        {
+          "name": "compute.snapshots.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/snapshots/{snapshot}",
+            "GET /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}"
+          ]
+        },
+        {
+          "name": "compute.snapshots.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/snapshots/{resource}/getIamPolicy",
+            "GET /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.snapshots.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/snapshots",
+            "GET /compute/v1/projects/{project}/regions/{region}/snapshots"
+          ]
+        },
+        {
+          "name": "compute.snapshots.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/snapshots/{resource}/setIamPolicy",
+            "POST /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.snapshots.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/snapshots/{resource}/setLabels",
+            "POST /compute/v1/projects/{project}/regions/{region}/snapshots/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.snapshots.updateKmsKey",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/snapshots/{snapshot}/updateKmsKey",
+            "POST /compute/v1/projects/{project}/regions/{region}/snapshots/{snapshot}/updateKmsKey"
+          ]
+        },
+        {
+          "name": "compute.snapshotSettings.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/snapshotSettings",
+            "GET /compute/v1/projects/{project}/regions/{region}/snapshotSettings"
+          ]
+        },
+        {
+          "name": "compute.snapshotSettings.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/snapshotSettings",
+            "PATCH /compute/v1/projects/{project}/regions/{region}/snapshotSettings"
+          ]
+        },
+        {
+          "name": "compute.sslCertificates.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/sslCertificates"
+          ]
+        },
+        {
+          "name": "compute.sslCertificates.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/sslCertificates/{sslCertificate}"
+          ]
+        },
+        {
+          "name": "compute.sslCertificates.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/sslCertificates/{sslCertificate}"
+          ]
+        },
+        {
+          "name": "compute.sslCertificates.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/sslCertificates",
+            "GET /compute/v1/projects/{project}/global/sslCertificates"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/sslPolicies"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/sslPolicies",
+            "GET /compute/v1/projects/{project}/global/sslPolicies"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.listAvailableFeatures",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/sslPolicies/listAvailableFeatures"
+          ]
+        },
+        {
+          "name": "compute.sslPolicies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/sslPolicies/{sslPolicy}"
+          ]
+        },
+        {
+          "name": "compute.storagePools.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/storagePools"
+          ]
+        },
+        {
+          "name": "compute.storagePools.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"
+          ]
+        },
+        {
+          "name": "compute.storagePools.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"
+          ]
+        },
+        {
+          "name": "compute.storagePools.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/storagePools/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.storagePools.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/storagePools",
+            "GET /compute/v1/projects/{project}/zones/{zone}/storagePools"
+          ]
+        },
+        {
+          "name": "compute.storagePools.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/storagePools/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.storagePools.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/zones/{zone}/storagePools/{storagePool}"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/subnetworks"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.expandIpCidrRange",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}/expandIpCidrRange"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.getIamPolicy",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/subnetworks/{resource}/getIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/subnetworks",
+            "GET /compute/v1/projects/{project}/regions/{region}/subnetworks"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.setIamPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{resource}/setIamPolicy"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.setPrivateIpGoogleAccess",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}/setPrivateIpGoogleAccess"
+          ]
+        },
+        {
+          "name": "compute.subnetworks.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/regions/{region}/subnetworks/{subnetwork}"
+          ]
+        },
+        {
+          "name": "compute.targetGrpcProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetGrpcProxies"
+          ]
+        },
+        {
+          "name": "compute.targetGrpcProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetGrpcProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetGrpcProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetGrpcProxies"
+          ]
+        },
+        {
+          "name": "compute.targetGrpcProxies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/targetGrpcProxies/{targetGrpcProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetHttpProxies"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetHttpProxies",
+            "GET /compute/v1/projects/{project}/global/targetHttpProxies"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.setUrlMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/targetHttpProxies/{targetHttpProxy}/setUrlMap"
+          ]
+        },
+        {
+          "name": "compute.targetHttpProxies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/targetHttpProxies/{targetHttpProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetHttpsProxies"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetHttpsProxies",
+            "GET /compute/v1/projects/{project}/global/targetHttpsProxies"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.setCertificateMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setCertificateMap"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.setQuicOverride",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setQuicOverride"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.setSslCertificates",
+          "rules": [
+            "POST /compute/v1/projects/{project}/targetHttpsProxies/{targetHttpsProxy}/setSslCertificates"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.setSslPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}/setSslPolicy"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.setUrlMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/targetHttpsProxies/{targetHttpsProxy}/setUrlMap"
+          ]
+        },
+        {
+          "name": "compute.targetHttpsProxies.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/targetHttpsProxies/{targetHttpsProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetInstances.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/targetInstances"
+          ]
+        },
+        {
+          "name": "compute.targetInstances.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}"
+          ]
+        },
+        {
+          "name": "compute.targetInstances.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}"
+          ]
+        },
+        {
+          "name": "compute.targetInstances.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetInstances",
+            "GET /compute/v1/projects/{project}/zones/{zone}/targetInstances"
+          ]
+        },
+        {
+          "name": "compute.targetInstances.setSecurityPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/zones/{zone}/targetInstances/{targetInstance}/setSecurityPolicy"
+          ]
+        },
+        {
+          "name": "compute.targetPools.addHealthCheck",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/addHealthCheck"
+          ]
+        },
+        {
+          "name": "compute.targetPools.addInstance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/addInstance"
+          ]
+        },
+        {
+          "name": "compute.targetPools.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools"
+          ]
+        },
+        {
+          "name": "compute.targetPools.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}"
+          ]
+        },
+        {
+          "name": "compute.targetPools.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}"
+          ]
+        },
+        {
+          "name": "compute.targetPools.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetPools",
+            "GET /compute/v1/projects/{project}/regions/{region}/targetPools"
+          ]
+        },
+        {
+          "name": "compute.targetPools.removeHealthCheck",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/removeHealthCheck"
+          ]
+        },
+        {
+          "name": "compute.targetPools.removeInstance",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/removeInstance"
+          ]
+        },
+        {
+          "name": "compute.targetPools.setSecurityPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetPools/{targetPool}/setSecurityPolicy"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetSslProxies"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.setBackendService",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setBackendService"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.setCertificateMap",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setCertificateMap"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.setProxyHeader",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setProxyHeader"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.setSslCertificates",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setSslCertificates"
+          ]
+        },
+        {
+          "name": "compute.targetSslProxies.setSslPolicy",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetSslProxies/{targetSslProxy}/setSslPolicy"
+          ]
+        },
+        {
+          "name": "compute.targetTcpProxies.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/targetTcpProxies"
+          ]
+        },
+        {
+          "name": "compute.targetTcpProxies.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/targetTcpProxies/{targetTcpProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetTcpProxies.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/targetTcpProxies/{targetTcpProxy}"
+          ]
+        },
+        {
+          "name": "compute.targetTcpProxies.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetTcpProxies",
+            "GET /compute/v1/projects/{project}/global/targetTcpProxies"
+          ]
+        },
+        {
+          "name": "compute.targetVpnGateways.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetVpnGateways"
+          ]
+        },
+        {
+          "name": "compute.targetVpnGateways.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{targetVpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.targetVpnGateways.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{targetVpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.targetVpnGateways.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/targetVpnGateways",
+            "GET /compute/v1/projects/{project}/regions/{region}/targetVpnGateways"
+          ]
+        },
+        {
+          "name": "compute.targetVpnGateways.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/targetVpnGateways/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/urlMaps"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.invalidateCache",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/urlMaps/{urlMap}/invalidateCache"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/urlMaps",
+            "GET /compute/v1/projects/{project}/global/urlMaps"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.update",
+          "rules": [
+            "PUT /compute/v1/projects/{project}/global/urlMaps/{urlMap}",
+            "PATCH /compute/v1/projects/{project}/global/urlMaps/{urlMap}"
+          ]
+        },
+        {
+          "name": "compute.urlMaps.validate",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/urlMaps/{urlMap}/validate"
+          ]
+        },
+        {
+          "name": "compute.vpnGateways.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/vpnGateways"
+          ]
+        },
+        {
+          "name": "compute.vpnGateways.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/vpnGateways/{vpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.vpnGateways.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/vpnGateways/{vpnGateway}"
+          ]
+        },
+        {
+          "name": "compute.vpnGateways.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/vpnGateways",
+            "GET /compute/v1/projects/{project}/regions/{region}/vpnGateways"
+          ]
+        },
+        {
+          "name": "compute.vpnGateways.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/vpnGateways/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.vpnTunnels.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/vpnTunnels"
+          ]
+        },
+        {
+          "name": "compute.vpnTunnels.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{vpnTunnel}"
+          ]
+        },
+        {
+          "name": "compute.vpnTunnels.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{vpnTunnel}"
+          ]
+        },
+        {
+          "name": "compute.vpnTunnels.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/aggregated/vpnTunnels",
+            "GET /compute/v1/projects/{project}/regions/{region}/vpnTunnels"
+          ]
+        },
+        {
+          "name": "compute.vpnTunnels.setLabels",
+          "rules": [
+            "POST /compute/v1/projects/{project}/regions/{region}/vpnTunnels/{resource}/setLabels"
+          ]
+        },
+        {
+          "name": "compute.wireGroups.create",
+          "rules": [
+            "POST /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups"
+          ]
+        },
+        {
+          "name": "compute.wireGroups.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"
+          ]
+        },
+        {
+          "name": "compute.wireGroups.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"
+          ]
+        },
+        {
+          "name": "compute.wireGroups.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups"
+          ]
+        },
+        {
+          "name": "compute.wireGroups.update",
+          "rules": [
+            "PATCH /compute/v1/projects/{project}/global/crossSiteNetworks/{crossSiteNetwork}/wireGroups/{wireGroup}"
+          ]
+        },
+        {
+          "name": "compute.zoneOperations.delete",
+          "rules": [
+            "DELETE /compute/v1/projects/{project}/zones/{zone}/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.zoneOperations.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/operations/{operation}"
+          ]
+        },
+        {
+          "name": "compute.zoneOperations.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}/operations"
+          ]
+        },
+        {
+          "name": "compute.zones.get",
+          "rules": [
+            "GET /compute/v1/projects/{project}/zones/{zone}"
+          ]
+        },
+        {
+          "name": "compute.zones.list",
+          "rules": [
+            "GET /compute/v1/projects/{project}/regions/{region}/zones",
+            "GET /compute/v1/projects/{project}/zones"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://appengine.googleapis.com",
+      "permissions": [
+        {
+          "name": "appengine.applications.create",
+          "rules": [
+            "POST /v1/apps"
+          ]
+        },
+        {
+          "name": "appengine.applications.get",
+          "rules": [
+            "GET /v1/apps/{appsId}",
+            "GET /v1/apps/{appsId}/locations/{locationsId}"
+          ]
+        },
+        {
+          "name": "appengine.applications.listRuntimes",
+          "rules": [
+            "GET /v1/apps/{appsId}:listRuntimes"
+          ]
+        },
+        {
+          "name": "appengine.applications.update",
+          "rules": [
+            "PATCH /v1/apps/{appsId}",
+            "PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}"
+          ]
+        },
+        {
+          "name": "appengine.instances.delete",
+          "rules": [
+            "DELETE /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}",
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}"
+          ]
+        },
+        {
+          "name": "appengine.instances.enableDebug",
+          "rules": [
+            "POST /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}:debug",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}:debug"
+          ]
+        },
+        {
+          "name": "appengine.instances.get",
+          "rules": [
+            "GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances/{instancesId}"
+          ]
+        },
+        {
+          "name": "appengine.instances.list",
+          "rules": [
+            "GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}/instances"
+          ]
+        },
+        {
+          "name": "appengine.operations.get",
+          "rules": [
+            "GET /v1/apps/{appsId}/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "appengine.operations.list",
+          "rules": [
+            "GET /v1/apps/{appsId}/operations"
+          ]
+        },
+        {
+          "name": "appengine.services.delete",
+          "rules": [
+            "DELETE /v1/apps/{appsId}/services/{servicesId}",
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "appengine.services.get",
+          "rules": [
+            "GET /v1/apps/{appsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "appengine.services.list",
+          "rules": [
+            "GET /v1/apps/{appsId}/services"
+          ]
+        },
+        {
+          "name": "appengine.services.update",
+          "rules": [
+            "PATCH /v1/apps/{appsId}/services/{servicesId}",
+            "PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "appengine.versions.create",
+          "rules": [
+            "POST /v1/apps/{appsId}/services/{servicesId}/versions"
+          ]
+        },
+        {
+          "name": "appengine.versions.delete",
+          "rules": [
+            "DELETE /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}",
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}"
+          ]
+        },
+        {
+          "name": "appengine.versions.exportAppImage",
+          "rules": [
+            "POST /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}:exportAppImage",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}:exportAppImage"
+          ]
+        },
+        {
+          "name": "appengine.versions.get",
+          "rules": [
+            "GET /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}"
+          ]
+        },
+        {
+          "name": "appengine.versions.list",
+          "rules": [
+            "GET /v1/apps/{appsId}/services/{servicesId}/versions"
+          ]
+        },
+        {
+          "name": "appengine.versions.update",
+          "rules": [
+            "PATCH /v1/apps/{appsId}/services/{servicesId}/versions/{versionsId}",
+            "PATCH /v1/projects/{projectsId}/locations/{locationsId}/applications/{applicationsId}/services/{servicesId}/versions/{versionsId}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://sqladmin.googleapis.com",
+      "permissions": [
+        {
+          "name": "cloudsql.backupRuns.create",
+          "rules": [
+            "POST /v1/projects/{projectsId}/backups",
+            "POST /v1/projects/{project}/instances/{instance}/backupRuns"
+          ]
+        },
+        {
+          "name": "cloudsql.backupRuns.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/backups/{backupsId}",
+            "DELETE /v1/projects/{project}/instances/{instance}/backupRuns/{id}"
+          ]
+        },
+        {
+          "name": "cloudsql.backupRuns.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/backups/{backupsId}",
+            "GET /v1/projects/{project}/instances/{instance}/backupRuns/{id}"
+          ]
+        },
+        {
+          "name": "cloudsql.backupRuns.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/backups",
+            "GET /v1/projects/{project}/instances/{instance}/backupRuns"
+          ]
+        },
+        {
+          "name": "cloudsql.backupRuns.update",
+          "rules": [
+            "PATCH /v1/projects/{projectsId}/backups/{backupsId}"
+          ]
+        },
+        {
+          "name": "cloudsql.databases.create",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/databases"
+          ]
+        },
+        {
+          "name": "cloudsql.databases.delete",
+          "rules": [
+            "DELETE /v1/projects/{project}/instances/{instance}/databases/{database}"
+          ]
+        },
+        {
+          "name": "cloudsql.databases.get",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/databases/{database}"
+          ]
+        },
+        {
+          "name": "cloudsql.databases.list",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/databases"
+          ]
+        },
+        {
+          "name": "cloudsql.databases.update",
+          "rules": [
+            "PUT /v1/projects/{project}/instances/{instance}/databases/{database}",
+            "PATCH /v1/projects/{project}/instances/{instance}/databases/{database}"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.addEntraIdCertificate",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/addEntraIdCertificate"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.addServerCa",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/addServerCa"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.addServerCertificate",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/addServerCertificate"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.clone",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/clone"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.connect",
+          "rules": [
+            "GET /v1/dns/{dnsName}/locations/{location}:resolveConnectSettings",
+            "POST /v1/projects/{project}/instances/{instance}:generateEphemeralCert"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.create",
+          "rules": [
+            "POST /v1/projects/{project}/instances"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.delete",
+          "rules": [
+            "DELETE /v1/projects/{project}/instances/{instance}"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.demoteMaster",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/demoteMaster"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.executeSql",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/executeSql"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.export",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/export"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.failover",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/failover"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.get",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}",
+            "GET /v1/projects/{project}/instances/{instance}/connectSettings",
+            "GET /v1/projects/{project}/instances/{instance}/getLatestRecoveryTime",
+            "POST /v1/projects/{project}/instances/{instance}/verifyExternalSyncSettings"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.getDiskShrinkConfig",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/getDiskShrinkConfig"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.import",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/import"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.list",
+          "rules": [
+            "GET /v1/projects/{project}/instances"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.listEntraIdCertificates",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/listEntraIdCertificates"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.listServerCas",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/listServerCas"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.listServerCertificates",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/listServerCertificates"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.performDiskShrink",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/performDiskShrink"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.preCheckMajorVersionUpgrade",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/preCheckMajorVersionUpgrade"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.promoteReplica",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/promoteReplica"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.reencrypt",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/reencrypt"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.resetReplicaSize",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/resetReplicaSize"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.resetSslConfig",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/resetSslConfig"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.restart",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/restart"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.restoreBackup",
+          "rules": [
+            "POST /v1/projects/{projectsId}:pointInTimeRestore",
+            "POST /v1/projects/{project}/instances/{instance}/restoreBackup"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.rotateEntraIdCertificate",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/rotateEntraIdCertificate"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.rotateServerCa",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/rotateServerCa"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.rotateServerCertificate",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/rotateServerCertificate"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.startReplica",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/startReplica"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.stopReplica",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/stopReplica"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.truncateLog",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/truncateLog"
+          ]
+        },
+        {
+          "name": "cloudsql.instances.update",
+          "rules": [
+            "PUT /v1/projects/{project}/instances/{instance}",
+            "PATCH /v1/projects/{project}/instances/{instance}",
+            "POST /v1/projects/{project}/instances/{instance}/rescheduleMaintenance",
+            "POST /v1/projects/{project}/instances/{instance}/startExternalSync"
+          ]
+        },
+        {
+          "name": "cloudsql.sslCerts.create",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/sslCerts"
+          ]
+        },
+        {
+          "name": "cloudsql.sslCerts.delete",
+          "rules": [
+            "DELETE /v1/projects/{project}/instances/{instance}/sslCerts/{sha1Fingerprint}"
+          ]
+        },
+        {
+          "name": "cloudsql.sslCerts.get",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/sslCerts/{sha1Fingerprint}"
+          ]
+        },
+        {
+          "name": "cloudsql.sslCerts.list",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/sslCerts"
+          ]
+        },
+        {
+          "name": "cloudsql.users.create",
+          "rules": [
+            "POST /v1/projects/{project}/instances/{instance}/users"
+          ]
+        },
+        {
+          "name": "cloudsql.users.delete",
+          "rules": [
+            "DELETE /v1/projects/{project}/instances/{instance}/users"
+          ]
+        },
+        {
+          "name": "cloudsql.users.get",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/users/{name}"
+          ]
+        },
+        {
+          "name": "cloudsql.users.list",
+          "rules": [
+            "GET /v1/projects/{project}/instances/{instance}/users"
+          ]
+        },
+        {
+          "name": "cloudsql.users.update",
+          "rules": [
+            "PUT /v1/projects/{project}/instances/{instance}/users"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://bigquery.googleapis.com",
+      "permissions": [
+        {
+          "name": "bigquery.datasets.create",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets"
+          ]
+        },
+        {
+          "name": "bigquery.datasets.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}"
+          ]
+        },
+        {
+          "name": "bigquery.datasets.get",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets",
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}"
+          ]
+        },
+        {
+          "name": "bigquery.datasets.update",
+          "rules": [
+            "PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}",
+            "PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}",
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}:undelete"
+          ]
+        },
+        {
+          "name": "bigquery.jobs.create",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/jobs",
+            "POST /bigquery/v2/projects/{projectsId}/queries",
+            "POST /resumable/upload/bigquery/v2/projects/{projectsId}/jobs",
+            "POST /upload/bigquery/v2/projects/{projectsId}/jobs"
+          ]
+        },
+        {
+          "name": "bigquery.jobs.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/jobs/{jobsId}/delete"
+          ]
+        },
+        {
+          "name": "bigquery.jobs.get",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/jobs/{jobsId}",
+            "GET /bigquery/v2/projects/{projectsId}/queries/{queriesId}"
+          ]
+        },
+        {
+          "name": "bigquery.jobs.list",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/jobs"
+          ]
+        },
+        {
+          "name": "bigquery.jobs.update",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/jobs/{jobsId}/cancel"
+          ]
+        },
+        {
+          "name": "bigquery.models.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"
+          ]
+        },
+        {
+          "name": "bigquery.models.getMetadata",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"
+          ]
+        },
+        {
+          "name": "bigquery.models.list",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models"
+          ]
+        },
+        {
+          "name": "bigquery.models.updateMetadata",
+          "rules": [
+            "PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/models/{modelsId}"
+          ]
+        },
+        {
+          "name": "bigquery.routines.create",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines"
+          ]
+        },
+        {
+          "name": "bigquery.routines.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"
+          ]
+        },
+        {
+          "name": "bigquery.routines.get",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"
+          ]
+        },
+        {
+          "name": "bigquery.routines.list",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines"
+          ]
+        },
+        {
+          "name": "bigquery.routines.update",
+          "rules": [
+            "PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/routines/{routinesId}"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.create",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}",
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies:batchDelete"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.get",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.getIamPolicy",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.list",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies"
+          ]
+        },
+        {
+          "name": "bigquery.rowAccessPolicies.update",
+          "rules": [
+            "PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/rowAccessPolicies/{rowAccessPoliciesId}"
+          ]
+        },
+        {
+          "name": "bigquery.tables.create",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables"
+          ]
+        },
+        {
+          "name": "bigquery.tables.delete",
+          "rules": [
+            "DELETE /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"
+          ]
+        },
+        {
+          "name": "bigquery.tables.get",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"
+          ]
+        },
+        {
+          "name": "bigquery.tables.getData",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/data"
+          ]
+        },
+        {
+          "name": "bigquery.tables.getIamPolicy",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "bigquery.tables.list",
+          "rules": [
+            "GET /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables"
+          ]
+        },
+        {
+          "name": "bigquery.tables.setIamPolicy",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "bigquery.tables.update",
+          "rules": [
+            "PUT /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}",
+            "PATCH /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}"
+          ]
+        },
+        {
+          "name": "bigquery.tables.updateData",
+          "rules": [
+            "POST /bigquery/v2/projects/{projectsId}/datasets/{datasetsId}/tables/{tablesId}/insertAll"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://storage.googleapis.com",
+      "permissions": [
+        {
+          "name": "storage.anywhereCaches.create",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/anywhereCaches"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.disable",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/disable"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.get",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.list",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/anywhereCaches"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.pause",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/pause"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.resume",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}/resume"
+          ]
+        },
+        {
+          "name": "storage.anywhereCaches.update",
+          "rules": [
+            "PATCH /storage/v1/b/{bucket}/anywhereCaches/{anywhereCacheId}"
+          ]
+        },
+        {
+          "name": "storage.buckets.create",
+          "rules": [
+            "POST /storage/v1/b"
+          ]
+        },
+        {
+          "name": "storage.buckets.delete",
+          "rules": [
+            "DELETE /storage/v1/b/{bucket}"
+          ]
+        },
+        {
+          "name": "storage.buckets.get",
+          "rules": [
+            "GET /storage/v1/b/{bucket}"
+          ]
+        },
+        {
+          "name": "storage.buckets.getIamPolicy",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/iam"
+          ]
+        },
+        {
+          "name": "storage.buckets.list",
+          "rules": [
+            "GET /storage/v1/b"
+          ]
+        },
+        {
+          "name": "storage.buckets.relocate",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/relocate"
+          ]
+        },
+        {
+          "name": "storage.buckets.restore",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/restore"
+          ]
+        },
+        {
+          "name": "storage.buckets.setIamPolicy",
+          "rules": [
+            "PUT /storage/v1/b/{bucket}/iam"
+          ]
+        },
+        {
+          "name": "storage.buckets.update",
+          "rules": [
+            "PUT /storage/v1/b/{bucket}",
+            "PATCH /storage/v1/b/{bucket}"
+          ]
+        },
+        {
+          "name": "storage.folders.create",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/folders"
+          ]
+        },
+        {
+          "name": "storage.folders.delete",
+          "rules": [
+            "DELETE /storage/v1/b/{bucket}/folders/{folder}",
+            "POST /storage/v1/b/{bucket}/folders/{folder}/deleteRecursive"
+          ]
+        },
+        {
+          "name": "storage.folders.get",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/folders/{folder}"
+          ]
+        },
+        {
+          "name": "storage.folders.list",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/folders"
+          ]
+        },
+        {
+          "name": "storage.folders.rename",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/folders/{sourceFolder}/renameTo/folders/{destinationFolder}"
+          ]
+        },
+        {
+          "name": "storage.hmacKeys.create",
+          "rules": [
+            "POST /storage/v1/projects/{projectId}/hmacKeys"
+          ]
+        },
+        {
+          "name": "storage.hmacKeys.delete",
+          "rules": [
+            "DELETE /storage/v1/projects/{projectId}/hmacKeys/{accessId}"
+          ]
+        },
+        {
+          "name": "storage.hmacKeys.get",
+          "rules": [
+            "GET /storage/v1/projects/{projectId}/hmacKeys/{accessId}"
+          ]
+        },
+        {
+          "name": "storage.hmacKeys.list",
+          "rules": [
+            "GET /storage/v1/projects/{projectId}/hmacKeys"
+          ]
+        },
+        {
+          "name": "storage.hmacKeys.update",
+          "rules": [
+            "PUT /storage/v1/projects/{projectId}/hmacKeys/{accessId}"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.create",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/managedFolders"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.delete",
+          "rules": [
+            "DELETE /storage/v1/b/{bucket}/managedFolders/{managedFolder}"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.get",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/managedFolders/{managedFolder}"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.getIamPolicy",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/managedFolders/{managedFolder}/iam"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.list",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/managedFolders"
+          ]
+        },
+        {
+          "name": "storage.managedFolders.setIamPolicy",
+          "rules": [
+            "PUT /storage/v1/b/{bucket}/managedFolders/{managedFolder}/iam"
+          ]
+        },
+        {
+          "name": "storage.objects.create",
+          "rules": [
+            "POST /resumable/upload/storage/v1/b/{bucket}/o",
+            "POST /storage/v1/b/{bucket}/o",
+            "POST /storage/v1/b/{destinationBucket}/o/{destinationObject}/compose",
+            "POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/copyTo/b/{destinationBucket}/o/{destinationObject}",
+            "POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/rewriteTo/b/{destinationBucket}/o/{destinationObject}",
+            "POST /upload/storage/v1/b/{bucket}/o"
+          ]
+        },
+        {
+          "name": "storage.objects.delete",
+          "rules": [
+            "DELETE /storage/v1/b/{bucket}/o/{object}"
+          ]
+        },
+        {
+          "name": "storage.objects.get",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/o/{object}"
+          ]
+        },
+        {
+          "name": "storage.objects.getIamPolicy",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/o/{object}/iam"
+          ]
+        },
+        {
+          "name": "storage.objects.list",
+          "rules": [
+            "GET /storage/v1/b/{bucket}/o",
+            "POST /storage/v1/b/{bucket}/o/watch"
+          ]
+        },
+        {
+          "name": "storage.objects.move",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/o/{sourceObject}/moveTo/o/{destinationObject}"
+          ]
+        },
+        {
+          "name": "storage.objects.restore",
+          "rules": [
+            "POST /storage/v1/b/{bucket}/o/bulkRestore",
+            "POST /storage/v1/b/{bucket}/o/{object}/restore"
+          ]
+        },
+        {
+          "name": "storage.objects.setIamPolicy",
+          "rules": [
+            "PUT /storage/v1/b/{bucket}/o/{object}/iam"
+          ]
+        },
+        {
+          "name": "storage.objects.update",
+          "rules": [
+            "PUT /storage/v1/b/{bucket}/o/{object}",
+            "PATCH /storage/v1/b/{bucket}/o/{object}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://run.googleapis.com",
+      "permissions": [
+        {
+          "name": "cloudbuild.builds.create",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/builds:submit"
+          ]
+        },
+        {
+          "name": "run.executions.cancel",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}:cancel"
+          ]
+        },
+        {
+          "name": "run.executions.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}"
+          ]
+        },
+        {
+          "name": "run.executions.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}"
+          ]
+        },
+        {
+          "name": "run.executions.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions"
+          ]
+        },
+        {
+          "name": "run.jobs.create",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/jobs"
+          ]
+        },
+        {
+          "name": "run.jobs.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"
+          ]
+        },
+        {
+          "name": "run.jobs.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"
+          ]
+        },
+        {
+          "name": "run.jobs.getIamPolicy",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "run.jobs.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs"
+          ]
+        },
+        {
+          "name": "run.jobs.run",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:run"
+          ]
+        },
+        {
+          "name": "run.jobs.setIamPolicy",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "run.jobs.update",
+          "rules": [
+            "PATCH /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}"
+          ]
+        },
+        {
+          "name": "run.operations.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "run.operations.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "run.operations.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/operations"
+          ]
+        },
+        {
+          "name": "run.revisions.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions/{revisionsId}",
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions/{revisionsId}"
+          ]
+        },
+        {
+          "name": "run.revisions.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions/{revisionsId}",
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions/{revisionsId}"
+          ]
+        },
+        {
+          "name": "run.revisions.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}/revisions",
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}/revisions"
+          ]
+        },
+        {
+          "name": "run.services.create",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/services"
+          ]
+        },
+        {
+          "name": "run.services.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "run.services.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "run.services.getIamPolicy",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "run.services.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/services"
+          ]
+        },
+        {
+          "name": "run.services.setIamPolicy",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "run.services.update",
+          "rules": [
+            "PATCH /v2/projects/{projectsId}/locations/{locationsId}/services/{servicesId}"
+          ]
+        },
+        {
+          "name": "run.tasks.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}/tasks/{tasksId}"
+          ]
+        },
+        {
+          "name": "run.tasks.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/jobs/{jobsId}/executions/{executionsId}/tasks"
+          ]
+        },
+        {
+          "name": "run.workerpools.create",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/workerPools"
+          ]
+        },
+        {
+          "name": "run.workerpools.delete",
+          "rules": [
+            "DELETE /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        },
+        {
+          "name": "run.workerpools.get",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        },
+        {
+          "name": "run.workerpools.getIamPolicy",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}:getIamPolicy"
+          ]
+        },
+        {
+          "name": "run.workerpools.list",
+          "rules": [
+            "GET /v2/projects/{projectsId}/locations/{locationsId}/workerPools"
+          ]
+        },
+        {
+          "name": "run.workerpools.setIamPolicy",
+          "rules": [
+            "POST /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}:setIamPolicy"
+          ]
+        },
+        {
+          "name": "run.workerpools.update",
+          "rules": [
+            "PATCH /v2/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://cloudbuild.googleapis.com",
+      "permissions": [
+        {
+          "name": "cloudbuild.builds.approve",
+          "rules": [
+            "POST /v1/projects/{projectsId}/builds/{buildsId}:approve",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:approve"
+          ]
+        },
+        {
+          "name": "cloudbuild.builds.create",
+          "rules": [
+            "POST /v1/projects/{projectId}/builds",
+            "POST /v1/projects/{projectId}/builds/{id}:retry",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/builds",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:retry"
+          ]
+        },
+        {
+          "name": "cloudbuild.builds.get",
+          "rules": [
+            "GET /v1/projects/{projectId}/builds/{id}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}"
+          ]
+        },
+        {
+          "name": "cloudbuild.builds.list",
+          "rules": [
+            "GET /v1/projects/{projectId}/builds",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/builds"
+          ]
+        },
+        {
+          "name": "cloudbuild.builds.update",
+          "rules": [
+            "POST /v1/projects/{projectId}/builds/{id}:cancel",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/builds/{buildsId}:cancel"
+          ]
+        },
+        {
+          "name": "cloudbuild.operations.get",
+          "rules": [
+            "GET /v1/operations/{operationsId}",
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}"
+          ]
+        },
+        {
+          "name": "cloudbuild.workerpools.create",
+          "rules": [
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/workerPools"
+          ]
+        },
+        {
+          "name": "cloudbuild.workerpools.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        },
+        {
+          "name": "cloudbuild.workerpools.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        },
+        {
+          "name": "cloudbuild.workerpools.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/workerPools"
+          ]
+        },
+        {
+          "name": "cloudbuild.workerpools.update",
+          "rules": [
+            "PATCH /v1/projects/{projectsId}/locations/{locationsId}/workerPools/{workerPoolsId}"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CLOUD_TOKEN }}"
+        }
+      },
+      "base": "https://artifactregistry.googleapis.com",
+      "permissions": [
+        {
+          "name": "artifactregistry.aptartifacts.create",
+          "rules": [
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/aptArtifacts:import"
+          ]
+        },
+        {
+          "name": "artifactregistry.attachments.create",
+          "rules": [
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments"
+          ]
+        },
+        {
+          "name": "artifactregistry.attachments.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments/{attachmentsId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.attachments.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments/{attachmentsId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.attachments.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/attachments"
+          ]
+        },
+        {
+          "name": "artifactregistry.dockerimages.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/dockerImages/{dockerImagesId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.dockerimages.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/dockerImages"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.delete",
+          "rules": [
+            "DELETE /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.download",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}:download"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.get",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.list",
+          "rules": [
+            "GET /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.update",
+          "rules": [
+            "PATCH /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files/{filesId}"
+          ]
+        },
+        {
+          "name": "artifactregistry.files.upload",
+          "rules": [
+            "POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create",
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create"
+          ]
+        },
+        {
+          "name": "artifactregistry.kfpartifacts.create",
+          "rules": [
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create",
+"""

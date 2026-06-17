@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.PLAIN_TOKEN }}"}},"base":"https://core-api.uk.plain.com","permissions":[]}],"name":"plain"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.PLAIN_TOKEN }}"
+        }
+      },
+      "base": "https://core-api.uk.plain.com",
+      "permissions": []
+    }
+  ],
+  "name": "plain"
+}"""

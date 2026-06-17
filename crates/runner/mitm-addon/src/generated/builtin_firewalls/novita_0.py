@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.NOVITA_TOKEN }}"}},"base":"https://api.novita.ai","permissions":[]}],"name":"novita"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.NOVITA_TOKEN }}"
+        }
+      },
+      "base": "https://api.novita.ai",
+      "permissions": []
+    }
+  ],
+  "name": "novita"
+}"""

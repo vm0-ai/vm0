@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"token":"${{ secrets.BROWSERLESS_TOKEN }}"}},"base":"https://production-sfo.browserless.io","permissions":[]},{"auth":{"query":{"token":"${{ secrets.BROWSERLESS_TOKEN }}"}},"base":"https://production-lon.browserless.io","permissions":[]},{"auth":{"query":{"token":"${{ secrets.BROWSERLESS_TOKEN }}"}},"base":"https://production-ams.browserless.io","permissions":[]}],"name":"browserless"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "token": "${{ secrets.BROWSERLESS_TOKEN }}"
+        }
+      },
+      "base": "https://production-sfo.browserless.io",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "query": {
+          "token": "${{ secrets.BROWSERLESS_TOKEN }}"
+        }
+      },
+      "base": "https://production-lon.browserless.io",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "query": {
+          "token": "${{ secrets.BROWSERLESS_TOKEN }}"
+        }
+      },
+      "base": "https://production-ams.browserless.io",
+      "permissions": []
+    }
+  ],
+  "name": "browserless"
+}"""

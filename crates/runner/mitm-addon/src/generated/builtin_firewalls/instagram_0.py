@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.INSTAGRAM_TOKEN }}"}},"base":"https://graph.instagram.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.INSTAGRAM_TOKEN }}"}},"base":"https://graph.facebook.com","permissions":[]}],"name":"instagram"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.INSTAGRAM_TOKEN }}"
+        }
+      },
+      "base": "https://graph.instagram.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.INSTAGRAM_TOKEN }}"
+        }
+      },
+      "base": "https://graph.facebook.com",
+      "permissions": []
+    }
+  ],
+  "name": "instagram"
+}"""

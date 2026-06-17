@@ -3,4 +3,36 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.REAP_API_KEY }}","Reap-Version":"2025-02-14"}},"base":"${{ vars.REAP_API_BASE_URL }}","permissions":[{"description":"Read Reap resources","name":"read","rules":["GET /{path+}"]},{"description":"Create, update, and delete Reap resources","name":"write","rules":["POST /{path+}","PUT /{path+}","PATCH /{path+}","DELETE /{path+}"]}]}],"name":"reap"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.REAP_API_KEY }}",
+          "Reap-Version": "2025-02-14"
+        }
+      },
+      "base": "${{ vars.REAP_API_BASE_URL }}",
+      "permissions": [
+        {
+          "description": "Read Reap resources",
+          "name": "read",
+          "rules": [
+            "GET /{path+}"
+          ]
+        },
+        {
+          "description": "Create, update, and delete Reap resources",
+          "name": "write",
+          "rules": [
+            "POST /{path+}",
+            "PUT /{path+}",
+            "PATCH /{path+}",
+            "DELETE /{path+}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "reap"
+}"""

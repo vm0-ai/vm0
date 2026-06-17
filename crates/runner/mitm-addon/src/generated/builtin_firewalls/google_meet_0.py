@@ -3,4 +3,71 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_MEET_TOKEN }}"}},"base":"https://meet.googleapis.com","permissions":[{"description":"Create, edit, and see information about your Google Meet conferences created by the app.","name":"meetings.space.created","rules":["GET /v2/conferenceRecords","GET /v2/conferenceRecords/{conferenceRecordsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/participants","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions/{participantSessionsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/recordings","GET /v2/conferenceRecords/{conferenceRecordsId}/recordings/{recordingsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes","GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes/{smartNotesId}","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries/{entriesId}","POST /v2/spaces","GET /v2/spaces/{spacesId}","PATCH /v2/spaces/{spacesId}","POST /v2/spaces/{spacesId}:endActiveConference"]},{"description":"Read information about any of your Google Meet conferences","name":"meetings.space.readonly","rules":["GET /v2/conferenceRecords","GET /v2/conferenceRecords/{conferenceRecordsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/participants","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions","GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions/{participantSessionsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/recordings","GET /v2/conferenceRecords/{conferenceRecordsId}/recordings/{recordingsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes","GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes/{smartNotesId}","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries","GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries/{entriesId}","GET /v2/spaces/{spacesId}"]},{"description":"Edit, and see settings for all of your Google Meet calls.","name":"meetings.space.settings","rules":["GET /v2/spaces/{spacesId}","PATCH /v2/spaces/{spacesId}"]}]}],"name":"google-meet"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MEET_TOKEN }}"
+        }
+      },
+      "base": "https://meet.googleapis.com",
+      "permissions": [
+        {
+          "description": "Create, edit, and see information about your Google Meet conferences created by the app.",
+          "name": "meetings.space.created",
+          "rules": [
+            "GET /v2/conferenceRecords",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions/{participantSessionsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/recordings",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/recordings/{recordingsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes/{smartNotesId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries/{entriesId}",
+            "POST /v2/spaces",
+            "GET /v2/spaces/{spacesId}",
+            "PATCH /v2/spaces/{spacesId}",
+            "POST /v2/spaces/{spacesId}:endActiveConference"
+          ]
+        },
+        {
+          "description": "Read information about any of your Google Meet conferences",
+          "name": "meetings.space.readonly",
+          "rules": [
+            "GET /v2/conferenceRecords",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/participants/{participantsId}/participantSessions/{participantSessionsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/recordings",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/recordings/{recordingsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/smartNotes/{smartNotesId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries",
+            "GET /v2/conferenceRecords/{conferenceRecordsId}/transcripts/{transcriptsId}/entries/{entriesId}",
+            "GET /v2/spaces/{spacesId}"
+          ]
+        },
+        {
+          "description": "Edit, and see settings for all of your Google Meet calls.",
+          "name": "meetings.space.settings",
+          "rules": [
+            "GET /v2/spaces/{spacesId}",
+            "PATCH /v2/spaces/{spacesId}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "google-meet"
+}"""

@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.LANGFUSE_PUBLIC_KEY, secrets.LANGFUSE_SECRET_KEY) }}"}},"base":"https://cloud.langfuse.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.LANGFUSE_PUBLIC_KEY, secrets.LANGFUSE_SECRET_KEY) }}"}},"base":"https://us.cloud.langfuse.com","permissions":[]}],"name":"langfuse"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.LANGFUSE_PUBLIC_KEY, secrets.LANGFUSE_SECRET_KEY) }}"
+        }
+      },
+      "base": "https://cloud.langfuse.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.LANGFUSE_PUBLIC_KEY, secrets.LANGFUSE_SECRET_KEY) }}"
+        }
+      },
+      "base": "https://us.cloud.langfuse.com",
+      "permissions": []
+    }
+  ],
+  "name": "langfuse"
+}"""

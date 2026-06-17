@@ -127,8 +127,8 @@ function escapeNonAsciiJson(value: string): string {
   return escaped;
 }
 
-function stableCompactJson(value: unknown): string {
-  const json = JSON.stringify(sortJson(value));
+function stablePrettyJson(value: unknown): string {
+  const json = JSON.stringify(sortJson(value), null, 2);
   if (json === undefined) {
     throw new Error("failed to encode firewall catalog JSON");
   }
@@ -201,14 +201,28 @@ function uniqueModuleBaseNames(
   return bases;
 }
 
-function splitString(value: string, maxLength: number): readonly string[] {
+function splitJsonLines(value: string, maxLength: number): readonly string[] {
   if (!Number.isInteger(maxLength) || maxLength < 1) {
     throw new Error(`invalid firewall JSON chunk length: ${maxLength}`);
   }
 
   const chunks: string[] = [];
-  for (let offset = 0; offset < value.length; offset += maxLength) {
-    chunks.push(value.slice(offset, offset + maxLength));
+  let current = "";
+  const lines = value.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === undefined) {
+      throw new Error("failed to read firewall JSON line");
+    }
+    const segment = index < lines.length - 1 ? `${line}\n` : line;
+    if (current.length > 0 && current.length + segment.length > maxLength) {
+      chunks.push(current);
+      current = "";
+    }
+    current += segment;
+  }
+  if (current.length > 0) {
+    chunks.push(current);
   }
   return chunks.length > 0 ? chunks : [""];
 }
@@ -339,7 +353,10 @@ export function renderPythonBuiltinFirewallCatalogFiles(
       throw new Error(`missing Python module name for firewall: ${name}`);
     }
 
-    const chunks = splitString(stableCompactJson(firewall), maxJsonChunkLength);
+    const chunks = splitJsonLines(
+      stablePrettyJson(firewall),
+      maxJsonChunkLength,
+    );
     const moduleNames = chunks.map((_, index) => {
       return `${baseName}_${index}`;
     });

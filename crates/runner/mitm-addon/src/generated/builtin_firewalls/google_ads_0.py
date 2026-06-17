@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.GOOGLE_ADS_TOKEN }}","developer-token":"${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}"}},"base":"https://googleads.googleapis.com","permissions":[]}],"name":"google-ads"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_ADS_TOKEN }}",
+          "developer-token": "${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}"
+        }
+      },
+      "base": "https://googleads.googleapis.com",
+      "permissions": []
+    }
+  ],
+  "name": "google-ads"
+}"""

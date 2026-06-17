@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"apikey":"${{ secrets.ETHERSCAN_API_KEY }}"}},"base":"https://api.etherscan.io/v2/api","permissions":[]}],"name":"etherscan"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "apikey": "${{ secrets.ETHERSCAN_API_KEY }}"
+        }
+      },
+      "base": "https://api.etherscan.io/v2/api",
+      "permissions": []
+    }
+  ],
+  "name": "etherscan"
+}"""

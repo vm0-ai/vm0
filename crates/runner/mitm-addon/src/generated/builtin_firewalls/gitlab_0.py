@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"PRIVATE-TOKEN":"${{ secrets.GITLAB_TOKEN }}"}},"base":"https://gitlab.com/api","permissions":[]}],"name":"gitlab"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "PRIVATE-TOKEN": "${{ secrets.GITLAB_TOKEN }}"
+        }
+      },
+      "base": "https://gitlab.com/api",
+      "permissions": []
+    }
+  ],
+  "name": "gitlab"
+}"""

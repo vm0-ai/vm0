@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"api_access_token":"${{ secrets.CHATWOOT_TOKEN }}"}},"base":"https://app.chatwoot.com","permissions":[]}],"name":"chatwoot"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "api_access_token": "${{ secrets.CHATWOOT_TOKEN }}"
+        }
+      },
+      "base": "https://app.chatwoot.com",
+      "permissions": []
+    }
+  ],
+  "name": "chatwoot"
+}"""

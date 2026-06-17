@@ -3,4 +3,30 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.META_ADS_TOKEN }}"}},"base":"https://graph.facebook.com","permissions":[]},{"auth":{},"base":"https://graph.facebook.com","permissions":[{"description":"Allow Page access token calls to Page Ads Posts without replacing Authorization.","name":"page-token-ads-posts","rules":["GET /v{version}/{page_id}/ads_posts"]}]}],"name":"meta-ads"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.META_ADS_TOKEN }}"
+        }
+      },
+      "base": "https://graph.facebook.com",
+      "permissions": []
+    },
+    {
+      "auth": {},
+      "base": "https://graph.facebook.com",
+      "permissions": [
+        {
+          "description": "Allow Page access token calls to Page Ads Posts without replacing Authorization.",
+          "name": "page-token-ads-posts",
+          "rules": [
+            "GET /v{version}/{page_id}/ads_posts"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "meta-ads"
+}"""

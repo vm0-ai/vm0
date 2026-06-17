@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.SPONGE_MASTER_KEY }}"}},"base":"https://api.wallet.paysponge.com","permissions":[]}],"name":"sponge"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.SPONGE_MASTER_KEY }}"
+        }
+      },
+      "base": "https://api.wallet.paysponge.com",
+      "permissions": []
+    }
+  ],
+  "name": "sponge"
+}"""

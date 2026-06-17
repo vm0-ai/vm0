@@ -3,4 +3,15 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"base":"${{ secrets.DISCORD_WEBHOOK_URL }}"},"base":"https://firewall-placeholder.vm3.ai/discord-webhook/hook","permissions":[]}],"name":"discord-webhook"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"
+      },
+      "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+      "permissions": []
+    }
+  ],
+  "name": "discord-webhook"
+}"""

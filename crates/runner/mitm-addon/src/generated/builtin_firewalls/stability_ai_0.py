@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.STABILITY_TOKEN }}"}},"base":"https://api.stability.ai","permissions":[]}],"name":"stability-ai"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.STABILITY_TOKEN }}"
+        }
+      },
+      "base": "https://api.stability.ai",
+      "permissions": []
+    }
+  ],
+  "name": "stability-ai"
+}"""

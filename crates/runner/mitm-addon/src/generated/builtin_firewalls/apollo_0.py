@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.APOLLO_TOKEN }}"}},"base":"https://api.apollo.io","permissions":[]}],"name":"apollo"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.APOLLO_TOKEN }}"
+        }
+      },
+      "base": "https://api.apollo.io",
+      "permissions": []
+    }
+  ],
+  "name": "apollo"
+}"""

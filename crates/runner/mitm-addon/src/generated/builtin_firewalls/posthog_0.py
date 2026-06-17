@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.POSTHOG_TOKEN }}"}},"base":"https://us.posthog.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.POSTHOG_TOKEN }}"}},"base":"https://eu.posthog.com","permissions":[]}],"name":"posthog"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.POSTHOG_TOKEN }}"
+        }
+      },
+      "base": "https://us.posthog.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.POSTHOG_TOKEN }}"
+        }
+      },
+      "base": "https://eu.posthog.com",
+      "permissions": []
+    }
+  ],
+  "name": "posthog"
+}"""

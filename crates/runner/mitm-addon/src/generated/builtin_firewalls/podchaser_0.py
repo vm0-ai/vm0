@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.PODCHASER_TOKEN }}"}},"base":"https://api.podchaser.com","permissions":[]}],"name":"podchaser"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.PODCHASER_TOKEN }}"
+        }
+      },
+      "base": "https://api.podchaser.com",
+      "permissions": []
+    }
+  ],
+  "name": "podchaser"
+}"""

@@ -3,4 +3,103 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.STRAVA_TOKEN }}"}},"base":"https://www.strava.com","permissions":[{"name":"activity:read","rules":["GET /api/v3/activities/{id}","GET /api/v3/activities/{id}/comments","GET /api/v3/activities/{id}/kudos","GET /api/v3/activities/{id}/laps","GET /api/v3/activities/{id}/streams","GET /api/v3/activities/{id}/zones","GET /api/v3/athlete/activities"]},{"name":"activity:read_all","rules":["GET /api/v3/activities/{id}","GET /api/v3/activities/{id}/comments","GET /api/v3/activities/{id}/kudos","GET /api/v3/activities/{id}/laps","GET /api/v3/activities/{id}/streams","GET /api/v3/activities/{id}/zones","GET /api/v3/athlete/activities"]},{"name":"activity:write","rules":["POST /api/v3/activities","PUT /api/v3/activities/{id}","POST /api/v3/uploads","GET /api/v3/uploads/{uploadId}"]},{"name":"profile:read_all","rules":["GET /api/v3/athlete","GET /api/v3/athlete/zones"]},{"name":"profile:write","rules":["PUT /api/v3/athlete","PUT /api/v3/segments/{id}/starred"]},{"name":"read","rules":["GET /api/v3/athlete","GET /api/v3/athlete/clubs","GET /api/v3/athletes/{id}/routes","GET /api/v3/athletes/{id}/stats","GET /api/v3/clubs/{id}","GET /api/v3/clubs/{id}/activities","GET /api/v3/clubs/{id}/admins","GET /api/v3/clubs/{id}/members","GET /api/v3/gear/{id}","GET /api/v3/routes/{id}","GET /api/v3/routes/{id}/export_gpx","GET /api/v3/routes/{id}/export_tcx","GET /api/v3/routes/{id}/streams","GET /api/v3/segment_efforts","GET /api/v3/segment_efforts/{id}","GET /api/v3/segments/explore","GET /api/v3/segments/starred","GET /api/v3/segments/{id}","GET /api/v3/segments/{id}/streams"]},{"name":"read_all","rules":["GET /api/v3/athletes/{id}/routes","GET /api/v3/routes/{id}","GET /api/v3/routes/{id}/export_gpx","GET /api/v3/routes/{id}/export_tcx","GET /api/v3/routes/{id}/streams","GET /api/v3/segment_efforts/{id}/streams","GET /api/v3/segments/starred","GET /api/v3/segments/{id}","GET /api/v3/segments/{id}/streams"]}]}],"name":"strava"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.STRAVA_TOKEN }}"
+        }
+      },
+      "base": "https://www.strava.com",
+      "permissions": [
+        {
+          "name": "activity:read",
+          "rules": [
+            "GET /api/v3/activities/{id}",
+            "GET /api/v3/activities/{id}/comments",
+            "GET /api/v3/activities/{id}/kudos",
+            "GET /api/v3/activities/{id}/laps",
+            "GET /api/v3/activities/{id}/streams",
+            "GET /api/v3/activities/{id}/zones",
+            "GET /api/v3/athlete/activities"
+          ]
+        },
+        {
+          "name": "activity:read_all",
+          "rules": [
+            "GET /api/v3/activities/{id}",
+            "GET /api/v3/activities/{id}/comments",
+            "GET /api/v3/activities/{id}/kudos",
+            "GET /api/v3/activities/{id}/laps",
+            "GET /api/v3/activities/{id}/streams",
+            "GET /api/v3/activities/{id}/zones",
+            "GET /api/v3/athlete/activities"
+          ]
+        },
+        {
+          "name": "activity:write",
+          "rules": [
+            "POST /api/v3/activities",
+            "PUT /api/v3/activities/{id}",
+            "POST /api/v3/uploads",
+            "GET /api/v3/uploads/{uploadId}"
+          ]
+        },
+        {
+          "name": "profile:read_all",
+          "rules": [
+            "GET /api/v3/athlete",
+            "GET /api/v3/athlete/zones"
+          ]
+        },
+        {
+          "name": "profile:write",
+          "rules": [
+            "PUT /api/v3/athlete",
+            "PUT /api/v3/segments/{id}/starred"
+          ]
+        },
+        {
+          "name": "read",
+          "rules": [
+            "GET /api/v3/athlete",
+            "GET /api/v3/athlete/clubs",
+            "GET /api/v3/athletes/{id}/routes",
+            "GET /api/v3/athletes/{id}/stats",
+            "GET /api/v3/clubs/{id}",
+            "GET /api/v3/clubs/{id}/activities",
+            "GET /api/v3/clubs/{id}/admins",
+            "GET /api/v3/clubs/{id}/members",
+            "GET /api/v3/gear/{id}",
+            "GET /api/v3/routes/{id}",
+            "GET /api/v3/routes/{id}/export_gpx",
+            "GET /api/v3/routes/{id}/export_tcx",
+            "GET /api/v3/routes/{id}/streams",
+            "GET /api/v3/segment_efforts",
+            "GET /api/v3/segment_efforts/{id}",
+            "GET /api/v3/segments/explore",
+            "GET /api/v3/segments/starred",
+            "GET /api/v3/segments/{id}",
+            "GET /api/v3/segments/{id}/streams"
+          ]
+        },
+        {
+          "name": "read_all",
+          "rules": [
+            "GET /api/v3/athletes/{id}/routes",
+            "GET /api/v3/routes/{id}",
+            "GET /api/v3/routes/{id}/export_gpx",
+            "GET /api/v3/routes/{id}/export_tcx",
+            "GET /api/v3/routes/{id}/streams",
+            "GET /api/v3/segment_efforts/{id}/streams",
+            "GET /api/v3/segments/starred",
+            "GET /api/v3/segments/{id}",
+            "GET /api/v3/segments/{id}/streams"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "strava"
+}"""

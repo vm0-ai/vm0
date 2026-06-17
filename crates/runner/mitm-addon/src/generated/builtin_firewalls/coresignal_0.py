@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"apikey":"${{ secrets.CORESIGNAL_TOKEN }}"}},"base":"https://api.coresignal.com","permissions":[]}],"name":"coresignal"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "apikey": "${{ secrets.CORESIGNAL_TOKEN }}"
+        }
+      },
+      "base": "https://api.coresignal.com",
+      "permissions": []
+    }
+  ],
+  "name": "coresignal"
+}"""

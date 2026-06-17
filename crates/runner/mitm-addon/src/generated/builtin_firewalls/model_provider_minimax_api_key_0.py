@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.MINIMAX_API_KEY }}"}},"base":"https://api.minimax.io/anthropic/v1/messages","permissions":[]}],"name":"model-provider:minimax-api-key"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.MINIMAX_API_KEY }}"
+        }
+      },
+      "base": "https://api.minimax.io/anthropic/v1/messages",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:minimax-api-key"
+}"""

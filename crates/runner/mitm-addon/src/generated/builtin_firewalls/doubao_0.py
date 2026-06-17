@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.DOUBAO_API_KEY }}"}},"base":"https://openspeech.bytedance.com","permissions":[]}],"name":"doubao"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.DOUBAO_API_KEY }}"
+        }
+      },
+      "base": "https://openspeech.bytedance.com",
+      "permissions": []
+    }
+  ],
+  "name": "doubao"
+}"""

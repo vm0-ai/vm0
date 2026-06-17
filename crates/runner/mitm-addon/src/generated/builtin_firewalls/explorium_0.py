@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"api_key":"${{ secrets.EXPLORIUM_TOKEN }}"}},"base":"https://api.explorium.ai","permissions":[]}],"name":"explorium"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "api_key": "${{ secrets.EXPLORIUM_TOKEN }}"
+        }
+      },
+      "base": "https://api.explorium.ai",
+      "permissions": []
+    }
+  ],
+  "name": "explorium"
+}"""

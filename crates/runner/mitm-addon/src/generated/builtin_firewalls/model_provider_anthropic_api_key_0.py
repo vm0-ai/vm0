@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-api-key":"${{ secrets.ANTHROPIC_API_KEY }}"}},"base":"https://api.anthropic.com/v1/messages","permissions":[]}],"name":"model-provider:anthropic-api-key"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-api-key": "${{ secrets.ANTHROPIC_API_KEY }}"
+        }
+      },
+      "base": "https://api.anthropic.com/v1/messages",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:anthropic-api-key"
+}"""

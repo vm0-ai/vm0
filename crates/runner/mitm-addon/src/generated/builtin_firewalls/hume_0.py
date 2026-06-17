@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Hume-Api-Key":"${{ secrets.HUME_TOKEN }}"}},"base":"https://api.hume.ai","permissions":[]}],"name":"hume"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Hume-Api-Key": "${{ secrets.HUME_TOKEN }}"
+        }
+      },
+      "base": "https://api.hume.ai",
+      "permissions": []
+    }
+  ],
+  "name": "hume"
+}"""

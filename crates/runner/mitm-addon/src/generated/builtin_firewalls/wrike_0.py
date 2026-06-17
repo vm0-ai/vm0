@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"bearer ${{ secrets.WRIKE_TOKEN }}"}},"base":"https://www.wrike.com","permissions":[]},{"auth":{"headers":{"Authorization":"bearer ${{ secrets.WRIKE_TOKEN }}"}},"base":"https://app-us2.wrike.com","permissions":[]},{"auth":{"headers":{"Authorization":"bearer ${{ secrets.WRIKE_TOKEN }}"}},"base":"https://app-eu.wrike.com","permissions":[]}],"name":"wrike"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "bearer ${{ secrets.WRIKE_TOKEN }}"
+        }
+      },
+      "base": "https://www.wrike.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "bearer ${{ secrets.WRIKE_TOKEN }}"
+        }
+      },
+      "base": "https://app-us2.wrike.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "bearer ${{ secrets.WRIKE_TOKEN }}"
+        }
+      },
+      "base": "https://app-eu.wrike.com",
+      "permissions": []
+    }
+  ],
+  "name": "wrike"
+}"""

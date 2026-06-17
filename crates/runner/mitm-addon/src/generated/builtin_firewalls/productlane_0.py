@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.PRODUCTLANE_TOKEN }}"}},"base":"https://productlane.com","permissions":[]}],"name":"productlane"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.PRODUCTLANE_TOKEN }}"
+        }
+      },
+      "base": "https://productlane.com",
+      "permissions": []
+    }
+  ],
+  "name": "productlane"
+}"""

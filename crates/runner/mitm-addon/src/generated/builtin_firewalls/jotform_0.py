@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"APIKEY":"${{ secrets.JOTFORM_TOKEN }}"}},"base":"https://api.jotform.com","permissions":[]},{"auth":{"headers":{"APIKEY":"${{ secrets.JOTFORM_TOKEN }}"}},"base":"https://eu-api.jotform.com","permissions":[]},{"auth":{"headers":{"APIKEY":"${{ secrets.JOTFORM_TOKEN }}"}},"base":"https://hipaa-api.jotform.com","permissions":[]}],"name":"jotform"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "APIKEY": "${{ secrets.JOTFORM_TOKEN }}"
+        }
+      },
+      "base": "https://api.jotform.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "APIKEY": "${{ secrets.JOTFORM_TOKEN }}"
+        }
+      },
+      "base": "https://eu-api.jotform.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "APIKEY": "${{ secrets.JOTFORM_TOKEN }}"
+        }
+      },
+      "base": "https://hipaa-api.jotform.com",
+      "permissions": []
+    }
+  ],
+  "name": "jotform"
+}"""

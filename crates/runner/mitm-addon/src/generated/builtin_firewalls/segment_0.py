@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.SEGMENT_TOKEN }}"}},"base":"https://api.segmentapis.com","permissions":[{"description":"Read Segment resources","name":"read","rules":["GET /{path+}"]},{"description":"Create, update, and delete Segment resources","name":"write","rules":["POST /{path+}","PUT /{path+}","PATCH /{path+}","DELETE /{path+}"]}]}],"name":"segment"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.SEGMENT_TOKEN }}"
+        }
+      },
+      "base": "https://api.segmentapis.com",
+      "permissions": [
+        {
+          "description": "Read Segment resources",
+          "name": "read",
+          "rules": [
+            "GET /{path+}"
+          ]
+        },
+        {
+          "description": "Create, update, and delete Segment resources",
+          "name": "write",
+          "rules": [
+            "POST /{path+}",
+            "PUT /{path+}",
+            "PATCH /{path+}",
+            "DELETE /{path+}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "segment"
+}"""

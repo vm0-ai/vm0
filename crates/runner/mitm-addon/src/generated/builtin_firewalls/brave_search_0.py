@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Subscription-Token":"${{ secrets.BRAVE_API_KEY }}"}},"base":"https://api.search.brave.com","permissions":[]}],"name":"brave-search"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Subscription-Token": "${{ secrets.BRAVE_API_KEY }}"
+        }
+      },
+      "base": "https://api.search.brave.com",
+      "permissions": []
+    }
+  ],
+  "name": "brave-search"
+}"""

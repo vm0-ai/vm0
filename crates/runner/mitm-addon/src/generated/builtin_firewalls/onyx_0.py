@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.ONYX_TOKEN }}"}},"base":"https://cloud.onyx.app","permissions":[]}],"name":"onyx"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.ONYX_TOKEN }}"
+        }
+      },
+      "base": "https://cloud.onyx.app",
+      "permissions": []
+    }
+  ],
+  "name": "onyx"
+}"""

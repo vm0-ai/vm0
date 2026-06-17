@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-RapidAPI-Key":"${{ secrets.SCRAPENINJA_TOKEN }}"}},"base":"https://scrapeninja.p.rapidapi.com","permissions":[]}],"name":"scrapeninja"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}"
+        }
+      },
+      "base": "https://scrapeninja.p.rapidapi.com",
+      "permissions": []
+    }
+  ],
+  "name": "scrapeninja"
+}"""

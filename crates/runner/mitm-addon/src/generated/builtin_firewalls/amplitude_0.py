@@ -3,4 +3,36 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.AMPLITUDE_API_KEY, secrets.AMPLITUDE_SECRET_KEY) }}"}},"base":"https://amplitude.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.AMPLITUDE_API_KEY, secrets.AMPLITUDE_SECRET_KEY) }}"}},"base":"https://analytics.eu.amplitude.com","permissions":[]},{"auth":{},"base":"https://api2.amplitude.com","permissions":[]},{"auth":{},"base":"https://api.eu.amplitude.com","permissions":[]}],"name":"amplitude"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.AMPLITUDE_API_KEY, secrets.AMPLITUDE_SECRET_KEY) }}"
+        }
+      },
+      "base": "https://amplitude.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.AMPLITUDE_API_KEY, secrets.AMPLITUDE_SECRET_KEY) }}"
+        }
+      },
+      "base": "https://analytics.eu.amplitude.com",
+      "permissions": []
+    },
+    {
+      "auth": {},
+      "base": "https://api2.amplitude.com",
+      "permissions": []
+    },
+    {
+      "auth": {},
+      "base": "https://api.eu.amplitude.com",
+      "permissions": []
+    }
+  ],
+  "name": "amplitude"
+}"""

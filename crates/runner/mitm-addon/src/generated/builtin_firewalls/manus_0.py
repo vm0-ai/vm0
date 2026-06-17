@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"x-manus-api-key":"${{ secrets.MANUS_TOKEN }}"}},"base":"https://api.manus.ai","permissions":[]}],"name":"manus"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "x-manus-api-key": "${{ secrets.MANUS_TOKEN }}"
+        }
+      },
+      "base": "https://api.manus.ai",
+      "permissions": []
+    }
+  ],
+  "name": "manus"
+}"""

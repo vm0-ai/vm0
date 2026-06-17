@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"}},"base":"https://api.anthropic.com/v1/messages","permissions":[]}],"name":"model-provider:claude-code-oauth-token"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+        }
+      },
+      "base": "https://api.anthropic.com/v1/messages",
+      "permissions": []
+    }
+  ],
+  "name": "model-provider:claude-code-oauth-token"
+}"""

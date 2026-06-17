@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"DevKey ${{ secrets.PIKA_TOKEN }}"}},"base":"https://srkibaanghvsriahb.pika.art","permissions":[]},{"auth":{"headers":{"Authorization":"DevKey ${{ secrets.PIKA_TOKEN }}"}},"base":"https://7i30hpv4bo9ud5mhianq.pika.art","permissions":[]}],"name":"pika"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "DevKey ${{ secrets.PIKA_TOKEN }}"
+        }
+      },
+      "base": "https://srkibaanghvsriahb.pika.art",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "DevKey ${{ secrets.PIKA_TOKEN }}"
+        }
+      },
+      "base": "https://7i30hpv4bo9ud5mhianq.pika.art",
+      "permissions": []
+    }
+  ],
+  "name": "pika"
+}"""

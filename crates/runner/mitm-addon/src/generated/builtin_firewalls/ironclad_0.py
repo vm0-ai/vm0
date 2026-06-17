@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.IRONCLAD_API_KEY }}"}},"base":"https://${{ vars.IRONCLAD_HOST }}","permissions":[]}],"name":"ironclad"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.IRONCLAD_API_KEY }}"
+        }
+      },
+      "base": "https://${{ vars.IRONCLAD_HOST }}",
+      "permissions": []
+    }
+  ],
+  "name": "ironclad"
+}"""

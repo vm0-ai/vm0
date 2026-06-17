@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.WANDB_TOKEN }}"}},"base":"https://api.wandb.ai","permissions":[]}],"name":"wandb"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.WANDB_TOKEN }}"
+        }
+      },
+      "base": "https://api.wandb.ai",
+      "permissions": []
+    }
+  ],
+  "name": "wandb"
+}"""

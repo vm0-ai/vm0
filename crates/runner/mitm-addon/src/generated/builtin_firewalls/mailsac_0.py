@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Mailsac-Key":"${{ secrets.MAILSAC_TOKEN }}"}},"base":"https://mailsac.com","permissions":[]}],"name":"mailsac"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Mailsac-Key": "${{ secrets.MAILSAC_TOKEN }}"
+        }
+      },
+      "base": "https://mailsac.com",
+      "permissions": []
+    }
+  ],
+  "name": "mailsac"
+}"""

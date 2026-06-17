@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Project-Access-Token":"${{ secrets.RAILWAY_PROJECT_TOKEN }}"}},"base":"https://backboard.railway.com","permissions":[]}],"name":"railway-project"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Project-Access-Token": "${{ secrets.RAILWAY_PROJECT_TOKEN }}"
+        }
+      },
+      "base": "https://backboard.railway.com",
+      "permissions": []
+    }
+  ],
+  "name": "railway-project"
+}"""

@@ -3,4 +3,18 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{},"base":"https://test.api.amadeus.com","permissions":[]},{"auth":{},"base":"https://api.amadeus.com","permissions":[]}],"name":"amadeus"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {},
+      "base": "https://test.api.amadeus.com",
+      "permissions": []
+    },
+    {
+      "auth": {},
+      "base": "https://api.amadeus.com",
+      "permissions": []
+    }
+  ],
+  "name": "amadeus"
+}"""

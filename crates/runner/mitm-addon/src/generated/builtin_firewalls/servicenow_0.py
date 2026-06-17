@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.SERVICENOW_USERNAME, secrets.SERVICENOW_PASSWORD) }}"}},"base":"https://${{ vars.SERVICENOW_INSTANCE }}.service-now.com","permissions":[]}],"name":"servicenow"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.SERVICENOW_USERNAME, secrets.SERVICENOW_PASSWORD) }}"
+        }
+      },
+      "base": "https://${{ vars.SERVICENOW_INSTANCE }}.service-now.com",
+      "permissions": []
+    }
+  ],
+  "name": "servicenow"
+}"""

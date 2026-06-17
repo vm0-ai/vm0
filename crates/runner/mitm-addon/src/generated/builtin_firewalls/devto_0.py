@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"api-key":"${{ secrets.DEVTO_TOKEN }}"}},"base":"https://dev.to/api","permissions":[]}],"name":"devto"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "api-key": "${{ secrets.DEVTO_TOKEN }}"
+        }
+      },
+      "base": "https://dev.to/api",
+      "permissions": []
+    }
+  ],
+  "name": "devto"
+}"""

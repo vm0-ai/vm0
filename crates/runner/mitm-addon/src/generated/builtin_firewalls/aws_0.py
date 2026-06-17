@@ -3,4 +3,41 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"awsSigv4":{"accessKeyId":"${{ secrets.AWS_ACCESS_KEY_ID }}","secretAccessKey":"${{ secrets.AWS_SECRET_ACCESS_KEY }}","sessionToken":"${{ secrets.AWS_SESSION_TOKEN }}"}},"base":"https://{awsHost+}.amazonaws.com","permissions":[]},{"auth":{"awsSigv4":{"accessKeyId":"${{ secrets.AWS_ACCESS_KEY_ID }}","secretAccessKey":"${{ secrets.AWS_SECRET_ACCESS_KEY }}","sessionToken":"${{ secrets.AWS_SESSION_TOKEN }}"}},"base":"https://{awsHost+}.amazonaws.com.cn","permissions":[]},{"auth":{"awsSigv4":{"accessKeyId":"${{ secrets.AWS_ACCESS_KEY_ID }}","secretAccessKey":"${{ secrets.AWS_SECRET_ACCESS_KEY }}","sessionToken":"${{ secrets.AWS_SESSION_TOKEN }}"}},"base":"https://{awsHost+}.api.aws","permissions":[]}],"name":"aws"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "awsSigv4": {
+          "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+          "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}"
+        }
+      },
+      "base": "https://{awsHost+}.amazonaws.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "awsSigv4": {
+          "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+          "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}"
+        }
+      },
+      "base": "https://{awsHost+}.amazonaws.com.cn",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "awsSigv4": {
+          "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+          "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}"
+        }
+      },
+      "base": "https://{awsHost+}.api.aws",
+      "permissions": []
+    }
+  ],
+  "name": "aws"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.GONG_ACCESS_KEY, secrets.GONG_ACCESS_KEY_SECRET) }}"}},"base":"https://${{ vars.GONG_API_BASE }}","permissions":[]}],"name":"gong"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.GONG_ACCESS_KEY, secrets.GONG_ACCESS_KEY_SECRET) }}"
+        }
+      },
+      "base": "https://${{ vars.GONG_API_BASE }}",
+      "permissions": []
+    }
+  ],
+  "name": "gong"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.TRIPO_API_KEY }}"}},"base":"https://api.tripo3d.ai","permissions":[]}],"name":"tripo"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.TRIPO_API_KEY }}"
+        }
+      },
+      "base": "https://api.tripo3d.ai",
+      "permissions": []
+    }
+  ],
+  "name": "tripo"
+}"""

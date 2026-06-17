@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"X-Api-Key":"${{ secrets.PEOPLE_DATA_LABS_API_KEY }}"}},"base":"https://api.peopledatalabs.com","permissions":[]}],"name":"people-data-labs"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "X-Api-Key": "${{ secrets.PEOPLE_DATA_LABS_API_KEY }}"
+        }
+      },
+      "base": "https://api.peopledatalabs.com",
+      "permissions": []
+    }
+  ],
+  "name": "people-data-labs"
+}"""

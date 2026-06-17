@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"query":{"api_key":"${{ secrets.WHALE_ALERT_API_KEY }}"}},"base":"https://leviathan.whale-alert.io","permissions":[]},{"auth":{"query":{"api_key":"${{ secrets.WHALE_ALERT_API_KEY }}"}},"base":"https://api.whale-alert.io/v1","permissions":[]}],"name":"whale-alert"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "query": {
+          "api_key": "${{ secrets.WHALE_ALERT_API_KEY }}"
+        }
+      },
+      "base": "https://leviathan.whale-alert.io",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "query": {
+          "api_key": "${{ secrets.WHALE_ALERT_API_KEY }}"
+        }
+      },
+      "base": "https://api.whale-alert.io/v1",
+      "permissions": []
+    }
+  ],
+  "name": "whale-alert"
+}"""

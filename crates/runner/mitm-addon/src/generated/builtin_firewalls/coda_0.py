@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CODA_TOKEN }}"}},"base":"https://coda.io","permissions":[]}],"name":"coda"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CODA_TOKEN }}"
+        }
+      },
+      "base": "https://coda.io",
+      "permissions": []
+    }
+  ],
+  "name": "coda"
+}"""

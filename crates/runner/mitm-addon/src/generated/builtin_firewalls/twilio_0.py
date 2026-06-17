@@ -3,4 +3,62 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://api.twilio.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://verify.twilio.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://lookups.twilio.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://messaging.twilio.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://studio.twilio.com","permissions":[]},{"auth":{"headers":{"Authorization":"${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"}},"base":"https://serverless.twilio.com","permissions":[]}],"name":"twilio"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://api.twilio.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://verify.twilio.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://lookups.twilio.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://messaging.twilio.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://studio.twilio.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "${{ basic(secrets.TWILIO_ACCOUNT_SID, secrets.TWILIO_AUTH_TOKEN) }}"
+        }
+      },
+      "base": "https://serverless.twilio.com",
+      "permissions": []
+    }
+  ],
+  "name": "twilio"
+}"""

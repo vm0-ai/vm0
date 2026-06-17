@@ -3,4 +3,306 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.X_TOKEN }}"}},"base":"https://api.x.com","permissions":[{"description":"App-only endpoints (no user context required)","name":"app-only","rules":["GET /2/account_activity/subscriptions/count","GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all/list","DELETE /2/account_activity/webhooks/{webhook_id}/subscriptions/{user_id}/all","GET /2/activity/stream","DELETE /2/activity/subscriptions","PUT /2/activity/subscriptions/{subscription_id}","DELETE /2/activity/subscriptions/{subscription_id}","GET /2/compliance/jobs","POST /2/compliance/jobs","GET /2/compliance/jobs/{id}","GET /2/connections","DELETE /2/connections","DELETE /2/connections/all","DELETE /2/connections/{endpoint_id}","GET /2/likes/compliance/stream","GET /2/likes/firehose/stream","GET /2/likes/sample10/stream","GET /2/trends/by/woeid/{woeid}","GET /2/tweets/compliance/stream","GET /2/tweets/counts/all","GET /2/tweets/counts/recent","GET /2/tweets/firehose/stream","GET /2/tweets/firehose/stream/lang/en","GET /2/tweets/firehose/stream/lang/ja","GET /2/tweets/firehose/stream/lang/ko","GET /2/tweets/firehose/stream/lang/pt","GET /2/tweets/label/stream","GET /2/tweets/sample/stream","GET /2/tweets/sample10/stream","GET /2/tweets/search/all","GET /2/tweets/search/stream","GET /2/tweets/search/stream/rules","POST /2/tweets/search/stream/rules","GET /2/tweets/search/stream/rules/counts","GET /2/tweets/search/webhooks","POST /2/tweets/search/webhooks/{webhook_id}","DELETE /2/tweets/search/webhooks/{webhook_id}","GET /2/usage/tweets","GET /2/users/compliance/stream","GET /2/webhooks","POST /2/webhooks","POST /2/webhooks/replay","PUT /2/webhooks/{webhook_id}","DELETE /2/webhooks/{webhook_id}"]},{"description":"View accounts you have blocked.","name":"block.read","rules":["GET /2/users/{id}/blocking"]},{"description":"Read your bookmarked Posts.","name":"bookmark.read","rules":["GET /2/users/{id}/bookmarks","GET /2/users/{id}/bookmarks/folders","GET /2/users/{id}/bookmarks/folders/{folder_id}"]},{"description":"Create and delete your bookmarks.","name":"bookmark.write","rules":["POST /2/users/{id}/bookmarks","DELETE /2/users/{id}/bookmarks/{tweet_id}"]},{"description":"Read all your Direct Messages.","name":"dm.read","rules":["POST /2/activity/subscriptions","GET /2/chat/conversations","GET /2/chat/conversations/{id}","GET /2/chat/conversations/{id}/events","GET /2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}","GET /2/dm_conversations/with/{participant_id}/dm_events","GET /2/dm_conversations/{id}/dm_events","GET /2/dm_events","GET /2/dm_events/{event_id}","GET /2/users/public_keys","GET /2/users/{id}/public_keys"]},{"description":"Send and manage your Direct Messages.","name":"dm.write","rules":["GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all","POST /2/account_activity/webhooks/{webhook_id}/subscriptions/all","POST /2/chat/conversations/group","POST /2/chat/conversations/group/initialize","POST /2/chat/conversations/{id}/keys","POST /2/chat/conversations/{id}/members","POST /2/chat/conversations/{id}/messages","POST /2/chat/conversations/{id}/read","POST /2/chat/conversations/{id}/typing","POST /2/dm_conversations","POST /2/dm_conversations/with/{participant_id}/messages","POST /2/dm_conversations/{dm_conversation_id}/messages","DELETE /2/dm_events/{event_id}","POST /2/users/{id}/dm/block","POST /2/users/{id}/dm/unblock","POST /2/users/{id}/public_keys"]},{"description":"View accounts you follow and accounts following you.","name":"follows.read","rules":["GET /2/users/{id}/followers","GET /2/users/{id}/following"]},{"description":"Follow and unfollow accounts on your behalf.","name":"follows.write","rules":["POST /2/users/{id}/following","DELETE /2/users/{source_user_id}/following/{target_user_id}"]},{"description":"View Posts you have liked and likes you can see.","name":"like.read","rules":["GET /2/tweets/{id}/liking_users","GET /2/users/{id}/liked_tweets"]},{"description":"Like and unlike Posts on your behalf.","name":"like.write","rules":["POST /2/users/{id}/likes","DELETE /2/users/{id}/likes/{tweet_id}"]},{"description":"View Lists, members, and followers of Lists you created or are a member of, including private Lists.","name":"list.read","rules":["GET /2/communities/{id}","GET /2/lists/{id}","GET /2/lists/{id}/followers","GET /2/lists/{id}/members","GET /2/lists/{id}/tweets","GET /2/users/{id}/followed_lists","GET /2/users/{id}/list_memberships","GET /2/users/{id}/owned_lists","GET /2/users/{id}/pinned_lists"]},{"description":"Create and manage Lists on your behalf.","name":"list.write","rules":["POST /2/lists","PUT /2/lists/{id}","DELETE /2/lists/{id}","POST /2/lists/{id}/members","DELETE /2/lists/{id}/members/{user_id}","POST /2/users/{id}/followed_lists","DELETE /2/users/{id}/followed_lists/{list_id}","POST /2/users/{id}/pinned_lists","DELETE /2/users/{id}/pinned_lists/{list_id}"]},{"description":"Upload media, such as photos and videos, on your behalf.","name":"media.write","rules":["POST /2/chat/media/upload/initialize","POST /2/chat/media/upload/{id}/append","POST /2/chat/media/upload/{id}/finalize","GET /2/chat/media/{id}/{media_hash_key}","POST /2/media/metadata","POST /2/media/subtitles","DELETE /2/media/subtitles","GET /2/media/upload","POST /2/media/upload","POST /2/media/upload/initialize","POST /2/media/upload/{id}/append","POST /2/media/upload/{id}/finalize"]},{"description":"View accounts you have muted.","name":"mute.read","rules":["GET /2/users/{id}/muting"]},{"description":"Mute and unmute accounts on your behalf.","name":"mute.write","rules":["POST /2/users/{id}/muting","DELETE /2/users/{source_user_id}/muting/{target_user_id}"]},{"description":"View all Spaces you have access to.","name":"space.read","rules":["GET /2/spaces","GET /2/spaces/by/creator_ids","GET /2/spaces/search","GET /2/spaces/{id}","GET /2/spaces/{id}/buyers","GET /2/spaces/{id}/tweets"]},{"description":"View all Custom Timelines you can see, including public Custom Timelines from other developers.","name":"timeline.read","rules":["GET /2/users/reposts_of_me"]},{"description":"Hide and unhide replies to your Posts.","name":"tweet.moderate.write","rules":["PUT /2/tweets/{tweet_id}/hidden"]},{"description":"View all Posts you can see, including those from protected accounts.","name":"tweet.read","rules":["GET /2/activity/subscriptions","GET /2/insights/28hr","GET /2/insights/historical","GET /2/media","GET /2/media/analytics","GET /2/media/{media_key}","GET /2/notes/search/notes_written","GET /2/notes/search/posts_eligible_for_notes","GET /2/tweets","GET /2/tweets/analytics","GET /2/tweets/search/recent","GET /2/tweets/{id}","GET /2/tweets/{id}/quote_tweets","GET /2/tweets/{id}/retweeted_by","GET /2/tweets/{id}/retweets"]},{"description":"Post and repost on your behalf.","name":"tweet.write","rules":["POST /2/articles/draft","POST /2/articles/{article_id}/publish","POST /2/evaluate_note","POST /2/notes","DELETE /2/notes/{id}","POST /2/tweets","DELETE /2/tweets/{id}","POST /2/users/{id}/retweets","DELETE /2/users/{id}/retweets/{source_tweet_id}"]},{"description":"View any account you can see, including protected accounts.","name":"users.read","rules":["GET /2/communities/search","GET /2/news/search","GET /2/news/{id}","GET /2/users","GET /2/users/by","GET /2/users/by/username/{username}","GET /2/users/me","GET /2/users/personalized_trends","GET /2/users/search","GET /2/users/{id}","GET /2/users/{id}/affiliates","GET /2/users/{id}/mentions","GET /2/users/{id}/timelines/reverse_chronological","GET /2/users/{id}/tweets"]}]}],"name":"x"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.X_TOKEN }}"
+        }
+      },
+      "base": "https://api.x.com",
+      "permissions": [
+        {
+          "description": "App-only endpoints (no user context required)",
+          "name": "app-only",
+          "rules": [
+            "POST /2/account_activity/replay/webhooks/{webhook_id}/subscriptions/all",
+            "GET /2/account_activity/subscriptions/count",
+            "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all/list",
+            "DELETE /2/account_activity/webhooks/{webhook_id}/subscriptions/{user_id}/all",
+            "GET /2/activity/stream",
+            "GET /2/activity/subscriptions",
+            "DELETE /2/activity/subscriptions",
+            "PUT /2/activity/subscriptions/{subscription_id}",
+            "DELETE /2/activity/subscriptions/{subscription_id}",
+            "GET /2/compliance/jobs",
+            "POST /2/compliance/jobs",
+            "GET /2/compliance/jobs/{id}",
+            "GET /2/connections",
+            "DELETE /2/connections",
+            "DELETE /2/connections/all",
+            "DELETE /2/connections/{endpoint_id}",
+            "GET /2/likes/compliance/stream",
+            "GET /2/likes/firehose/stream",
+            "GET /2/likes/sample10/stream",
+            "GET /2/trends/by/woeid/{woeid}",
+            "GET /2/tweets/compliance/stream",
+            "GET /2/tweets/counts/all",
+            "GET /2/tweets/counts/recent",
+            "GET /2/tweets/firehose/stream",
+            "GET /2/tweets/firehose/stream/lang/en",
+            "GET /2/tweets/firehose/stream/lang/ja",
+            "GET /2/tweets/firehose/stream/lang/ko",
+            "GET /2/tweets/firehose/stream/lang/pt",
+            "GET /2/tweets/label/stream",
+            "GET /2/tweets/sample/stream",
+            "GET /2/tweets/sample10/stream",
+            "GET /2/tweets/search/all",
+            "GET /2/tweets/search/stream",
+            "GET /2/tweets/search/stream/rules",
+            "POST /2/tweets/search/stream/rules",
+            "GET /2/tweets/search/stream/rules/counts",
+            "GET /2/tweets/search/webhooks",
+            "POST /2/tweets/search/webhooks/{webhook_id}",
+            "DELETE /2/tweets/search/webhooks/{webhook_id}",
+            "GET /2/usage/tweets",
+            "GET /2/users/compliance/stream",
+            "GET /2/webhooks",
+            "POST /2/webhooks",
+            "POST /2/webhooks/replay",
+            "PUT /2/webhooks/{webhook_id}",
+            "DELETE /2/webhooks/{webhook_id}"
+          ]
+        },
+        {
+          "description": "View accounts you have blocked.",
+          "name": "block.read",
+          "rules": [
+            "GET /2/users/{id}/blocking"
+          ]
+        },
+        {
+          "description": "Read your bookmarked Posts.",
+          "name": "bookmark.read",
+          "rules": [
+            "GET /2/users/{id}/bookmarks",
+            "GET /2/users/{id}/bookmarks/folders",
+            "GET /2/users/{id}/bookmarks/folders/{folder_id}"
+          ]
+        },
+        {
+          "description": "Create and delete your bookmarks.",
+          "name": "bookmark.write",
+          "rules": [
+            "POST /2/users/{id}/bookmarks",
+            "DELETE /2/users/{id}/bookmarks/{tweet_id}"
+          ]
+        },
+        {
+          "description": "Read all your Direct Messages.",
+          "name": "dm.read",
+          "rules": [
+            "POST /2/activity/subscriptions",
+            "GET /2/chat/conversations",
+            "GET /2/chat/conversations/{id}",
+            "GET /2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}",
+            "GET /2/dm_conversations/with/{participant_id}/dm_events",
+            "GET /2/dm_conversations/{id}/dm_events",
+            "GET /2/dm_events",
+            "GET /2/dm_events/{event_id}",
+            "GET /2/users/public_keys",
+            "GET /2/users/{id}/public_keys"
+          ]
+        },
+        {
+          "description": "Send and manage your Direct Messages.",
+          "name": "dm.write",
+          "rules": [
+            "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
+            "POST /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
+            "POST /2/chat/conversations/group",
+            "POST /2/chat/conversations/group/initialize",
+            "POST /2/chat/conversations/{id}/keys",
+            "POST /2/chat/conversations/{id}/members",
+            "POST /2/chat/conversations/{id}/messages",
+            "POST /2/chat/conversations/{id}/read",
+            "POST /2/chat/conversations/{id}/typing",
+            "POST /2/dm_conversations",
+            "POST /2/dm_conversations/with/{participant_id}/messages",
+            "POST /2/dm_conversations/{dm_conversation_id}/messages",
+            "DELETE /2/dm_events/{event_id}",
+            "POST /2/users/{id}/dm/block",
+            "POST /2/users/{id}/dm/unblock",
+            "POST /2/users/{id}/public_keys"
+          ]
+        },
+        {
+          "description": "View accounts you follow and accounts following you.",
+          "name": "follows.read",
+          "rules": [
+            "GET /2/users/{id}/followers",
+            "GET /2/users/{id}/following"
+          ]
+        },
+        {
+          "description": "Follow and unfollow accounts on your behalf.",
+          "name": "follows.write",
+          "rules": [
+            "POST /2/users/{id}/following",
+            "DELETE /2/users/{source_user_id}/following/{target_user_id}"
+          ]
+        },
+        {
+          "description": "View Posts you have liked and likes you can see.",
+          "name": "like.read",
+          "rules": [
+            "GET /2/tweets/{id}/liking_users",
+            "GET /2/users/{id}/liked_tweets"
+          ]
+        },
+        {
+          "description": "Like and unlike Posts on your behalf.",
+          "name": "like.write",
+          "rules": [
+            "POST /2/users/{id}/likes",
+            "DELETE /2/users/{id}/likes/{tweet_id}"
+          ]
+        },
+        {
+          "description": "View Lists, members, and followers of Lists you created or are a member of, including private Lists.",
+          "name": "list.read",
+          "rules": [
+            "GET /2/communities/{id}",
+            "GET /2/lists/{id}",
+            "GET /2/lists/{id}/followers",
+            "GET /2/lists/{id}/members",
+            "GET /2/lists/{id}/tweets",
+            "GET /2/users/{id}/followed_lists",
+            "GET /2/users/{id}/list_memberships",
+            "GET /2/users/{id}/owned_lists",
+            "GET /2/users/{id}/pinned_lists"
+          ]
+        },
+        {
+          "description": "Create and manage Lists on your behalf.",
+          "name": "list.write",
+          "rules": [
+            "POST /2/lists",
+            "PUT /2/lists/{id}",
+            "DELETE /2/lists/{id}",
+            "POST /2/lists/{id}/members",
+            "DELETE /2/lists/{id}/members/{user_id}",
+            "POST /2/users/{id}/followed_lists",
+            "DELETE /2/users/{id}/followed_lists/{list_id}",
+            "POST /2/users/{id}/pinned_lists",
+            "DELETE /2/users/{id}/pinned_lists/{list_id}"
+          ]
+        },
+        {
+          "description": "Upload media, such as photos and videos, on your behalf.",
+          "name": "media.write",
+          "rules": [
+            "POST /2/chat/media/upload/initialize",
+            "POST /2/chat/media/upload/{id}/append",
+            "POST /2/chat/media/upload/{id}/finalize",
+            "GET /2/chat/media/{id}/{media_hash_key}",
+            "POST /2/media/metadata",
+            "POST /2/media/subtitles",
+            "DELETE /2/media/subtitles",
+            "GET /2/media/upload",
+            "POST /2/media/upload",
+            "POST /2/media/upload/initialize",
+            "POST /2/media/upload/{id}/append",
+            "POST /2/media/upload/{id}/finalize"
+          ]
+        },
+        {
+          "description": "View accounts you have muted.",
+          "name": "mute.read",
+          "rules": [
+            "GET /2/users/{id}/muting"
+          ]
+        },
+        {
+          "description": "Mute and unmute accounts on your behalf.",
+          "name": "mute.write",
+          "rules": [
+            "POST /2/users/{id}/muting",
+            "DELETE /2/users/{source_user_id}/muting/{target_user_id}"
+          ]
+        },
+        {
+          "description": "View all Spaces you have access to.",
+          "name": "space.read",
+          "rules": [
+            "GET /2/spaces",
+            "GET /2/spaces/by/creator_ids",
+            "GET /2/spaces/search",
+            "GET /2/spaces/{id}",
+            "GET /2/spaces/{id}/buyers",
+            "GET /2/spaces/{id}/tweets"
+          ]
+        },
+        {
+          "description": "View all Custom Timelines you can see, including public Custom Timelines from other developers.",
+          "name": "timeline.read",
+          "rules": [
+            "GET /2/users/reposts_of_me"
+          ]
+        },
+        {
+          "description": "Hide and unhide replies to your Posts.",
+          "name": "tweet.moderate.write",
+          "rules": [
+            "PUT /2/tweets/{tweet_id}/hidden"
+          ]
+        },
+        {
+          "description": "View all Posts you can see, including those from protected accounts.",
+          "name": "tweet.read",
+          "rules": [
+            "GET /2/insights/28hr",
+            "GET /2/insights/historical",
+            "GET /2/media",
+            "GET /2/media/analytics",
+            "GET /2/media/{media_key}",
+            "GET /2/notes/search/notes_written",
+            "GET /2/notes/search/posts_eligible_for_notes",
+            "GET /2/tweets",
+            "GET /2/tweets/analytics",
+            "GET /2/tweets/search/recent",
+            "GET /2/tweets/{id}",
+            "GET /2/tweets/{id}/quote_tweets",
+            "GET /2/tweets/{id}/retweeted_by",
+            "GET /2/tweets/{id}/retweets"
+          ]
+        },
+        {
+          "description": "Post and repost on your behalf.",
+          "name": "tweet.write",
+          "rules": [
+            "POST /2/evaluate_note",
+            "POST /2/notes",
+            "DELETE /2/notes/{id}",
+            "POST /2/tweets",
+            "DELETE /2/tweets/{id}",
+            "POST /2/users/{id}/retweets",
+            "DELETE /2/users/{id}/retweets/{source_tweet_id}"
+          ]
+        },
+        {
+          "description": "View any account you can see, including protected accounts.",
+          "name": "users.read",
+          "rules": [
+            "GET /2/communities/search",
+            "GET /2/news/search",
+            "GET /2/news/{id}",
+            "GET /2/users",
+            "GET /2/users/by",
+            "GET /2/users/by/username/{username}",
+            "GET /2/users/me",
+            "GET /2/users/personalized_trends",
+            "GET /2/users/search",
+            "GET /2/users/{id}",
+            "GET /2/users/{id}/affiliates",
+            "GET /2/users/{id}/mentions",
+            "GET /2/users/{id}/timelines/reverse_chronological",
+            "GET /2/users/{id}/tweets"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "x"
+}"""

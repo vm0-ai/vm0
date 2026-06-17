@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.TWENTY_TOKEN }}"}},"base":"https://api.twenty.com","permissions":[]}],"name":"twenty"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.TWENTY_TOKEN }}"
+        }
+      },
+      "base": "https://api.twenty.com",
+      "permissions": []
+    }
+  ],
+  "name": "twenty"
+}"""

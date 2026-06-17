@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.MERCURY_TOKEN }}"}},"base":"https://api.mercury.com","permissions":[]}],"name":"mercury"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.MERCURY_TOKEN }}"
+        }
+      },
+      "base": "https://api.mercury.com",
+      "permissions": []
+    }
+  ],
+  "name": "mercury"
+}"""

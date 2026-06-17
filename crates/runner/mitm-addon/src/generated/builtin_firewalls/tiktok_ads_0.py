@@ -3,4 +3,26 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Access-Token":"${{ secrets.TIKTOK_ADS_TOKEN }}"}},"base":"https://business-api.tiktok.com","permissions":[]},{"auth":{"headers":{"Access-Token":"${{ secrets.TIKTOK_ADS_TOKEN }}"}},"base":"https://sandbox-ads.tiktok.com","permissions":[]}],"name":"tiktok-ads"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Access-Token": "${{ secrets.TIKTOK_ADS_TOKEN }}"
+        }
+      },
+      "base": "https://business-api.tiktok.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Access-Token": "${{ secrets.TIKTOK_ADS_TOKEN }}"
+        }
+      },
+      "base": "https://sandbox-ads.tiktok.com",
+      "permissions": []
+    }
+  ],
+  "name": "tiktok-ads"
+}"""

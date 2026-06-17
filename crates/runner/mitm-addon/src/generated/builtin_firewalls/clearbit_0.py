@@ -3,4 +3,53 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLEARBIT_TOKEN }}"}},"base":"https://person.clearbit.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLEARBIT_TOKEN }}"}},"base":"https://person-stream.clearbit.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLEARBIT_TOKEN }}"}},"base":"https://company.clearbit.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLEARBIT_TOKEN }}"}},"base":"https://reveal.clearbit.com","permissions":[]},{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CLEARBIT_TOKEN }}"}},"base":"https://risk.clearbit.com","permissions":[]}],"name":"clearbit"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLEARBIT_TOKEN }}"
+        }
+      },
+      "base": "https://person.clearbit.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLEARBIT_TOKEN }}"
+        }
+      },
+      "base": "https://person-stream.clearbit.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLEARBIT_TOKEN }}"
+        }
+      },
+      "base": "https://company.clearbit.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLEARBIT_TOKEN }}"
+        }
+      },
+      "base": "https://reveal.clearbit.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CLEARBIT_TOKEN }}"
+        }
+      },
+      "base": "https://risk.clearbit.com",
+      "permissions": []
+    }
+  ],
+  "name": "clearbit"
+}"""

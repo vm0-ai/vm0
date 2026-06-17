@@ -3,4 +3,35 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.BREX_TOKEN }}"}},"base":"https://api.brex.com","permissions":[{"description":"Read Brex resources","name":"read","rules":["GET /{path+}"]},{"description":"Create, update, and delete Brex resources","name":"write","rules":["POST /{path+}","PUT /{path+}","PATCH /{path+}","DELETE /{path+}"]}]}],"name":"brex"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.BREX_TOKEN }}"
+        }
+      },
+      "base": "https://api.brex.com",
+      "permissions": [
+        {
+          "description": "Read Brex resources",
+          "name": "read",
+          "rules": [
+            "GET /{path+}"
+          ]
+        },
+        {
+          "description": "Create, update, and delete Brex resources",
+          "name": "write",
+          "rules": [
+            "POST /{path+}",
+            "PUT /{path+}",
+            "PATCH /{path+}",
+            "DELETE /{path+}"
+          ]
+        }
+      ]
+    }
+  ],
+  "name": "brex"
+}"""

@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Klaviyo-API-Key ${{ secrets.KLAVIYO_TOKEN }}"}},"base":"https://a.klaviyo.com","permissions":[]}],"name":"klaviyo"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Klaviyo-API-Key ${{ secrets.KLAVIYO_TOKEN }}"
+        }
+      },
+      "base": "https://a.klaviyo.com",
+      "permissions": []
+    }
+  ],
+  "name": "klaviyo"
+}"""

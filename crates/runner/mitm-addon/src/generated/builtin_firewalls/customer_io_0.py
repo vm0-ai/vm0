@@ -3,4 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
-JSON_PART = r"""{"apis":[{"auth":{"headers":{"Authorization":"Bearer ${{ secrets.CUSTOMERIO_APP_TOKEN }}"}},"base":"https://api.customer.io","permissions":[]}],"name":"customer-io"}"""
+JSON_PART = r"""{
+  "apis": [
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.CUSTOMERIO_APP_TOKEN }}"
+        }
+      },
+      "base": "https://api.customer.io",
+      "permissions": []
+    }
+  ],
+  "name": "customer-io"
+}"""
