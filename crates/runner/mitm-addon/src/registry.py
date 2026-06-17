@@ -35,6 +35,7 @@ _PERCENT_DECODED_BOUNDARY_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
 _BASE_URL_VAR_PARAMETER_CHARS = frozenset(("{", "}"))
 _PATH_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "\\"))
 _PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
+_MAX_PATH_VAR_PERCENT_DECODE_PASSES = 5
 
 
 class _RegistryFormatError(ValueError):
@@ -234,6 +235,31 @@ def _validate_base_url_variable_percent_encoding(
     return decoded.value
 
 
+def _path_variable_value_has_encoded_structure(value: str) -> bool:
+    current = value
+    for _ in range(_MAX_PATH_VAR_PERCENT_DECODE_PASSES):
+        decoded = percent_decode_host(current, syntax_chars=_PATH_VAR_STRUCTURE_CHARS)
+        if (
+            decoded.invalid_encoding
+            or decoded.decoded_syntax
+            or any(char.isspace() for char in decoded.value)
+            or has_unsafe_url_codepoint(decoded.value)
+        ):
+            return True
+        if decoded.value == current:
+            return False
+        current = decoded.value
+
+    decoded = percent_decode_host(current, syntax_chars=_PATH_VAR_STRUCTURE_CHARS)
+    return (
+        decoded.invalid_encoding
+        or decoded.decoded_syntax
+        or decoded.value != current
+        or any(char.isspace() for char in decoded.value)
+        or has_unsafe_url_codepoint(decoded.value)
+    )
+
+
 def _validate_base_url_prefix_variable(
     *,
     firewall_name: str,
@@ -348,7 +374,7 @@ def _validate_base_url_path_variable(
             name=name,
             detail="must not introduce path structure",
         )
-    _validate_base_url_variable_percent_encoding(
+    decoded = _validate_base_url_variable_percent_encoding(
         firewall_name=firewall_name,
         base=base,
         name=name,
@@ -358,7 +384,9 @@ def _validate_base_url_path_variable(
     prefix_segment = prefix[prefix.rfind("/") + 1 :]
     suffix_delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
     suffix_segment = suffix if suffix_delimiter is None else suffix[: suffix_delimiter.start()]
-    if has_unsafe_path(f"/{prefix_segment}{value}{suffix_segment}"):
+    if _path_variable_value_has_encoded_structure(decoded) or has_unsafe_path(
+        f"/{prefix_segment}{decoded}{suffix_segment}"
+    ):
         raise _base_url_variable_error(
             firewall_name=firewall_name,
             base=base,

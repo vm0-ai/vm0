@@ -722,28 +722,50 @@ function validateBaseUrlVariableCommonSyntax({
   }
 }
 
-function pathSegmentDotPrefix(segment: string): string {
-  return segment.split(";", 1)[0]!;
+function pathPartDotPrefix(part: string): string {
+  return part.split(";", 1)[0]!;
 }
 
-function pathSegmentIsDotSegment(segment: string): boolean {
-  const dotPrefix = pathSegmentDotPrefix(segment);
+function pathPartIsDotSegment(part: string): boolean {
+  const dotPrefix = pathPartDotPrefix(part);
   return dotPrefix === "." || dotPrefix === "..";
 }
 
-function normalizedPathSegmentHasUnsafeSyntax(segment: string): boolean {
+function pathSegmentContainsDotPathPart(segment: string): boolean {
+  if (pathPartIsDotSegment(segment)) return true;
+  return segment.split("/").some((part) => {
+    return pathPartIsDotSegment(part);
+  });
+}
+
+function pathSegmentHasUnsafeSyntaxParts(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
+  if (hasUnsafeUrlCodepoint(segment)) return true;
+  if (segment.includes("\\")) return true;
+  if (pathSegmentContainsDotPathPart(segment)) return true;
+  if (!rejectPathStructure) return false;
+  for (const char of segment) {
+    if (PATH_VAR_STRUCTURE_CHARS.has(char)) return true;
+  }
+  return false;
+}
+
+function normalizedPathSegmentHasUnsafeSyntax(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
   const normalized = segment.normalize("NFKC");
   if (normalized === segment) return false;
   if (normalized.includes("%")) return true;
-  for (const char of normalized) {
-    if (PATH_VAR_STRUCTURE_CHARS.has(char)) return true;
-  }
-  return (
-    pathSegmentIsDotSegment(normalized) || hasUnsafeUrlCodepoint(normalized)
-  );
+  return pathSegmentHasUnsafeSyntaxParts(normalized, rejectPathStructure);
 }
 
-function percentDecodePathSegment(segment: string): string | null {
+function percentDecodePathSegment(
+  segment: string,
+  rejectPathStructure: boolean,
+): string | null {
   if (!segment.includes("%")) return segment;
   for (let i = 0; i < segment.length; i += 1) {
     if (segment[i] !== "%") continue;
@@ -762,40 +784,45 @@ function percentDecodePathSegment(segment: string): string | null {
   } catch {
     return null;
   }
-  for (const char of decoded) {
-    if (
-      PATH_VAR_STRUCTURE_CHARS.has(char) ||
-      WHITESPACE_PATTERN.test(char) ||
-      UNICODE_CONTROL_PATTERN.test(char)
-    ) {
-      return null;
+  if (rejectPathStructure) {
+    for (const char of decoded) {
+      if (
+        PATH_VAR_STRUCTURE_CHARS.has(char) ||
+        WHITESPACE_PATTERN.test(char) ||
+        UNICODE_CONTROL_PATTERN.test(char)
+      ) {
+        return null;
+      }
     }
   }
   return decoded;
 }
 
-function pathSegmentHasUnsafeSyntax(segment: string): boolean {
+function pathSegmentHasUnsafeSyntax(
+  segment: string,
+  rejectPathStructure: boolean,
+): boolean {
   let current = segment;
   for (let pass = 0; pass < MAX_PATH_PERCENT_DECODE_PASSES; pass += 1) {
     if (
-      pathSegmentIsDotSegment(current) ||
-      normalizedPathSegmentHasUnsafeSyntax(current)
+      pathSegmentHasUnsafeSyntaxParts(current, rejectPathStructure) ||
+      normalizedPathSegmentHasUnsafeSyntax(current, rejectPathStructure)
     ) {
       return true;
     }
-    const decoded = percentDecodePathSegment(current);
+    const decoded = percentDecodePathSegment(current, rejectPathStructure);
     if (decoded === null) return true;
     if (decoded === current) return false;
     current = decoded;
   }
 
   if (
-    pathSegmentIsDotSegment(current) ||
-    normalizedPathSegmentHasUnsafeSyntax(current)
+    pathSegmentHasUnsafeSyntaxParts(current, rejectPathStructure) ||
+    normalizedPathSegmentHasUnsafeSyntax(current, rejectPathStructure)
   ) {
     return true;
   }
-  const decoded = percentDecodePathSegment(current);
+  const decoded = percentDecodePathSegment(current, rejectPathStructure);
   return decoded === null || decoded !== current;
 }
 
@@ -892,7 +919,7 @@ function validateBaseUrlPathSegment({
   readonly name: string;
   readonly segment: string;
 }): void {
-  if (pathSegmentHasUnsafeSyntax(segment)) {
+  if (pathSegmentHasUnsafeSyntax(segment, true)) {
     throw baseUrlVariableError(
       base,
       serviceName,
@@ -936,7 +963,14 @@ function validateBaseUrlPrefixVariable({
   }
   const rawPath = rawPathFromBaseUrl(value);
   for (const segment of rawPath.split("/")) {
-    validateBaseUrlPathSegment({ base, serviceName, name, segment });
+    if (pathSegmentHasUnsafeSyntax(segment, false)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not contain unsafe path segments before a fixed path suffix",
+      );
+    }
   }
 }
 
@@ -947,7 +981,7 @@ function validateResolvedBaseUrlPathSafety(
 ): void {
   const rawPath = rawPathFromBaseUrl(resolved);
   for (const segment of rawPath.split("/")) {
-    if (pathSegmentHasUnsafeSyntax(segment)) {
+    if (pathSegmentHasUnsafeSyntax(segment, false)) {
       throw new Error(
         errMsg(
           templateBase,

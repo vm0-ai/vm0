@@ -1452,6 +1452,15 @@ describe("resolveFirewallBaseUrlVars", () => {
     );
   });
 
+  it("accepts encoded path separators in whole base URL prefix paths", () => {
+    const result = resolveFirewallBaseUrlVars([n8nFirewall], {
+      N8N_BASE_URL: "https://n8n.example.test/work%2fflows",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://n8n.example.test/work%2fflows/api/v1",
+    );
+  });
+
   it("rejects whole base URL prefix variables with path dot segments", () => {
     expect(() => {
       return resolveFirewallBaseUrlVars([n8nFirewall], {
@@ -1481,6 +1490,19 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(() => {
       return resolveFirewallBaseUrlVars([tenantPathFirewall], {
         TENANT: "acme/../admin",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables with encoded path separators", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme%2fprod",
+      });
+    }).toThrow("base URL variable");
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme%252fprod",
       });
     }).toThrow("base URL variable");
   });

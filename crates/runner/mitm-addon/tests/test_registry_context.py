@@ -366,6 +366,24 @@ class TestGetVmContext:
             "https://n8n.example.test/workflows/api/v1"
         )
 
+    def test_builtin_base_url_prefix_accepts_encoded_path_separator(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_builtin_firewall_registry(
+            path,
+            run_id="run-n8n",
+            name="n8n",
+            base_url_vars={"N8N_BASE_URL": "https://n8n.example.test/work%2fflows"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+            "https://n8n.example.test/work%2fflows/api/v1"
+        )
+
     def test_builtin_base_url_prefix_rejects_path_dot_segments(self, tmp_path):
         path = tmp_path / "registry.json"
         _write_builtin_firewall_registry(
@@ -439,6 +457,30 @@ class TestGetVmContext:
             run_id="run-tenant-path",
             name="tenant-path",
             base_url_vars={"TENANT": "acme/../admin"},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert 'base URL variable "TENANT"' in invalid_vm.message
+
+    def test_builtin_path_segment_var_rejects_encoded_path_separator(self, tmp_path, monkeypatch):
+        _install_test_builtin_firewall(
+            monkeypatch,
+            name="tenant-path",
+            base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
+        )
+        path = tmp_path / "registry.json"
+        _write_builtin_firewall_registry(
+            path,
+            run_id="run-tenant-path",
+            name="tenant-path",
+            base_url_vars={"TENANT": "acme%252fprod"},
         )
 
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
