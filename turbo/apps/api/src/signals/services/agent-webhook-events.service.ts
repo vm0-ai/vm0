@@ -14,7 +14,7 @@ import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
-import { ingestAxiomEvents$ } from "../routes/internal-event-consumers-axiom";
+import { ingestAxiomEvents$ } from "./agent-event-consumer-axiom.service";
 import { processChatAssistantEvents$ } from "../routes/internal-event-consumers-chat-assistant";
 import { settle } from "../utils";
 

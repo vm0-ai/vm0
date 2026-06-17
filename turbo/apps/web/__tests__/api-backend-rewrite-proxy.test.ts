@@ -2028,10 +2028,10 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
-  it("matches the internal event consumer axiom rewrite path exactly", () => {
+  it("rejects the removed internal event consumer axiom rewrite path", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/internal/event-consumers/axiom/extra"),
     ).toBe(false);

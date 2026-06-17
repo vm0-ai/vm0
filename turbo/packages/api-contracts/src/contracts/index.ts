@@ -351,12 +351,10 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
-  internalEventConsumerAxiomContract,
   internalEventConsumerAgentPhoneTypingContract,
   internalEventConsumerChatAssistantContract,
   internalEventConsumerTelegramTypingContract,
   type InternalEventConsumerAgentPhoneTypingContract,
-  type InternalEventConsumerAxiomContract,
   type InternalEventConsumerChatAssistantContract,
   type InternalEventConsumerTelegramTypingContract,
 } from "./internal-event-consumers";

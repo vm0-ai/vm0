@@ -1,12 +1,7 @@
 import { command } from "ccstate";
-import { internalEventConsumerAxiomContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 
-import {
-  eventConsumerPayload$,
-  eventConsumerRoute,
-} from "../../lib/event-consumer/route";
+import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
-import type { RouteEntry } from "../route";
 import { settle } from "../utils";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -56,10 +51,3 @@ export const ingestAxiomEvents$ = command(
     };
   },
 );
-
-export const internalEventConsumerAxiomRoutes: readonly RouteEntry[] = [
-  {
-    route: internalEventConsumerAxiomContract.ingest,
-    handler: eventConsumerRoute(ingestAxiomEvents$),
-  },
-];

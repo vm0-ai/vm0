@@ -76,21 +76,6 @@ export const internalEventConsumerAgentPhoneTypingContract = c.router({
   },
 });
 
-export const internalEventConsumerAxiomContract = c.router({
-  ingest: {
-    method: "POST",
-    path: "/api/internal/event-consumers/axiom",
-    headers: eventConsumerHeadersSchema,
-    body: eventConsumerPayloadSchema,
-    responses: {
-      200: z.object({ received: z.number() }),
-      401: eventConsumerUnauthorizedSchema,
-      503: z.object({ error: z.string() }),
-    },
-    summary: "Ingest agent run events into Axiom",
-  },
-});
-
 export const internalEventConsumerChatAssistantContract = c.router({
   process: {
     method: "POST",
@@ -104,9 +89,6 @@ export const internalEventConsumerChatAssistantContract = c.router({
     summary: "Persist assistant-visible run events into chat threads",
   },
 });
-
-export type InternalEventConsumerAxiomContract =
-  typeof internalEventConsumerAxiomContract;
 
 export type InternalEventConsumerChatAssistantContract =
   typeof internalEventConsumerChatAssistantContract;

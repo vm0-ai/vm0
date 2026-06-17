@@ -1,7 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import {
-  internalEventConsumerAxiomContract,
   internalEventConsumerChatAssistantContract,
   type eventConsumerPayloadSchema,
 } from "@vm0/api-contracts/contracts/internal-event-consumers";
@@ -522,20 +521,6 @@ export function createWebhookCallbackApi(context: TestContext) {
       const signature = delivery.headers["x-vm0-signature"] ?? "";
       const flipped = signature.startsWith("a") ? "b" : "a";
       return `${flipped}${signature.slice(1)}`;
-    },
-
-    async requestAxiomEventConsumer(
-      body: EventConsumerPayload,
-      headers: Partial<Vm0SignatureHeaders>,
-      statuses: readonly (200 | 401 | 503)[],
-    ) {
-      return await accept(
-        setupApp({ context })(internalEventConsumerAxiomContract).ingest({
-          headers,
-          body,
-        }),
-        statuses,
-      );
     },
 
     async requestChatAssistantEventConsumer(

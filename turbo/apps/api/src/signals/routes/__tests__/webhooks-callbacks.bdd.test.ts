@@ -1020,30 +1020,50 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     expect(invalidBody.body).toStrictEqual({ error: "Invalid JSON body" });
   });
 
-  it("ingests signed axiom event batches and surfaces axiom outages as 503", async () => {
+  it("dispatches agent event batches to Axiom in-process", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Axiom Event Consumer Agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "emit events to Axiom",
+      modelProvider: "anthropic-api-key",
+    });
+    const headers = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+    };
     const body = {
-      runId: "run_bdd_axiom",
+      runId: run.runId,
       events: [
         { type: "assistant", sequenceNumber: 1, message: { content: [] } },
         { type: "tool_result", sequenceNumber: 2, result: "ok" },
       ],
-      context: { userId: "user_bdd_axiom", orgId: "org_bdd_axiom" },
     };
     context.mocks.axiom.ingest.mockReturnValue(true);
     context.mocks.axiom.flush.mockResolvedValue(undefined);
 
-    const ingested = await api.requestAxiomEventConsumer(
-      body,
-      api.signedEventConsumerHeaders(body),
-      [200],
-    );
-    expect(ingested.body).toStrictEqual({ received: 2 });
+    const ingested = await api.requestAgentEvents(body, headers, [200]);
+    expect(ingested.body).toStrictEqual({
+      received: 2,
+      firstSequence: 1,
+      lastSequence: 2,
+    });
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
       "agent-run-events",
       [
         {
-          runId: "run_bdd_axiom",
-          userId: "user_bdd_axiom",
+          runId: run.runId,
+          userId: actor.userId,
           sequenceNumber: 1,
           eventType: "assistant",
           eventData: {
@@ -1053,8 +1073,8 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
           },
         },
         {
-          runId: "run_bdd_axiom",
-          userId: "user_bdd_axiom",
+          runId: run.runId,
+          userId: actor.userId,
           sequenceNumber: 2,
           eventType: "tool_result",
           eventData: { type: "tool_result", sequenceNumber: 2, result: "ok" },
@@ -1067,24 +1087,18 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     });
 
     context.mocks.axiom.ingest.mockReturnValueOnce(false);
-    const unconfigured = await api.requestAxiomEventConsumer(
-      body,
-      api.signedEventConsumerHeaders(body),
-      [503],
+    const unconfigured = await api.requestAgentEvents(body, headers, [500]);
+    expectApiError(unconfigured.body);
+    expect(unconfigured.body.error.message).toBe(
+      "Required event consumer dispatch failed: axiom",
     );
-    expect(unconfigured.body).toStrictEqual({
-      error: "Axiom agent-run-events dataset is not configured",
-    });
 
     context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
-    const flushFailed = await api.requestAxiomEventConsumer(
-      body,
-      api.signedEventConsumerHeaders(body),
-      [503],
+    const flushFailed = await api.requestAgentEvents(body, headers, [500]);
+    expectApiError(flushFailed.body);
+    expect(flushFailed.body.error.message).toBe(
+      "Required event consumer dispatch failed: axiom",
     );
-    expect(flushFailed.body).toStrictEqual({
-      error: "Axiom agent-run-events flush failed",
-    });
   });
 });
 
