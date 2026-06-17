@@ -569,8 +569,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     "../../connectors/src/firewall-metadata",
   );
   const detailsDir = path.join(outputDir, "details");
-  fs.rmSync(detailsDir, { recursive: true, force: true });
-  fs.mkdirSync(detailsDir, { recursive: true });
 
   const sources = await Promise.all(
     extractRegisteredFirewallTypes(firewallsIndexFile)
@@ -580,13 +578,27 @@ export async function generateFirewallMetadata(): Promise<void> {
       }),
   );
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
+  const details: {
+    readonly type: FirewallConnectorType;
+    readonly content: string;
+  }[] = [];
 
   for (const source of sources) {
     const detail = buildDetailMetadata(source);
     summaries[source.type] = buildSummaryMetadata(detail);
+    details.push({
+      type: source.type,
+      content: renderDetailFile(detail),
+    });
+  }
+
+  fs.rmSync(detailsDir, { recursive: true, force: true });
+  fs.mkdirSync(detailsDir, { recursive: true });
+
+  for (const detail of details) {
     writeGeneratedFile(
-      path.join(detailsDir, `${source.type}.generated.ts`),
-      renderDetailFile(detail),
+      path.join(detailsDir, `${detail.type}.generated.ts`),
+      detail.content,
     );
   }
 
