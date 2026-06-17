@@ -280,6 +280,8 @@ def test_capture_enabled_firewall_allow_does_not_install_request_stream(
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
 def test_capture_enabled_firewall_block_does_not_install_request_stream(
@@ -314,6 +316,8 @@ def test_capture_enabled_firewall_block_does_not_install_request_stream(
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
 def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
