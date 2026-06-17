@@ -483,7 +483,7 @@ fn write_session_history_marker(history_path_payload: &str) {
 }
 
 fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
-    if history_path_payload.starts_with("CODEX_SEARCH:") {
+    if crate::session_history::is_codex_marker(history_path_payload) {
         "codex"
     } else {
         "claude"
@@ -548,7 +548,7 @@ fn is_valid_session_history_id(session_id: &str) -> bool {
     matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
 }
 
-/// Codex variant — matches `thread.started` and emits a `CODEX_SEARCH:`
+/// Codex variant — matches `thread.started` and emits a session-history
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     let thread_id = raw_codex_thread_id(event)?;
@@ -567,8 +567,8 @@ fn raw_codex_thread_id(event: &Value) -> Option<&str> {
 }
 
 fn codex_history_marker_payload(thread_id: &str) -> String {
-    let home = env::home_dir();
-    format!("CODEX_SEARCH:{home}/.codex/sessions:{thread_id}")
+    let sessions_dir = format!("{}/.codex/sessions", env::home_dir());
+    crate::session_history::codex_marker_payload(Path::new(&sessions_dir), thread_id)
 }
 
 #[cfg(test)]
@@ -1249,7 +1249,7 @@ mod tests {
     // the Claude `system/init` branch and the codex `thread.started`
     // branch) lives in the integration test suites:
     //   - `tests/integration.rs::send_event_extracts_claude_session_id`
-    //   - `tests/codex_session_resume.rs` (codex variant + read-back)
+    //   - `tests/codex_session_resume.rs` (codex variant)
     // The Claude/Codex helpers are private; their contracts are
     // exercised transitively through `send_event`.
 }

@@ -35,6 +35,19 @@ use std::{fs::File, io::Read};
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 
+/// Build the persisted Codex session-history marker payload.
+pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
+    format!(
+        "{CODEX_MARKER_PREFIX}{}:{thread_id}",
+        sessions_dir.display()
+    )
+}
+
+/// Return whether a persisted session-history payload is a Codex marker.
+pub(crate) fn is_codex_marker(payload: &str) -> bool {
+    payload.starts_with(CODEX_MARKER_PREFIX)
+}
+
 /// Read the session history bytes pointed to by `path_file`.
 ///
 /// The file content is either a literal path (Claude) or a
@@ -324,9 +337,9 @@ fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError
 }
 
 // Note: integration coverage for the public `read_session_history` entry
-// (both Claude literal-path and codex marker → recursive scan + zstd
-// decode) lives in `crates/guest-agent/tests/codex_session_resume.rs`,
-// driven via the `send_event` → checkpoint flow. The internal helpers
+// (both Claude literal-path and codex marker -> recursive scan + zstd
+// decode) lives in `crates/guest-agent/tests/session_history_read.rs`.
+// The internal helpers
 // (`read_codex_session_history`, `codex_session_filename_matches`,
 // `read_history_bytes`, `decode_marker`) are exercised transitively by
 // those integration tests, in line with the project's "integration
