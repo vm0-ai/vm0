@@ -584,7 +584,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
     });
 
     const editor = await findComposerEditor();
@@ -635,7 +635,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
     });
 
     const editor = await findComposerEditor();
@@ -662,8 +662,8 @@ describe("chat composer models", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
-        [FeatureSwitchKey.SkillsViewer]: true,
+        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.WorkflowsViewer]: true,
       },
     });
 
@@ -693,7 +693,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: false },
+      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: false },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -728,7 +728,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
     });
 
     const editor = await findComposerEditor();
@@ -760,7 +760,7 @@ describe("chat composer models", () => {
       detachedSetupPage({
         context,
         path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+        featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
       });
 
       const editor = await findComposerEditor();
