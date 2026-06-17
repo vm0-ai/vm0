@@ -1095,6 +1095,63 @@ async function selectDecodedTemplatePreviewImage({
   }
 }
 
+async function selectDecodedPresentationPreviewSlide({
+  container,
+  imageUrl,
+  index,
+  onSlideChange,
+}: {
+  container: HTMLElement;
+  imageUrl: string;
+  index: number;
+  onSlideChange: (index: number) => void;
+}): Promise<void> {
+  await decodePresentationPreviewImage(imageUrl);
+  if (
+    container.dataset.targetSlideIndex === String(index) &&
+    presentationPreviewImageDecoded(imageUrl)
+  ) {
+    delete container.dataset.targetSlideIndex;
+    onSlideChange(index);
+  }
+}
+
+function selectPresentationPreviewSlide({
+  container,
+  imageUrl,
+  index,
+  onSlideChange,
+}: {
+  container: HTMLElement | null;
+  imageUrl: string;
+  index: number;
+  onSlideChange: (index: number) => void;
+}): void {
+  if (presentationPreviewImageDecoded(imageUrl)) {
+    if (container !== null) {
+      delete container.dataset.targetSlideIndex;
+    }
+    onSlideChange(index);
+    return;
+  }
+
+  if (container === null) {
+    detach(decodePresentationPreviewImage(imageUrl), Reason.DomCallback);
+    return;
+  }
+
+  container.dataset.targetSlideIndex = String(index);
+  detach(
+    selectDecodedPresentationPreviewSlide({
+      container,
+      imageUrl,
+      index,
+      onSlideChange,
+    }),
+    Reason.DomCallback,
+  );
+}
+
 async function markPresentationPreviewImageLoaded(
   url: string,
   image: HTMLImageElement,
@@ -1107,9 +1164,6 @@ async function markPresentationPreviewImageLoaded(
     cache.decoded.add(url);
   }
   image.dataset.loaded = "true";
-  image.parentElement
-    ?.querySelector<HTMLElement>("[data-template-preview-error]")
-    ?.setAttribute("hidden", "");
 }
 
 function TemplatePreview({
@@ -1196,18 +1250,22 @@ function TemplatePreview({
             src={previewImage}
             alt=""
             data-testid={`${item.title} card preview slide 1`}
+            data-loaded={
+              presentationPreviewImageDecoded(previewImage) ? "true" : undefined
+            }
             title={`${item.title} card preview slide 1`}
             className="absolute inset-0 h-full w-full object-contain"
             loading="lazy"
+            decoding="async"
+            fetchPriority="low"
             onLoad={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.setAttribute("hidden", "");
-            }}
-            onError={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.removeAttribute("hidden");
+              detach(
+                markPresentationPreviewImageLoaded(
+                  previewImage,
+                  event.currentTarget,
+                ),
+                Reason.DomCallback,
+              );
             }}
           />
           {isHovering &&
@@ -1221,11 +1279,18 @@ function TemplatePreview({
                   data-testid={`${item.title} card preview slide ${
                     isHovering ? imageIndex + 1 : 1
                   }`}
+                  data-loaded={
+                    presentationPreviewImageDecoded(imageUrl)
+                      ? "true"
+                      : undefined
+                  }
                   className={cn(
                     "absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-75",
                     active && "data-[loaded=true]:opacity-100",
                   )}
                   loading={isHovering ? "eager" : "lazy"}
+                  decoding="async"
+                  fetchPriority={active ? "high" : "low"}
                   onLoad={(event) => {
                     detach(
                       markPresentationPreviewImageLoaded(
@@ -1235,23 +1300,9 @@ function TemplatePreview({
                       Reason.DomCallback,
                     );
                   }}
-                  onError={(event) => {
-                    event.currentTarget.parentElement
-                      ?.querySelector<HTMLElement>(
-                        "[data-template-preview-error]",
-                      )
-                      ?.removeAttribute("hidden");
-                  }}
                 />
               );
             })}
-          <div
-            data-template-preview-error=""
-            hidden
-            className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
-          >
-            <IconTemplate size={28} stroke={1.5} />
-          </div>
         </>
       ) : (
         <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -1291,18 +1342,38 @@ function TemplatePreviewPage({
     0,
     Math.min(selectedSlideIndex, slideImages.length - 1),
   );
-  const selectedSlideImage = slideImages[safeSlideIndex];
-  const selectedSlidePreviewImage = selectedSlideImage
-    ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
-    : selectedSlideImage;
+  const detailPreviewImage = (index: number): string | undefined => {
+    const slideImage = slideImages[index];
+    return slideImage
+      ? r2ImageTransformUrl(slideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
+      : undefined;
+  };
+  const selectedSlidePreviewImage = detailPreviewImage(safeSlideIndex);
   const hasMultipleSlides = slideImages.length > 1;
 
-  const changeSlide = (direction: -1 | 1) => {
+  const requestSlideChange = (
+    index: number,
+    container: HTMLElement | null,
+  ): void => {
+    const imageUrl = detailPreviewImage(index);
+    if (imageUrl === undefined) {
+      return;
+    }
+    selectPresentationPreviewSlide({
+      container,
+      imageUrl,
+      index,
+      onSlideChange,
+    });
+  };
+
+  const changeSlide = (direction: -1 | 1, container: HTMLElement | null) => {
     if (!hasMultipleSlides) {
       return;
     }
-    onSlideChange(
+    requestSlideChange(
       (safeSlideIndex + direction + slideImages.length) % slideImages.length,
+      container,
     );
   };
 
@@ -1324,26 +1395,68 @@ function TemplatePreviewPage({
         </DialogTitle>
       </DialogHeader>
       <div className="grid max-h-[72vh] gap-5 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border border-border bg-background p-4">
+        <div
+          data-template-preview-page=""
+          className="rounded-lg border border-border bg-background p-4"
+        >
           <div className="relative overflow-hidden rounded-lg bg-muted">
             <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
               {safeSlideIndex + 1} of {slideImages.length}
             </div>
-            <img
-              key={selectedSlideImage}
-              src={selectedSlidePreviewImage}
-              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
-              alt=""
-              className="aspect-[16/9] w-full object-contain"
-              loading="lazy"
-            />
+            {selectedSlidePreviewImage ? (
+              <img
+                key={selectedSlidePreviewImage}
+                src={selectedSlidePreviewImage}
+                data-loaded={
+                  presentationPreviewImageDecoded(selectedSlidePreviewImage)
+                    ? "true"
+                    : undefined
+                }
+                title={`${item.title} preview slide ${safeSlideIndex + 1}`}
+                alt=""
+                className="aspect-[16/9] w-full object-contain"
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
+                onLoad={(event) => {
+                  detach(
+                    markPresentationPreviewImageLoaded(
+                      selectedSlidePreviewImage,
+                      event.currentTarget,
+                    ),
+                    Reason.DomCallback,
+                  );
+                }}
+              />
+            ) : (
+              <div className="flex aspect-[16/9] items-center justify-center text-muted-foreground">
+                <IconTemplate size={28} stroke={1.5} />
+              </div>
+            )}
             <button
               type="button"
               aria-label="Previous slide"
               className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={!hasMultipleSlides}
-              onClick={() => {
-                changeSlide(-1);
+              onMouseEnter={() => {
+                const previousImage = detailPreviewImage(
+                  (safeSlideIndex - 1 + slideImages.length) %
+                    slideImages.length,
+                );
+                if (previousImage) {
+                  detach(
+                    decodePresentationPreviewImage(previousImage),
+                    Reason.DomCallback,
+                  );
+                }
+              }}
+              onClick={(event) => {
+                changeSlide(
+                  -1,
+                  event.currentTarget.closest<HTMLElement>(
+                    "[data-template-preview-page]",
+                  ),
+                );
               }}
             >
               <IconChevronLeft size={22} stroke={1.8} />
@@ -1353,8 +1466,24 @@ function TemplatePreviewPage({
               aria-label="Next slide"
               className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={!hasMultipleSlides}
-              onClick={() => {
-                changeSlide(1);
+              onMouseEnter={() => {
+                const nextImage = detailPreviewImage(
+                  (safeSlideIndex + 1) % slideImages.length,
+                );
+                if (nextImage) {
+                  detach(
+                    decodePresentationPreviewImage(nextImage),
+                    Reason.DomCallback,
+                  );
+                }
+              }}
+              onClick={(event) => {
+                changeSlide(
+                  1,
+                  event.currentTarget.closest<HTMLElement>(
+                    "[data-template-preview-page]",
+                  ),
+                );
               }}
             >
               <IconChevronRight size={22} stroke={1.8} />
@@ -1377,8 +1506,22 @@ function TemplatePreviewPage({
                     "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "border-primary" : "border-border",
                   )}
-                  onClick={() => {
-                    onSlideChange(index);
+                  onMouseEnter={() => {
+                    const detailImage = detailPreviewImage(index);
+                    if (detailImage) {
+                      detach(
+                        decodePresentationPreviewImage(detailImage),
+                        Reason.DomCallback,
+                      );
+                    }
+                  }}
+                  onClick={(event) => {
+                    requestSlideChange(
+                      index,
+                      event.currentTarget.closest<HTMLElement>(
+                        "[data-template-preview-page]",
+                      ),
+                    );
                   }}
                 >
                   <img

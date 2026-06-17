@@ -362,6 +362,7 @@ async function openTemplatePicker(
   await waitFor(() => {
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
+  expect(document.querySelector("[data-template-preview-error]")).toBeNull();
 
   if (slideCount > 1) {
     const previewImage = screen.getByTestId(
@@ -383,7 +384,7 @@ async function openTemplatePicker(
         screen.getByTestId(
           `${template.title} card preview slide ${slideCount}`,
         ),
-      ).toBeInTheDocument();
+      ).toHaveAttribute("data-loaded", "true");
     });
     fireEvent.mouseLeave(preview);
   }
@@ -392,19 +393,29 @@ async function openTemplatePicker(
   await waitFor(() => {
     expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
   });
+  expect(document.querySelector("[data-template-preview-error]")).toBeNull();
 
   if (slideCount > 1) {
     click(screen.getByLabelText("Next slide"));
     await waitFor(() => {
       expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${template.title} preview slide 2`),
+      ).toHaveAttribute("data-loaded", "true");
     });
     click(screen.getByLabelText("Previous slide"));
     await waitFor(() => {
       expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${template.title} preview slide 1`),
+      ).toHaveAttribute("data-loaded", "true");
     });
     click(screen.getByLabelText("Show slide 2"));
     await waitFor(() => {
       expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${template.title} preview slide 2`),
+      ).toHaveAttribute("data-loaded", "true");
     });
   }
 
