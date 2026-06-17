@@ -1615,6 +1615,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () 
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
 
