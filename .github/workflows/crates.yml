@@ -491,13 +491,12 @@ jobs:
           fi
 
           REMOTE="${METAL_USER}@${HOST}"
-          ssh "$REMOTE" bash -s -- \
-            "$BIN_DIR" \
-            "$JOB_REF" \
-            "$DEFAULT_ROOTFS_HASH" \
-            "$DEFAULT_SNAPSHOT_HASH" \
-            "$OFFICIAL_RUNNER_SECRET" \
-            "$ANTHROPIC_API_KEY" <<'REMOTE_SCRIPT'
+          {
+            # Keep the CI provider key off SSH/bash argv; the runner CLI still
+            # receives it through --secret-env because that is the behavior
+            # under test.
+            printf 'ANTHROPIC_API_KEY=%q\n' "$ANTHROPIC_API_KEY"
+            cat <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           BIN_DIR=$1
@@ -505,7 +504,6 @@ jobs:
           ROOTFS_HASH=$3
           SNAPSHOT_HASH=$4
           OFFICIAL_RUNNER_SECRET=$5
-          ANTHROPIC_API_KEY=$6
 
           SVC="${JOB_REF}-local-env"
           RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
@@ -593,6 +591,12 @@ jobs:
 
           echo "PASS: local submit ran real Claude Code with Haiku and returned RESULT=579"
           REMOTE_SCRIPT
+          } | ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$DEFAULT_ROOTFS_HASH" \
+            "$DEFAULT_SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET"
 
   runner-benchmark:
     runs-on: ubuntu-latest
