@@ -25,7 +25,7 @@ const BOTANE_ORGANIC_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2a7fd3d2-562f-4b49-8854-562b13fa7fbc/slide-13.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ba0a9ade-6eba-4a63-8772-976b30ab17cf/slide-14.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7da6a51c-4a78-4e50-9cbc-899879e72875/slide-15.png",
-];
+] as const satisfies readonly [string, ...string[]];
 
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   [
