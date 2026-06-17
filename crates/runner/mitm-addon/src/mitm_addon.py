@@ -60,8 +60,8 @@ from auth import (
     mark_auth_base_request_too_large,
     prepare_firewall_metadata,
 )
-from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
 from body_limits import STREAM_BUFFER_LIMIT
+from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,
