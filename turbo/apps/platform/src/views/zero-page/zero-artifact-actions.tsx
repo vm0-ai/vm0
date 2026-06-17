@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
 import {
   IconBrandGoogleDrive,
   IconDownload,
@@ -109,6 +109,18 @@ export type ArtifactDownloadSyncTarget = {
 
 async function shareArtifactUrl(url: string): Promise<void> {
   await copyAttachmentLinkToClipboard(url);
+}
+
+function isPlainPrimaryLinkClick(
+  event: MouseEvent<HTMLAnchorElement>,
+): boolean {
+  return (
+    event.button === 0 &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  );
 }
 
 function startGoogleDriveConnectAndSync(params: {
@@ -247,9 +259,13 @@ export function ArtifactShareButton({
 }) {
   return (
     <ArtifactActionTooltip label={ariaLabel}>
-      <button
-        type="button"
-        onClick={() => {
+      <a
+        href={publicAttachmentUrl(url)}
+        onClick={(event) => {
+          if (!isPlainPrimaryLinkClick(event)) {
+            return;
+          }
+          event.preventDefault();
           detach(shareArtifactUrl(url), Reason.DomCallback, "artifact share");
         }}
         aria-label={ariaLabel}
@@ -257,7 +273,7 @@ export function ArtifactShareButton({
         className={iconButtonClassName(className)}
       >
         <IconShare size={iconSize} stroke={1.5} />
-      </button>
+      </a>
     </ArtifactActionTooltip>
   );
 }

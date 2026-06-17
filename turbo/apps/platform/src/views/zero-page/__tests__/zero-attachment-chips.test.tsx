@@ -683,6 +683,14 @@ describe("zero attachment chips", () => {
         screen.getByTestId("artifact-dialog-image-zoom-controls"),
       ).toBeInTheDocument();
     });
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    expect(lightboxImage.tagName).toBe("IMG");
+    expect(lightboxImage).not.toHaveAttribute("draggable", "false");
+    expect(lightboxImage).toHaveClass("zero-native-media-interaction");
+    expect(lightboxImage).toHaveStyle({
+      pointerEvents: "auto",
+      userSelect: "auto",
+    });
 
     click(screen.getByLabelText("Close"));
 
@@ -841,7 +849,11 @@ describe("zero attachment chips", () => {
       expect(screen.getByText("The rollout is ready.")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Share"));
+    const shareLink = screen.getByLabelText("Share");
+    expect(shareLink.tagName).toBe("A");
+    expect(shareLink).toHaveAttribute("href", releaseNotesUrl);
+
+    click(shareLink);
 
     await waitFor(() => {
       expect(screen.getByText("Link copied")).toBeInTheDocument();

@@ -18,6 +18,7 @@ import {
 const IMAGE_ZOOM_STEP = 0.15;
 const IMAGE_ZOOM_ANIMATION_MS = 180;
 const IMAGE_ZOOM_ANIMATION_TYPE = "linear";
+const NATIVE_MEDIA_INTERACTION_CLASS = "zero-native-media-interaction";
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -153,14 +154,25 @@ export function ZoomableArtifactImageCanvas({
       centerZoomedOut
       smooth
       wheel={{ step: 0.008, wheelDisabled: true }}
-      trackPadPanning={{ disabled: false }}
-      panning={{ allowLeftClickPan: true }}
-      pinch={{ allowPanning: false, step: 5 }}
+      trackPadPanning={{
+        disabled: false,
+        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
+      }}
+      panning={{
+        allowLeftClickPan: true,
+        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
+      }}
+      pinch={{
+        allowPanning: false,
+        step: 5,
+        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
+      }}
       doubleClick={{
         mode: "toggle",
         step: IMAGE_ZOOM_STEP,
         animationTime: IMAGE_ZOOM_ANIMATION_MS,
         animationType: IMAGE_ZOOM_ANIMATION_TYPE,
+        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
       }}
       zoomAnimation={{
         animationTime: IMAGE_ZOOM_ANIMATION_MS,
@@ -214,13 +226,18 @@ export function ZoomableArtifactImageCanvas({
                 ref={imageRef}
                 src={src}
                 alt={alt}
-                draggable={false}
                 data-testid={imageTestId}
                 onLoad={onLoad}
                 onError={onError}
-                style={{ pointerEvents: "auto" }}
+                style={{
+                  WebkitTouchCallout: "default",
+                  WebkitUserSelect: "auto",
+                  pointerEvents: "auto",
+                  userSelect: "auto",
+                }}
                 className={cn(
-                  "block max-h-full max-w-full select-none object-contain",
+                  "block max-h-full max-w-full object-contain",
+                  NATIVE_MEDIA_INTERACTION_CLASS,
                   imageClassName,
                 )}
               />
