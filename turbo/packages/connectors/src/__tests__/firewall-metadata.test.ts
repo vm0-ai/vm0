@@ -78,12 +78,24 @@ function listTsFiles(dir: string): string[] {
 }
 
 function importSpecifiers(source: string): string[] {
+  return [
+    ...staticImportSpecifiers(source),
+    ...dynamicImportSpecifiers(source),
+  ];
+}
+
+function staticImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
     /^\s*import(?:\s+type)?[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
   )) {
     specifiers.push(match[1]!);
   }
+  return specifiers;
+}
+
+function dynamicImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
   for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
     specifiers.push(match[1]!);
   }
@@ -119,6 +131,23 @@ function runtimeEntries(): [FirewallConnectorType, FirewallConfig][] {
 }
 
 describe("firewall metadata", () => {
+  it("keeps the public entrypoint summary-first", () => {
+    const entrypoint = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/index.ts",
+    );
+    const source = fs.readFileSync(entrypoint, "utf-8");
+
+    expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "../firewall-types",
+      "./summary.generated",
+      "./types",
+    ]);
+    expect(dynamicImportSpecifiers(source)).toStrictEqual([
+      "./loader.generated",
+    ]);
+  });
+
   it("keeps metadata modules independent from runtime firewall modules", () => {
     const metadataRoot = path.resolve(
       import.meta.dirname,
