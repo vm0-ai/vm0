@@ -1008,6 +1008,40 @@ class TestResponseHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert flow.request.stream is False
 
+    async def test_early_response_keeps_request_classification_for_late_request_hook(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.vm0.ai",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b"partial request") == b"partial request"
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "2", "content-type": "text/plain"}),
+                content=b"ok",
+            )
+            mitm_addon.response(flow)
+            reg_path.write_text("{ broken registry")
+            await mitm_addon.request(flow)
+
+        assert flow.response.status_code == 200
+        assert flow.response.content == b"ok"
+        assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+        assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+
     @pytest.mark.parametrize(
         ("content_length", "expected_size"),
         [
