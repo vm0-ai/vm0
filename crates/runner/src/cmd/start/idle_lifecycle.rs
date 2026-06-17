@@ -65,14 +65,13 @@ pub(super) async fn cleanup_expired_idle_entries(
     status: &StatusTracker,
 ) -> Vec<IdleDestroyJob> {
     let mut pool = idle_pool.lock().await;
-    let expired = pool.evict_expired();
+    let (expired, snapshot) = pool.evict_expired_with_snapshot();
     for entry in &expired {
         info!(
             profile = %entry.profile_name(),
             "idle VM expired, destroying"
         );
     }
-    let snapshot = pool.status_snapshot();
     drop(pool);
     set_idle_status_snapshot(status, snapshot).await;
     expired
