@@ -2135,7 +2135,14 @@ function HeaderAutomationSidebarCard({
         </div>
       </dl>
 
-      <div className="mt-3 flex min-w-0 items-center gap-2">
+      <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+        <Link
+          pathname="/automations/:automationId"
+          options={{ pathParams: { automationId: automation.id } }}
+          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Edit
+        </Link>
         <Button
           type="button"
           variant="outline"
@@ -2151,13 +2158,6 @@ function HeaderAutomationSidebarCard({
           )}
           {running ? "Starting…" : "Run now"}
         </Button>
-        <Link
-          pathname="/automations/:automationId"
-          options={{ pathParams: { automationId: automation.id } }}
-          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Edit
-        </Link>
       </div>
     </article>
   );
