@@ -637,7 +637,7 @@ describe("zero attachment chips", () => {
         screen.getByLabelText("Open audio preview for briefing.mp3"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
-      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
       expect(
         screen.getByLabelText("Open markdown preview for release-notes.md"),
       ).toBeInTheDocument();
@@ -683,8 +683,13 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    fireEvent.load(screen.getByAltText("chart.png"));
-    click(screen.getByLabelText("Preview chart.png"));
+    const chartImage = screen.getByAltText("chart.png");
+    const chartPreview = chartImage.closest("button");
+    if (!chartPreview) {
+      throw new Error("Chart markdown image preview button not found");
+    }
+    fireEvent.load(chartImage);
+    click(chartPreview);
 
     await waitFor(() => {
       expect(
@@ -779,7 +784,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("keeps chat image preview dimensions stable while the image loads", async () => {
+  it("renders bare image URLs through markdown image preview", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -796,28 +801,31 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const preview = await screen.findByLabelText("Preview chart.png");
+    const image = await screen.findByAltText("chart.png");
+    const preview = image.closest("button");
+    if (!preview) {
+      throw new Error("Markdown image preview button not found");
+    }
     expect(preview).toHaveClass(
       "aspect-[10/9]",
-      "w-[50px]",
+      "w-[200px]",
       "max-w-full",
       "cursor-pointer",
     );
     expect(
-      within(preview).getByTestId("chat-image-preview-loading"),
+      within(preview).getByTestId("markdown-image-preview-loading"),
     ).toHaveClass("h-full", "w-full");
 
-    const image = within(preview).getByAltText("chart.png");
     fireEvent.load(image);
 
     await waitFor(() => {
       expect(
-        within(preview).queryByTestId("chat-image-preview-loading"),
+        within(preview).queryByTestId("markdown-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
     expect(preview).toHaveClass(
       "aspect-[10/9]",
-      "w-[50px]",
+      "w-[200px]",
       "max-w-full",
       "cursor-pointer",
     );

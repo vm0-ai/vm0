@@ -415,6 +415,59 @@ export function previewAttachmentFromUrl(
   return { filename, url };
 }
 
+function markdownImageLine(url: string, alt: string): string {
+  const escapedAlt = alt
+    .replace(/\\/g, String.raw`\\`)
+    .replace(/\]/g, String.raw`\]`);
+  return `![${escapedAlt}](${url})`;
+}
+
+type ExtractedPreviewLineRender =
+  | {
+      renderKind: "markdown";
+      line: string;
+    }
+  | {
+      renderKind: "preview";
+      preview: {
+        filename: string;
+        url: string;
+        kind: BodyPreviewKind;
+      };
+    };
+
+function renderExtractedPreviewLine(
+  extracted: ExtractedPreviewUrl,
+  line: string,
+): ExtractedPreviewLineRender {
+  const { title, url } = extracted;
+  const attachment = previewAttachmentFromUrl(url, title);
+  const kind = classifyChatAttachment(attachment);
+
+  if (
+    extracted.source === "markdown-link" &&
+    (kind === "image" || kind === "video")
+  ) {
+    return { renderKind: "markdown", line };
+  }
+
+  if (kind === "image" && isPreviewableChatUrl(url)) {
+    return {
+      renderKind: "markdown",
+      line: markdownImageLine(url, attachment.filename),
+    };
+  }
+
+  if (isBodyPreviewKind(kind) && isPreviewableChatUrl(url)) {
+    return {
+      renderKind: "preview",
+      preview: { filename: attachment.filename, url, kind },
+    };
+  }
+
+  return { renderKind: "markdown", line };
+}
+
 function stripMarkdownLineDecorations(value: string): string {
   let candidate = value
     .trim()
@@ -717,38 +770,19 @@ export function parseBodyRenderBlocks(
       continue;
     }
 
-    const { title, url } = extracted;
-    const attachment = previewAttachmentFromUrl(url, title);
-    const kind = classifyChatAttachment(attachment);
-
-    if (
-      extracted.source === "markdown-link" &&
-      (kind === "image" || kind === "video")
-    ) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
+    const renderedLine = renderExtractedPreviewLine(extracted, line);
+    if (renderedLine.renderKind === "markdown") {
+      markdownBuffer.push(renderedLine.line);
+      keptLines.push(renderedLine.line);
       continue;
     }
 
-    if (isBodyPreviewKind(kind)) {
-      // Only render platform-managed files and hosted sites as inline previews.
-      // Other external URLs stay as plain markdown links.
-      if (!isPreviewableChatUrl(url)) {
-        markdownBuffer.push(line);
-        keptLines.push(line);
-        continue;
-      }
-      flushMarkdownBuffer();
-      blocks.push({
-        type: "preview",
-        id: nextBlockId("preview"),
-        preview: { filename: attachment.filename, url, kind },
-      });
-      continue;
-    }
-
-    markdownBuffer.push(line);
-    keptLines.push(line);
+    flushMarkdownBuffer();
+    blocks.push({
+      type: "preview",
+      id: nextBlockId("preview"),
+      preview: renderedLine.preview,
+    });
   }
 
   flushMarkdownBuffer();
