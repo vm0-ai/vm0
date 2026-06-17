@@ -9,13 +9,23 @@ export interface PresentationTemplateItem {
   readonly templateId: string;
 }
 
-const BOTANE_ORGANIC_PREVIEW_BASE =
-  "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/presentation-template/botane-organic/preview";
-
-const BOTANE_ORGANIC_PREVIEW_IMAGES = Array.from({ length: 15 }, (_, index) => {
-  const slideNumber = String(index + 1).padStart(2, "0");
-  return `${BOTANE_ORGANIC_PREVIEW_BASE}/slide-${slideNumber}.png`;
-});
+const BOTANE_ORGANIC_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3dfb810f-81fb-45ba-85f2-d6f74b475475/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3e9deb54-c87c-49ab-b2c0-20f6a8addc86/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82e0a3df-354e-4ccb-b4c2-14bd79819962/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77d0da85-c566-4533-83ee-da8ce1ebab8f/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9725a4ef-90cb-44e0-8b29-39def902583e/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b700a2b-d39f-4245-8da7-b3c5a8dafa02/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d750f999-7894-4bf8-a496-4da308d5b106/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f3bcf75-2b99-4c94-9705-22438631dd80/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd858f5d-e905-4ae2-b01e-efb68130b001/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa9d08c1-8821-4747-bdf2-aac5b90c7d36/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fd43490-2dab-4322-81e7-f9cbd47546fb/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/659d146c-30a0-43ee-a34b-c4486bd5c740/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a966c1b3-106d-44e1-83b8-0d76d029b240/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/201886c3-4a47-44d9-a782-c087e8836289/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa15ec67-2115-4824-acca-10aa02d5571c/slide-15.png",
+];
 
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   [
@@ -1821,7 +1831,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://botane-organic-presentation-preview-715f6d07-e999775d.sites.vm0.io",
       previewImage:
-        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/presentation-template/botane-organic/preview/slide-01.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3dfb810f-81fb-45ba-85f2-d6f74b475475/slide-01.png",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
       designSystemId: "design-system:mauve-dusk",
       templateId: "template:html-ppt-botane-organic",
