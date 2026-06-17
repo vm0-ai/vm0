@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.464.1](https://github.com/vm0-ai/vm0/compare/app-v0.464.0...app-v0.464.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* keep credit usage focus ring visible ([#18040](https://github.com/vm0-ai/vm0/issues/18040)) ([199afdb](https://github.com/vm0-ai/vm0/commit/199afdb29499ac23563e0bfbc1a45a28a99f81da))
+* **zero-chat:** let message text show through the feedback toolbar ([#18016](https://github.com/vm0-ai/vm0/issues/18016)) ([77f43d5](https://github.com/vm0-ai/vm0/commit/77f43d558ce28650eef532bcc699a1a628d4338e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.98.1
+    * @vm0/core bumped to 8.348.1
+
 ## [0.464.0](https://github.com/vm0-ai/vm0/compare/app-v0.463.2...app-v0.464.0) (2026-06-17)
 
 

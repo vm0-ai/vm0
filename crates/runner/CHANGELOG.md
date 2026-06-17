@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.119.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.0...runner-rs-v0.119.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **runner:** redact session ids from diagnostics ([#18002](https://github.com/vm0-ai/vm0/issues/18002)) ([326365b](https://github.com/vm0-ai/vm0/commit/326365b25d11f6c5d5bb957171223ec810f24c34))
+
+
+### Documentation
+
+* **mitm-addon:** clarify browser passthrough heuristic ([#18058](https://github.com/vm0-ai/vm0/issues/18058)) ([4be2b60](https://github.com/vm0-ai/vm0/commit/4be2b60bc63cf53a42cbe9ed79807b18abbe2c38))
+
+
+### Refactoring
+
+* **mitm-addon:** generate readable builtin firewall modules ([#18035](https://github.com/vm0-ai/vm0/issues/18035)) ([b0eeca8](https://github.com/vm0-ai/vm0/commit/b0eeca8a508f78b5e3140192744c9ce00a63b37e))
+* **mitm-addon:** split firewall auth boundaries ([#18033](https://github.com/vm0-ai/vm0/issues/18033)) ([4ac325c](https://github.com/vm0-ai/vm0/commit/4ac325cbfb85d087a2d93d2fe75c049b9869dc23))
+
 ## [0.119.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.11...runner-rs-v0.119.0) (2026-06-17)
 
 
