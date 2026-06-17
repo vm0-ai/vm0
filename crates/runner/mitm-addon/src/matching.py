@@ -277,6 +277,11 @@ _AwsRuleIdentity = tuple[
 ]
 
 
+class _AwsFormActionResult(NamedTuple):
+    values: list[str]
+    inspectable: bool
+
+
 class CompiledPathPattern(NamedTuple):
     segments: tuple[ParsedSegment, ...]
 
@@ -1774,20 +1779,32 @@ def _unique_query_value(query_pairs: list[tuple[str, str]], name: str) -> str | 
 def _form_action_values(
     headers: tuple[tuple[str, str], ...] | None,
     body: bytes | None,
-) -> list[str] | None:
-    if not body or len(body) > _AWS_FORM_BODY_MAX_BYTES:
-        return None
-    content_type = _unique_header_value(headers, "content-type")
-    if content_type is None:
-        return None
+) -> _AwsFormActionResult:
+    if not body:
+        return _AwsFormActionResult([], True)
+    content_types = (
+        []
+        if headers is None
+        else [value for name, value in headers if name.lower() == "content-type"]
+    )
+    if len(content_types) > 1:
+        return _AwsFormActionResult([], False)
+    if not content_types:
+        return _AwsFormActionResult([], True)
+    content_type = content_types[0]
     media_type = content_type.split(";", maxsplit=1)[0].strip().lower()
     if media_type != "application/x-www-form-urlencoded":
-        return None
+        return _AwsFormActionResult([], True)
+    if len(body) > _AWS_FORM_BODY_MAX_BYTES:
+        return _AwsFormActionResult([], False)
     try:
         decoded = body.decode("utf-8")
     except UnicodeDecodeError:
-        return None
-    return _query_values(parse_qsl(decoded, keep_blank_values=True), "Action")
+        return _AwsFormActionResult([], False)
+    return _AwsFormActionResult(
+        _query_values(parse_qsl(decoded, keep_blank_values=True), "Action"),
+        True,
+    )
 
 
 def _aws_query_action_matches(
@@ -1798,14 +1815,17 @@ def _aws_query_action_matches(
     body: bytes | None,
 ) -> bool:
     query_actions = _query_values(query_pairs, "Action")
-    form_actions = _form_action_values(headers, body)
+    form_action_result = _form_action_values(headers, body)
+    if not form_action_result.inspectable:
+        return False
+    form_actions = form_action_result.values
     if len(query_actions) == 1:
-        if form_actions is not None and form_actions and form_actions != query_actions:
+        if form_actions and form_actions != query_actions:
             return False
         return query_actions[0] == action
     if len(query_actions) > 1:
         return False
-    if form_actions is None or len(form_actions) != 1:
+    if len(form_actions) != 1:
         return False
     return form_actions[0] == action
 
