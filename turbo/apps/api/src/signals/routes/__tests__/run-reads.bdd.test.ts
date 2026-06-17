@@ -2197,8 +2197,8 @@ describe("RUN-04: agent run telemetry families", () => {
 });
 
 /**
- * Quiet capture handlers for every callback URL a schedule-fired run can
- * carry, so cancelling the run-now run never hits an unhandled MSW route
+ * Quiet capture handlers for the callback URLs a schedule-fired run can
+ * still deliver over HTTP, so cancelling the run-now run never hits an unhandled MSW route
  * (same pattern as runs-schedules.bdd.test.ts).
  */
 function captureScheduleRunCallbacks(): void {
@@ -2207,13 +2207,6 @@ function captureScheduleRunCallbacks(): void {
   );
   webhooks.captureInternalCallbackDeliveries(
     "/api/internal/callbacks/schedule/cron",
-  );
-  webhooks.captureInternalCallbackDeliveries("/api/internal/callbacks/chat");
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/trigger/loop",
-  );
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/trigger/cron",
   );
 }
 

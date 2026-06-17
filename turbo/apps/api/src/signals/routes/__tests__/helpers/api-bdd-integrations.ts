@@ -187,7 +187,7 @@ interface TelegramWebhookResponse {
   readonly headers: Headers;
 }
 
-export interface ForwardedInternalCallback {
+interface ForwardedInternalCallback {
   readonly path: string;
   readonly status: number;
   readonly body: unknown;

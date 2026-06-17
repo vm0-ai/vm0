@@ -50,7 +50,29 @@ setup_file() {
     cd - >/dev/null
 }
 
+test_oauth_agent_ids_file() {
+    printf '%s\n' "$BATS_FILE_TMPDIR/test-oauth-agent-ids"
+}
+
+track_test_oauth_agent() {
+    local agent_id="$1"
+    [ -n "$agent_id" ] && printf '%s\n' "$agent_id" >> "$(test_oauth_agent_ids_file)"
+}
+
+cleanup_tracked_test_oauth_agents() {
+    local ids_file
+    ids_file="$(test_oauth_agent_ids_file)"
+    [ -f "$ids_file" ] || return 0
+
+    local agent_id
+    while IFS= read -r agent_id; do
+        [ -n "$agent_id" ] && $ZERO_CLI agent delete "$agent_id" -y >/dev/null 2>&1 || true
+    done < "$ids_file"
+}
+
 teardown_file() {
+    cleanup_tracked_test_oauth_agents
+
     $ZERO_CLI secret delete -y TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
     $ZERO_CLI secret delete -y TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
 
@@ -299,6 +321,7 @@ EOF
         echo "# Failed to extract composeId from compose output"
         return 1
     }
+    track_test_oauth_agent "$COMPOSE_ID"
 
     run enable_test_oauth_for_compose "$COMPOSE_ID"
     echo "$output"
@@ -380,6 +403,7 @@ EOF
         echo "# Failed to extract composeId from compose output"
         return 1
     }
+    track_test_oauth_agent "$COMPOSE_ID"
 
     run enable_test_oauth_for_compose "$COMPOSE_ID"
     echo "$output"

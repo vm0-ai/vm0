@@ -1773,3 +1773,36 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
       templateId: "template:html-ppt-zhangzara-8-bit-orbit",
     },
   ];
+
+export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
+  [
+    {
+      slug: "playful-editorial-deck",
+      title: "Playful editorial deck",
+      prompt:
+        "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-editorial`, create a 15-slide presentation for a product or service launch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it saturated, editorial, joyful, and structured.",
+      embedUrl:
+        "https://playful-editorial-presentation-preview-715f6d07-adec3994.sites.vm0.io",
+      previewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47dd22b0-f4d5-4f22-a2c1-eacfd9b76422/slide-01.png",
+      previewImages: [
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47dd22b0-f4d5-4f22-a2c1-eacfd9b76422/slide-01.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/469e122c-2e41-49a2-b505-aee2d5513533/slide-02.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d6363611-391c-4307-84e5-46b7d8bc4d90/slide-03.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40b6e3c4-89c7-4e8e-ad77-5074e268aec3/slide-04.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/865ffc08-40d5-4673-94a9-75e82262ef18/slide-05.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/678a9c07-5893-4422-baef-b10bdb119ba1/slide-06.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1e0435d-f2d0-4a10-85b8-ceaad79ba800/slide-07.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f3bef1d9-98b6-4f9a-b80f-656170f4cdd1/slide-08.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7b48d9f6-49db-4934-9e53-fcb09cee5e12/slide-09.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/607f88f7-1386-4e78-b8ca-c8c5e58ba27b/slide-10.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8f226d1f-4665-4c6e-9500-edf8b0ad4e1c/slide-11.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8bfa2a1c-3d7d-408b-bb13-8cde538882b8/slide-12.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2d3a5385-a650-467c-8f71-b6f1206d0745/slide-13.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a168bd42-ad4c-4b5a-aa2f-91682aeb7f1a/slide-14.png",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f81a84b-8c63-45d8-a46f-3d558cde7faf/slide-15.png",
+      ],
+      designSystemId: "design-system:playful-editorial",
+      templateId: "template:html-ppt-playful-editorial",
+    },
+  ];

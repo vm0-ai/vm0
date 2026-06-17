@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.118.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.8...runner-rs-v0.118.9) (2026-06-16)
+
+
+### Bug Fixes
+
+* add Google Maps OAuth firewall hosts ([#17926](https://github.com/vm0-ai/vm0/issues/17926)) ([03e786e](https://github.com/vm0-ai/vm0/commit/03e786eeb2dc1fadade13cb6058d319f9ac73cc6))
+
+
+### Refactoring
+
+* **runner:** clarify firecracker discovery state ([#17923](https://github.com/vm0-ai/vm0/issues/17923)) ([2e6c582](https://github.com/vm0-ai/vm0/commit/2e6c582d8c9db60ceae54c805cf2e9e600bc415f))
+* **runner:** split workspace image cache module ([#17916](https://github.com/vm0-ai/vm0/issues/17916)) ([208652f](https://github.com/vm0-ai/vm0/commit/208652fa8b444b45a121d7340c1ccc1d7324b5bb))
+* split r2 cache tests by behavior ([#17922](https://github.com/vm0-ai/vm0/issues/17922)) ([9e2c775](https://github.com/vm0-ai/vm0/commit/9e2c775d10c13a0e6bb098bd6d4c7aa741ad824c))
+
+## [0.118.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.7...runner-rs-v0.118.8) (2026-06-16)
+
+
+### Bug Fixes
+
+* preserve guest logs after runner timeout ([#17909](https://github.com/vm0-ai/vm0/issues/17909)) ([741ea2c](https://github.com/vm0-ai/vm0/commit/741ea2cee65a007fab5b574e3e371a73d20ea842))
+
+## [0.118.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.6...runner-rs-v0.118.7) (2026-06-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** block cleartext firewall credential injection ([#17864](https://github.com/vm0-ai/vm0/issues/17864)) ([cf9e4fa](https://github.com/vm0-ai/vm0/commit/cf9e4fa26cc46368c37c3df5fc42a62ea26748c7))
+
+## [0.118.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.5...runner-rs-v0.118.6) (2026-06-16)
+
+
+### Refactoring
+
+* split runner r2 cache module ([#17883](https://github.com/vm0-ai/vm0/issues/17883)) ([65f08eb](https://github.com/vm0-ai/vm0/commit/65f08eb0bc146ab6760ab7f1d4ce79acb3df53de))
+
 ## [0.118.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.4...runner-rs-v0.118.5) (2026-06-16)
 
 

@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatNewPresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the new curated presentation template catalog in the Zero chat composer. While off, the presentation picker keeps the legacy catalog.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.VideoTemplatePicker]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -329,6 +336,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConnectorReconnectReasons]: {
     maintainer: "liangyou@vm0.ai",

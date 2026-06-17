@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.428.6](https://github.com/vm0-ai/vm0/compare/web-v12.428.5...web-v12.428.6) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/core bumped to 8.346.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.83.0
+
+## [12.428.5](https://github.com/vm0-ai/vm0/compare/web-v12.428.4...web-v12.428.5) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/core bumped to 8.345.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.82.0
+
+## [12.428.4](https://github.com/vm0-ai/vm0/compare/web-v12.428.3...web-v12.428.4) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.1
+    * @vm0/core bumped to 8.344.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.81.1
+
+## [12.428.3](https://github.com/vm0-ai/vm0/compare/web-v12.428.2...web-v12.428.3) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/core bumped to 8.344.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.81.0
+
 ## [12.428.2](https://github.com/vm0-ai/vm0/compare/web-v12.428.1...web-v12.428.2) (2026-06-16)
 
 

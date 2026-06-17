@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { getPermissionCategories } from "@vm0/connectors/firewalls";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -139,6 +140,21 @@ function unknownEndpointsRow(container: HTMLElement): HTMLElement {
     throw new Error("Other endpoints row not found");
   }
   return row;
+}
+
+function connectorCategoryLabel(
+  connectorType: ConnectorType,
+  category: string,
+): string {
+  const categoryData = getPermissionCategories(connectorType);
+  if (!categoryData) {
+    throw new Error(`${connectorType} categories not found`);
+  }
+
+  const count = Object.values(categoryData.categories).filter((value) => {
+    return value === category;
+  }).length;
+  return `${category} (${count})`;
 }
 
 function mockTeamAPIs(): void {
@@ -781,12 +797,17 @@ describe("team page navigation", () => {
     expect(
       within(groupedDialog).getByText("Slack permissions"),
     ).toBeInTheDocument();
-    expect(within(groupedDialog).getByText("Read (37)")).toBeInTheDocument();
-    expect(within(groupedDialog).getByText("Write (23)")).toBeInTheDocument();
-    expect(within(groupedDialog).getByText("Misc (5)")).toBeInTheDocument();
+    const readGroupLabel = connectorCategoryLabel("slack", "Read");
+    const writeGroupLabel = connectorCategoryLabel("slack", "Write");
+    const miscGroupLabel = connectorCategoryLabel("slack", "Misc");
+    expect(within(groupedDialog).getByText(readGroupLabel)).toBeInTheDocument();
+    expect(
+      within(groupedDialog).getByText(writeGroupLabel),
+    ).toBeInTheDocument();
+    expect(within(groupedDialog).getByText(miscGroupLabel)).toBeInTheDocument();
 
-    click(screen.getByText("Misc (5)"));
-    const miscGroup = screen.getByText("Misc (5)").closest("div");
+    click(screen.getByText(miscGroupLabel));
+    const miscGroup = screen.getByText(miscGroupLabel).closest("div");
     if (!(miscGroup instanceof HTMLElement)) {
       throw new Error("Misc permission group not found");
     }

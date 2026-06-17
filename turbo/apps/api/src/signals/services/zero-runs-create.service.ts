@@ -29,7 +29,10 @@ import type { z } from "zod";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { createAgentRun$ } from "./agent-run-create.service";
+import {
+  createAgentRun$,
+  type DispatchFailedRunCallbacks,
+} from "./agent-run-create.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
@@ -135,6 +138,7 @@ interface CreateZeroRunCommandArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
   readonly zeroRunMetadata?: ZeroRunMetadata;
+  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
 }
 
 function forbidden(message: string) {
@@ -614,6 +618,7 @@ export const createZeroIntegrationRun$ = command(
         | "telegramLanguage"
         | "agentphoneHandle"
       >;
+      readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
   ) => {
@@ -684,6 +689,7 @@ export const createZeroIntegrationRun$ = command(
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,
+        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
     );
@@ -799,6 +805,7 @@ export const createZeroRun$ = command(
           ...args.zeroRunMetadata,
           triggerAgentId,
         },
+        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
     );

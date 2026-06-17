@@ -7,6 +7,19 @@ import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 const context = testContext();
 
 describe("prompt query parameter injection", () => {
+  it("prefills the chat draft from the app root prompt URL", async () => {
+    detachedSetupPage({
+      context,
+      path: "/?prompt=Start%20my%20first%20task",
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    expect(textarea).toHaveValue("Start my first task");
+  });
+
   it("starts a chat draft from a prompt URL", async () => {
     detachedSetupPage({
       context,

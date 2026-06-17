@@ -38,13 +38,6 @@ import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
-import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent";
-import { internalCallbacksAgentPhoneRoutes } from "./routes/internal-callbacks-agentphone";
-import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
-import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
-import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
-import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
-import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
@@ -207,13 +200,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
-  ...internalCallbacksAgentRoutes,
-  ...internalCallbacksAgentPhoneRoutes,
-  ...internalCallbacksChatRoutes,
-  ...internalCallbacksGithubIssuesRoutes,
-  ...internalCallbacksSlackOrgRoutes,
-  ...internalCallbacksTelegramRoutes,
-  ...internalCallbacksTriggerRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,

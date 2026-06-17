@@ -1,7 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { internalCallbacksAgentContract } from "@vm0/api-contracts/contracts/internal-callbacks-agent";
-import type { InternalCallbackBody } from "@vm0/api-contracts/contracts/internal-callbacks-shared";
 import {
   internalEventConsumerAxiomContract,
   internalEventConsumerChatAssistantContract,
@@ -85,28 +83,6 @@ interface Vm0SignatureHeaders {
 interface CapturedInternalCallbackDelivery {
   readonly body: string;
   readonly headers: Record<string, string>;
-}
-
-/**
- * First captured delivery whose JSON envelope carries the given callback
- * status. Throws when no such delivery was dispatched yet.
- */
-export function callbackDeliveryWithStatus(
-  deliveries: readonly CapturedInternalCallbackDelivery[],
-  status: "completed" | "failed" | "progress",
-): CapturedInternalCallbackDelivery {
-  const delivery = deliveries.find((entry) => {
-    const parsed: unknown = JSON.parse(entry.body);
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as { readonly status?: unknown }).status === status
-    );
-  });
-  if (!delivery) {
-    throw new Error(`Expected a captured ${status} callback delivery`);
-  }
-  return delivery;
 }
 
 interface SvixHeaders {
@@ -489,32 +465,6 @@ export function createWebhookCallbackApi(context: TestContext) {
           body: args.body as string,
         }),
         args.statuses,
-      );
-    },
-
-    async requestAgentCallback(
-      body: InternalCallbackBody,
-      statuses: readonly (200 | 400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(internalCallbacksAgentContract).post({
-          headers: {},
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestInvalidAgentCallbackBody(
-      body: string,
-      statuses: readonly (400 | 401 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(internalCallbacksAgentContract).post({
-          headers: {},
-          body: body as unknown as InternalCallbackBody,
-        }),
-        statuses,
       );
     },
 

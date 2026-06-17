@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.22](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.21...ably-subscriber-v0.7.22) (2026-06-16)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** track heartbeat from inbound activity ([#17873](https://github.com/vm0-ai/vm0/issues/17873)) ([8b79b22](https://github.com/vm0-ai/vm0/commit/8b79b222be09e886ef13b9dfc681ffa5fc1089bf))
+
 ## [0.7.21](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.20...ably-subscriber-v0.7.21) (2026-06-11)
 
 

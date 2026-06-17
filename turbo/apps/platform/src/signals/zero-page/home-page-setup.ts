@@ -12,18 +12,21 @@ export const setupHomePage$ = command(
 
     await set(checkUnifiedSettingsParam$, signal);
 
-    // Redirect bare / to /agents/:id/chat. Use-case "Try It" deep links go
-    // through /onboarding directly (see buildPromptHref in use-cases/data.ts),
-    // so we no longer intercept ?prompt= here. ?queue= is forwarded so the
-    // queue drawer opens on arrival.
+    // Redirect bare / to /agents/:id/chat. Keep prompt deep links intact so
+    // paid-onboarding handoffs can prefill the chat composer on arrival.
+    // ?queue= is also forwarded so the queue drawer opens on arrival.
     const homeAgentId = await get(homeAgentId$);
     signal.throwIfAborted();
     if (!homeAgentId) {
       return;
     }
     const params = get(searchParams$);
+    const prompt = params.get("prompt");
     const queue = params.get("queue");
     const forwardParams = new URLSearchParams();
+    if (prompt) {
+      forwardParams.set("prompt", prompt);
+    }
     if (queue) {
       forwardParams.set("queue", queue);
     }

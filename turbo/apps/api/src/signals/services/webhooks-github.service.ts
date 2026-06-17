@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-import {
-  githubIssuesCallbackPayloadSchema,
-  type GitHubIssuesCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-github-issues";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -17,7 +13,6 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -37,7 +32,12 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import {
+  githubIssuesCallbackPayloadSchema,
+  type GitHubIssuesCallbackPayload,
+} from "./github-issues-callback-payload";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -1131,9 +1131,10 @@ const runAgentForGitHub$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope,
         selectedModelOverride: args.modelRoute?.selectedModel,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
-            url: `${internalApiBaseUrl()}/api/internal/callbacks/github/issues`,
+            internalKind: "github:issues",
             secret: generateCallbackSecret(),
             payload: args.callbackPayload,
           },

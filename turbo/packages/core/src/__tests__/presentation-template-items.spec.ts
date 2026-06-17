@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { PRESENTATION_TEMPLATE_ITEMS } from "../presentation-template-items";
+import {
+  PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "../presentation-template-items";
 import { findDesignSystem, findTemplate } from "../resource-registry";
 
 function stripRegistryPrefix(id: string, prefix: string): string {
@@ -8,8 +11,13 @@ function stripRegistryPrefix(id: string, prefix: string): string {
 }
 
 describe("presentation template items", () => {
+  const allPresentationItems = [
+    ...PRESENTATION_TEMPLATE_ITEMS,
+    ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  ];
+
   it("resolve every design system and template against the resource registry", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       const designSystem = findDesignSystem(item.designSystemId);
       const template = findTemplate(item.templateId);
 
@@ -20,7 +28,7 @@ describe("presentation template items", () => {
   });
 
   it("keeps prompt references aligned with structured ids", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       const promptDesignSystem = stripRegistryPrefix(
         item.designSystemId,
         "design-system:",
@@ -33,8 +41,48 @@ describe("presentation template items", () => {
   });
 
   it("defines explicit preview image arrays", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+    for (const item of allPresentationItems) {
       expect(Array.isArray(item.previewImages)).toBe(true);
     }
+  });
+
+  it("keeps the legacy catalog available and resolvable", () => {
+    const legacyItem = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return candidate.slug === "starship-v3-investor-update";
+    });
+
+    expect(legacyItem).toBeDefined();
+    expect(
+      PRESENTATION_TEMPLATE_PICKER_ITEMS.some((candidate) => {
+        return candidate.slug === legacyItem?.slug;
+      }),
+    ).toBe(false);
+    expect(legacyItem?.designSystemId).toBe("design-system:spacex");
+    expect(legacyItem?.templateId).toBe("template:html-ppt-pitch-deck");
+    expect(findDesignSystem(legacyItem?.designSystemId ?? "")).toBeDefined();
+    expect(findTemplate(legacyItem?.templateId ?? "")?.targets).toContain(
+      "presentation",
+    );
+  });
+
+  it("keeps the picker catalog separate from the legacy catalog", () => {
+    expect(
+      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
+        return candidate.slug === "playful-editorial-deck";
+      }),
+    ).toBe(false);
+
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return candidate.slug === "playful-editorial-deck";
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.designSystemId).toBe("design-system:playful-editorial");
+    expect(item?.templateId).toBe("template:html-ppt-playful-editorial");
+    expect(item?.previewImages.length).toBe(15);
+    expect(findDesignSystem(item?.designSystemId ?? "")).toBeDefined();
+    expect(findTemplate(item?.templateId ?? "")?.targets).toContain(
+      "presentation",
+    );
   });
 });

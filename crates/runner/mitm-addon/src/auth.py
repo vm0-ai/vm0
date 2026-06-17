@@ -169,6 +169,23 @@ _auth_state: dict[tuple[str, str], _FirewallAuthState] = {}
 _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
+def _non_empty_mapping(value: object) -> bool:
+    return isinstance(value, dict) and bool(value)
+
+
+def auth_config_injects_credentials(auth_config: object) -> bool:
+    """Return whether a firewall auth config can add managed credentials."""
+    if not isinstance(auth_config, dict):
+        return False
+    if _non_empty_mapping(auth_config.get("headers")):
+        return True
+    if _non_empty_mapping(auth_config.get("query")):
+        return True
+    if _non_empty_mapping(auth_config.get("awsSigv4")):
+        return True
+    return isinstance(auth_config.get("base"), str) and auth_config["base"] != ""
+
+
 def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
     state = _auth_state.get(cache_key)
     if state is None:
@@ -238,6 +255,17 @@ def _build_firewall_auth_context(
         secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
         vars_map=vm_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+    )
+
+
+def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) -> bool:
+    return auth_config_injects_credentials(
+        {
+            "headers": context.auth_headers,
+            "query": context.auth_query,
+            "awsSigv4": context.auth_aws_sigv4,
+            "base": context.auth_base,
+        }
     )
 
 
@@ -1015,6 +1043,26 @@ def _preflight_firewall_auth(
             allow=context.allow,
             proxy_log_path=context.proxy_log_path,
             firewall_base=context.firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    request_scheme = flow.request.scheme.lower()
+    if request_scheme != "https" and _firewall_auth_context_injects_credentials(context):
+        log_proxy_entry(
+            context.proxy_log_path,
+            "warn",
+            "Refusing to inject firewall credentials over non-HTTPS transport",
+            type="firewall",
+            firewall_base=context.firewall_base,
+            request_scheme=request_scheme,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=403,
+            action="BLOCK",
+            error_code="insecure_transport",
+            message="Firewall credentials cannot be injected over non-HTTPS transport",
+            permission=context.allow.name,
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 

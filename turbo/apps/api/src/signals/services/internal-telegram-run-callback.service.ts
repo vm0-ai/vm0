@@ -1,0 +1,664 @@
+import { command } from "ccstate";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { writeDb$, type Db } from "../external/db";
+import {
+  deleteMessage,
+  sendChatAction,
+  sendMessage,
+  type SendTelegramMessageResult,
+} from "../external/telegram-client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../external/telegram-official";
+import { decryptPersistentSecretValue } from "./crypto.utils";
+import {
+  loadUserFeatureSwitchContext,
+  userFeatureSwitchOverrides,
+} from "./feature-switches.service";
+import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
+import { getRunOutputText } from "./run-output.service";
+import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
+import {
+  saveTelegramThreadSession,
+  storeTelegramBotMessage,
+} from "./zero-telegram-callback-persistence.service";
+import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
+import { settle } from "../utils";
+
+const L = logger("InternalCallbacksTelegram");
+
+const telegramCallbackPayloadSchema = z
+  .object({
+    installationId: z.string(),
+    chatId: z.string(),
+    messageId: z.string(),
+    rootMessageId: z.string().nullable().optional(),
+    userLinkId: z.string(),
+    agentId: z.string(),
+    existingSessionId: z.string().nullable().optional(),
+    isDM: z.boolean(),
+    thinkingMessageId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+type TelegramCallbackPayload = z.infer<typeof telegramCallbackPayloadSchema>;
+
+interface RunContext {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly sessionId: string;
+  readonly lastEventSequence: number | null;
+  readonly chatThreadId: string | null;
+}
+
+type TelegramCallbackResult =
+  | { readonly status: 200; readonly body: { readonly success: true } }
+  | {
+      readonly status: 400 | 500 | 502;
+      readonly body: { readonly error: string };
+    };
+
+type TelegramInternalCallbackResult =
+  | { readonly success: true; readonly skipped?: true }
+  | {
+      readonly success: false;
+      readonly error: string;
+      readonly status: 400 | 500 | 502;
+    };
+
+function successResponse(): {
+  readonly status: 200;
+  readonly body: { readonly success: true };
+} {
+  return { status: 200, body: { success: true } };
+}
+
+function errorResponse(
+  status: 400 | 500 | 502,
+  message: string,
+): {
+  readonly status: 400 | 500 | 502;
+  readonly body: { readonly error: string };
+} {
+  return { status, body: { error: message } };
+}
+
+function parsePayload(payload: unknown): TelegramCallbackPayload | null {
+  const result = telegramCallbackPayloadSchema.safeParse(payload);
+  return result.success ? result.data : null;
+}
+
+function dispatchResultFromResponse(
+  result: TelegramCallbackResult,
+): TelegramInternalCallbackResult {
+  if (result.status === 200) {
+    return { success: true };
+  }
+  return {
+    success: false,
+    status: result.status,
+    error: result.body.error,
+  };
+}
+
+function agentDisplayLabel(row: {
+  readonly displayName: string | null;
+  readonly name: string | null;
+}): string {
+  return row.displayName?.trim() || row.name?.trim() || "zero";
+}
+
+async function resolveTelegramBotToken(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly signal: AbortSignal;
+}): Promise<string | undefined> {
+  if (isOfficialTelegramBotId(args.installationId)) {
+    return getOfficialTelegramBotConfig().botToken ?? undefined;
+  }
+
+  const [row] = await args.db
+    .select({
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+      orgId: telegramInstallations.orgId,
+      ownerUserId: telegramInstallations.ownerUserId,
+    })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.telegramBotId, args.installationId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!row) {
+    return undefined;
+  }
+
+  return await decryptPersistentSecretValue(
+    row.encryptedBotToken,
+    await loadUserFeatureSwitchContext(args.db, row.orgId, row.ownerUserId),
+  );
+}
+
+async function resolveAgentInfo(args: {
+  readonly db: Db;
+  readonly agentId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly label: string; readonly name: string }> {
+  const [agentRow] = await args.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, args.agentId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  const label = agentRow ? agentDisplayLabel(agentRow) : "zero";
+  return {
+    label,
+    name: agentRow?.name ?? label,
+  };
+}
+
+async function resolveTelegramAuditLogsUrl(args: {
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly signal: AbortSignal;
+}): Promise<string | undefined> {
+  const overrides = await args.getFeatureOverrides(args.orgId, args.userId);
+  args.signal.throwIfAborted();
+  const typedOverrides =
+    Object.keys(overrides).length > 0
+      ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
+      : undefined;
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: args.userId,
+    orgId: args.orgId,
+    overrides: typedOverrides,
+  });
+  if (!enabled) {
+    return undefined;
+  }
+
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
+}
+
+async function deleteThinkingMessageIfPresent(args: {
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly thinkingMessageId: string | null | undefined;
+}): Promise<void> {
+  if (!args.thinkingMessageId) {
+    return;
+  }
+
+  const result = await settle(
+    deleteMessage(args.botToken, args.chatId, Number(args.thinkingMessageId)),
+  );
+  if (!result.ok) {
+    L.debug("Failed to delete legacy thinking placeholder", {
+      thinkingMessageId: args.thinkingMessageId,
+      error: result.error,
+    });
+  }
+}
+
+function buildCompletionOutput(args: {
+  readonly status: "completed" | "failed";
+  readonly output: string | undefined;
+  readonly errorDetail: string | undefined;
+  readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
+}): { readonly htmlOutput: string; readonly responseText: string | undefined } {
+  if (args.status === "completed") {
+    const responseText = args.output ?? "Task completed successfully.";
+    return {
+      responseText,
+      htmlOutput: buildTelegramResponse(
+        responseText,
+        args.logsUrl,
+        args.footerText,
+      ),
+    };
+  }
+
+  return {
+    responseText: undefined,
+    htmlOutput: buildTelegramResponse(
+      args.errorDetail ?? "The agent encountered an error during execution.",
+      args.logsUrl,
+      args.footerText,
+    ),
+  };
+}
+
+function telegramErrorResponse(
+  result: Extract<SendTelegramMessageResult, { kind: "telegram-error" }>,
+): {
+  readonly status: 400 | 502;
+  readonly body: { readonly error: string };
+} {
+  return {
+    status: result.status >= 500 ? 502 : 400,
+    body: {
+      error: `Telegram API error: ${
+        result.description ?? `HTTP ${result.status}`
+      }`,
+    },
+  };
+}
+
+async function loadRunContext(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<RunContext | undefined> {
+  const [run] = await args.db
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      sessionId: agentRuns.sessionId,
+      lastEventSequence: agentRuns.lastEventSequence,
+      chatThreadId: zeroRuns.chatThreadId,
+    })
+    .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(eq(agentRuns.id, args.runId))
+    .limit(1);
+  args.signal.throwIfAborted();
+  return run;
+}
+
+async function resolveCompletionText(args: {
+  readonly runId: string;
+  readonly status: "completed" | "failed";
+  readonly run: RunContext | undefined;
+  readonly signal: AbortSignal;
+}): Promise<string | undefined> {
+  if (args.status === "failed") {
+    return undefined;
+  }
+
+  const output = await getRunOutputText(args.runId, {
+    waitForOutput: false,
+    knownLastEventSequence: args.run?.lastEventSequence,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  return output;
+}
+
+async function resolveCompletionDecorations(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: RunContext | undefined;
+  readonly installationId: string;
+  readonly agentId: string;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
+}> {
+  if (!args.run) {
+    return { logsUrl: undefined, footerText: undefined };
+  }
+
+  const logsUrl = await resolveTelegramAuditLogsUrl({
+    runId: args.runId,
+    orgId: args.run.orgId,
+    userId: args.run.userId,
+    getFeatureOverrides: args.getFeatureOverrides,
+    signal: args.signal,
+  });
+  const footerText = await resolveTelegramAgentReplyFooterText({
+    db: args.db,
+    orgId: args.run.orgId,
+    runId: args.runId,
+    installationId: args.installationId,
+    agentId: args.agentId,
+  });
+  args.signal.throwIfAborted();
+
+  return { logsUrl, footerText };
+}
+
+async function sendCompletionMessages(args: {
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly htmlOutput: string;
+  readonly replyToMessageId: number | undefined;
+  readonly signal: AbortSignal;
+}): Promise<
+  | { readonly kind: "ok"; readonly firstMessageId: number | undefined }
+  | Extract<SendTelegramMessageResult, { kind: "telegram-error" }>
+> {
+  let firstMessageId: number | undefined;
+  for (const chunk of splitMessage(args.htmlOutput)) {
+    const sent = await sendMessage(args.botToken, args.chatId, chunk, {
+      replyToMessageId: args.replyToMessageId,
+    });
+    args.signal.throwIfAborted();
+    if (sent.kind === "telegram-error") {
+      return sent;
+    }
+    if (firstMessageId === undefined) {
+      firstMessageId = sent.messageId;
+    }
+  }
+
+  return { kind: "ok", firstMessageId };
+}
+
+async function persistCompletionResult(args: {
+  readonly db: Db;
+  readonly run: RunContext | undefined;
+  readonly isOfficial: boolean;
+  readonly payload: TelegramCallbackPayload;
+  readonly botReplyMessageId: number | undefined;
+  readonly responseText: string | undefined;
+  readonly status: "completed" | "failed";
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.botReplyMessageId === undefined) {
+    return;
+  }
+
+  await storeTelegramBotMessage({
+    db: args.db,
+    scope:
+      args.isOfficial && args.run
+        ? {
+            kind: "official",
+            orgId: args.run.orgId,
+            userLinkId: args.payload.userLinkId,
+          }
+        : { kind: "custom", installationId: args.payload.installationId },
+    chatId: args.payload.chatId,
+    messageId: args.botReplyMessageId,
+    text: args.responseText,
+  });
+  args.signal.throwIfAborted();
+
+  if (!args.run) {
+    return;
+  }
+
+  await saveTelegramThreadSession({
+    db: args.db,
+    userLinkId: args.payload.userLinkId,
+    userLinkKind: args.isOfficial ? "official" : "custom",
+    chatId: args.payload.chatId,
+    rootMessageId: args.payload.isDM ? "dm" : String(args.botReplyMessageId),
+    previousRootMessageId: args.payload.rootMessageId ?? undefined,
+    existingSessionId: args.payload.existingSessionId ?? undefined,
+    newSessionId: args.payload.existingSessionId
+      ? undefined
+      : args.run.sessionId,
+    messageId: args.payload.messageId,
+    runStatus: args.status,
+  });
+  args.signal.throwIfAborted();
+}
+
+async function handleCompletion(args: {
+  readonly db: Db;
+  readonly botToken: string;
+  readonly runId: string;
+  readonly status: "completed" | "failed";
+  readonly error: string | undefined;
+  readonly payload: TelegramCallbackPayload;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly formatRunError: (params: {
+    readonly runId: string;
+    readonly chatThreadId: string | null | undefined;
+    readonly errorMessage: string;
+  }) => Promise<string>;
+  readonly signal: AbortSignal;
+}): Promise<TelegramCallbackResult> {
+  const {
+    installationId,
+    chatId,
+    messageId,
+    agentId,
+    isDM,
+    thinkingMessageId,
+  } = args.payload;
+
+  const agent = await resolveAgentInfo({
+    db: args.db,
+    agentId,
+    signal: args.signal,
+  });
+  const isOfficial = isOfficialTelegramBotId(installationId);
+
+  await deleteThinkingMessageIfPresent({
+    botToken: args.botToken,
+    chatId,
+    thinkingMessageId,
+  });
+  args.signal.throwIfAborted();
+
+  await sendChatAction(args.botToken, chatId, "typing");
+  args.signal.throwIfAborted();
+
+  const run = await loadRunContext({
+    db: args.db,
+    runId: args.runId,
+    signal: args.signal,
+  });
+
+  if (args.status === "failed") {
+    L.error("Agent run failed", {
+      runId: args.runId,
+      agentName: agent.name,
+      chatId,
+      error: args.error,
+    });
+  }
+
+  const output = await resolveCompletionText({
+    runId: args.runId,
+    status: args.status,
+    run,
+    signal: args.signal,
+  });
+  const { logsUrl, footerText } = await resolveCompletionDecorations({
+    db: args.db,
+    runId: args.runId,
+    run,
+    installationId,
+    agentId,
+    getFeatureOverrides: args.getFeatureOverrides,
+    signal: args.signal,
+  });
+  const errorDetail =
+    args.status === "failed"
+      ? await args.formatRunError({
+          runId: args.runId,
+          chatThreadId: run?.chatThreadId,
+          errorMessage:
+            args.error ?? "The agent encountered an error during execution.",
+        })
+      : undefined;
+  args.signal.throwIfAborted();
+  const { htmlOutput, responseText } = buildCompletionOutput({
+    status: args.status,
+    output,
+    errorDetail,
+    logsUrl,
+    footerText,
+  });
+
+  const sendResult = await sendCompletionMessages({
+    botToken: args.botToken,
+    chatId,
+    htmlOutput,
+    replyToMessageId: isDM ? undefined : Number(messageId),
+    signal: args.signal,
+  });
+  if (sendResult.kind === "telegram-error") {
+    return telegramErrorResponse(sendResult);
+  }
+
+  await persistCompletionResult({
+    db: args.db,
+    run,
+    isOfficial,
+    payload: args.payload,
+    botReplyMessageId: sendResult.firstMessageId,
+    responseText,
+    status: args.status,
+    signal: args.signal,
+  });
+
+  return successResponse();
+}
+
+interface HandleTelegramInternalCallbackInput {
+  readonly db: Db;
+  readonly callback: InternalRunCallbackEnvelope;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly formatRunError: (params: {
+    readonly runId: string;
+    readonly chatThreadId: string | null | undefined;
+    readonly errorMessage: string;
+  }) => Promise<string>;
+  readonly signal?: AbortSignal;
+}
+
+async function handleTelegramInternalCallback(
+  input: HandleTelegramInternalCallbackInput,
+): Promise<TelegramCallbackResult> {
+  const { callback } = input;
+  const signal = input.signal ?? new AbortController().signal;
+  const payload = parsePayload(callback.payload);
+  if (!payload) {
+    return errorResponse(400, "Invalid or missing payload");
+  }
+
+  L.debug("Processing Telegram callback", {
+    runId: callback.runId,
+    status: callback.status,
+    chatId: payload.chatId,
+  });
+
+  const botToken = await resolveTelegramBotToken({
+    db: input.db,
+    installationId: payload.installationId,
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (!botToken) {
+    L.warn("Telegram bot token not configured", {
+      installationId: payload.installationId,
+    });
+    return successResponse();
+  }
+
+  if (callback.status === "progress") {
+    const typing = await settle(
+      sendChatAction(botToken, payload.chatId, "typing"),
+    );
+    signal.throwIfAborted();
+    if (!typing.ok) {
+      L.debug("Failed to refresh typing indicator", {
+        runId: callback.runId,
+        error: typing.error,
+      });
+    }
+    return successResponse();
+  }
+
+  const result = await handleCompletion({
+    db: input.db,
+    botToken,
+    runId: callback.runId,
+    status: callback.status,
+    error: callback.error,
+    payload,
+    getFeatureOverrides: input.getFeatureOverrides,
+    formatRunError: input.formatRunError,
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (result.status === 200) {
+    L.debug("Telegram callback processed successfully", {
+      runId: callback.runId,
+    });
+  }
+  return result;
+}
+
+export async function handleTelegramInternalCallbackWithoutCcstate(
+  db: Db,
+  callback: InternalRunCallbackEnvelope,
+  signal?: AbortSignal,
+): Promise<TelegramInternalCallbackResult> {
+  const result = await handleTelegramInternalCallback({
+    db,
+    callback,
+    getFeatureOverrides: async (orgId, userId) => {
+      return (
+        (await loadUserFeatureSwitchContext(db, orgId, userId)).overrides ?? {}
+      );
+    },
+    formatRunError: (params) => {
+      return Promise.resolve(
+        formatRunErrorForExternalSurface({
+          code: "INTERNAL_SERVER_ERROR",
+          message: params.errorMessage,
+        }),
+      );
+    },
+    signal,
+  });
+  return dispatchResultFromResponse(result);
+}
+
+export const handleTelegramInternalCallback$ = command(
+  async (
+    { get, set },
+    callback: InternalRunCallbackEnvelope,
+    signal: AbortSignal,
+  ): Promise<TelegramInternalCallbackResult> => {
+    const result = await handleTelegramInternalCallback({
+      db: set(writeDb$),
+      callback,
+      getFeatureOverrides: (orgId, userId) => {
+        return get(userFeatureSwitchOverrides(orgId, userId));
+      },
+      formatRunError: (params) => {
+        return set(formatRunErrorForRunOwner$, params, signal);
+      },
+      signal,
+    });
+    return dispatchResultFromResponse(result);
+  },
+);

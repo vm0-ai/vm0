@@ -1,38 +1,89 @@
+import { randomUUID } from "node:crypto";
+
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
+import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
+import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { seedAgentRunCallback$ } from "../../routes/__tests__/helpers/agent-run-callback";
+import {
+  captureGithubIssueApi,
+  mockGithubAppEnv,
+} from "../../routes/__tests__/helpers/api-bdd-github";
+import { encryptSecretForTests } from "../../routes/__tests__/helpers/encrypt-secret";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackOrgConnection$,
+  seedSlackOrgInstallation$,
+  type SlackIntegrationFixture,
+} from "../../routes/__tests__/helpers/zero-integrations-slack";
 import { createFixtureTracker } from "../../routes/__tests__/helpers/zero-route-test";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
+  seedChatThread$,
   seedRun$,
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "../../routes/__tests__/helpers/zero-usage-insight";
-import { dispatchRunCallbacks$ } from "../agent-run-callback.service";
+import {
+  dispatchRunCallbacks,
+  dispatchRunCallbacks$,
+} from "../agent-run-callback.service";
+import { dispatchProgressCallbacks$ } from "../agent-run-callbacks.service";
 import { createZeroRun$ } from "../zero-runs-create.service";
 
 const context = testContext();
 const store = createStore();
 
 const AGENT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/agent";
+const TRIGGER_CRON_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/trigger/cron";
+const TRIGGER_LOOP_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/trigger/loop";
+const GITHUB_ISSUES_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/github/issues";
+const SLACK_ORG_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/slack/org";
+const TELEGRAM_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/telegram";
+const AGENTPHONE_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/agentphone";
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
+const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
 interface AgentCallbackRunFixture extends UsageInsightFixture {
   readonly composeId: string;
+  readonly agentId: string;
   readonly runId: string;
+}
+
+interface ChatCallbackRunFixture extends AgentCallbackRunFixture {
+  readonly threadId: string;
 }
 
 interface Vm0ProviderKeyFixture {
@@ -46,6 +97,27 @@ interface OpenRouterRequest {
   }[];
 }
 
+interface TelegramSendMessageBody {
+  readonly chat_id: string;
+  readonly text: string;
+  readonly parse_mode?: string;
+  readonly reply_parameters?: { readonly message_id: number };
+}
+
+interface AgentPhoneSendMessageBody {
+  readonly agent_id?: string;
+  readonly to_number?: string;
+  readonly conversation_id?: string;
+  readonly reply_to_message_id?: string;
+  readonly body?: string;
+}
+
+const trackSlackIntegration = createFixtureTracker<SlackIntegrationFixture>(
+  (fixture) => {
+    return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+  },
+);
+
 const trackFixture = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
@@ -57,11 +129,15 @@ const trackVm0ProviderKey = createFixtureTracker<Vm0ProviderKeyFixture>(
   },
 );
 
-async function seedAgentCallbackRun(): Promise<AgentCallbackRunFixture> {
+async function seedAgentCallbackRun(
+  options: {
+    readonly status?: "pending" | "running" | "completed" | "failed";
+  } = {},
+): Promise<AgentCallbackRunFixture> {
   const fixture = await trackFixture(
     store.set(seedUsageInsightFixture$, undefined, context.signal),
   );
-  const { composeId } = await store.set(
+  const { composeId, agentId } = await store.set(
     seedCompose$,
     { orgId: fixture.orgId, userId: fixture.userId },
     context.signal,
@@ -73,13 +149,51 @@ async function seedAgentCallbackRun(): Promise<AgentCallbackRunFixture> {
       userId: fixture.userId,
       composeId,
       triggerSource: "agent",
-      status: "completed",
+      status: options.status ?? "completed",
       prompt: "Summarize the delegated task.",
       lastEventSequence: 0,
     },
     context.signal,
   );
-  return { ...fixture, composeId, runId };
+  return { ...fixture, composeId, agentId, runId };
+}
+
+async function seedChatCallbackRun(
+  options: {
+    readonly status?: "running" | "completed" | "failed";
+    readonly prompt?: string;
+    readonly error?: string | null;
+  } = {},
+): Promise<ChatCallbackRunFixture> {
+  const fixture = await trackFixture(
+    store.set(seedUsageInsightFixture$, undefined, context.signal),
+  );
+  const { composeId, agentId } = await store.set(
+    seedCompose$,
+    { orgId: fixture.orgId, userId: fixture.userId },
+    context.signal,
+  );
+  const threadId = await store.set(
+    seedChatThread$,
+    { userId: fixture.userId, composeId },
+    context.signal,
+  );
+  const { runId } = await store.set(
+    seedRun$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      composeId,
+      triggerSource: "web",
+      chatThreadId: threadId,
+      status: options.status ?? "completed",
+      prompt: options.prompt ?? "Summarize the chat callback.",
+      error: options.error ?? null,
+      lastEventSequence: null,
+    },
+    context.signal,
+  );
+  return { ...fixture, composeId, agentId, runId, threadId };
 }
 
 function mockRunOutput(result: string): void {
@@ -88,6 +202,27 @@ function mockRunOutput(result: string): void {
     return Promise.resolve(
       apl.includes("agent-run-events")
         ? [{ eventType: "result", eventData: { result } }]
+        : [],
+    );
+  });
+}
+
+function mockChatOutput(result: string): void {
+  context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    const apl = typeof args[0] === "string" ? args[0] : "";
+    return Promise.resolve(
+      apl.includes("agent-run-events")
+        ? [
+            {
+              eventType: "assistant",
+              sequenceNumber: 0,
+              eventData: {
+                message: {
+                  content: [{ type: "text", text: result }],
+                },
+              },
+            },
+          ]
         : [],
     );
   });
@@ -107,6 +242,49 @@ function captureOpenRouterRequests(summary: string): OpenRouterRequest[] {
   return requests;
 }
 
+function mockChatOpenRouterCompletions(): OpenRouterRequest[] {
+  const requests: OpenRouterRequest[] = [];
+  mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+  server.use(
+    http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
+      const body = (await request.json()) as OpenRouterRequest;
+      requests.push(body);
+      const systemPrompt = body.messages[0]?.content ?? "";
+      if (
+        systemPrompt.includes("Summarize the result of this chat agent run")
+      ) {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Chat run summary" } }],
+        });
+      }
+      if (systemPrompt.includes("Generate a short, descriptive title")) {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Chat Callback Title" } }],
+        });
+      }
+      if (
+        systemPrompt.includes("Generate up to three concise follow-up prompts")
+      ) {
+        return HttpResponse.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify([
+                  { prompt: "Ask a follow-up", kind: "talk" },
+                ]),
+              },
+            },
+          ],
+        });
+      }
+      return HttpResponse.json({
+        choices: [{ message: { content: "Chat notification summary" } }],
+      });
+    }),
+  );
+  return requests;
+}
+
 function failIfAgentCallbackRouteIsFetched(): () => number {
   let requests = 0;
   server.use(
@@ -115,6 +293,24 @@ function failIfAgentCallbackRouteIsFetched(): () => number {
       return HttpResponse.text("agent callback route should not be fetched", {
         status: 500,
       });
+    }),
+  );
+  return () => {
+    return requests;
+  };
+}
+
+function failIfCallbackRouteIsFetched(url: string): () => number {
+  let requests = 0;
+  server.use(
+    http.post(url, () => {
+      requests += 1;
+      return HttpResponse.text(
+        "internal callback route should not be fetched",
+        {
+          status: 500,
+        },
+      );
     }),
   );
   return () => {
@@ -149,6 +345,462 @@ async function readSummary(runId: string): Promise<string | null | undefined> {
   return row?.summary;
 }
 
+async function readChatCallbackMessages(runId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runLifecycleEvent: chatMessages.runLifecycleEvent,
+      sequenceNumber: chatMessages.sequenceNumber,
+      recommendedFollowups: chatMessages.recommendedFollowups,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.runId, runId))
+    .orderBy(chatMessages.createdAt, chatMessages.sequenceNumber);
+}
+
+async function readTrigger(triggerId: string) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(automationTriggers)
+    .where(eq(automationTriggers.id, triggerId))
+    .limit(1);
+  return row;
+}
+
+async function readGithubIssueSession(args: {
+  readonly installationId: string;
+  readonly repo: string;
+  readonly issueNumber: number;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, args.installationId),
+        eq(githubIssueSessions.repo, args.repo),
+        eq(githubIssueSessions.issueNumber, args.issueNumber),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function readSlackConnectionId(args: {
+  readonly workspaceId: string;
+  readonly slackUserId: string;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
+        eq(slackOrgConnections.slackUserId, args.slackUserId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected Slack org connection");
+  }
+  return row.id;
+}
+
+async function readSlackThreadSession(args: {
+  readonly connectionId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(slackOrgThreadSessions)
+    .where(
+      and(
+        eq(slackOrgThreadSessions.connectionId, args.connectionId),
+        eq(slackOrgThreadSessions.slackChannelId, args.channelId),
+        eq(slackOrgThreadSessions.slackThreadTs, args.threadTs),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function readTelegramThreadSession(args: {
+  readonly userLinkId: string;
+  readonly chatId: string;
+  readonly rootMessageId: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId),
+        eq(telegramThreadSessions.chatId, args.chatId),
+        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function readAgentPhoneThreadSession(args: {
+  readonly userLinkId: string;
+  readonly rootMessageId: string;
+}) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select()
+    .from(agentphoneThreadSessions)
+    .where(
+      and(
+        eq(agentphoneThreadSessions.agentphoneUserLinkId, args.userLinkId),
+        eq(agentphoneThreadSessions.rootMessageId, args.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function seedSlackCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly messageTs: string;
+  readonly connectionId: string;
+  readonly agentId: string;
+}> {
+  const workspaceId = `T${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`;
+  await trackSlackIntegration(
+    store.set(
+      seedSlackOrgInstallation$,
+      {
+        orgId: fixture.orgId,
+        slackWorkspaceId: workspaceId,
+        botToken: `xoxb-${fixture.runId}`,
+      },
+      context.signal,
+    ),
+  );
+  const slackUserId = `U${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`;
+  await store.set(
+    seedSlackOrgConnection$,
+    {
+      slackWorkspaceId: workspaceId,
+      vm0UserId: fixture.userId,
+      slackUserId,
+    },
+    context.signal,
+  );
+  const connectionId = await readSlackConnectionId({
+    workspaceId,
+    slackUserId,
+  });
+  return {
+    workspaceId,
+    channelId: `C${fixture.runId.replace(/\W/gu, "").slice(0, 10)}`,
+    threadTs: "1710000000.000100",
+    messageTs: "1710000000.000100",
+    connectionId,
+    agentId: fixture.composeId,
+  };
+}
+
+async function seedTelegramCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly installationId: string;
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly messageId: string;
+  readonly userLinkId: string;
+  readonly agentId: string;
+}> {
+  const db = store.set(writeDb$);
+  const installationId = `bot-${randomUUID()}`;
+  const botToken = `123456:${fixture.runId.slice(0, 8)}`;
+  await db.insert(telegramInstallations).values({
+    telegramBotId: installationId,
+    botUsername: `bot_${installationId.slice(4, 12)}`,
+    encryptedBotToken: encryptSecretForTests(botToken),
+    webhookSecret: `whs_${randomUUID()}`,
+    defaultComposeId: fixture.composeId,
+    ownerUserId: fixture.userId,
+    orgId: fixture.orgId,
+  });
+  const [userLink] = await db
+    .insert(telegramUserLinks)
+    .values({
+      installationId,
+      telegramUserId: `tg-${randomUUID()}`,
+      telegramUsername: "alice",
+      telegramDisplayName: "Alice",
+      vm0UserId: fixture.userId,
+    })
+    .returning({ id: telegramUserLinks.id });
+  if (!userLink) {
+    throw new Error("Failed to seed Telegram user link");
+  }
+  return {
+    installationId,
+    botToken,
+    chatId: "77001",
+    messageId: "42",
+    userLinkId: userLink.id,
+    agentId: fixture.composeId,
+  };
+}
+
+async function seedAgentPhoneCallbackContext(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly messageId: string;
+  readonly conversationId: string;
+  readonly channel: "imessage";
+  readonly isGroup: false;
+  readonly rootMessageId: string;
+  readonly phoneHandle: string;
+  readonly fromNumber: string;
+  readonly toNumber: string;
+  readonly userLinkId: string;
+  readonly agentId: string;
+  readonly agentphoneAgentId: string;
+  readonly existingSessionId: null;
+}> {
+  const db = store.set(writeDb$);
+  const phoneHandle = `+1555${fixture.runId.replace(/\D/gu, "").slice(0, 7).padEnd(7, "0")}`;
+  const [userLink] = await db
+    .insert(agentphoneUserLinks)
+    .values({
+      phoneHandle,
+      vm0UserId: fixture.userId,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: agentphoneUserLinks.id });
+  if (!userLink) {
+    throw new Error("Failed to seed AgentPhone user link");
+  }
+  return {
+    messageId: `ap-msg-${fixture.runId}`,
+    conversationId: `ap-conv-${fixture.runId}`,
+    channel: "imessage",
+    isGroup: false,
+    rootMessageId: "dm",
+    phoneHandle,
+    fromNumber: phoneHandle,
+    toNumber: "+19039853128",
+    userLinkId: userLink.id,
+    agentId: fixture.composeId,
+    agentphoneAgentId: `ap-agent-${fixture.runId}`,
+    existingSessionId: null,
+  };
+}
+
+function mockSlackApi(): void {
+  context.mocks.slack.chat.postMessage.mockResolvedValue({
+    ok: true,
+    ts: "1710000000.000200",
+    channel: "C_CALLBACK",
+  });
+  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
+    ok: true,
+  });
+}
+
+function mockTelegramApi(
+  token: string,
+  options: {
+    readonly sendMessageStatus?: number;
+    readonly sendMessageDescription?: string;
+  } = {},
+): {
+  readonly chatActions: unknown[];
+  readonly sentMessages: TelegramSendMessageBody[];
+} {
+  const chatActions: unknown[] = [];
+  const sentMessages: TelegramSendMessageBody[] = [];
+  let nextMessageId = 900;
+
+  server.use(
+    http.post(
+      `https://api.telegram.org/bot${token}/sendChatAction`,
+      async ({ request }) => {
+        chatActions.push(await request.json());
+        return HttpResponse.json({ ok: true, result: true });
+      },
+    ),
+    http.post(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      async ({ request }) => {
+        const body = (await request.json()) as TelegramSendMessageBody;
+        sentMessages.push(body);
+        if (options.sendMessageStatus !== undefined) {
+          return HttpResponse.json(
+            {
+              ok: false,
+              description:
+                options.sendMessageDescription ?? "Bad Request: chat not found",
+            },
+            { status: options.sendMessageStatus },
+          );
+        }
+        return HttpResponse.json({
+          ok: true,
+          result: {
+            message_id: nextMessageId++,
+            chat: { id: Number(body.chat_id) || 123 },
+            text: body.text,
+          },
+        });
+      },
+    ),
+  );
+
+  return { chatActions, sentMessages };
+}
+
+function mockAgentPhoneApi(
+  options: { readonly sendMessageStatus?: number } = {},
+): {
+  readonly messages: AgentPhoneSendMessageBody[];
+  readonly typing: string[];
+} {
+  const messages: AgentPhoneSendMessageBody[] = [];
+  const typing: string[] = [];
+  mockOptionalEnv("AGENTPHONE_API_BASE_URL", AGENTPHONE_API_BASE_URL);
+  mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
+  server.use(
+    http.post(`${AGENTPHONE_API_BASE_URL}/v1/messages`, async ({ request }) => {
+      const body = (await request.json()) as AgentPhoneSendMessageBody;
+      messages.push(body);
+      if (options.sendMessageStatus !== undefined) {
+        return HttpResponse.text("agentphone send failed", {
+          status: options.sendMessageStatus,
+        });
+      }
+      return HttpResponse.json({
+        id: `apmsg-${messages.length}`,
+        status: "sent",
+        channel: "imessage",
+        from_number: "+19039853128",
+        to_number: body.to_number ?? null,
+        media_urls: [],
+      });
+    }),
+    http.post(
+      `${AGENTPHONE_API_BASE_URL}/v1/conversations/:id/typing`,
+      ({ params }) => {
+        typing.push(typeof params.id === "string" ? params.id : "");
+        return HttpResponse.json({ status: "sent" });
+      },
+    ),
+  );
+  return { messages, typing };
+}
+
+async function seedGithubInstallation(
+  fixture: AgentCallbackRunFixture,
+): Promise<{
+  readonly installationId: string;
+  readonly remoteInstallationId: string;
+}> {
+  const db = store.set(writeDb$);
+  const numericRunId = fixture.runId.replace(/\D/gu, "").padEnd(9, "0");
+  const remoteInstallationId = `9${numericRunId.slice(0, 9)}`;
+  const [installation] = await db
+    .insert(githubInstallations)
+    .values({
+      installationId: remoteInstallationId,
+      status: "active",
+      orgId: fixture.orgId,
+      defaultComposeId: fixture.composeId,
+    })
+    .returning({ id: githubInstallations.id });
+  if (!installation) {
+    throw new Error("Failed to seed GitHub installation");
+  }
+  return { installationId: installation.id, remoteInstallationId };
+}
+
+async function seedGithubAgentSession(
+  fixture: AgentCallbackRunFixture,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      agentComposeId: fixture.composeId,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("Failed to seed GitHub agent session");
+  }
+  return session.id;
+}
+
+async function seedAutomationTrigger(
+  fixture: AgentCallbackRunFixture,
+  options: {
+    readonly kind: "cron" | "loop";
+    readonly consecutiveFailures?: number;
+    readonly intervalSeconds?: number;
+    readonly cronExpression?: string;
+  },
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [thread] = await db
+    .insert(chatThreads)
+    .values({ userId: fixture.userId, agentComposeId: fixture.composeId })
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error("Failed to seed trigger chat thread");
+  }
+  const [automation] = await db
+    .insert(automations)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: `callback-test-${fixture.runId.slice(0, 8)}`,
+      instruction: "Run a scheduled task",
+      agentId: fixture.composeId,
+      chatThreadId: thread.id,
+      interpreterKind: "time",
+    })
+    .returning({ id: automations.id });
+  if (!automation) {
+    throw new Error("Failed to seed automation");
+  }
+  const isCron = options.kind === "cron";
+  const [trigger] = await db
+    .insert(automationTriggers)
+    .values({
+      automationId: automation.id,
+      kind: options.kind,
+      cronExpression: isCron ? (options.cronExpression ?? "0 9 * * *") : null,
+      intervalSeconds: isCron ? null : (options.intervalSeconds ?? 300),
+      timezone: "UTC",
+      nextRunAt: null,
+      enabled: true,
+      consecutiveFailures: options.consecutiveFailures ?? 0,
+    })
+    .returning({ id: automationTriggers.id });
+  if (!trigger) {
+    throw new Error("Failed to seed automation trigger");
+  }
+  return trigger.id;
+}
+
 async function seedVm0ProviderKey(
   label: string,
 ): Promise<Vm0ProviderKeyFixture> {
@@ -162,6 +814,10 @@ async function seedVm0ProviderKey(
   });
   return { label };
 }
+
+afterEach(() => {
+  clearMockNow();
+});
 
 describe("dispatchRunCallbacks$ agent internal dispatch", () => {
   it("dispatches typed agent callbacks through ccstate without fetching the route", async () => {
@@ -352,5 +1008,1142 @@ describe("dispatchRunCallbacks$ agent internal dispatch", () => {
         payload: { triggerAgentId: composeId },
       },
     ]);
+  });
+});
+
+describe("dispatchRunCallbacks$ GitHub issues internal dispatch", () => {
+  it("dispatches typed GitHub issue callbacks through ccstate without fetching the route", async () => {
+    mockGithubAppEnv();
+    const fixture = await seedAgentCallbackRun();
+    const installation = await seedGithubInstallation(fixture);
+    const newSessionId = await seedGithubAgentSession(fixture);
+    const issueApi = captureGithubIssueApi(installation.remoteInstallationId);
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "github:issues",
+        payload: {
+          installationId: installation.installationId,
+          repo: "vm0-ai/vm0",
+          issueNumber: 42,
+          agentId: fixture.composeId,
+          triggerCommentId: "1234",
+          triggerReactionId: "5678",
+          triggerCommentBody: "@Zero fix this",
+        },
+      },
+      context.signal,
+    );
+    mockRunOutput("GitHub callback finished.");
+    const routeRequests = failIfCallbackRouteIsFetched(
+      GITHUB_ISSUES_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(issueApi.comments).toHaveLength(1);
+    expect(issueApi.comments[0]).toMatchObject({
+      repo: "vm0-ai/vm0",
+      issueNumber: "42",
+    });
+    expect(issueApi.comments[0]?.body).toContain("> @Zero fix this");
+    expect(issueApi.comments[0]?.body).toContain("GitHub callback finished.");
+    expect(issueApi.reactionDeletes).toStrictEqual([
+      { commentId: "1234", reactionId: "5678" },
+    ]);
+    await expect(
+      readGithubIssueSession({
+        installationId: installation.installationId,
+        repo: "vm0-ai/vm0",
+        issueNumber: 42,
+      }),
+    ).resolves.toMatchObject({
+      agentSessionId: newSessionId,
+      lastCommentId: issueApi.comments[0]?.id,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "github:issues",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy GitHub issue callback URLs through the same ccstate path", async () => {
+    mockGithubAppEnv();
+    const fixture = await seedAgentCallbackRun();
+    const installation = await seedGithubInstallation(fixture);
+    const issueApi = captureGithubIssueApi(installation.remoteInstallationId);
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: GITHUB_ISSUES_CALLBACK_URL,
+        payload: {
+          installationId: installation.installationId,
+          repo: "vm0-ai/vm0",
+          issueNumber: 43,
+          agentId: fixture.composeId,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      GITHUB_ISSUES_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      {
+        db,
+        runId: fixture.runId,
+        status: "failed",
+        error: "Legacy GitHub failure",
+      },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(issueApi.comments).toHaveLength(1);
+    expect(issueApi.comments[0]).toMatchObject({
+      repo: "vm0-ai/vm0",
+      issueNumber: "43",
+    });
+    expect(issueApi.comments[0]?.body).toContain("Oops, something went wrong.");
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: GITHUB_ISSUES_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("marks invalid typed GitHub issue callback payloads as failed", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "github:issues",
+        payload: {},
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      GITHUB_ISSUES_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Invalid or missing payload",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "failed",
+      attempts: 1,
+      lastError: "Invalid or missing payload",
+    });
+  });
+
+  it("dispatches typed GitHub issue callbacks from the non-ccstate wrapper", async () => {
+    mockGithubAppEnv();
+    const fixture = await seedAgentCallbackRun();
+    const installation = await seedGithubInstallation(fixture);
+    const issueApi = captureGithubIssueApi(installation.remoteInstallationId);
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "github:issues",
+        payload: {
+          installationId: installation.installationId,
+          repo: "vm0-ai/vm0",
+          issueNumber: 44,
+          agentId: fixture.composeId,
+          sessionContinuityEnabled: false,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      GITHUB_ISSUES_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(
+      db,
+      fixture.runId,
+      "failed",
+      undefined,
+      "Non-ccstate GitHub failure",
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(issueApi.comments).toHaveLength(1);
+    expect(issueApi.comments[0]?.body).toContain("Oops, something went wrong.");
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ Slack org internal dispatch", () => {
+  it("dispatches typed Slack org callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    mockRunOutput("Slack callback finished.");
+    const openRouterRequests = captureOpenRouterRequests("Slack run summary");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: payload.channelId,
+        thread_ts: payload.threadTs,
+        text: "Slack callback finished.",
+      }),
+    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: payload.channelId,
+      thread_ts: payload.threadTs,
+      status: "",
+    });
+    expect(openRouterRequests).toHaveLength(1);
+    await expect(readSummary(fixture.runId)).resolves.toBe("Slack run summary");
+    await expect(
+      readSlackThreadSession({
+        connectionId: payload.connectionId,
+        channelId: payload.channelId,
+        threadTs: payload.threadTs,
+      }),
+    ).resolves.toMatchObject({
+      agentSessionId: expect.any(String),
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "slack:org",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed Slack org progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+    await flushWaitUntilForTest();
+
+    expect(routeRequests()).toBe(0);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledWith({
+      channel_id: payload.channelId,
+      thread_ts: payload.threadTs,
+      status: "is thinking...",
+    });
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "slack:org",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy Slack org callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
+      Object.assign(new Error("channel_not_found"), {
+        data: { ok: false, error: "channel_not_found" },
+      }),
+    );
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: SLACK_ORG_CALLBACK_URL,
+        payload,
+      },
+      context.signal,
+    );
+    mockRunOutput("Undelivered Slack output.");
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Slack API error: channel_not_found",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: SLACK_ORG_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "Slack API error: channel_not_found",
+    });
+  });
+
+  it("dispatches typed Slack org callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedSlackCallbackContext(fixture);
+    mockSlackApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "slack:org",
+        payload,
+      },
+      context.signal,
+    );
+    mockRunOutput("Non-ccstate Slack output.");
+    const routeRequests = failIfCallbackRouteIsFetched(SLACK_ORG_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: payload.channelId,
+        thread_ts: payload.threadTs,
+        text: "Non-ccstate Slack output.",
+      }),
+    );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ Telegram internal dispatch", () => {
+  it("dispatches typed Telegram callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    mockRunOutput("Telegram callback finished.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(1);
+    expect(telegramApi.sentMessages[0]).toMatchObject({
+      chat_id: payload.chatId,
+      text: "Telegram callback finished.",
+      parse_mode: "HTML",
+    });
+    expect(telegramApi.sentMessages[0]?.reply_parameters).toBeUndefined();
+    await expect(
+      readTelegramThreadSession({
+        userLinkId: payload.userLinkId,
+        chatId: payload.chatId,
+        rootMessageId: "dm",
+      }),
+    ).resolves.toMatchObject({
+      agentSessionId: expect.any(String),
+      lastProcessedMessageId: payload.messageId,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed Telegram progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "telegram",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy Telegram callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken, {
+      sendMessageStatus: 400,
+      sendMessageDescription: "Bad Request: chat not found",
+    });
+    mockRunOutput("Undelivered Telegram output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: TELEGRAM_CALLBACK_URL,
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Telegram API error: Bad Request: chat not found",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.chatActions).toStrictEqual([
+      { chat_id: payload.chatId, action: "typing" },
+    ]);
+    expect(telegramApi.sentMessages).toHaveLength(1);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: TELEGRAM_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "Telegram API error: Bad Request: chat not found",
+    });
+  });
+
+  it("dispatches typed Telegram callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedTelegramCallbackContext(fixture);
+    const telegramApi = mockTelegramApi(payload.botToken);
+    mockRunOutput("Non-ccstate Telegram output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "telegram",
+        payload: {
+          installationId: payload.installationId,
+          chatId: payload.chatId,
+          messageId: payload.messageId,
+          rootMessageId: "dm",
+          userLinkId: payload.userLinkId,
+          agentId: payload.agentId,
+          existingSessionId: null,
+          isDM: true,
+        },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(TELEGRAM_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(telegramApi.sentMessages[0]).toMatchObject({
+      chat_id: payload.chatId,
+      text: "Non-ccstate Telegram output.",
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ AgentPhone internal dispatch", () => {
+  it("dispatches typed AgentPhone callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    mockRunOutput("AgentPhone callback finished.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.typing).toStrictEqual([]);
+    expect(agentPhoneApi.messages).toStrictEqual([
+      {
+        agent_id: payload.agentphoneAgentId,
+        to_number: payload.phoneHandle,
+        body: "AgentPhone callback finished.",
+      },
+    ]);
+    await expect(
+      readAgentPhoneThreadSession({
+        userLinkId: payload.userLinkId,
+        rootMessageId: payload.rootMessageId,
+      }),
+    ).resolves.toMatchObject({
+      conversationId: payload.conversationId,
+      agentSessionId: expect.any(String),
+      lastProcessedMessageId: payload.messageId,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "agentphone",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed AgentPhone progress callbacks without fetching the route", async () => {
+    const fixture = await seedAgentCallbackRun({ status: "running" });
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.typing).toStrictEqual([payload.conversationId]);
+    expect(agentPhoneApi.messages).toStrictEqual([]);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "agentphone",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy AgentPhone callback URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi({ sendMessageStatus: 502 });
+    mockRunOutput("Undelivered AgentPhone output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: AGENTPHONE_CALLBACK_URL,
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "AgentPhone API error: agentphone send failed",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.messages).toHaveLength(1);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: AGENTPHONE_CALLBACK_URL,
+      internalKind: null,
+      status: "failed",
+      attempts: 1,
+      lastError: "AgentPhone API error: agentphone send failed",
+    });
+  });
+
+  it("dispatches typed AgentPhone callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const payload = await seedAgentPhoneCallbackContext(fixture);
+    const agentPhoneApi = mockAgentPhoneApi();
+    mockRunOutput("Non-ccstate AgentPhone output.");
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "agentphone",
+        payload,
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(AGENTPHONE_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(db, fixture.runId, "completed");
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(agentPhoneApi.messages).toStrictEqual([
+      {
+        agent_id: payload.agentphoneAgentId,
+        to_number: payload.phoneHandle,
+        body: "Non-ccstate AgentPhone output.",
+      },
+    ]);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ chat internal dispatch", () => {
+  it("dispatches typed chat callbacks through ccstate without fetching the route", async () => {
+    const fixture = await seedChatCallbackRun();
+    mockChatOutput("Typed chat callback finished.");
+    const openRouterRequests = mockChatOpenRouterCompletions();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    expect(openRouterRequests.length).toBeGreaterThanOrEqual(3);
+    await expect(readSummary(fixture.runId)).resolves.toBe("Chat run summary");
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: "Typed chat callback finished.",
+          runLifecycleEvent: null,
+          sequenceNumber: 0,
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: null,
+          runLifecycleEvent: "completed",
+          recommendedFollowups: [{ prompt: "Ask a follow-up", kind: "talk" }],
+        }),
+      ]),
+    );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "chat",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+    expect((await readCallback(callbackId))?.deliveredAt).toBeInstanceOf(Date);
+  });
+
+  it("dispatches legacy chat callback URLs through the same ccstate path", async () => {
+    const fixture = await seedChatCallbackRun();
+    mockChatOutput("Legacy chat callback finished.");
+    mockChatOpenRouterCompletions();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: CHAT_CALLBACK_URL,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: "Legacy chat callback finished.",
+          runLifecycleEvent: null,
+          sequenceNumber: 0,
+        }),
+      ]),
+    );
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: CHAT_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("keeps typed chat progress callbacks as no-ops without fetching the route", async () => {
+    const fixture = await seedChatCallbackRun({ status: "running" });
+    context.mocks.axiom.query.mockImplementation(() => {
+      throw new Error("chat progress callbacks should not query output");
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(CHAT_CALLBACK_URL);
+
+    await store.set(dispatchProgressCallbacks$, fixture.runId, context.signal);
+
+    expect(routeRequests()).toBe(0);
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+    await expect(
+      readChatCallbackMessages(fixture.runId),
+    ).resolves.toStrictEqual([]);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "chat",
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+});
+
+describe("dispatchRunCallbacks$ trigger internal dispatch", () => {
+  it("dispatches typed loop trigger callbacks through ccstate without fetching the route", async () => {
+    mockNow(new Date("2026-05-13T04:00:00.000Z"));
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "loop",
+      consecutiveFailures: 2,
+      intervalSeconds: 300,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "trigger:loop",
+        payload: { triggerId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_LOOP_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 0,
+      enabled: true,
+      nextRunAt: new Date("2026-05-13T04:05:00.000Z"),
+    });
+    await expect(readSummary(fixture.runId)).resolves.toBeNull();
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "trigger:loop",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy loop trigger URLs through the same ccstate path", async () => {
+    mockNow(new Date("2026-05-13T04:00:00.000Z"));
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "loop",
+      consecutiveFailures: 2,
+      intervalSeconds: 300,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: TRIGGER_LOOP_CALLBACK_URL,
+        payload: { triggerId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_LOOP_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 0,
+      enabled: true,
+      nextRunAt: new Date("2026-05-13T04:05:00.000Z"),
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: TRIGGER_LOOP_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches typed cron trigger callbacks through ccstate without fetching the route", async () => {
+    const completedAt = new Date("2026-05-13T04:00:00.000Z");
+    mockNow(completedAt);
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "cron",
+      consecutiveFailures: 2,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "trigger:cron",
+        payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_CRON_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 0,
+      enabled: true,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: null,
+      internalKind: "trigger:cron",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("dispatches legacy cron trigger URLs through the same ccstate path", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "cron",
+      consecutiveFailures: 2,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        url: TRIGGER_CRON_CALLBACK_URL,
+        payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_CRON_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      {
+        db,
+        runId: fixture.runId,
+        status: "failed",
+        error: "Agent crashed",
+      },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 3,
+      enabled: false,
+      nextRunAt: null,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      url: TRIGGER_CRON_CALLBACK_URL,
+      internalKind: null,
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("marks invalid typed trigger callback payloads as failed", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "trigger:loop",
+        payload: {},
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_LOOP_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([
+      {
+        callbackId,
+        success: false,
+        error: "Invalid or missing payload",
+      },
+    ]);
+    expect(routeRequests()).toBe(0);
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "failed",
+      attempts: 1,
+      lastError: "Invalid or missing payload",
+    });
+  });
+
+  it("dispatches typed trigger callbacks from the non-ccstate wrapper", async () => {
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "loop",
+      consecutiveFailures: 2,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "trigger:loop",
+        payload: { triggerId },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_LOOP_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    const results = await dispatchRunCallbacks(
+      db,
+      fixture.runId,
+      "failed",
+      undefined,
+      "Run failed",
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 3,
+      enabled: false,
+      nextRunAt: null,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
   });
 });

@@ -1,5 +1,60 @@
 # Changelog
 
+## [8.346.0](https://github.com/vm0-ai/vm0/compare/core-v8.345.0...core-v8.346.0) (2026-06-16)
+
+
+### Features
+
+* register playful editorial presentation template ([#17919](https://github.com/vm0-ai/vm0/issues/17919)) ([c967214](https://github.com/vm0-ai/vm0/commit/c967214afe7108fea84d31c64a846b54a6fefc45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/connectors bumped to 1.83.0
+
+## [8.345.0](https://github.com/vm0-ai/vm0/compare/core-v8.344.1...core-v8.345.0) (2026-06-16)
+
+
+### Features
+
+* roll out chat automation sidebar to staff org ([#17921](https://github.com/vm0-ai/vm0/issues/17921)) ([53a8678](https://github.com/vm0-ai/vm0/commit/53a8678d29cd4b8d149687986945d3d74952025f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/connectors bumped to 1.82.0
+
+## [8.344.1](https://github.com/vm0-ai/vm0/compare/core-v8.344.0...core-v8.344.1) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.1
+    * @vm0/connectors bumped to 1.81.1
+
+## [8.344.0](https://github.com/vm0-ai/vm0/compare/core-v8.343.1...core-v8.344.0) (2026-06-16)
+
+
+### Features
+
+* show connector reconnect reasons ([#17885](https://github.com/vm0-ai/vm0/issues/17885)) ([ca5ea4c](https://github.com/vm0-ai/vm0/commit/ca5ea4cbbc796c83ab614402a835ade2e1f13315))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+
 ## [8.343.1](https://github.com/vm0-ai/vm0/compare/core-v8.343.0...core-v8.343.1) (2026-06-16)
 
 

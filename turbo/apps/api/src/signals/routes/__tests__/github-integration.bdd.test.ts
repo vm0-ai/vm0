@@ -1,13 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
+import { desc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -19,9 +22,7 @@ import {
   acceptGithubRunObjectStorage,
   buildLegacySignedState,
   buildUserConnectState,
-  captureChatCallbackDeliveries,
   captureGithubIssueApi,
-  captureGithubIssuesCallbackDeliveries,
   connectLinkQuery,
   createGithubBddApi,
   mockClerkMembership,
@@ -34,7 +35,6 @@ import {
   mockGithubUserOauthEnv,
   newGithubUserId,
   newRemoteInstallationId,
-  proxyGithubIssuesCallbackToApp,
   signedConnectLink,
   zeroCapabilityToken,
   type RawRouteResponse,
@@ -42,16 +42,16 @@ import {
 
 /**
  * CONN-02 / INT-03 / HOOK-01: GitHub App install + setup callback, GitHub
- * user OAuth linking, installation management, label listeners, and signed
- * internal issue callbacks produced by real webhook-created runs.
+ * user OAuth linking, installation management, label listeners, and internal
+ * issue callbacks produced by real webhook-created runs.
  */
 
 const context = testContext();
+const store = createStore();
 
 const WEB_ORIGIN = "http://localhost:3001";
 const APP_ORIGIN = "http://localhost:3002";
 const SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
-
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -1286,6 +1286,68 @@ async function waitForArrayLength<T>(
     .toBe(length);
 }
 
+async function readGithubInstallationDbId(
+  remoteInstallationId: string,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [installation] = await db
+    .select({ id: githubInstallations.id })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, remoteInstallationId))
+    .limit(1);
+  if (!installation) {
+    throw new Error(
+      `Expected GitHub installation ${remoteInstallationId} to exist`,
+    );
+  }
+  return installation.id;
+}
+
+async function readRunCallbacks(runId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      runId: agentRunCallbacks.runId,
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId))
+    .orderBy(desc(agentRunCallbacks.createdAt));
+}
+
+function payloadInstallationId(payload: unknown): string | undefined {
+  return typeof payload === "object" &&
+    payload !== null &&
+    "installationId" in payload &&
+    typeof payload.installationId === "string"
+    ? payload.installationId
+    : undefined;
+}
+
+async function readLatestGithubCallbackForInstallation(installationId: string) {
+  const db = store.set(writeDb$);
+  const callbacks = await db
+    .select({
+      runId: agentRunCallbacks.runId,
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.internalKind, "github:issues"))
+    .orderBy(desc(agentRunCallbacks.createdAt))
+    .limit(20);
+  return callbacks.find((callback) => {
+    return payloadInstallationId(callback.payload) === installationId;
+  });
+}
+
 async function waitForRunnerJob(
   api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
@@ -1453,7 +1515,7 @@ async function completeGithubRun(args: {
   context.mocks.axiom.query.mockResolvedValue([]);
 }
 
-describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", () => {
+describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () => {
   it("dispatches label-listener runs and replays signed callback deliveries", async () => {
     const senderGithubUserId = newGithubUserId();
     const harness = await githubRunActor(senderGithubUserId);
@@ -1496,9 +1558,26 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const runId = runIdFromAuditComment(startedComment.body);
     const pending = await api.readRun(actor, runId);
     expect(pending.status).toBe("pending");
+    const installationDbId = await readGithubInstallationDbId(
+      harness.remoteInstallationId,
+    );
+    await expect(readRunCallbacks(runId)).resolves.toStrictEqual([
+      expect.objectContaining({
+        runId,
+        url: null,
+        internalKind: "github:issues",
+        status: "pending",
+        lastError: null,
+        payload: expect.objectContaining({
+          installationId: installationDbId,
+          repo,
+          issueNumber: 42,
+          agentId: harness.secondAgentId,
+        }),
+      }),
+    ]);
 
     // Progress callbacks deliver without posting comments or reading output.
-    proxyGithubIssuesCallbackToApp(context);
     const job = await waitForRunnerJob(api, runnerGroup);
     expect(job.runId).toBe(runId);
     const claim = await api.claimRunnerJob(runId);
@@ -1514,31 +1593,10 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       queriesBeforeProgress,
     );
 
-    // A sandbox heartbeat dispatches the pending callback as a signed
-    // progress delivery; replaying it into the route returns the early
-    // success without posting any comment.
-    const deliveries = captureGithubIssuesCallbackDeliveries(context);
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    await waitForArrayLength(deliveries, 1);
-    const progressDelivery = deliveries[0];
-    if (!progressDelivery?.signature || !progressDelivery.timestamp) {
-      throw new Error("Expected a signed progress callback delivery");
-    }
-    expect(
-      JSON.parse(progressDelivery.body) as Record<string, unknown>,
-    ).toMatchObject({ runId, status: "progress" });
-    const progressReplay = await gh.requestGithubIssuesCallback(
-      progressDelivery.body,
-      {
-        "x-vm0-signature": progressDelivery.signature,
-        "x-vm0-timestamp": progressDelivery.timestamp,
-      },
-      [200],
-    );
-    expect(progressReplay.body).toStrictEqual({ success: true });
     await waitForCommentCount(issueApi, 1);
 
-    // Completion posts the audited comment through the captured delivery.
+    // Completion posts the audited comment through typed internal dispatch.
     await gh.enableAuditLink(actor);
     await checkpointGithubRun({
       webhooks,
@@ -1560,11 +1618,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
 
-    await waitForArrayLength(deliveries, 2);
-    const delivery = deliveries[1];
-    if (!delivery?.signature || !delivery.timestamp) {
-      throw new Error("Expected a signed GitHub issues callback delivery");
-    }
     await waitForCommentCount(issueApi, 2);
     context.mocks.axiom.query.mockResolvedValue([]);
     const completionComment = issueApi.comments[1];
@@ -1578,76 +1631,17 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     expect(completionComment.body).toContain(`/activities/${runId}`);
     expect(completionComment.body).toContain("Responded by GitHub Agent");
     expect(completionComment.body).toContain("Claude");
-
-    // Replay without GitHub App credentials: 500 after verification.
-    const replayHeaders = {
-      "x-vm0-signature": delivery.signature,
-      "x-vm0-timestamp": delivery.timestamp,
-    };
-    mockOptionalEnv("GITHUB_APP_ID", undefined);
-    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
-    const unconfigured = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      replayHeaders,
-      [500],
+    await expect(readRunCallbacks(runId)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId,
+          url: null,
+          internalKind: "github:issues",
+          status: "delivered",
+          lastError: null,
+        }),
+      ]),
     );
-    expect(unconfigured.body).toStrictEqual({
-      error: "GitHub App not configured",
-    });
-    mockGithubAppEnv();
-
-    // Forged signatures and expired timestamps are rejected.
-    const forged = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      {
-        "x-vm0-signature": "deadbeef",
-        "x-vm0-timestamp": String(Math.floor(now() / 1000)),
-      },
-      [401],
-    );
-    expect(forged.body).toStrictEqual({ error: "Invalid signature" });
-    const expired = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      {
-        "x-vm0-signature": delivery.signature,
-        "x-vm0-timestamp": String(Math.floor((now() - 10 * 60_000) / 1000)),
-      },
-      [401],
-    );
-    expect(expired.body).toStrictEqual({ error: "Timestamp expired" });
-
-    // A chat run's delivery verifies per-callback but fails payload parsing.
-    const chatDeliveries = captureChatCallbackDeliveries();
-    const chat = createChatFilesBddApi(context);
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: harness.defaultAgentId,
-        prompt: "github bdd chat run",
-        modelProvider: "anthropic-api-key",
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected the entitled chat send to create a run");
-    }
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-    await waitForArrayLength(chatDeliveries, 1);
-    const chatDelivery = chatDeliveries[0];
-    if (!chatDelivery?.signature || !chatDelivery.timestamp) {
-      throw new Error("Expected a signed chat callback delivery");
-    }
-    const mismatched = await gh.requestGithubIssuesCallback(
-      chatDelivery.body,
-      {
-        "x-vm0-signature": chatDelivery.signature,
-        "x-vm0-timestamp": chatDelivery.timestamp,
-      },
-      [400],
-    );
-    expect(mismatched.body).toStrictEqual({
-      error: "Invalid or missing payload",
-    });
 
     // Cancelling a second labeled run posts the formatted failure comment.
     await postGithubWebhook(
@@ -1680,19 +1674,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     expect(context.mocks.axiom.query.mock.calls).toHaveLength(
       queriesBeforeFailure,
     );
-
-    // Deleting the installation orphans further replays of the delivery.
-    mockOptionalEnv("GITHUB_APP_ID", undefined);
-    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
-    await gh.deleteInstallation(actor, [200]);
-    const orphaned = await gh.requestGithubIssuesCallback(
-      delivery.body,
-      replayHeaders,
-      [404],
-    );
-    expect(orphaned.body).toStrictEqual({
-      error: "GitHub installation not found",
-    });
   });
 
   it("maintains GitHub issue session continuity across mention and label runs", async () => {
@@ -1701,7 +1682,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
     const repo = "bdd-org/bdd-sessions";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
 
     function mention(commentId: string, commentBody: string): string {
       return issueCommentEvent({
@@ -1854,24 +1834,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const fourthCancelled = await api.readRun(actor, fourth.runId);
     expect(fourthCancelled.status).toBe("cancelled");
   });
-
-  it("rejects callbacks without a runId or callback record", async () => {
-    const gh = createGithubBddApi(context);
-
-    const missingRunId = await gh.requestGithubIssuesCallback(
-      JSON.stringify({ status: "completed", payload: {} }),
-      {},
-      [400],
-    );
-    expect(missingRunId.body).toStrictEqual({ error: "Missing runId" });
-
-    const unknownRun = await gh.requestGithubIssuesCallback(
-      JSON.stringify({ runId: randomUUID(), status: "completed", payload: {} }),
-      {},
-      [404],
-    );
-    expect(unknownRun.body).toStrictEqual({ error: "Callback not found" });
-  });
 });
 
 describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
@@ -1881,7 +1843,6 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
     const repo = "bdd-org/bdd-label-dispatch";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
 
     await gh.createLabelListener(
       actor,
@@ -2213,11 +2174,13 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
         },
       },
     );
+    const entitledInstallationDbId = await readGithubInstallationDbId(
+      entitledInstall.remoteInstallationId,
+    );
     webhooks.configureGithubWebhookSecret();
     const entitledIssueApi = captureGithubIssueApi(
       entitledInstall.remoteInstallationId,
     );
-    const deliveries = captureGithubIssuesCallbackDeliveries(context);
     await gh.createLabelListener(
       entitled,
       {
@@ -2249,17 +2212,23 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       "issues",
     );
 
-    await waitForArrayLength(deliveries, 1);
-    const delivery = JSON.parse(deliveries[0]?.body ?? "{}") as Record<
-      string,
-      unknown
-    >;
-    expect(delivery).toMatchObject({
-      status: "failed",
-      error: "No executor configured: set RUNNER_DEFAULT_GROUP",
+    let failedCallback:
+      | Awaited<ReturnType<typeof readLatestGithubCallbackForInstallation>>
+      | undefined;
+    await expect
+      .poll(async () => {
+        failedCallback = await readLatestGithubCallbackForInstallation(
+          entitledInstallationDbId,
+        );
+        return failedCallback?.status ?? null;
+      })
+      .toBe("failed");
+    expect(failedCallback).toMatchObject({
+      url: null,
+      internalKind: "github:issues",
+      lastError: "GitHub App not configured",
     });
-    const failedRunId =
-      typeof delivery.runId === "string" ? delivery.runId : "";
+    const failedRunId = failedCallback?.runId ?? "";
     const failedRun = await api.readRun(entitled, failedRunId);
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe(
@@ -2278,7 +2247,6 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
     const { api, webhooks, actor, runnerGroup } = harness;
     const repo = "bdd-org/bdd-mentions";
     const sender = { githubUserId: senderGithubUserId };
-    proxyGithubIssuesCallbackToApp(context);
     // Re-capture the issue API with earlier conversation history so the
     // dispatched context renders prior comments (and drops the trigger).
     const issueApi = captureGithubIssueApi(harness.remoteInstallationId, {

@@ -46,20 +46,31 @@ impl CpuTracker {
             Some(l) => l,
             None => return 0.0,
         };
-        let (idle, total) = match parse_cpu_stat_line(first_line) {
+        self.get_cpu_percent_from_stat_line(first_line)
+    }
+
+    fn get_cpu_percent_from_stat_line(&mut self, line: &str) -> f64 {
+        let (idle, total) = match parse_cpu_stat_line(line) {
             Some(cpu_stat) => cpu_stat,
             None => return 0.0,
         };
 
-        let delta_idle = idle.saturating_sub(self.prev_idle);
-        let delta_total = total.saturating_sub(self.prev_total);
+        if idle < self.prev_idle || total < self.prev_total {
+            self.prev_idle = idle;
+            self.prev_total = total;
+            return 0.0;
+        }
+
+        let delta_idle = idle - self.prev_idle;
+        let delta_total = total - self.prev_total;
+
+        if delta_total == 0 || delta_idle > delta_total {
+            return 0.0;
+        }
 
         self.prev_idle = idle;
         self.prev_total = total;
 
-        if delta_total == 0 {
-            return 0.0;
-        }
         let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
         (pct * 100.0).round() / 100.0
     }
@@ -77,8 +88,10 @@ fn parse_cpu_stat_line(line: &str) -> Option<(u64, u64)> {
     let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
         return None;
     };
-    let idle = *idle_ticks + *iowait_ticks;
-    let total = values.iter().sum();
+    let idle = idle_ticks.checked_add(*iowait_ticks)?;
+    let total = values
+        .iter()
+        .try_fold(0u64, |total, value| total.checked_add(*value))?;
 
     Some((idle, total))
 }
@@ -89,6 +102,10 @@ fn get_memory_info() -> (u64, u64) {
         Ok(c) => c,
         Err(_) => return (0, 0),
     };
+    memory_info_from_content(&content)
+}
+
+fn memory_info_from_content(content: &str) -> (u64, u64) {
     let mut total_kb = 0u64;
     let mut available_kb = 0u64;
     for line in content.lines() {
@@ -98,9 +115,14 @@ fn get_memory_info() -> (u64, u64) {
             available_kb = parse_meminfo_value(rest);
         }
     }
-    let total = total_kb * 1024;
-    let used = total.saturating_sub(available_kb * 1024);
-    (used, total)
+    memory_usage_from_kb(total_kb, available_kb).unwrap_or((0, 0))
+}
+
+fn memory_usage_from_kb(total_kb: u64, available_kb: u64) -> Option<(u64, u64)> {
+    let total = total_kb.checked_mul(1024)?;
+    let available = available_kb.checked_mul(1024)?;
+    let used = total.saturating_sub(available);
+    Some((used, total))
 }
 
 fn parse_meminfo_value(s: &str) -> u64 {
@@ -120,10 +142,14 @@ fn get_disk_info() -> (u64, u64) {
         return (0, 0);
     }
     let block_size = stat.f_frsize;
-    let total = stat.f_blocks * block_size;
-    let free = stat.f_bfree * block_size;
+    disk_usage_from_blocks(stat.f_blocks, stat.f_bfree, block_size).unwrap_or((0, 0))
+}
+
+fn disk_usage_from_blocks(blocks: u64, free_blocks: u64, block_size: u64) -> Option<(u64, u64)> {
+    let total = blocks.checked_mul(block_size)?;
+    let free = free_blocks.checked_mul(block_size)?;
     let used = total.saturating_sub(free);
-    (used, total)
+    Some((used, total))
 }
 
 /// Collect one snapshot of system metrics.
@@ -201,6 +227,62 @@ mod tests {
     }
 
     #[test]
+    fn parse_cpu_stat_line_rejects_idle_overflow() {
+        let line = format!("cpu 0 0 0 {} 1", u64::MAX);
+        assert_eq!(parse_cpu_stat_line(&line), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_total_overflow() {
+        let line = format!("cpu {} 1 0 0 0", u64::MAX);
+        assert_eq!(parse_cpu_stat_line(&line), None);
+    }
+
+    #[test]
+    fn cpu_tracker_does_not_update_state_for_invalid_stat_line() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 0 0 10 0"),
+            0.0
+        );
+
+        let line = format!("cpu 0 0 0 {} 1", u64::MAX);
+        assert_eq!(tracker.get_cpu_percent_from_stat_line(&line), 0.0);
+
+        assert_eq!(tracker.prev_idle, 10);
+        assert_eq!(tracker.prev_total, 10);
+    }
+
+    #[test]
+    fn cpu_tracker_rejects_inconsistent_delta_without_updating_state() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 75 0 30 0"),
+            0.0
+        );
+        assert_eq!(tracker.prev_idle, 10);
+        assert_eq!(tracker.prev_total, 100);
+    }
+
+    #[test]
+    fn cpu_tracker_resets_state_when_counters_regress() {
+        let mut tracker = CpuTracker::new();
+        assert_eq!(
+            tracker.get_cpu_percent_from_stat_line("cpu 0 90 0 10 0"),
+            90.0
+        );
+
+        assert_eq!(tracker.get_cpu_percent_from_stat_line("cpu 0 5 0 5 0"), 0.0);
+        assert_eq!(tracker.prev_idle, 5);
+        assert_eq!(tracker.prev_total, 10);
+    }
+
+    #[test]
     fn parse_meminfo_value_basic() {
         assert_eq!(parse_meminfo_value("  12345 kB"), 12345);
         assert_eq!(parse_meminfo_value("  0 kB"), 0);
@@ -216,6 +298,48 @@ mod tests {
     #[test]
     fn parse_meminfo_value_non_numeric() {
         assert_eq!(parse_meminfo_value("  abc kB"), 0);
+    }
+
+    #[test]
+    fn memory_usage_from_kb_rejects_total_overflow() {
+        assert_eq!(memory_usage_from_kb(u64::MAX / 1024 + 1, 0), None);
+    }
+
+    #[test]
+    fn memory_info_from_content_returns_zero_when_total_overflows() {
+        let content = format!("MemTotal: {} kB\nMemAvailable: 0 kB\n", u64::MAX);
+        assert_eq!(memory_info_from_content(&content), (0, 0));
+    }
+
+    #[test]
+    fn memory_info_from_content_returns_zero_when_available_overflows() {
+        let content = format!("MemTotal: 1 kB\nMemAvailable: {} kB\n", u64::MAX);
+        assert_eq!(memory_info_from_content(&content), (0, 0));
+    }
+
+    #[test]
+    fn memory_usage_from_kb_rejects_available_overflow() {
+        assert_eq!(memory_usage_from_kb(1, u64::MAX / 1024 + 1), None);
+    }
+
+    #[test]
+    fn memory_usage_from_kb_saturates_used_when_available_exceeds_total() {
+        assert_eq!(memory_usage_from_kb(1, 2), Some((0, 1024)));
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_rejects_total_overflow() {
+        assert_eq!(disk_usage_from_blocks(u64::MAX / 2 + 1, 0, 2), None);
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_rejects_free_overflow() {
+        assert_eq!(disk_usage_from_blocks(1, u64::MAX / 2 + 1, 2), None);
+    }
+
+    #[test]
+    fn disk_usage_from_blocks_saturates_used_when_free_exceeds_total() {
+        assert_eq!(disk_usage_from_blocks(1, 2, 1024), Some((0, 1024)));
     }
 
     #[test]

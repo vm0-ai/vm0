@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { connectorTypeSchema } from "../connectors";
-import { isFirewallConnectorType, getConnectorFirewall } from "../firewalls";
+import {
+  BILLABLE_CONNECTORS,
+  isFirewallConnectorType,
+  getConnectorFirewall,
+} from "../firewalls";
 import { collectAndValidatePermissions } from "../firewall-expander";
 import { matchFirewallBaseUrl } from "../firewall-rule-matcher";
 import {
@@ -134,6 +138,15 @@ describe("builtin firewall validation", () => {
       }).not.toThrow();
     });
   }
+});
+
+describe("billable connector firewall contracts", () => {
+  it("keeps X registered as a billable firewall", () => {
+    const firewall = getConnectorFirewall("x");
+
+    expect(firewall.name).toBe("x");
+    expect(BILLABLE_CONNECTORS).toContain("x");
+  });
 });
 
 describe("reserved firewall permission names", () => {

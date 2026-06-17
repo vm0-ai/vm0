@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
 
+import type { InternalRunCallbackKind } from "../internal-run-callback";
 import type {
   TriggerCronCallbackPayload,
   TriggerLoopCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
-
-import { internalApiBaseUrl } from "../../../lib/internal-api-url";
+} from "../trigger-callback-payload";
 
 /**
  * Identifies how an Automation should be interpreted into an agent run. The
@@ -38,11 +37,13 @@ interface Automation {
   readonly timezone: string;
 }
 
-interface RunCallback {
-  readonly url: string;
+interface InternalRunCallback {
+  readonly internalKind: InternalRunCallbackKind;
   readonly secret: string;
   readonly payload: unknown;
 }
+
+type RunCallback = InternalRunCallback;
 
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
@@ -275,7 +276,7 @@ function generateCallbackSecret(): string {
  */
 function buildChatCallback(automation: Automation): RunCallback {
   return {
-    url: `${internalApiBaseUrl()}/api/internal/callbacks/chat`,
+    internalKind: "chat",
     secret: generateCallbackSecret(),
     payload: {
       threadId: automation.chatThreadId,
@@ -300,7 +301,7 @@ function buildTriggerCallbacks(
   if (automation.triggerType === "loop") {
     const payload: TriggerLoopCallbackPayload = { triggerId };
     callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/loop`,
+      internalKind: "trigger:loop",
       secret: generateCallbackSecret(),
       payload,
     });
@@ -316,7 +317,7 @@ function buildTriggerCallbacks(
       timezone: automation.timezone,
     };
     callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/cron`,
+      internalKind: "trigger:cron",
       secret: generateCallbackSecret(),
       payload,
     });

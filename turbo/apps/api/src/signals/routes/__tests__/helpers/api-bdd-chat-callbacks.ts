@@ -5,7 +5,6 @@ import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-sub
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { z } from "zod";
 
-import { createApp } from "../../../../app-factory";
 import { mockOptionalEnv } from "../../../../lib/env";
 import { nowDate } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
@@ -17,19 +16,13 @@ import {
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-const CHAT_CALLBACK_PATH = "/api/internal/callbacks/chat";
-const CHAT_CALLBACK_URL = `http://localhost:3000${CHAT_CALLBACK_PATH}`;
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
 type OrgModelPolicies = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >["policies"];
-
-interface CapturedChatCallbackDelivery {
-  readonly body: string;
-  readonly headers: Record<string, string>;
-}
 
 const openRouterCompletionBodySchema = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
@@ -114,79 +107,22 @@ export function createChatCallbacksApi(context: TestContext) {
   }
 
   return {
-    /**
-     * Forwards real dispatcher deliveries of the chat callback into the Hono
-     * app and records every delivery so chains can assert what the dispatcher
-     * actually sent (status, payload, signature headers).
-     */
-    proxyChatCallbackToApp(): readonly CapturedChatCallbackDelivery[] {
-      const deliveries: CapturedChatCallbackDelivery[] = [];
+    failIfChatCallbackRouteIsFetched(): () => number {
+      let requests = 0;
       server.use(
-        http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-          const body = await request.text();
-          deliveries.push({
-            body,
-            headers: Object.fromEntries(request.headers.entries()),
-          });
-          const app = createApp({ signal: context.signal });
-          return await app.request(CHAT_CALLBACK_PATH, {
-            method: "POST",
-            headers: request.headers,
-            body,
-          });
-        }),
-      );
-      return deliveries;
-    },
-
-    /**
-     * Records dispatcher deliveries without letting them reach the route
-     * (responds 500, marking the callback row failed). The captured raw body
-     * and headers form a legitimately signed request that tests replay into
-     * the app any number of times.
-     */
-    captureChatCallbackDeliveries(): readonly CapturedChatCallbackDelivery[] {
-      const deliveries: CapturedChatCallbackDelivery[] = [];
-      server.use(
-        http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-          deliveries.push({
-            body: await request.text(),
-            headers: Object.fromEntries(request.headers.entries()),
-          });
-          return HttpResponse.json(
-            { error: "captured for replay" },
-            { status: 500 },
+        http.post(CHAT_CALLBACK_URL, () => {
+          requests += 1;
+          return HttpResponse.text(
+            "chat callback route should not be fetched",
+            {
+              status: 500,
+            },
           );
         }),
       );
-      return deliveries;
-    },
-
-    /**
-     * Re-POSTs a captured delivery into the app verbatim. Callers drain
-     * detached work themselves so parallel replays can race before draining.
-     */
-    async replayChatCallback(
-      delivery: CapturedChatCallbackDelivery,
-      overrides: { readonly signature?: string } = {},
-    ): Promise<Response> {
-      const headers: Record<string, string> = { ...delivery.headers };
-      if (overrides.signature !== undefined) {
-        headers["x-vm0-signature"] = overrides.signature;
-      }
-      const app = createApp({ signal: context.signal });
-      return await app.request(CHAT_CALLBACK_PATH, {
-        method: "POST",
-        headers,
-        body: delivery.body,
-      });
-    },
-
-    /** Captured signature with one flipped hex character. */
-    tamperedSignature(delivery: CapturedChatCallbackDelivery): string {
-      const signature = delivery.headers["x-vm0-signature"] ?? "";
-      const flipped = signature.startsWith("a") ? "b" : "a";
-      return `${flipped}${signature.slice(1)}`;
+      return () => {
+        return requests;
+      };
     },
 
     async registerPushSubscription(actor: ApiTestUser): Promise<string> {

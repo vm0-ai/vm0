@@ -102,6 +102,7 @@ import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
@@ -570,7 +571,7 @@ function ComposerFeedbackRow({
             <IconQuote
               size={12}
               stroke={1.5}
-              className="text-muted-foreground"
+              className="-scale-x-100 text-muted-foreground"
             />
           </span>
           <span className="min-w-0 truncate text-xs font-medium">
@@ -683,6 +684,14 @@ function toPresentationGenerationTemplate(
   };
 }
 
+function presentationTemplatePickerItems(
+  useNewPresentationTemplates: boolean,
+): readonly PresentationTemplateItem[] {
+  return useNewPresentationTemplates
+    ? PRESENTATION_TEMPLATE_PICKER_ITEMS
+    : PRESENTATION_TEMPLATE_ITEMS;
+}
+
 function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
@@ -701,9 +710,14 @@ function selectedPresentationTemplateItem(
   if (value?.type !== "presentation") {
     return undefined;
   }
-  return PRESENTATION_TEMPLATE_ITEMS.find((item) => {
-    return isSelectedPresentationTemplate(item, value);
-  });
+  return (
+    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return isSelectedPresentationTemplate(item, value);
+    })
+  );
 }
 
 function isSelectedIllustrationTemplate(
@@ -1151,7 +1165,7 @@ function TemplatePreview({
 
   return (
     <div
-      className="relative h-44 shrink-0 overflow-hidden bg-muted"
+      className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         preloadPresentationPreviewImages(slideImages);
         detach(
@@ -1175,7 +1189,7 @@ function TemplatePreview({
             src={previewImage}
             alt=""
             title={`${item.title} card preview slide 1`}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-contain"
             loading="lazy"
             onLoad={(event) => {
               event.currentTarget.parentElement
@@ -1200,7 +1214,7 @@ function TemplatePreview({
                     isHovering ? imageIndex + 1 : 1
                   }`}
                   className={cn(
-                    "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
+                    "absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-75",
                     active && "data-[loaded=true]:opacity-100",
                   )}
                   loading={isHovering ? "eager" : "lazy"}
@@ -1274,7 +1288,6 @@ function TemplatePreviewPage({
     ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
     : selectedSlideImage;
   const hasMultipleSlides = slideImages.length > 1;
-  const kind = formatPresentationTemplateKind(item.templateId);
 
   const changeSlide = (direction: -1 | 1) => {
     if (!hasMultipleSlides) {
@@ -1313,7 +1326,7 @@ function TemplatePreviewPage({
               src={selectedSlidePreviewImage}
               title={`${item.title} preview slide ${safeSlideIndex + 1}`}
               alt=""
-              className="aspect-[16/9] w-full object-cover"
+              className="aspect-[16/9] w-full object-contain"
               loading="lazy"
             />
             <button
@@ -1363,7 +1376,7 @@ function TemplatePreviewPage({
                   <img
                     src={thumbnailImage}
                     alt=""
-                    className="aspect-[16/9] w-full object-cover"
+                    className="aspect-[16/9] w-full object-contain"
                     loading="lazy"
                   />
                   <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
@@ -1374,41 +1387,25 @@ function TemplatePreviewPage({
             })}
           </div>
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border bg-background p-5">
-            <h3 className="text-lg font-semibold text-foreground">
+        <div className="flex flex-col lg:sticky lg:top-0">
+          <div className="rounded-lg border border-border bg-background p-5 shadow-sm">
+            <h3 className="text-xl font-semibold text-foreground">
               {item.title}
             </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {kind} · {slideImages.length} preview slides
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {slideImages.length} slides
             </p>
+            <button
+              type="button"
+              aria-label={`Select template ${item.title}`}
+              className="mt-5 h-12 w-full rounded-lg bg-[#ff7a1a] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#f06c12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2"
+              onClick={() => {
+                onSelect(item);
+              }}
+            >
+              Use this template
+            </button>
           </div>
-          <div className="rounded-lg border border-border bg-background p-5">
-            <h3 className="text-sm font-semibold text-muted-foreground">
-              Dials
-            </h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {slideImages.length} preview slides
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Confident tone
-              </span>
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                Dark theme
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            className="h-11 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onSelect(item);
-            }}
-          >
-            Use this template
-          </button>
         </div>
       </div>
     </>
@@ -1429,18 +1426,15 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
       <TemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.title}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {formatPresentationTemplateKind(item.templateId)}
           </p>
         </div>
         <div className="flex shrink-0 items-center">
@@ -2040,6 +2034,7 @@ function TemplatePickerDialog({
   onChange,
   onClose,
   hasPptTab,
+  presentationItems,
   hasIllustrationTab,
   hasVideoTab,
 }: {
@@ -2047,6 +2042,7 @@ function TemplatePickerDialog({
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
   hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
@@ -2063,7 +2059,7 @@ function TemplatePickerDialog({
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
-    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+    presentationItems.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
   const isPreviewing = Boolean(previewItem);
@@ -2075,7 +2071,7 @@ function TemplatePickerDialog({
     "[&>button[aria-label=Close]]:top-[7px]",
     isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
-  const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
+  const filteredPptItems = presentationItems.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
@@ -2231,10 +2227,10 @@ function TemplatePickerDialog({
                         type="button"
                         aria-pressed={selected}
                         className={cn(
-                          "h-7 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                           selected
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                            ? "bg-muted text-foreground"
+                            : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}
                         onClick={() => {
                           setVideoGroup(group.tag);
@@ -2275,7 +2271,7 @@ function SelectedTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
-  const label = formatPresentationTemplateKind(item.templateId);
+  const label = item.title;
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -2499,11 +2495,13 @@ function SelectedTemplateChipSlot({
 function TemplatePickerButton({
   picker,
   hasPptTab,
+  presentationItems,
   hasIllustrationTab,
   hasVideoTab,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
@@ -2552,6 +2550,7 @@ function TemplatePickerButton({
             setOpen(false);
           }}
           hasPptTab={hasPptTab}
+          presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
         />
@@ -2572,6 +2571,12 @@ function ComposerTemplatePickerSlot({
   const hasPptTab = hasChatTemplatePicker;
   const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  const useNewPresentationTemplates = Boolean(
+    features?.[FeatureSwitchKey.ChatNewPresentationTemplates],
+  );
+  const presentationItems = presentationTemplatePickerItems(
+    useNewPresentationTemplates,
+  );
   if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }
@@ -2579,6 +2584,7 @@ function ComposerTemplatePickerSlot({
     <TemplatePickerButton
       picker={picker}
       hasPptTab={hasPptTab}
+      presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
     />

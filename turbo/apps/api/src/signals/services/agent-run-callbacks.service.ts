@@ -10,7 +10,10 @@ import { now } from "../../lib/time";
 import { db$ } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { legacyInternalRunCallbackKind } from "./internal-run-callback";
+import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
+import { internalRunCallbackKindForRecord } from "./internal-run-callback";
+import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
+import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -19,7 +22,7 @@ function resolveCallbackUrl(url: string): string {
 }
 
 export const dispatchProgressCallbacks$ = command(
-  async ({ get }, runId: string, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, runId: string, signal: AbortSignal): Promise<void> => {
     const db = get(db$);
     const [run] = await db
       .select({
@@ -64,9 +67,54 @@ export const dispatchProgressCallbacks$ = command(
 
     await Promise.allSettled(
       callbacks.map(async (callback) => {
+        const internalKind = internalRunCallbackKindForRecord(callback);
+        if (internalKind === "chat") {
+          return;
+        }
+        if (internalKind === "agentphone") {
+          await set(
+            handleAgentPhoneInternalCallback$,
+            {
+              callbackId: callback.id,
+              runId,
+              status: "progress",
+              payload: callback.payload,
+            },
+            signal,
+          );
+          return;
+        }
+        if (internalKind === "slack:org") {
+          await set(
+            handleSlackOrgInternalCallback$,
+            {
+              callbackId: callback.id,
+              runId,
+              status: "progress",
+              payload: callback.payload,
+            },
+            signal,
+          );
+          return;
+        }
+        if (internalKind === "telegram") {
+          await set(
+            handleTelegramInternalCallback$,
+            {
+              callbackId: callback.id,
+              runId,
+              status: "progress",
+              payload: callback.payload,
+            },
+            signal,
+          );
+          return;
+        }
         if (
-          callback.internalKind === "agent" ||
-          legacyInternalRunCallbackKind(callback.url) === "agent"
+          internalKind === "agent" ||
+          internalKind === "github:issues" ||
+          internalKind === "trigger:cron" ||
+          internalKind === "trigger:loop"
         ) {
           return;
         }

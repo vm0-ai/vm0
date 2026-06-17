@@ -50,9 +50,9 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   cancelRun$,
@@ -72,7 +72,7 @@ import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
@@ -434,13 +434,6 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function chatCallbackUrl(): string {
-  return new URL(
-    "/api/internal/callbacks/chat",
-    internalApiBaseUrl(),
-  ).toString();
-}
-
 function buildWebChatPrompt(): string {
   return [
     "# Current Integration\nYou are currently running inside: Web",
@@ -735,7 +728,7 @@ async function latestSessionForThread(
     // chat-mode automation run (triggerSource "automation") never resumes a web
     // session and a later web turn never resumes an automation one. The 'web'
     // filter (before .limit) is mirrored in latestSessionForThreadFromDb
-    // (internal-callbacks-chat.ts) and latestSessionIdForThread
+    // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
     .where(
@@ -2502,7 +2495,7 @@ const createNormalChatRun$ = command(
         selectedModelOverride: modelPin.selectedModel ?? undefined,
         callbacks: [
           {
-            url: chatCallbackUrl(),
+            internalKind: "chat",
             secret: generateCallbackSecret(),
             payload: {
               threadId: prepared.thread.threadId,
@@ -2523,6 +2516,7 @@ const createNormalChatRun$ = command(
           debugNoMockCodex: args.body.debugNoMockCodex,
         },
         triggerSource: "web",
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         appendSystemPrompt: buildAppendSystemPrompt(
           prepared.thread.incompleteContext,
           prepared.priorContext,

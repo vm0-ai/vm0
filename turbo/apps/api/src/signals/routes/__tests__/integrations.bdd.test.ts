@@ -1,9 +1,12 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { db } from "../../../lib/db";
 import { testContext } from "../../../__tests__/test-helpers";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
@@ -14,7 +17,6 @@ import {
   agentPhoneBddWebhookSecret,
   createBddIntegrationApi,
   telegramLoginAuth,
-  type ForwardedInternalCallback,
 } from "./helpers/api-bdd-integrations";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -163,14 +165,6 @@ function slackPostMessageCallsJson(): string {
   return JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls);
 }
 
-function slackOrgCallbackDeliveries(
-  log: readonly ForwardedInternalCallback[],
-): readonly ForwardedInternalCallback[] {
-  return log.filter((entry) => {
-    return entry.path === "/api/internal/callbacks/slack/org";
-  });
-}
-
 async function waitForExpectation(assertion: () => void): Promise<void> {
   await expect
     .poll(async () => {
@@ -180,13 +174,43 @@ async function waitForExpectation(assertion: () => void): Promise<void> {
     .toBe(true);
 }
 
-async function waitForSlackOrgCallback(
-  log: readonly ForwardedInternalCallback[],
-  expected: ForwardedInternalCallback,
+async function readSlackOrgCallback(runId: string) {
+  return await readRunCallback(runId);
+}
+
+async function readRunCallback(runId: string) {
+  const [callback] = await db()
+    .select({
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      status: agentRunCallbacks.status,
+      attempts: agentRunCallbacks.attempts,
+      deliveredAt: agentRunCallbacks.deliveredAt,
+      lastError: agentRunCallbacks.lastError,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId))
+    .limit(1);
+  return callback;
+}
+
+async function waitForSlackOrgCallbackRow(
+  runId: string,
+  expected: {
+    readonly status: "pending" | "delivered" | "failed";
+    readonly attempts?: number;
+    readonly lastError?: string | null;
+  },
 ): Promise<void> {
-  await waitForExpectation(() => {
-    expect(slackOrgCallbackDeliveries(log).at(-1)).toStrictEqual(expected);
-  });
+  await expect
+    .poll(async () => {
+      return await readSlackOrgCallback(runId);
+    })
+    .toMatchObject({
+      internalKind: "slack:org",
+      url: null,
+      ...expected,
+    });
 }
 
 async function pollRunnerRun(
@@ -1133,7 +1157,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
     integrations.acceptSlackSessionHistoryDownloads();
-    integrations.forwardSlackInternalCallbacks();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
     await integrations.configureSlackRunModelPolicies(actor);
@@ -2269,7 +2292,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
     integrations.acceptSlackSessionHistoryDownloads();
-    const callbackLog = integrations.forwardSlackInternalCallbacks();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
     await integrations.configureSlackRunModelPolicies(actor);
@@ -2291,6 +2313,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel: channelId,
     });
     const run1Id = await pollSlackRun(runnerGroup);
+    await waitForSlackOrgCallbackRow(run1Id, {
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
     const claim1 = await runs.claimRunnerJob(run1Id);
     context.mocks.slack.assistant.threads.setStatus.mockClear();
     await webhooks.requestAgentHeartbeat(
@@ -2307,10 +2334,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
         status: "is thinking...",
       });
     });
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 200,
-      body: { success: true },
+    await waitForSlackOrgCallbackRow(run1Id, {
+      status: "pending",
+      attempts: 0,
+      lastError: null,
     });
 
     integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
@@ -2345,6 +2372,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run1 = await runs.readRun(actor, run1Id);
     expect(run1.status).toBe("completed");
+    await waitForSlackOrgCallbackRow(run1Id, {
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
 
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
@@ -2429,10 +2461,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 200,
-      body: { success: true },
+    await waitForSlackOrgCallbackRow(run4Id, {
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
     });
     const run4 = await runs.readRun(actor, run4Id);
     expect(run4.status).toBe("failed");
@@ -2482,10 +2514,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim6.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 400,
-      body: { error: "Slack API error: channel_not_found" },
+    await waitForSlackOrgCallbackRow(run6Id, {
+      status: "failed",
+      attempts: 1,
+      lastError: "Slack API error: channel_not_found",
     });
     const run6 = await runs.readRun(actor, run6Id);
     expect(run6.status).toBe("completed");
@@ -2497,7 +2529,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
     integrations.acceptSlackSessionHistoryDownloads();
-    const callbackLog = integrations.forwardSlackInternalCallbacks();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
     await bdd.readOnboardingStatus(actor);
@@ -2533,10 +2564,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim1.sandboxToken}` },
       [200],
     );
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 200,
-      body: { success: true },
+    await waitForSlackOrgCallbackRow(run1Id, {
+      status: "pending",
+      attempts: 0,
+      lastError: null,
     });
 
     integrations.mockSlackRunResultOutput("NO_MODEL_FOOTER_OUTPUT");
@@ -2578,10 +2609,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim2.sandboxToken}` },
       [200],
     );
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 200,
-      body: { success: true },
+    await waitForSlackOrgCallbackRow(run2Id, {
+      status: "pending",
+      attempts: 0,
+      lastError: null,
     });
     expect(
       context.mocks.slack.assistant.threads.setStatus,
@@ -2593,10 +2624,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim2.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForSlackOrgCallback(callbackLog, {
-      path: "/api/internal/callbacks/slack/org",
-      status: 404,
-      body: { error: "Slack installation not found" },
+    await waitForSlackOrgCallbackRow(run2Id, {
+      status: "failed",
+      attempts: 1,
+      lastError: "Slack installation not found",
     });
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
     const run2 = await runs.readRun(actor, run2Id);
@@ -3200,12 +3231,6 @@ describe("INT-02: Telegram integration", () => {
         },
       ),
     );
-    // Terminal dispatch of the run's Telegram callback settles its row
-    // (capture answers 500) instead of hitting an unhandled MSW route.
-    webhooks.captureInternalCallbackDeliveries(
-      "/api/internal/callbacks/telegram",
-    );
-
     context.mocks.telegram.getMe.mockResolvedValue({
       id: typingBotId,
       username: "bdd_typing_bot",
@@ -3277,6 +3302,16 @@ describe("INT-02: Telegram integration", () => {
       runnerGroup,
       "Expected the Telegram DM to dispatch a run",
     );
+    await expect
+      .poll(async () => {
+        return await readRunCallback(runId);
+      })
+      .toMatchObject({
+        url: null,
+        internalKind: "telegram",
+        status: "pending",
+        attempts: 0,
+      });
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
     }

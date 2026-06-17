@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.146.2",
+  "version": "1.148.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -44,7 +44,7 @@
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^10.6.2",
     "gpt-tokenizer": "^3.4.0",
-    "hono": "^4.12.23",
+    "hono": "^4.12.25",
     "html-to-text": "^9.0.5",
     "music-metadata": "^11.13.0",
     "pg": "^8.20.0",

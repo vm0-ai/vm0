@@ -52,9 +52,6 @@ export const GH_OAUTH_CLIENT_SECRET = "github-oauth-client-secret";
 
 const GITHUB_APP_ID = "123456";
 const DEFAULT_TEST_ORIGIN = "http://localhost:3000";
-const GITHUB_ISSUES_CALLBACK_PATH = "/api/internal/callbacks/github/issues";
-const GITHUB_ISSUES_CALLBACK_URL = `${DEFAULT_TEST_ORIGIN}${GITHUB_ISSUES_CALLBACK_PATH}`;
-const CHAT_CALLBACK_URL = `${DEFAULT_TEST_ORIGIN}/api/internal/callbacks/chat`;
 
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 
@@ -107,12 +104,6 @@ interface GithubIssueHistoryComment {
   readonly id: number;
   readonly login: string;
   readonly body: string;
-}
-
-interface RecordedCallbackDelivery {
-  readonly body: string;
-  readonly signature: string | null;
-  readonly timestamp: string | null;
 }
 
 interface SignedConnectLink {
@@ -492,71 +483,6 @@ export function captureGithubIssueApi(
       return lastComment.id;
     },
   };
-}
-
-/**
- * Forward internal GitHub-issues callback dispatches back into the app so
- * detached terminal transitions deliver their callbacks for real.
- */
-export function proxyGithubIssuesCallbackToApp(context: TestContext): void {
-  server.use(
-    http.post(GITHUB_ISSUES_CALLBACK_URL, async ({ request }) => {
-      const app = createApp({ signal: context.signal });
-      return await app.request(GITHUB_ISSUES_CALLBACK_PATH, {
-        method: "POST",
-        headers: request.headers,
-        body: await request.text(),
-      });
-    }),
-  );
-}
-
-/**
- * Like {@link proxyGithubIssuesCallbackToApp} but also records every signed
- * delivery (raw body plus signature headers) so tests can replay it later
- * under mutated server state.
- */
-export function captureGithubIssuesCallbackDeliveries(
-  context: TestContext,
-): RecordedCallbackDelivery[] {
-  const deliveries: RecordedCallbackDelivery[] = [];
-  server.use(
-    http.post(GITHUB_ISSUES_CALLBACK_URL, async ({ request }) => {
-      const body = await request.text();
-      deliveries.push({
-        body,
-        signature: request.headers.get("x-vm0-signature"),
-        timestamp: request.headers.get("x-vm0-timestamp"),
-      });
-      const app = createApp({ signal: context.signal });
-      return await app.request(GITHUB_ISSUES_CALLBACK_PATH, {
-        method: "POST",
-        headers: request.headers,
-        body,
-      });
-    }),
-  );
-  return deliveries;
-}
-
-/**
- * Record signed chat-callback deliveries without proxying them, so a chat
- * run's delivery can be replayed against the GitHub issues callback route
- * (per-callback signature verifies, payload schema does not).
- */
-export function captureChatCallbackDeliveries(): RecordedCallbackDelivery[] {
-  const deliveries: RecordedCallbackDelivery[] = [];
-  server.use(
-    http.post(CHAT_CALLBACK_URL, async ({ request }) => {
-      deliveries.push({
-        body: await request.text(),
-        signature: request.headers.get("x-vm0-signature"),
-        timestamp: request.headers.get("x-vm0-timestamp"),
-      });
-      return HttpResponse.json({ ok: true });
-    }),
-  );
-  return deliveries;
 }
 
 export function buildLegacySignedState(args: {
@@ -969,26 +895,6 @@ export function createGithubBddApi(context: TestContext) {
         }),
         [200],
       );
-    },
-
-    async requestGithubIssuesCallback(
-      rawBody: string,
-      headers: Record<string, string>,
-      statuses: readonly number[],
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(GITHUB_ISSUES_CALLBACK_PATH, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...headers },
-        body: rawBody,
-      });
-      const body: unknown = await response.json();
-      if (!statuses.includes(response.status)) {
-        throw new Error(
-          `Expected GitHub issues callback status in [${statuses.join(", ")}], received ${response.status}: ${JSON.stringify(body)}`,
-        );
-      }
-      return { status: response.status, body };
     },
 
     /**

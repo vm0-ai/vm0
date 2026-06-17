@@ -184,33 +184,9 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
-  internalCallbacksChatContract,
-  chatCallbackPayloadSchema,
-  type InternalCallbacksChatContract,
-  type ChatCallbackPayload,
-} from "./internal-callbacks-chat";
-export {
-  internalCallbacksTelegramContract,
-  telegramCallbackPayloadSchema,
-  type InternalCallbacksTelegramContract,
-  type TelegramCallbackPayload,
-} from "./internal-callbacks-telegram";
-export {
-  internalCallbacksAgentPhoneContract,
-  agentPhoneCallbackPayloadSchema,
-  type InternalCallbacksAgentPhoneContract,
-  type AgentPhoneCallbackPayload,
-} from "./internal-callbacks-agentphone";
-export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
-export {
-  internalCallbacksSlackOrgContract,
-  slackOrgCallbackPayloadSchema,
-  type InternalCallbacksSlackOrgContract,
-  type SlackOrgCallbackPayload,
-} from "./internal-callbacks-slack-org";
 export {
   zeroEmailInboundContract,
   zeroEmailReplyCallbackContract,
@@ -1380,16 +1356,6 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  internalCallbacksAgentContract,
-  type InternalCallbacksAgentContract,
-} from "./internal-callbacks-agent";
-export {
-  githubIssuesCallbackPayloadSchema,
-  internalCallbacksGithubIssuesContract,
-  type GitHubIssuesCallbackPayload,
-  type InternalCallbacksGithubIssuesContract,
-} from "./internal-callbacks-github-issues";
-export {
   automationsMainContract,
   automationsByRefContract,
   automationTriggersContract,
@@ -1407,14 +1373,6 @@ export {
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
 } from "./automations";
-export {
-  internalCallbacksTriggerContract,
-  triggerCronCallbackPayloadSchema,
-  triggerLoopCallbackPayloadSchema,
-  type InternalCallbacksTriggerContract,
-  type TriggerCronCallbackPayload,
-  type TriggerLoopCallbackPayload,
-} from "./internal-callbacks-trigger";
 export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,

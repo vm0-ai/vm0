@@ -14,10 +14,35 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
-  legacyInternalRunCallbackKind,
+  handleAgentPhoneInternalCallback$,
+  handleAgentPhoneInternalCallbackWithoutCcstate,
+} from "./internal-agentphone-run-callback.service";
+import {
+  handleChatInternalCallback$,
+  handleChatInternalCallbackWithoutCcstate,
+} from "./internal-chat-run-callback.service";
+import {
+  handleGithubIssuesInternalCallback$,
+  handleGithubIssuesInternalCallbackWithoutCcstate,
+} from "./internal-github-issues-run-callback.service";
+import {
+  handleSlackOrgInternalCallback$,
+  handleSlackOrgInternalCallbackWithoutCcstate,
+} from "./internal-slack-org-run-callback.service";
+import {
+  handleTelegramInternalCallback$,
+  handleTelegramInternalCallbackWithoutCcstate,
+} from "./internal-telegram-run-callback.service";
+import {
+  internalRunCallbackKindForRecord,
+  type InternalRunCallbackDispatchResult,
   type InternalRunCallbackEnvelope,
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
+import {
+  handleTriggerInternalCallback,
+  handleTriggerInternalCallback$,
+} from "./internal-trigger-run-callback.service";
 
 const L = logger("AgentRunCallback");
 
@@ -70,35 +95,65 @@ interface DispatchInternalCallbackInput {
   readonly envelope: InternalRunCallbackEnvelope;
 }
 
-function resolveCallbackUrl(url: string): string {
-  return env("ENV") === "development" && url.startsWith("https://tunnel-")
-    ? url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
-    : url;
-}
-
-function internalCallbackKindForRecord(
-  callback: CallbackRecord,
-): InternalRunCallbackKind | null {
-  if (callback.internalKind === "agent") {
-    return callback.internalKind;
-  }
-  return legacyInternalRunCallbackKind(callback.url);
-}
-
 const dispatchInternalCallback$ = command(
   async (
     { set },
     input: DispatchInternalCallbackInput,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<InternalRunCallbackDispatchResult> => {
     switch (input.kind) {
       case "agent": {
         await set(handleAgentInternalCallback$, input.envelope, signal);
-        break;
+        return { success: true };
+      }
+      case "agentphone": {
+        return await set(
+          handleAgentPhoneInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "chat": {
+        return await set(handleChatInternalCallback$, input.envelope, signal);
+      }
+      case "github:issues": {
+        return await set(
+          handleGithubIssuesInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "slack:org": {
+        return await set(
+          handleSlackOrgInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "telegram": {
+        return await set(
+          handleTelegramInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "trigger:cron":
+      case "trigger:loop": {
+        return await set(
+          handleTriggerInternalCallback$,
+          { kind: input.kind, callback: input.envelope },
+          signal,
+        );
       }
     }
   },
 );
+
+function resolveCallbackUrl(url: string): string {
+  return env("ENV") === "development" && url.startsWith("https://tunnel-")
+    ? url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
+    : url;
+}
 
 const dispatchSingleInternalCallback$ = command(
   async (
@@ -134,6 +189,25 @@ const dispatchSingleInternalCallback$ = command(
         error: responseResult.error,
       });
       return { callbackId, success: false, error: errorMessage };
+    }
+
+    if (!responseResult.value.success) {
+      await markCallbackFailed(
+        input.db,
+        callbackId,
+        responseResult.value.error,
+      );
+      signal.throwIfAborted();
+      L.warn("Internal callback dispatch failed", {
+        callbackId,
+        runId: input.runId,
+        error: responseResult.value.error,
+      });
+      return {
+        callbackId,
+        success: false,
+        error: responseResult.value.error,
+      };
     }
 
     await markCallbackDelivered(input.db, callbackId);
@@ -200,6 +274,14 @@ export async function dispatchRunCallbacks(
   return results;
 }
 
+export async function dispatchFailedRunCallbacks(
+  db: Db,
+  runId: string,
+  error: string,
+): Promise<void> {
+  await dispatchRunCallbacks(db, runId, "failed", undefined, error);
+}
+
 export const dispatchRunCallbacks$ = command(
   async (
     { set },
@@ -247,7 +329,7 @@ export const dispatchRunCallbacks$ = command(
 
     const results: DispatchResult[] = [];
     for (const callback of callbacks) {
-      const internalKind = internalCallbackKindForRecord(callback);
+      const internalKind = internalRunCallbackKindForRecord(callback);
       const dispatchResult = internalKind
         ? await set(
             dispatchSingleInternalCallback$,
@@ -281,7 +363,7 @@ export const dispatchRunCallbacks$ = command(
 async function dispatchSingleCallback(
   input: DispatchSingleCallbackInput,
 ): Promise<DispatchResult> {
-  const internalKind = internalCallbackKindForRecord(input.callback);
+  const internalKind = internalRunCallbackKindForRecord(input.callback);
   if (internalKind) {
     return await dispatchInternalCallback(input);
   }
@@ -291,10 +373,101 @@ async function dispatchSingleCallback(
 async function dispatchInternalCallback(
   input: DispatchSingleCallbackInput,
 ): Promise<DispatchResult> {
+  const internalKind = internalRunCallbackKindForRecord(input.callback);
+  if (!internalKind) {
+    const errorMessage = "Unknown internal callback kind";
+    await markCallbackFailed(input.db, input.callback.id, errorMessage);
+    return {
+      callbackId: input.callback.id,
+      success: false,
+      error: errorMessage,
+    };
+  }
+
   await markCallbackAttemptStarted(input.db, input.callback.id);
   const callbackId = input.callback.id;
+  const responseResult = await settle(
+    dispatchInternalCallbackWithoutCcstate(input, internalKind),
+  );
+
+  if (!responseResult.ok) {
+    const errorMessage =
+      responseResult.error instanceof Error
+        ? responseResult.error.message
+        : "Unknown error";
+    await markCallbackFailed(input.db, callbackId, errorMessage);
+    L.error("Internal callback dispatch threw", {
+      callbackId,
+      runId: input.runId,
+      error: responseResult.error,
+    });
+    return { callbackId, success: false, error: errorMessage };
+  }
+
+  if (!responseResult.value.success) {
+    await markCallbackFailed(input.db, callbackId, responseResult.value.error);
+    L.warn("Internal callback dispatch failed", {
+      callbackId,
+      runId: input.runId,
+      error: responseResult.value.error,
+    });
+    return {
+      callbackId,
+      success: false,
+      error: responseResult.value.error,
+    };
+  }
+
   await markCallbackDelivered(input.db, callbackId);
   return { callbackId, success: true };
+}
+
+async function dispatchInternalCallbackWithoutCcstate(
+  input: DispatchSingleCallbackInput,
+  kind: InternalRunCallbackKind,
+): Promise<InternalRunCallbackDispatchResult> {
+  switch (kind) {
+    case "agent": {
+      return { success: true };
+    }
+    case "agentphone": {
+      return await handleAgentPhoneInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "chat": {
+      return await handleChatInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "github:issues": {
+      return await handleGithubIssuesInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "slack:org": {
+      return await handleSlackOrgInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "telegram": {
+      return await handleTelegramInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "trigger:cron":
+    case "trigger:loop": {
+      return await handleTriggerInternalCallback(input.db, {
+        kind,
+        callback: callbackEnvelope(input),
+      });
+    }
+  }
 }
 
 function callbackEnvelope(

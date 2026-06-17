@@ -74,6 +74,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
@@ -82,8 +83,7 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import emptyChatImg from "./assets/empty-chat.webp";
-import emptyArtifactImg from "./assets/empty-artifact.webp";
+import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
@@ -5657,12 +5657,19 @@ function generationTemplateLabel(
       item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
     );
   }
-  const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-    return (
-      candidate.designSystemId === value.selection.designSystemId &&
-      candidate.templateId === value.selection.templateId
-    );
-  });
+  const item =
+    PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    }) ??
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return (
+        candidate.designSystemId === value.selection.designSystemId &&
+        candidate.templateId === value.selection.templateId
+      );
+    });
   return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
 }
 

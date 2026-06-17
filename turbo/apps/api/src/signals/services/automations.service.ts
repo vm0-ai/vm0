@@ -30,6 +30,7 @@ import {
   resolveAutomationRunModelContext,
   type RunCreationErrorResponse,
 } from "./automations/run-compat";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { generateAutomationDescription } from "./automations/describe";
 
@@ -1338,6 +1339,7 @@ export const runAutomationNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );

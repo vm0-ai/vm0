@@ -27,11 +27,9 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
  *
- * Every signed callback in this file originates from the real dispatcher
- * (sandbox complete/cancel webhooks and the sandbox heartbeat route) and is
- * either proxied into the app or captured for verbatim replay. Tests create
- * runs through public APIs; scenarios about persisted run context may adjust
- * that context directly before sending the real callback.
+ * Terminal callbacks in this file originate from the real internal dispatcher
+ * (sandbox complete/cancel webhooks and the sandbox heartbeat route), so normal
+ * app-internal dispatch does not depend on an HTTP self-call.
  */
 
 const context = testContext();
@@ -197,17 +195,6 @@ async function seedOrgMemberRole(
     });
 }
 
-async function waitForArrayLength<T>(
-  items: readonly T[],
-  length: number,
-): Promise<void> {
-  await expect
-    .poll(() => {
-      return items.length;
-    })
-    .toBe(length);
-}
-
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
@@ -362,7 +349,7 @@ function pushPayload(call: readonly unknown[] | undefined): unknown {
 describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const titlePrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
@@ -617,7 +604,7 @@ describe("CHAT-02: completed chat callback", () => {
 describe("CHAT-02: chat output extraction and progress callbacks", () => {
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const deliveries = chatCallbacks.proxyChatCallbackToApp();
+    const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
       agentId,
@@ -652,14 +639,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       [200],
     );
 
-    await waitForArrayLength(deliveries, 1);
-    const progressBody: unknown = JSON.parse(deliveries[0]?.body ?? "{}");
-    expect(progressBody).toMatchObject({
-      callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
-      runId: first.runId,
-      status: "progress",
-      payload: { threadId: first.threadId, agentId },
-    });
+    expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
@@ -813,180 +793,10 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
   }, 90_000);
 });
 
-describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
-  it("deduplicates concurrent and replayed deliveries and rejects tampered signatures", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const deliveries = chatCallbacks.captureChatCallbackDeliveries();
-
-    const first = await startChatRun(actor, { agentId, prompt: "dedupe me" });
-    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "First event"),
-      assistantEvent(1, "Second event"),
-    ]);
-    await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 1,
-    });
-
-    await waitForArrayLength(deliveries, 1);
-    const completedDelivery = deliveries[0];
-    if (!completedDelivery) {
-      throw new Error("Expected a captured completed delivery");
-    }
-    const completedBody: unknown = JSON.parse(completedDelivery.body);
-    expect(completedBody).toMatchObject({
-      callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
-      runId: first.runId,
-      status: "completed",
-      payload: { threadId: first.threadId, agentId },
-    });
-    expect(completedDelivery.headers["x-vm0-signature"]).toMatch(/.+/);
-    expect(completedDelivery.headers["x-vm0-timestamp"]).toMatch(/^\d+$/);
-
-    const beforeReplay = await chat.listThreadMessages(actor, first.threadId);
-    expect(assistantMessages(beforeReplay.messages)).toHaveLength(0);
-
-    const [replayA, replayB] = await Promise.all([
-      chatCallbacks.replayChatCallback(completedDelivery),
-      chatCallbacks.replayChatCallback(completedDelivery),
-    ]);
-    expect(replayA.status).toBe(200);
-    expect(replayB.status).toBe(200);
-    let messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          eventBackedContents(threadMessages, first.runId).length === 2 &&
-          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
-            1
-        );
-      },
-    );
-    expect(
-      eventBackedContents(messages.messages, first.runId)
-        .map((message) => {
-          return message.content;
-        })
-        .sort(),
-    ).toStrictEqual(["First event", "Second event"]);
-    expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
-    ).toHaveLength(1);
-
-    const sentinel = await chat.createThread(actor, {
-      agentId,
-      title: "Replay ordering sentinel",
-    });
-    context.mocks.ably.publish.mockClear();
-    const replayAgain =
-      await chatCallbacks.replayChatCallback(completedDelivery);
-    expect(replayAgain.status).toBe(200);
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
-          1
-        );
-      },
-    );
-    expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
-    ).toHaveLength(1);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
-    );
-    const ordered = await chat.listThreads(actor, { agentId });
-    const orderedIds = [...ordered.pinned, ...ordered.threads].map((thread) => {
-      return thread.id;
-    });
-    expect(orderedIds.indexOf(sentinel.id)).toBeGreaterThanOrEqual(0);
-    expect(orderedIds.indexOf(sentinel.id)).toBeLessThan(
-      orderedIds.indexOf(first.threadId),
-    );
-
-    const tampered = await chatCallbacks.replayChatCallback(completedDelivery, {
-      signature: chatCallbacks.tamperedSignature(completedDelivery),
-    });
-    expect(tampered.status).toBe(401);
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return eventBackedContents(threadMessages, first.runId).length === 2;
-      },
-    );
-    expect(eventBackedContents(messages.messages, first.runId)).toHaveLength(2);
-
-    const second = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "failed turn",
-    });
-    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await failChatRun(
-      second.runId,
-      secondHeaders,
-      "Cannot continue session from checkpoint",
-    );
-
-    await waitForArrayLength(deliveries, 2);
-    const failedDelivery = deliveries[1];
-    if (!failedDelivery) {
-      throw new Error("Expected a captured failed delivery");
-    }
-    const failedBody: unknown = JSON.parse(failedDelivery.body);
-    expect(failedBody).toMatchObject({
-      runId: second.runId,
-      status: "failed",
-      error: "Cannot continue session from checkpoint",
-      payload: { threadId: first.threadId, agentId },
-    });
-
-    const firstFailedReplay =
-      await chatCallbacks.replayChatCallback(failedDelivery);
-    expect(firstFailedReplay.status).toBe(200);
-    await waitForThreadMessages(actor, first.threadId, (threadMessages) => {
-      return (
-        lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
-      );
-    });
-    context.mocks.ably.publish.mockClear();
-    const secondFailedReplay =
-      await chatCallbacks.replayChatCallback(failedDelivery);
-    expect(secondFailedReplay.status).toBe(200);
-    messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (threadMessages) => {
-        return (
-          lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
-        );
-      },
-    );
-    const failedMarkers = lifecycleMarkers(
-      messages.messages,
-      second.runId,
-      "failed",
-    );
-    expect(failedMarkers).toHaveLength(1);
-    expect(failedMarkers[0]?.error).toBe(
-      "Cannot continue session from checkpoint",
-    );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
-    );
-  }, 90_000);
-});
-
 describe("CHAT-02: failed chat callbacks", () => {
   it("formats failed-run errors with escalation and notifies, without auto-sending", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.registerPushSubscription(actor);
     chatCallbacks.enableVapid();
 
@@ -1087,7 +897,7 @@ describe("CHAT-02: failed chat callbacks", () => {
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
 
@@ -1166,7 +976,7 @@ describe("CHAT-02: failed chat callbacks", () => {
 describe("CHAT-02: auto-send after failures", () => {
   it("auto-sends the queued message after a failure, carrying attachments, incomplete-round context, and the continued session", async () => {
     const { actor, agentId, runnerGroup, storage } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
       agentId,
@@ -1303,7 +1113,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
   it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
@@ -1437,7 +1247,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
 describe("CHAT-02: thread deletion while a run is active", () => {
   it("skips terminal processing when the thread is gone", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const run = await startChatRun(actor, {
       agentId,
@@ -1480,7 +1290,7 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 describe("CHAT-02: push notification gating", () => {
   it("withholds pushes without VAPID keys and deletes stale subscriptions after gone responses", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.proxyChatCallbackToApp();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
     const endpoint = await chatCallbacks.registerPushSubscription(actor);
 
     const first = await startChatRun(actor, {

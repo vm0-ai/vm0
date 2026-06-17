@@ -10,7 +10,9 @@ import {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
+  type PresentationTemplateItem,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
@@ -347,8 +349,8 @@ async function expectComposerModel(label: string): Promise<void> {
 
 async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
+  template: PresentationTemplateItem = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
 ): Promise<void> {
-  const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
   const slideCount =
     template.previewImages.length > 0 ? template.previewImages.length : 1;
 
@@ -426,7 +428,7 @@ async function openTemplatePicker(
 
 async function selectTemplate(
   user: ReturnType<typeof userEvent.setup>,
-  template: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
+  template: PresentationTemplateItem,
 ): Promise<void> {
   click(
     await waitFor(() => {
@@ -448,14 +450,29 @@ async function selectTemplate(
   });
 }
 
-function templateLabel(
-  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
-): string {
-  const label = item.templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
+async function selectIllustrationTemplate(
+  user: ReturnType<typeof userEvent.setup>,
+  template: (typeof ILLUSTRATION_TEMPLATE_ITEMS)[number],
+): Promise<void> {
+  click(
+    await waitFor(() => {
+      return screen.getByLabelText("Template");
+    }),
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  await user.click(tabByText("Illustration"));
+  await user.click(screen.getByLabelText(`Select template ${template.title}`));
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
 }
 
 function chatClipboardHtml(payload: {
@@ -1414,24 +1431,27 @@ describe("chat composer models", () => {
 describe("chat composer templates", () => {
   it("selects a presentation template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
     });
 
-    await openTemplatePicker(user);
+    await openTemplatePicker(user, template);
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+    click(screen.getByLabelText(`Remove template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1439,8 +1459,71 @@ describe("chat composer templates", () => {
         "false",
       );
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses legacy presentation templates when the new catalog switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: false,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(legacyTemplate.title)).toBeInTheDocument();
+      expect(screen.queryByText(newTemplate.title)).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByLabelText(`Select template ${legacyTemplate.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${legacyTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("uses switched presentation templates when the new catalog switch is on", async () => {
+    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(newTemplate.title)).toBeInTheDocument();
+      expect(screen.queryByText(legacyTemplate.title)).not.toBeInTheDocument();
     });
   });
 
@@ -1451,7 +1534,10 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
     });
 
     click(
@@ -1564,7 +1650,10 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
+      },
     });
 
     click(
@@ -1717,7 +1806,7 @@ describe("chat composer templates", () => {
         "false",
       );
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
   });
@@ -1725,7 +1814,7 @@ describe("chat composer templates", () => {
   it("keeps newer template selections visible after a queued template is sent", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[1]!;
+    const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockActiveTemplateThread();
 
     detachedSetupPage({
@@ -1752,7 +1841,7 @@ describe("chat composer templates", () => {
       );
     });
 
-    await selectTemplate(user, nextTemplate);
+    await selectIllustrationTemplate(user, nextTemplate);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1760,10 +1849,10 @@ describe("chat composer templates", () => {
         "true",
       );
       expect(
-        screen.getByLabelText(`Remove template ${templateLabel(nextTemplate)}`),
+        screen.getByLabelText(`Remove template ${nextTemplate.title}`),
       ).toBeInTheDocument();
       expect(
-        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+        screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
     });
   });
@@ -1853,11 +1942,7 @@ describe("chat composer templates", () => {
 
     await selectTemplate(user, template);
 
-    click(
-      await screen.findByLabelText(
-        `Preview template ${templateLabel(template)}`,
-      ),
-    );
+    click(await screen.findByLabelText(`Preview template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -1945,7 +2030,7 @@ describe("chat composer templates", () => {
 
     await selectTemplate(user, template);
 
-    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+    click(screen.getByLabelText(`Remove template ${template.title}`));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1955,7 +2040,7 @@ describe("chat composer templates", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+      screen.queryByLabelText(`Preview template ${template.title}`),
     ).not.toBeInTheDocument();
   });
 });

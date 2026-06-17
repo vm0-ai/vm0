@@ -31,12 +31,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
+import { dispatchRunCallbacks$ } from "../../services/agent-run-callback.service";
 import {
   decryptSecretForTests,
   encryptSecretForTests,
@@ -55,7 +54,6 @@ const NEW_BOT_TOKEN = "123456:new-test-bot-token";
 const OFFICIAL_BOT_TOKEN = "987654:official-bot-token";
 const OFFICIAL_BOT_USERNAME = "official_zero_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
-const CALLBACK_SECRET = "test-callback-secret";
 
 interface TelegramPostFixture {
   readonly orgId: string;
@@ -414,31 +412,6 @@ async function postWebhook(args: {
       },
       body:
         typeof args.body === "string" ? args.body : JSON.stringify(args.body),
-    },
-  );
-}
-
-function callbackHeaders(rawBody: string) {
-  const timestamp = Math.floor(nowDate().getTime() / 1000);
-  return {
-    "content-type": "application/json",
-    "X-VM0-Timestamp": String(timestamp),
-    "X-VM0-Signature": computeHmacSignature(
-      rawBody,
-      CALLBACK_SECRET,
-      timestamp,
-    ),
-  };
-}
-
-async function postTelegramCallback(body: Record<string, unknown>) {
-  const rawBody = JSON.stringify(body);
-  return await createApp({ signal: context.signal }).request(
-    "/api/internal/callbacks/telegram",
-    {
-      method: "POST",
-      headers: callbackHeaders(rawBody),
-      body: rawBody,
     },
   );
 }
@@ -1273,9 +1246,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run!.id))
       .limit(1);
-    expect(callback?.url).toBe(
-      "http://localhost:3000/api/internal/callbacks/telegram",
-    );
+    expect(callback).toMatchObject({
+      url: null,
+      internalKind: "telegram",
+    });
     const [job] = await db
       .select()
       .from(runnerJobQueue)
@@ -1284,7 +1258,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(job).toBeDefined();
   });
 
-  it("stores the internal callback url on VM0_API_BACKEND_URL when set", async () => {
+  it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
     mockEnv("VM0_API_URL", "https://www.vm0.ai");
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
@@ -1324,9 +1298,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run!.id))
       .limit(1);
-    expect(callback?.url).toBe(
-      "https://api.vm0.ai/api/internal/callbacks/telegram",
-    );
+    expect(callback).toMatchObject({
+      url: null,
+      internalKind: "telegram",
+    });
   });
 
   it("formats generic failed callback errors for Telegram replies", async () => {
@@ -1361,11 +1336,12 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const run = await latestRunForFixture(fixture);
     expect(run?.id).toBeDefined();
-    const { callbackId } = await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: run!.id,
+    const db = store.set(writeDb$);
+    const [callback] = await db
+      .update(agentRunCallbacks)
+      .set({
         url: "http://localhost:3000/api/internal/callbacks/telegram",
+        internalKind: null,
         payload: {
           installationId: fixture.telegramBotId,
           chatId: "77002",
@@ -1376,28 +1352,27 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
           existingSessionId: null,
           isDM: true,
         },
+      })
+      .where(eq(agentRunCallbacks.runId, run!.id))
+      .returning({ callbackId: agentRunCallbacks.id });
+    if (!callback) {
+      throw new Error("Expected Telegram callback row");
+    }
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      {
+        db,
+        runId: run!.id,
+        status: "failed",
+        error: "thread/resume failed: rollout is empty",
       },
       context.signal,
     );
 
-    const response = await postTelegramCallback({
-      callbackId,
-      runId: run!.id,
-      status: "failed",
-      error: "thread/resume failed: rollout is empty",
-      payload: {
-        installationId: fixture.telegramBotId,
-        chatId: "77002",
-        messageId: "43",
-        rootMessageId: null,
-        userLinkId: await linkedTelegramUserLinkId(fixture),
-        agentId: fixture.composeId,
-        existingSessionId: null,
-        isDM: true,
-      },
-    });
-
-    expect(response.status).toBe(200);
+    expect(results).toStrictEqual([
+      { callbackId: callback.callbackId, success: true },
+    ]);
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages.at(-1)?.text).toContain(
       "Oops, something went wrong. Please try again later.",

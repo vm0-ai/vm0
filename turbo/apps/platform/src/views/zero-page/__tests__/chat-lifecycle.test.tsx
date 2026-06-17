@@ -17,6 +17,7 @@ import {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
@@ -734,16 +735,6 @@ function linkByText(text: string): HTMLElement {
     throw new Error(`${text} link not found`);
   }
   return link;
-}
-
-function presentationTemplateLabel(
-  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
-): string {
-  const label = item.templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function queryButtonByText(text: string): HTMLElement | null {
@@ -3579,7 +3570,7 @@ describe("chat lifecycle", () => {
 
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
-    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const videoTemplate = VIDEO_STYLE_PRESETS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 
@@ -3652,7 +3643,7 @@ describe("chat lifecycle", () => {
 
   it("hides historical template labels behind picker feature switches", async () => {
     const threadId = "template-message-history-gated";
-    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 
     mockChatLifecycle(context, {
@@ -3981,7 +3972,7 @@ describe("chat lifecycle", () => {
   it("sends inline feedback with selected template and draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const templateChipLabel = presentationTemplateLabel(template);
+    const templateChipLabel = template.title;
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];
 

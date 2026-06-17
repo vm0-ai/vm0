@@ -1,5 +1,54 @@
 # Changelog
 
+## [9.194.0](https://github.com/vm0-ai/vm0/compare/cli-v9.193.10...cli-v9.194.0) (2026-06-16)
+
+
+### Features
+
+* register playful editorial presentation template ([#17919](https://github.com/vm0-ai/vm0/issues/17919)) ([c967214](https://github.com/vm0-ai/vm0/commit/c967214afe7108fea84d31c64a846b54a6fefc45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.97.3
+    * @vm0/connectors bumped to 1.83.0
+    * @vm0/core bumped to 8.346.0
+
+## [9.193.10](https://github.com/vm0-ai/vm0/compare/cli-v9.193.9...cli-v9.193.10) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.97.2
+    * @vm0/connectors bumped to 1.82.0
+    * @vm0/core bumped to 8.345.0
+
+## [9.193.9](https://github.com/vm0-ai/vm0/compare/cli-v9.193.8...cli-v9.193.9) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.97.1
+    * @vm0/connectors bumped to 1.81.1
+    * @vm0/core bumped to 8.344.1
+
+## [9.193.8](https://github.com/vm0-ai/vm0/compare/cli-v9.193.7...cli-v9.193.8) (2026-06-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.97.0
+    * @vm0/connectors bumped to 1.81.0
+    * @vm0/core bumped to 8.344.0
+
 ## [9.193.7](https://github.com/vm0-ai/vm0/compare/cli-v9.193.6...cli-v9.193.7) (2026-06-16)
 
 

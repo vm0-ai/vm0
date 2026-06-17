@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.9...guest-common-v0.2.10) (2026-06-16)
+
+
+### Bug Fixes
+
+* **guest-common:** serialize sandbox telemetry appends ([#17881](https://github.com/vm0-ai/vm0/issues/17881)) ([1c568be](https://github.com/vm0-ai/vm0/commit/1c568be116cef551d356a4adb2c6960dc1756275))
+
 ## [0.2.9](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.8...guest-common-v0.2.9) (2026-06-15)
 
 

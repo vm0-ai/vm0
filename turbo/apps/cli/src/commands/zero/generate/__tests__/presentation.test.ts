@@ -136,6 +136,37 @@ describe("zero generate presentation command", () => {
     );
   });
 
+  it("should accept the switched picker presentation template from the registry", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "presentation",
+      "--prompt",
+      "product launch",
+      "--design-system",
+      "playful-editorial",
+      "--template",
+      "html-ppt-playful-editorial",
+      "--title",
+      "Launch",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected design system: design-system:playful-editorial (Playful Editorial)",
+    );
+    expect(stdout).toContain(
+      "Selected template: template:html-ppt-playful-editorial (Playful Editorial Presentation)",
+    );
+    expect(stdout).toContain("vm0-ai/vm0-skills@main");
+    expect(stdout).toContain('"id": "template:html-ppt-playful-editorial"');
+    expect(stdout).toContain('"path": "presentation-template/aplocoto"');
+    expect(stdout).toContain('"id": "design-system:playful-editorial"');
+    expect(stdout).toContain(
+      '"path": "presentation-design-system/playful-editorial"',
+    );
+  });
+
   it("should reject a template that does not target presentation", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([

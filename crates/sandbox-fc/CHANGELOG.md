@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.35](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.34...sandbox-fc-v0.37.35) (2026-06-16)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** add balloon settle diagnostics ([#17905](https://github.com/vm0-ai/vm0/issues/17905)) ([e1414de](https://github.com/vm0-ai/vm0/commit/e1414de87fde49cf11b8c08824a097a85e505124))
+
+## [0.37.34](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.33...sandbox-fc-v0.37.34) (2026-06-16)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** validate firecracker artifact prerequisites ([#17824](https://github.com/vm0-ai/vm0/issues/17824)) ([3b607ae](https://github.com/vm0-ai/vm0/commit/3b607aea95034e78b8d50577e371de83a5c9f9dd))
+
 ## [0.37.33](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.32...sandbox-fc-v0.37.33) (2026-06-16)
 
 
