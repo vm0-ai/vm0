@@ -21,9 +21,8 @@ Examples:
   Update description:    zero agent edit $ZERO_AGENT_ID --description "new role"
   Update tone:           zero agent edit $ZERO_AGENT_ID --sound friendly
   Update instructions:   zero agent edit $ZERO_AGENT_ID --instructions-file <path>
-  Add a custom skill:    zero agent edit $ZERO_AGENT_ID --add-skill my-skill
-  Remove a skill:        zero agent edit $ZERO_AGENT_ID --remove-skill my-skill
+  Attach a workflow:     zero workflow attach <name> --agent $ZERO_AGENT_ID
 
 Notes:
-  Manage custom skills with 'zero skill --help'`,
+  Manage workflows with 'zero workflow --help'`,
   );

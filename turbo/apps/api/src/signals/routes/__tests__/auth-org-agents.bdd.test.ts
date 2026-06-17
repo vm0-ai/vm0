@@ -665,34 +665,6 @@ describe("AGENT-01 and AGENT-02", () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
-    const builtInCustomSkill = await api.requestCreateAgent(
-      admin,
-      {
-        displayName: "BDD Built In Custom Skill",
-        customSkills: ["github"],
-      },
-      [400],
-    );
-    expectApiError(builtInCustomSkill.body);
-    expect(builtInCustomSkill.body.error.code).toBe("VALIDATION_ERROR");
-    expect(builtInCustomSkill.body.error.message).toBe(
-      "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
-    );
-
-    const missingCustomSkill = await api.requestCreateAgent(
-      admin,
-      {
-        displayName: "BDD Missing Custom Skill",
-        customSkills: [`missing-${shortId()}`],
-      },
-      [400],
-    );
-    expectApiError(missingCustomSkill.body);
-    expect(missingCustomSkill.body.error.code).toBe("VALIDATION_ERROR");
-    expect(missingCustomSkill.body.error.message).toContain(
-      "not found in this organization",
-    );
-
     const publicAgents = [];
     for (let index = 0; index < 7; index += 1) {
       publicAgents.push(

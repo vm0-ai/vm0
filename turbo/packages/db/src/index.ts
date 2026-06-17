@@ -66,7 +66,7 @@ import * as zeroRunSchema from "./schema/zero-run";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
-import * as zeroSkillSchema from "./schema/zero-skill";
+import * as zeroWorkflowSchema from "./schema/zero-workflow";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
@@ -150,7 +150,7 @@ export const schema = {
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
-  ...zeroSkillSchema,
+  ...zeroWorkflowSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,

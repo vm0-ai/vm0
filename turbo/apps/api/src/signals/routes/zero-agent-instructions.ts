@@ -1,8 +1,5 @@
 import { command, computed } from "ccstate";
-import {
-  zeroAgentInstructionsContract,
-  zeroSkillsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
@@ -22,7 +19,6 @@ import {
   defaultAgentResponse,
 } from "../services/zero-agent-data.service";
 import { zeroAgentInstructions } from "../services/zero-agent-instructions.service";
-import { zeroSkillDetail } from "../services/zero-skill-detail.service";
 import type { RouteEntry } from "../route";
 
 const agentReadAuth = {
@@ -124,7 +120,6 @@ const updateAgentInstructionsInner$ = command(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
         preferPersonalProvider: zeroAgents.preferPersonalProvider,
@@ -152,16 +147,6 @@ const updateAgentInstructionsInner$ = command(
   },
 );
 
-const getSkillDetailInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroSkillsDetailContract.get));
-  const result = await get(zeroSkillDetail(auth.orgId, params.name));
-  if (!result) {
-    return notFound(`Skill not found: ${params.name}`);
-  }
-  return { status: 200 as const, body: result };
-});
-
 export const zeroAgentInstructionsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentInstructionsContract.get,
@@ -170,9 +155,5 @@ export const zeroAgentInstructionsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentInstructionsContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInstructionsInner$),
-  },
-  {
-    route: zeroSkillsDetailContract.get,
-    handler: authRoute(agentReadAuth, getSkillDetailInner$),
   },
 ];

@@ -834,8 +834,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD codex skills agent",
       visibility: "private",
-      customSkills: [skillName],
     });
+    await misc.attachWorkflowToAgent(actor, skillName, agent.agentId, [200]);
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
     const sent = await chat.requestSendMessage(
       actor,
@@ -1571,10 +1571,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
-      "zero skill --help",
-      "Local changes or newly-created skill folders",
+      "zero workflow --help",
+      "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
-      "zero skill create|edit <name> --dir <path>",
+      "zero workflow create|edit <name> --dir <path>",
       "zero developer-support --help",
       "zero maps --help",
     ]) {
@@ -1747,8 +1747,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD claude skills agent",
       visibility: "private",
-      customSkills: [skillName],
     });
+    await misc.attachWorkflowToAgent(actor, skillName, agent.agentId, [200]);
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,

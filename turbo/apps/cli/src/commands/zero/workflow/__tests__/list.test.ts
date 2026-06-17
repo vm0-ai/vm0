@@ -1,5 +1,5 @@
 /**
- * Tests for zero skill list command
+ * Tests for zero workflow list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
-describe("zero skill list command", () => {
+describe("zero workflow list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -35,19 +35,29 @@ describe("zero skill list command", () => {
   });
 
   describe("successful list", () => {
-    it("should display skills in table format", async () => {
+    it("should display workflows in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills", () => {
+        http.get("http://localhost:3000/api/zero/workflows", () => {
           return HttpResponse.json([
             {
               name: "code-review",
               displayName: "Code Review",
               description: "Reviews code",
+              visibility: "private",
+              ownerUserId: "user-123",
+              attachedAgentCount: 1,
+              attachedAgents: [],
+              canManage: true,
             },
             {
               name: "deploy",
               displayName: null,
               description: null,
+              visibility: "public",
+              ownerUserId: "user-123",
+              attachedAgentCount: 0,
+              attachedAgents: [],
+              canManage: false,
             },
           ]);
         }),
@@ -58,12 +68,13 @@ describe("zero skill list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("code-review");
       expect(logCalls).toContain("Code Review");
+      expect(logCalls).toContain("private");
       expect(logCalls).toContain("deploy");
     });
 
-    it("should show empty state when no skills", async () => {
+    it("should show empty state when no workflows", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills", () => {
+        http.get("http://localhost:3000/api/zero/workflows", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -71,14 +82,14 @@ describe("zero skill list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No custom skills found");
+      expect(logCalls).toContain("No workflows found");
     });
   });
 
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills", () => {
+        http.get("http://localhost:3000/api/zero/workflows", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

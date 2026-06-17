@@ -1,11 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-  type ZeroAgentCustomSkill,
-  type ZeroAgentSkillDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowsCollectionContract as zeroSkillsCollectionContract,
+  zeroWorkflowsDetailContract as zeroSkillsDetailContract,
+  type ZeroWorkflowDetailResponse as ZeroAgentSkillDetailResponse,
+  type ZeroWorkflowSummary as ZeroAgentCustomSkill,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroTeamContract,
   type TeamComposeItem,
@@ -29,6 +29,11 @@ const SKILL_DETAILS: readonly ZeroAgentSkillDetailResponse[] = [
     name: "sales-research",
     displayName: "Sales Research",
     description: "Collects account context before outreach.",
+    visibility: "public",
+    ownerUserId: "user-1",
+    attachedAgentCount: 2,
+    attachedAgents: [],
+    canManage: true,
     content: `---
 name: Sales Research
 ---
@@ -71,6 +76,11 @@ Use CRM context before outreach.
     name: "support-escalation",
     displayName: "Support Escalation",
     description: "Summarizes urgent customer issues for the support queue.",
+    visibility: "public",
+    ownerUserId: "user-1",
+    attachedAgentCount: 1,
+    attachedAgents: [],
+    canManage: true,
     content: "# Support escalation\n\nSummarize severity and next owner.\n",
     files: [{ path: "SKILL.md", size: 64 }],
     fileContents: [
@@ -84,6 +94,11 @@ Use CRM context before outreach.
     name: "ops-playbook",
     displayName: "Ops Playbook",
     description: null,
+    visibility: "private",
+    ownerUserId: "user-1",
+    attachedAgentCount: 0,
+    attachedAgents: [],
+    canManage: true,
     content: "# Ops playbook\n\nPrepare release checks.\n",
     files: [{ path: "SKILL.md", size: 2048 }],
     fileContents: [
@@ -124,6 +139,11 @@ function skillMetadata(): readonly ZeroAgentCustomSkill[] {
       name: skill.name,
       displayName: skill.displayName,
       description: skill.description,
+      visibility: skill.visibility,
+      ownerUserId: skill.ownerUserId,
+      attachedAgentCount: skill.attachedAgentCount,
+      attachedAgents: skill.attachedAgents,
+      canManage: skill.canManage,
     };
   });
 }

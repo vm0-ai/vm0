@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { zeroAgentCustomSkillNameSchema } from "@vm0/api-contracts/contracts/zero-agents";
 import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAvatarUrl } from "./avatar";
@@ -9,10 +8,6 @@ import { resolveAvatarUrl } from "./avatar";
 export const createCommand = new Command()
   .name("create")
   .description("Create a new zero agent")
-  .option(
-    "--skills <items>",
-    "Comma-separated custom skill names to attach (e.g. my-skill,other-skill)",
-  )
   .option("--display-name <name>", "Agent display name")
   .option("--description <text>", "Agent description")
   .option(
@@ -64,13 +59,11 @@ Examples:
   Minimal:               zero agent create --display-name "My Agent"
   Quick preset:          zero agent create --display-name "My Agent" --avatar preset:2
   Custom avatar:         zero agent create --display-name "My Agent" --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
-  With skills:           zero agent create --skills my-skill,other-skill --display-name "My Agent"
   With instructions:     zero agent create --display-name "My Agent" --instructions-file ./instructions.md`,
   )
   .action(
     withErrorHandler(
       async (options: {
-        skills?: string;
         displayName?: string;
         description?: string;
         sound?: string;
@@ -83,23 +76,6 @@ Examples:
         avatarIntensity?: string;
         instructionsFile?: string;
       }) => {
-        const customSkills = options.skills
-          ? options.skills.split(",").map((s) => {
-              return s.trim();
-            })
-          : undefined;
-
-        if (customSkills) {
-          for (const name of customSkills) {
-            const result = zeroAgentCustomSkillNameSchema.safeParse(name);
-            if (!result.success) {
-              throw new Error(
-                `Invalid skill name "${name}": must be 2-64 characters, lowercase alphanumeric and hyphens only (e.g. my-skill)`,
-              );
-            }
-          }
-        }
-
         const avatarUrl = resolveAvatarUrl(options);
 
         const agent = await createZeroAgent({
@@ -107,7 +83,6 @@ Examples:
           description: options.description,
           sound: options.sound,
           avatarUrl,
-          customSkills,
         });
 
         if (options.instructionsFile) {
@@ -117,9 +92,6 @@ Examples:
 
         console.log(chalk.green(`✓ Agent "${agent.agentId}" created`));
         console.log(`  Agent ID:     ${agent.agentId}`);
-        if (customSkills?.length) {
-          console.log(`  Skills:       ${customSkills.join(", ")}`);
-        }
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
         }

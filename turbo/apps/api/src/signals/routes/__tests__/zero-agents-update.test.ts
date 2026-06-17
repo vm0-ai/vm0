@@ -22,7 +22,6 @@ import {
 import {
   deleteSkillsForFixture$,
   seedAgentForInstructions$,
-  seedSkill$,
   seedSkillsFixture$,
   type SkillsFixture,
 } from "./helpers/zero-skills";
@@ -161,18 +160,9 @@ describe("PUT /api/zero/agents/:id", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("updates agent metadata, validates custom skills and model selection, and preserves omitted fields", async () => {
+  it("updates agent metadata and model selection while preserving omitted fields", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedSkill$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "research-notes",
-      },
-      context.signal,
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -181,7 +171,6 @@ describe("PUT /api/zero/agents/:id", () => {
         userId: fixture.userId,
         displayName: "Old Agent",
         sound: "calm",
-        customSkills: ["old-skill"],
         modelProviderId: null,
         selectedModel: "claude-sonnet-4-6",
         preferPersonalProvider: true,
@@ -196,7 +185,6 @@ describe("PUT /api/zero/agents/:id", () => {
         headers: authHeaders(),
         body: {
           displayName: "Updated Agent",
-          customSkills: ["research-notes"],
         },
       }),
       [200],
@@ -207,7 +195,7 @@ describe("PUT /api/zero/agents/:id", () => {
       ownerId: fixture.userId,
       displayName: "Updated Agent",
       sound: "calm",
-      customSkills: ["research-notes"],
+      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -222,7 +210,7 @@ describe("PUT /api/zero/agents/:id", () => {
     expect(compose?.headVersionId).toBeTruthy();
   });
 
-  it("preserves existing custom skills when the request omits customSkills", async () => {
+  it("keeps workflow bindings out of agent update responses", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
@@ -246,7 +234,7 @@ describe("PUT /api/zero/agents/:id", () => {
       [200],
     );
 
-    expect(response.body.customSkills).toStrictEqual(["existing-skill"]);
+    expect(response.body.customSkills).toStrictEqual([]);
     expect(response.body.description).toBe("Updated description");
   });
 
@@ -278,70 +266,6 @@ describe("PUT /api/zero/agents/:id", () => {
       agentId: agent.agentId,
       ownerId: fixture.userId,
       displayName: "Member Updated",
-    });
-  });
-
-  it("returns 400 when a requested custom skill does not exist", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().update({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: { customSkills: ["missing-skill"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "Custom skill 'missing-skill' not found in this organization. Create it with 'zero skill create' first.",
-        code: "VALIDATION_ERROR",
-      },
-    });
-  });
-
-  it("returns 400 when a built-in connector is requested as a custom skill", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().update({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: { customSkills: ["github"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
-        code: "VALIDATION_ERROR",
-      },
     });
   });
 
@@ -520,7 +444,7 @@ describe("PATCH /api/zero/agents/:id", () => {
       description: "Updated description",
       sound: "calm",
       avatarUrl: null,
-      customSkills: ["existing-skill"],
+      customSkills: [],
       preferPersonalProvider: false,
     });
 
@@ -956,7 +880,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
       agentId: agent.agentId,
       ownerId: fixture.userId,
       displayName: "Instructions Agent",
-      customSkills: ["existing-skill"],
+      customSkills: [],
     });
 
     const putInputs = s3PutInputs();

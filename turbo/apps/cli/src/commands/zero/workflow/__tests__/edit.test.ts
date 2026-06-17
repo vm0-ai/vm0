@@ -1,5 +1,5 @@
 /**
- * Tests for zero skill edit command
+ * Tests for zero workflow edit command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -16,7 +16,7 @@ import { server } from "../../../../mocks/server";
 import { editCommand } from "../edit";
 import chalk from "chalk";
 
-describe("zero skill edit command", () => {
+describe("zero workflow edit command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -25,23 +25,26 @@ describe("zero skill edit command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  let skillDir: string;
+  let workflowDir: string;
 
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
-    skillDir = join(tmpdir(), `test-skill-edit-${Date.now()}`);
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, "SKILL.md"), "# Updated Skill\nNew content.");
+    workflowDir = join(tmpdir(), `test-workflow-edit-${Date.now()}`);
+    mkdirSync(workflowDir, { recursive: true });
+    writeFileSync(
+      join(workflowDir, "SKILL.md"),
+      "# Updated Workflow\nNew content.",
+    );
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    rmSync(skillDir, { recursive: true, force: true });
+    rmSync(workflowDir, { recursive: true, force: true });
   });
 
   describe("successful edit", () => {
@@ -49,14 +52,19 @@ describe("zero skill edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/skills/my-skill",
+          "http://localhost:3000/api/zero/workflows/my-workflow",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              name: "my-skill",
-              displayName: "My Skill",
+              name: "my-workflow",
+              displayName: "My Workflow",
               description: null,
-              content: "# Updated Skill\nNew content.",
+              visibility: "private",
+              ownerUserId: "user-123",
+              attachedAgentCount: 0,
+              attachedAgents: [],
+              canManage: true,
+              content: "# Updated Workflow\nNew content.",
               files: [{ path: "SKILL.md", size: 28 }],
             });
           },
@@ -66,9 +74,9 @@ describe("zero skill edit command", () => {
       await editCommand.parseAsync([
         "node",
         "cli",
-        "my-skill",
+        "my-workflow",
         "--dir",
-        skillDir,
+        workflowDir,
       ]);
 
       const files = capturedBody?.files as
@@ -77,9 +85,9 @@ describe("zero skill edit command", () => {
       expect(files).toBeDefined();
       expect(files).toHaveLength(1);
       expect(files?.[0]?.path).toBe("SKILL.md");
-      expect(files?.[0]?.content).toBe("# Updated Skill\nNew content.");
+      expect(files?.[0]?.content).toBe("# Updated Workflow\nNew content.");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-skill");
+      expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("updated");
       expect(logCalls).toContain("1 file(s)");
     });
@@ -87,14 +95,14 @@ describe("zero skill edit command", () => {
 
   describe("error handling", () => {
     it("should fail when SKILL.md not found", async () => {
-      const emptyDir = join(tmpdir(), `empty-skill-edit-${Date.now()}`);
+      const emptyDir = join(tmpdir(), `empty-workflow-edit-${Date.now()}`);
       mkdirSync(emptyDir, { recursive: true });
 
       await expect(async () => {
         await editCommand.parseAsync([
           "node",
           "cli",
-          "my-skill",
+          "my-workflow",
           "--dir",
           emptyDir,
         ]);

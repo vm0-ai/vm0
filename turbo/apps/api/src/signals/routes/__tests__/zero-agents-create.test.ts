@@ -37,7 +37,6 @@ import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteSkillsForFixture$,
   seedAgentForInstructions$,
-  seedSkill$,
   seedSkillsFixture$,
   type SkillsFixture,
 } from "./helpers/zero-skills";
@@ -167,15 +166,6 @@ describe("POST /api/zero/agents", () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
-    await store.set(
-      seedSkill$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "research-notes",
-      },
-      context.signal,
-    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
@@ -188,7 +178,6 @@ describe("POST /api/zero/agents", () => {
           description: "Tracks research context",
           sound: "calm",
           avatarUrl: "preset:2",
-          customSkills: ["research-notes"],
         },
       }),
       [201],
@@ -200,7 +189,7 @@ describe("POST /api/zero/agents", () => {
       description: "Tracks research context",
       sound: "calm",
       avatarUrl: "preset:2",
-      customSkills: ["research-notes"],
+      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -214,7 +203,6 @@ describe("POST /api/zero/agents", () => {
         id: zeroAgents.id,
         name: zeroAgents.name,
         owner: zeroAgents.owner,
-        customSkills: zeroAgents.customSkills,
         visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
@@ -223,7 +211,6 @@ describe("POST /api/zero/agents", () => {
       id: response.body.agentId,
       name: expect.any(String),
       owner: fixture.userId,
-      customSkills: ["research-notes"],
       visibility: "public",
     });
 
@@ -274,52 +261,6 @@ describe("POST /api/zero/agents", () => {
       );
     expect(instructionsStorage?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns 400 when a requested custom skill does not exist", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { customSkills: ["missing-skill"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "Custom skill 'missing-skill' not found in this organization. Create it with 'zero skill create' first.",
-        code: "VALIDATION_ERROR",
-      },
-    });
-  });
-
-  it("returns 400 when a built-in connector is requested as a custom skill", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { customSkills: ["github"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
-        code: "VALIDATION_ERROR",
-      },
-    });
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {

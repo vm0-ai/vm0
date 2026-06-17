@@ -27,7 +27,7 @@ describe("zero CLI program", () => {
       "schedule",
       "automation",
       "secret",
-      "skill",
+      "workflow",
       "slack",
       "telegram",
       "github",

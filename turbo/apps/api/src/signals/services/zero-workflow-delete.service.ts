@@ -3,74 +3,46 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { storages } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroSkills } from "@vm0/db/schema/zero-skill";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3Objects } from "../external/s3";
-import { nowDate } from "../external/time";
 
-interface DeleteZeroSkillInput {
+interface DeleteZeroWorkflowInput {
   readonly orgId: string;
-  readonly skillName: string;
+  readonly workflowName: string;
 }
 
-export const deleteZeroSkill$ = command(
+export const deleteZeroWorkflow$ = command(
   async (
     { get, set },
-    args: DeleteZeroSkillInput,
+    args: DeleteZeroWorkflowInput,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
-      const [skill] = await tx
-        .select({ id: zeroSkills.id })
-        .from(zeroSkills)
+      const [workflow] = await tx
+        .select({ id: zeroWorkflows.id })
+        .from(zeroWorkflows)
         .where(
           and(
-            eq(zeroSkills.orgId, args.orgId),
-            eq(zeroSkills.name, args.skillName),
+            eq(zeroWorkflows.orgId, args.orgId),
+            eq(zeroWorkflows.name, args.workflowName),
           ),
         )
         .limit(1);
 
-      if (!skill) {
+      if (!workflow) {
         return { deleted: false as const };
       }
 
-      const affectedAgents = await tx
-        .select({
-          id: zeroAgents.id,
-          customSkills: zeroAgents.customSkills,
-        })
-        .from(zeroAgents)
-        .where(
-          and(
-            eq(zeroAgents.orgId, args.orgId),
-            sql`${zeroAgents.customSkills} @> ${JSON.stringify([args.skillName])}::jsonb`,
-          ),
-        );
+      await tx.delete(zeroWorkflows).where(eq(zeroWorkflows.id, workflow.id));
 
-      const updatedAt = nowDate();
-      for (const agent of affectedAgents) {
-        await tx
-          .update(zeroAgents)
-          .set({
-            customSkills: agent.customSkills.filter((skillName) => {
-              return skillName !== args.skillName;
-            }),
-            updatedAt,
-          })
-          .where(eq(zeroAgents.id, agent.id));
-      }
-
-      await tx.delete(zeroSkills).where(eq(zeroSkills.id, skill.id));
-
-      const storageName = getCustomSkillStorageName(args.skillName);
+      const storageName = getCustomSkillStorageName(args.workflowName);
       const [storage] = await tx
         .select({ id: storages.id, s3Prefix: storages.s3Prefix })
         .from(storages)
