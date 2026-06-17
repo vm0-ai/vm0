@@ -97,7 +97,7 @@ import type {
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { TiptapSkillComposer } from "./tiptap-skill-composer.tsx";
+import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -3289,12 +3289,12 @@ function ComposerInputSlot({
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
   const features = useLastResolved(featureSwitch$);
-  const slashSkillCommandsEnabled =
+  const slashWorkflowCommandsEnabled =
     features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
 
-  if (slashSkillCommandsEnabled) {
+  if (slashWorkflowCommandsEnabled) {
     return (
-      <TiptapSkillComposer
+      <TiptapWorkflowComposer
         input={input}
         onInputChange={onInputChange}
         onDraftChange={onDraftChange}

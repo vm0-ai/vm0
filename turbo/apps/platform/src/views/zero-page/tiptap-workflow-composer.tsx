@@ -1,4 +1,4 @@
-// TipTap-based chat composer input. Skill mentions are colored with ProseMirror
+// TipTap-based chat composer input. Workflow mentions are colored with ProseMirror
 // inline decorations rather than a transparent-textarea + colored overlay, so the
 // color lives in the same layer as the text and moves/scrolls with it — there is
 // no second layer to keep aligned when the input scrolls (issue #17539).
@@ -17,24 +17,24 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { currentChatAgent$ } from "../../signals/agent-chat.ts";
+import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import { orgWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import {
-  slashSkillCaretIndex$,
-  setSlashSkillCaretIndex$,
-  selectedSlashSkillIndex$,
-  setSelectedSlashSkillIndex$,
+  slashWorkflowCaretIndex$,
+  setSlashWorkflowCaretIndex$,
+  selectedSlashWorkflowIndex$,
+  setSelectedSlashWorkflowIndex$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
-  buildComposerSlashSkills,
-  findActiveSlashSkillRange,
-  matchesSkillQuery,
-  scrollSlashSkillIntoView,
-  skillTokenPattern,
-  SlashSkillMenu,
-  type ComposerSlashSkill,
-  type SlashSkillRange,
-} from "./slash-skill.tsx";
+  buildComposerSlashWorkflows,
+  findActiveSlashWorkflowRange,
+  matchesWorkflowQuery,
+  scrollSlashWorkflowIntoView,
+  workflowTokenPattern,
+  SlashWorkflowMenu,
+  type ComposerSlashWorkflow,
+  type SlashWorkflowRange,
+} from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
@@ -45,10 +45,10 @@ const EDITOR_CONTENT_CLASS =
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
 
-const SKILL_HIGHLIGHT_CLASS = "text-primary";
+const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
 
-// Plain text -> document: one paragraph per line. Skill coloring is applied by
-// the decoration plugin, so the document stays plain text.
+// Plain text -> document: one paragraph per line. Workflow coloring is applied
+// by the decoration plugin, so the document stays plain text.
 function valueToDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
     return line.length > 0
@@ -80,11 +80,11 @@ function caretStringIndex(editor: Editor): number {
   }).length;
 }
 
-function buildSkillDecorations(
+function buildWorkflowDecorations(
   doc: ProseMirrorNode,
-  skillNames: readonly string[],
+  workflowNames: readonly string[],
 ): DecorationSet {
-  const pattern = skillTokenPattern(skillNames);
+  const pattern = workflowTokenPattern(workflowNames);
   if (!pattern) {
     return DecorationSet.empty;
   }
@@ -98,7 +98,7 @@ function buildSkillDecorations(
       const start = pos + (match.index ?? 0);
       decorations.push(
         Decoration.inline(start, start + match[0].length, {
-          class: SKILL_HIGHLIGHT_CLASS,
+          class: WORKFLOW_HIGHLIGHT_CLASS,
         }),
       );
     }
@@ -106,32 +106,32 @@ function buildSkillDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
-interface SkillHighlightStorage {
-  skillNames: readonly string[];
+interface WorkflowHighlightStorage {
+  workflowNames: readonly string[];
 }
 
-// Colors `/skill` tokens via inline decorations. The skill list is read from
+// Colors `/workflow` tokens via inline decorations. The workflow list is read from
 // mutable storage (kept current by the component) so the editor never has to be
 // rebuilt when the list loads or changes.
-const SkillHighlight = Extension.create<
-  { skillNames: readonly string[] },
-  SkillHighlightStorage
+const WorkflowHighlight = Extension.create<
+  { workflowNames: readonly string[] },
+  WorkflowHighlightStorage
 >({
-  name: "skillHighlight",
+  name: "workflowHighlight",
   addOptions() {
-    return { skillNames: [] };
+    return { workflowNames: [] };
   },
   addStorage() {
-    return { skillNames: this.options.skillNames };
+    return { workflowNames: this.options.workflowNames };
   },
   addProseMirrorPlugins() {
     const storage = this.storage;
     return [
       new Plugin({
-        key: new PluginKey("skillHighlight"),
+        key: new PluginKey("workflowHighlight"),
         props: {
           decorations(state: EditorState) {
-            return buildSkillDecorations(state.doc, storage.skillNames);
+            return buildWorkflowDecorations(state.doc, storage.workflowNames);
           },
         },
       }),
@@ -247,22 +247,22 @@ function insertPlainTextLineBreak(
 
 // Replace the active `/query` text with the chosen token (reusing the space that
 // already follows the query, or appending one). The caret is moved past that
-// space so the inserted `/skill` reads as a finished token: typing the next word
+// space so the inserted `/workflow` reads as a finished token: typing the next word
 // can't merge into it, and — since menu visibility is a pure function of the
 // caret position — `beforeCaret` no longer ends in a live `/token`, so the menu
-// closes. Without this, selecting a skill when text already follows the query
+// closes. Without this, selecting a workflow when text already follows the query
 // left the caret between the token and its space, keeping the menu open. The
 // decoration plugin colors the token automatically.
-function insertSkillToken(
+function insertWorkflowToken(
   editor: Editor,
-  slashRange: SlashSkillRange,
+  slashRange: SlashWorkflowRange,
   input: string,
-  skill: ComposerSlashSkill,
+  workflow: ComposerSlashWorkflow,
 ): void {
   const head = editor.state.selection.head;
   const span = slashRange.end - slashRange.start;
   const from = head - span;
-  const token = `/${skill.name}`;
+  const token = `/${workflow.name}`;
   const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
   editor
     .chain()
@@ -286,7 +286,7 @@ interface SlashCaretPosition {
 
 function slashCaretPosition(
   editor: Editor,
-  slashRange: SlashSkillRange,
+  slashRange: SlashWorkflowRange,
 ): SlashCaretPosition {
   const slashPos = Math.max(
     editor.state.selection.head - (slashRange.end - slashRange.start),
@@ -308,7 +308,7 @@ function SlashCaretAnchor({
   slashRange,
 }: {
   readonly editor: Editor | null;
-  readonly slashRange: SlashSkillRange | null;
+  readonly slashRange: SlashWorkflowRange | null;
 }) {
   const caret =
     editor && slashRange ? slashCaretPosition(editor, slashRange) : null;
@@ -329,11 +329,11 @@ function SlashCaretAnchor({
 }
 
 interface SlashMenuKeyContext {
-  readonly suggestions: readonly ComposerSlashSkill[];
+  readonly suggestions: readonly ComposerSlashWorkflow[];
   readonly selectedIndex: number;
   readonly setSelectedIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
-  readonly onInsert: (skill: ComposerSlashSkill) => void;
+  readonly onInsert: (workflow: ComposerSlashWorkflow) => void;
 }
 
 // Drives the suggestion menu from the keyboard. Returns true when it consumes the
@@ -349,22 +349,22 @@ function handleSlashMenuKey(
       Math.max(ctx.suggestions.length - 1, 0),
     );
     ctx.setSelectedIndex(next);
-    scrollSlashSkillIntoView(ctx.suggestions[next]);
+    scrollSlashWorkflowIntoView(ctx.suggestions[next]);
     return true;
   }
   if (event.key === "ArrowUp") {
     event.preventDefault();
     const next = Math.max(ctx.selectedIndex - 1, 0);
     ctx.setSelectedIndex(next);
-    scrollSlashSkillIntoView(ctx.suggestions[next]);
+    scrollSlashWorkflowIntoView(ctx.suggestions[next]);
     return true;
   }
   if ((event.key === "Enter" || event.key === "Tab") && ctx.suggestions[0]) {
     event.preventDefault();
-    const skill =
+    const workflow =
       ctx.suggestions[Math.min(ctx.selectedIndex, ctx.suggestions.length - 1)];
-    if (skill) {
-      ctx.onInsert(skill);
+    if (workflow) {
+      ctx.onInsert(workflow);
     }
     return true;
   }
@@ -378,12 +378,12 @@ function handleSlashMenuKey(
 
 interface EditorOptionsParams {
   readonly input: string;
-  readonly skillNames: readonly string[];
+  readonly workflowNames: readonly string[];
   readonly autoFocus: boolean | undefined;
   readonly onInputChange: (value: string) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly setSelectedSkillIndex: (index: number) => void;
+  readonly setSelectedWorkflowIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
   readonly onEditorKeyDown: (event: KeyboardEvent) => boolean;
 }
@@ -396,7 +396,7 @@ function buildEditorOptions(
   return {
     extensions: [
       STARTER_KIT,
-      SkillHighlight.configure({ skillNames: params.skillNames }),
+      WorkflowHighlight.configure({ workflowNames: params.workflowNames }),
     ],
     content: valueToDoc(params.input),
     autofocus: params.autoFocus && !isIOS() ? "end" : false,
@@ -422,7 +422,7 @@ function buildEditorOptions(
       if (value !== params.input) {
         params.onInputChange(value);
       }
-      params.setSelectedSkillIndex(0);
+      params.setSelectedWorkflowIndex(0);
       params.setCaretIndex(caretStringIndex(editor));
     },
     onSelectionUpdate: ({ editor }) => {
@@ -437,40 +437,31 @@ function buildEditorOptions(
   };
 }
 
-// Keep the highlight plugin's skill list current without rebuilding the editor
+// Keep the highlight plugin's workflow list current without rebuilding the editor
 // (decorations recompute on the next transaction), and reconcile the value when it
 // changes outside of typing (draft restore, the send-clear, template insertion).
 // Guarded so typing — where the serialized value already matches — never resets the
 // caret. shouldRerenderOnTransaction is off, so this never triggers a React re-render.
 function syncEditorState(
   editor: Editor,
-  skillNames: readonly string[],
+  workflowNames: readonly string[],
   input: string,
 ): void {
   const storage = (
     editor.storage as unknown as Record<
       string,
-      SkillHighlightStorage | undefined
+      WorkflowHighlightStorage | undefined
     >
-  ).skillHighlight;
+  ).workflowHighlight;
   if (storage) {
-    storage.skillNames = skillNames;
+    storage.workflowNames = workflowNames;
   }
   if (docToString(editor) !== input) {
     editor.commands.setContent(valueToDoc(input), { emitUpdate: false });
   }
 }
 
-export function TiptapSkillComposer({
-  input,
-  onInputChange,
-  onDraftChange,
-  sending,
-  autoFocus,
-  setInputRef,
-  onKeyDown,
-  onPaste,
-}: {
+interface TiptapWorkflowComposerProps {
   readonly input: string;
   readonly onInputChange: (value: string) => void;
   readonly onDraftChange: (() => void) | undefined;
@@ -479,48 +470,59 @@ export function TiptapSkillComposer({
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
-}) {
-  const caretIndex = useGet(slashSkillCaretIndex$);
-  const setCaretIndex = useSet(setSlashSkillCaretIndex$);
-  const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
-  const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
-  const currentAgent = useLastResolved(currentChatAgent$);
+}
+
+export function TiptapWorkflowComposer({
+  input,
+  onInputChange,
+  onDraftChange,
+  sending,
+  autoFocus,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+}: TiptapWorkflowComposerProps) {
+  const caretIndex = useGet(slashWorkflowCaretIndex$);
+  const setCaretIndex = useSet(setSlashWorkflowCaretIndex$);
+  const selectedWorkflowIndex = useGet(selectedSlashWorkflowIndex$);
+  const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
+  const currentAgentId = useLastResolved(currentChatAgentRecordId$);
   const features = useLastResolved(featureSwitch$);
-  const orgSkillsLoadable = useLastLoadable(orgWorkflows$);
-  const orgSkillsData =
-    orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
-  const composerSkills = buildComposerSlashSkills({
-    agentSkillNames: currentAgent?.customSkills ?? [],
-    orgSkills: orgSkillsData,
+  const orgWorkflowsLoadable = useLastLoadable(orgWorkflows$);
+  const orgWorkflowsData =
+    orgWorkflowsLoadable.state === "hasData" ? orgWorkflowsLoadable.data : [];
+  const composerWorkflows = buildComposerSlashWorkflows({
+    agentId: currentAgentId,
+    workflows: orgWorkflowsData,
   });
-  const skillNames = composerSkills.map((skill) => {
-    return skill.name;
+  const workflowNames = composerWorkflows.map((workflow) => {
+    return workflow.name;
   });
 
-  const slashRange = findActiveSlashSkillRange(input, caretIndex);
+  const slashRange = findActiveSlashWorkflowRange(input, caretIndex);
   const suggestions = slashRange
-    ? composerSkills.filter((skill) => {
-        return matchesSkillQuery(skill, slashRange.query);
+    ? composerWorkflows.filter((workflow) => {
+        return matchesWorkflowQuery(workflow, slashRange.query);
       })
     : [];
-  const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
-  const showSkillsPageLink =
+  const isLoadingOrgWorkflows = orgWorkflowsLoadable.state === "loading";
+  const showWorkflowsPageLink =
     features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
-  const showSlashSkillMenu =
+  const showSlashWorkflowMenu =
     slashRange !== null &&
-    (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
+    (isLoadingOrgWorkflows ||
+      composerWorkflows.length > 0 ||
+      showWorkflowsPageLink);
 
-  // Created once; useEditor refreshes its options via setOptions on every render,
-  // so the handlers always close over the latest props/state (no refs needed).
   const editor = useEditor(
     buildEditorOptions({
       input,
-      skillNames,
+      workflowNames,
       autoFocus,
       onInputChange,
       onPaste,
       setInputRef,
-      setSelectedSkillIndex,
+      setSelectedWorkflowIndex,
       setCaretIndex,
       onEditorKeyDown: (event) => {
         return handleEditorKeyDown(event);
@@ -529,14 +531,14 @@ export function TiptapSkillComposer({
   );
 
   if (editor) {
-    syncEditorState(editor, skillNames, input);
+    syncEditorState(editor, workflowNames, input);
   }
 
-  function insertSkill(skill: ComposerSlashSkill): void {
+  function insertWorkflow(workflow: ComposerSlashWorkflow): void {
     if (!editor || !slashRange) {
       return;
     }
-    insertSkillToken(editor, slashRange, input, skill);
+    insertWorkflowToken(editor, slashRange, input, workflow);
     onDraftChange?.();
   }
 
@@ -556,13 +558,13 @@ export function TiptapSkillComposer({
     }
 
     if (
-      showSlashSkillMenu &&
+      showSlashWorkflowMenu &&
       handleSlashMenuKey(event, {
         suggestions,
-        selectedIndex: selectedSkillIndex,
-        setSelectedIndex: setSelectedSkillIndex,
+        selectedIndex: selectedWorkflowIndex,
+        setSelectedIndex: setSelectedWorkflowIndex,
         setCaretIndex,
-        onInsert: insertSkill,
+        onInsert: insertWorkflow,
       })
     ) {
       return true;
@@ -579,7 +581,7 @@ export function TiptapSkillComposer({
     // a zero-size element pinned to the slash the user typed (viewport coords from
     // ProseMirror), so the menu opens at the `/` rather than a fixed corner. `open`
     // is fully controlled by composer state, so Escape/typing close it.
-    <Popover open={showSlashSkillMenu}>
+    <Popover open={showSlashWorkflowMenu}>
       <SlashCaretAnchor editor={editor} slashRange={slashRange} />
       <div className="relative min-h-[96px]">
         {input === "" && (
@@ -594,14 +596,14 @@ export function TiptapSkillComposer({
         )}
         <EditorContent editor={editor} />
       </div>
-      {showSlashSkillMenu && (
-        <SlashSkillMenu
-          skills={suggestions}
-          loading={isLoadingOrgSkills}
-          selectedIndex={selectedSkillIndex}
-          showSkillsPageLink={showSkillsPageLink}
-          onSelect={(skill) => {
-            insertSkill(skill);
+      {showSlashWorkflowMenu && (
+        <SlashWorkflowMenu
+          workflows={suggestions}
+          loading={isLoadingOrgWorkflows}
+          selectedIndex={selectedWorkflowIndex}
+          showWorkflowsPageLink={showWorkflowsPageLink}
+          onSelect={(workflow) => {
+            insertWorkflow(workflow);
           }}
         />
       )}
