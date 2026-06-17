@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-import auth
+import platform_api
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -158,7 +158,7 @@ class TestUsageWebhookDelivery:
         flow = self._model_flow(real_flow, tmp_path)
 
         with (
-            patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
+            patch.object(platform_api, "VERCEL_BYPASS", "bypass-secret"),
             usage_webhook_api() as webhook,
         ):
             usage.report_model_provider_usage(flow, "run-1")

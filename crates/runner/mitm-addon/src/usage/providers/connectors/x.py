@@ -16,9 +16,9 @@ import billing_body
 import body_decoding
 import flow_metadata_keys as metadata_keys
 import matching
-from auth import get_api_url
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
+from platform_api import get_api_url
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key

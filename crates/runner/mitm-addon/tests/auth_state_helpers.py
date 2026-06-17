@@ -1,15 +1,16 @@
-"""Helpers for setting up auth state in mitm-addon tests."""
+"""Helpers for setting up auth cache state in mitm-addon tests."""
 
-import auth
+import firewall_auth_cache as auth_cache
 from aws_sigv4 import AwsSigV4Credentials
+from firewall_auth_client import _FirewallAuthPayload
 
 
 def clear_auth_state() -> None:
-    auth._auth_state.clear()
+    auth_cache._auth_state.clear()
 
 
 def has_auth_state(cache_key: tuple[str, str]) -> bool:
-    return cache_key in auth._auth_state
+    return cache_key in auth_cache._auth_state
 
 
 def set_cached_headers(
@@ -22,8 +23,8 @@ def set_cached_headers(
     query: dict | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> None:
-    auth._get_auth_state(cache_key).cache = auth._FirewallHeaderCacheEntry(
-        payload=auth._FirewallAuthPayload(
+    auth_cache._get_auth_state(cache_key).cache = auth_cache._FirewallHeaderCacheEntry(
+        payload=_FirewallAuthPayload(
             headers=headers,
             resolved_secrets=resolved_secrets or [],
             base=base,
@@ -34,32 +35,32 @@ def set_cached_headers(
     )
 
 
-def cached_headers(cache_key: tuple[str, str]) -> auth._FirewallHeaderCacheEntry | None:
-    state = auth._auth_state.get(cache_key)
+def cached_headers(cache_key: tuple[str, str]) -> auth_cache._FirewallHeaderCacheEntry | None:
+    state = auth_cache._auth_state.get(cache_key)
     return state.cache if state else None
 
 
-def require_cached_headers(cache_key: tuple[str, str]) -> auth._FirewallHeaderCacheEntry:
+def require_cached_headers(cache_key: tuple[str, str]) -> auth_cache._FirewallHeaderCacheEntry:
     entry = cached_headers(cache_key)
     assert entry is not None
     return entry
 
 
 def mark_force_refresh(cache_key: tuple[str, str]) -> None:
-    auth._get_auth_state(cache_key).force_refresh_pending = True
+    auth_cache._get_auth_state(cache_key).force_refresh_pending = True
 
 
 def force_refresh_pending(cache_key: tuple[str, str]) -> bool:
-    state = auth._auth_state.get(cache_key)
+    state = auth_cache._auth_state.get(cache_key)
     return bool(state and state.force_refresh_pending)
 
 
 def set_last_force_refresh_at(cache_key: tuple[str, str], timestamp: float) -> None:
-    auth._get_auth_state(cache_key).last_force_refresh_at = timestamp
+    auth_cache._get_auth_state(cache_key).last_force_refresh_at = timestamp
 
 
 def last_force_refresh_at(cache_key: tuple[str, str]) -> float | None:
-    state = auth._auth_state.get(cache_key)
+    state = auth_cache._auth_state.get(cache_key)
     return state.last_force_refresh_at if state else None
 
 

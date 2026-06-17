@@ -12,11 +12,8 @@ from pathlib import Path
 from mitmproxy import ctx
 
 import matching
-from auth import (
-    auth_config_injects_credentials,
-    evict_all_cache_keys,
-    evict_stale_cache_keys,
-)
+from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
+from firewall_auth_config import auth_config_injects_credentials
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 VmContext = tuple[

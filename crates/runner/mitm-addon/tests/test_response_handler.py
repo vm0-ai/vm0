@@ -8,7 +8,7 @@ import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
 
-import auth
+import firewall_auth_cache as auth_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from body_limits import STREAM_BUFFER_LIMIT
@@ -997,7 +997,7 @@ class TestResponseHandler:
         # Simulate: last forced refresh happened well before the cooldown window
         set_last_force_refresh_at(
             cache_key,
-            time.time() - auth._FORCE_REFRESH_COOLDOWN_SECS - 1,
+            time.time() - auth_cache._FORCE_REFRESH_COOLDOWN_SECS - 1,
         )
 
         with mitm_ctx():

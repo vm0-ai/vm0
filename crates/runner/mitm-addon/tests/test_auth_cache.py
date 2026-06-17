@@ -8,7 +8,7 @@ import urllib.error
 
 import pytest
 
-import auth
+import firewall_auth_cache as auth_cache
 import registry as registry_cache
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
@@ -39,7 +39,7 @@ class TestFirewallHeaderCache:
 
             async def fetch_headers(started_event: asyncio.Event) -> dict:
                 started_event.set()
-                return await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+                return await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
             tasks = [asyncio.create_task(fetch_headers(started_event)) for started_event in started]
             try:
@@ -86,8 +86,8 @@ class TestFirewallHeaderCache:
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             first, second = await asyncio.gather(
-                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                auth.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
+                auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
+                auth_cache.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
             )
 
         assert endpoint.request_count == 2
@@ -112,12 +112,12 @@ class TestFirewallHeaderCache:
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             with pytest.raises(urllib.error.HTTPError):
-                await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+                await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
             assert endpoint.request_count == 1
             assert cached_headers(("run-1", "api-1")) is None
 
-            retry = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            retry = await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
             assert retry["headers"] == {"Authorization": "Bearer retry"}
             assert retry["cache_hit"] is False
             assert endpoint.request_count == 2
@@ -125,7 +125,7 @@ class TestFirewallHeaderCache:
                 "Authorization": "Bearer retry"
             }
 
-            cached = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            cached = await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
             assert cached["headers"] == {"Authorization": "Bearer retry"}
             assert cached["cache_hit"] is True
             assert endpoint.request_count == 2
