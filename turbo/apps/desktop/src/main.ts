@@ -250,6 +250,10 @@ function trayIconDisabledPath(): string {
   return path.join(__dirname, "..", "assets", "tray-iconDisabled.png");
 }
 
+function trayIconRunningPath(): string {
+  return path.join(__dirname, "..", "assets", "tray-iconRunning.png");
+}
+
 function desktopPreferencesPath(): string {
   return path.join(app.getPath("userData"), "desktop-preferences.json");
 }
@@ -510,6 +514,7 @@ function installTray(): void {
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
+    runningIconPath: trayIconRunningPath(),
     getComputerUseState: getComputerUseBridgeState,
     getAuthState: () => getAuthSession().getAuthState(),
     showMainWindow: async () => {

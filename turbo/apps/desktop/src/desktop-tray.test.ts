@@ -1,5 +1,14 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
+  ComputerUseLocalCommandLogEntry,
   ComputerUseHostRuntimeStatus,
   DesktopComputerUseState,
 } from "./computer-use-types";
@@ -72,6 +81,7 @@ vi.mock("electron", () => {
 const originalPlatform = process.platform;
 const iconPath = "/assets/tray-iconTemplate.png";
 const disabledIconPath = "/assets/tray-iconDisabled.png";
+const runningIconPath = "/assets/tray-iconRunning.png";
 
 const signedInAuth: DesktopAuthState = {
   status: "signed_in",
@@ -86,8 +96,28 @@ const signedInAuth: DesktopAuthState = {
   },
 };
 
+interface ComputerUseStateOptions {
+  readonly runningCommand?: boolean;
+}
+
+function runningLocalCommandLogEntry(): ComputerUseLocalCommandLogEntry {
+  return {
+    commandId: "cmd_1",
+    kind: "app.state",
+    app: null,
+    status: "running",
+    payload: {},
+    result: null,
+    error: null,
+    startedAt: "2026-06-17T00:00:00.000Z",
+    completedAt: null,
+    durationMs: null,
+  };
+}
+
 function computerUseState(
   status: ComputerUseHostRuntimeStatus,
+  options: ComputerUseStateOptions = {},
 ): DesktopComputerUseState {
   return {
     featureSwitchKey: "computerUse",
@@ -106,7 +136,9 @@ function computerUseState(
       recovery: null,
       errorLog: [],
       recentAuditEvents: [],
-      localCommandLog: [],
+      localCommandLog: options.runningCommand
+        ? [runningLocalCommandLogEntry()]
+        : [],
     },
     keepAwake: {
       enabled: false,
@@ -115,12 +147,13 @@ function computerUseState(
   };
 }
 
-function installController(getStatus: () => ComputerUseHostRuntimeStatus) {
+function installController(getState: () => DesktopComputerUseState) {
   const controller = new DesktopTrayController({
     displayName: "Zero Computer Use",
     iconPath,
     disabledIconPath,
-    getComputerUseState: () => computerUseState(getStatus()),
+    runningIconPath,
+    getComputerUseState: getState,
     getAuthState: async () => signedInAuth,
     showMainWindow: vi.fn(async () => {}),
     startComputerUse: vi.fn(async () => {}),
@@ -150,6 +183,7 @@ function installedTray(): MockTrayInstance {
 
 describe("desktop tray", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(process, "platform", {
       configurable: true,
       value: "darwin",
@@ -157,6 +191,10 @@ describe("desktop tray", () => {
     electronMock.trays.length = 0;
     electronMock.Menu.buildFromTemplate.mockClear();
     electronMock.nativeImage.createFromPath.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   afterAll(() => {
@@ -175,7 +213,7 @@ describe("desktop tray", () => {
     "disabled",
     "error",
   ])("uses the disabled tray icon while Computer Use is %s", (status) => {
-    installController(() => status);
+    installController(() => computerUseState(status));
 
     const tray = installedTray();
 
@@ -184,7 +222,7 @@ describe("desktop tray", () => {
   });
 
   it("uses the template tray icon while Computer Use is online", () => {
-    installController(() => "online");
+    installController(() => computerUseState("online"));
 
     const tray = installedTray();
 
@@ -194,7 +232,7 @@ describe("desktop tray", () => {
 
   it("updates the tray icon when Computer Use moves online or offline", () => {
     let status: ComputerUseHostRuntimeStatus = "offline";
-    const controller = installController(() => status);
+    const controller = installController(() => computerUseState(status));
     const tray = installedTray();
 
     expect(tray.image.path).toBe(disabledIconPath);
@@ -213,5 +251,52 @@ describe("desktop tray", () => {
     expect(tray.image.path).toBe(disabledIconPath);
     expect(tray.image.templateImage).toBe(false);
     expect(tray.setImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("animates the tray icon while a local Computer Use command is running", () => {
+    vi.useFakeTimers();
+
+    installController(() =>
+      computerUseState("online", { runningCommand: true }),
+    );
+    const tray = installedTray();
+
+    expect(tray.image.path).toBe(disabledIconPath);
+    expect(tray.image.templateImage).toBe(false);
+
+    vi.advanceTimersByTime(280);
+
+    expect(tray.image.path).toBe(runningIconPath);
+    expect(tray.image.templateImage).toBe(false);
+
+    vi.advanceTimersByTime(280);
+
+    expect(tray.image.path).toBe(iconPath);
+    expect(tray.image.templateImage).toBe(true);
+
+    vi.advanceTimersByTime(280);
+
+    expect(tray.image.path).toBe(runningIconPath);
+  });
+
+  it("keeps animating during the command gap window", () => {
+    vi.useFakeTimers();
+
+    let runningCommand = true;
+    const controller = installController(() =>
+      computerUseState("online", { runningCommand }),
+    );
+    const tray = installedTray();
+
+    runningCommand = false;
+    controller.refresh();
+    vi.advanceTimersByTime(14_840);
+
+    expect(tray.image.path).toBe(runningIconPath);
+
+    vi.advanceTimersByTime(280);
+
+    expect(tray.image.path).toBe(iconPath);
+    expect(tray.image.templateImage).toBe(true);
   });
 });
