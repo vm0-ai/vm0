@@ -40,25 +40,27 @@ export const setComposerSavingType$ = command(
   },
 );
 
-// -- Slash skill picker -----------------------------------------------------
+// -- Slash workflow picker --------------------------------------------------
 
-const internalSlashSkillCaretIndex$ = state(0);
-export const slashSkillCaretIndex$ = computed((get) => {
-  return get(internalSlashSkillCaretIndex$);
+const internalSlashWorkflowCaretIndex$ = state(0);
+export const slashWorkflowCaretIndex$ = computed((get) => {
+  return get(internalSlashWorkflowCaretIndex$);
 });
-export const setSlashSkillCaretIndex$ = command(
+export const setSlashWorkflowCaretIndex$ = command(
   ({ set }, caretIndex: number) => {
-    set(internalSlashSkillCaretIndex$, caretIndex);
+    set(internalSlashWorkflowCaretIndex$, caretIndex);
   },
 );
 
-const internalSelectedSlashSkillIndex$ = state(0);
-export const selectedSlashSkillIndex$ = computed((get) => {
-  return get(internalSelectedSlashSkillIndex$);
+const internalSelectedSlashWorkflowIndex$ = state(0);
+export const selectedSlashWorkflowIndex$ = computed((get) => {
+  return get(internalSelectedSlashWorkflowIndex$);
 });
-export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
-  set(internalSelectedSlashSkillIndex$, index);
-});
+export const setSelectedSlashWorkflowIndex$ = command(
+  ({ set }, index: number) => {
+    set(internalSelectedSlashWorkflowIndex$, index);
+  },
+);
 
 // -- Add-connectors dialog search filter ------------------------------------
 
