@@ -795,6 +795,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import productlane_0
 
         return (productlane_0.JSON_PART,)
+    if name == "profound":
+        from . import profound_0
+
+        return (profound_0.JSON_PART,)
     if name == "pushinator":
         from . import pushinator_0
 
