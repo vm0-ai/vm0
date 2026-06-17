@@ -162,6 +162,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
                 "access key number": 456789,
                 "accessKeyId": "camel-access-key-value",
                 "oauth_token": "oauth-token-value",
+                "APIToken": "upper-api-token-value",
+                "XApiKey": "prefixed-api-key-value",
                 "private.key": "dotted-private-key-value",
                 "privateKey": "camel-private-key-value",
             },
@@ -181,6 +183,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "accessKeyId=[redacted]" in message
     assert "private.key=[redacted]" in message
     assert "privateKey=[redacted]" in message
+    assert "APIToken=[redacted]" in message
+    assert "XApiKey=[redacted]" in message
     assert "idempotency_key=diagnostic-key" in message
     assert "input_tokens=42" in message
     assert "tokenizer_name=usage-tokenizer" in message
@@ -191,6 +195,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "private-key-value" not in message
     assert "credential-value" not in message
     assert "oauth-token-value" not in message
+    assert "upper-api-token-value" not in message
+    assert "prefixed-api-key-value" not in message
     assert "bytes-token-value" not in message
     assert "hyphen-api-key-value" not in message
     assert "spaced-api-key-value" not in message

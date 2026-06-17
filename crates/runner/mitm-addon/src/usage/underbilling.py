@@ -45,9 +45,10 @@ _SECRET_COMPACT_KEYS = frozenset(("accesskey", "apikey", "privatekey"))
 def _stderr_field_key_words(key: str) -> tuple[str, ...]:
     words: list[str] = []
     current = ""
-    for ch in key:
+    for index, ch in enumerate(key):
         if ch.isalnum():
-            if current and ch.isupper() and not current[-1].isupper():
+            next_ch = key[index + 1] if index + 1 < len(key) else ""
+            if current and ch.isupper() and (not current[-1].isupper() or next_ch.islower()):
                 words.append(current.lower())
                 current = ch
             else:
