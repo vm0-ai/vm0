@@ -2872,15 +2872,20 @@ fn idle_transition_error(
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
-/// Accept small residual differences between requested and reported balloon size.
-/// This fixed tolerance is calibrated for the current 4 GiB production profile,
-/// where observed post-settle deficits are commonly in the low hundreds of MiB
-/// when the guest reports little available memory. If much smaller production
-/// profiles are introduced, revisit whether this should scale with `target_mib`
-/// so tiny balloon targets are not fully swallowed by tolerance.
-const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 256;
+/// Upper bound for accepting residual differences between requested and
+/// reported balloon size. Current 4 GiB production profiles commonly settle
+/// with low-hundreds MiB residuals when the guest reports little available
+/// memory.
+const BALLOON_SETTLE_TOLERANCE_CAP_MIB: u32 = 256;
+/// Keep the settle tolerance proportional for smaller profiles so tiny balloon
+/// targets are not fully swallowed by the 4 GiB cap.
+const BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR: u32 = 8;
 const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
 const BYTES_PER_MIB: i64 = 1024 * 1024;
+
+fn balloon_settle_tolerance_mib(target_mib: u32) -> u32 {
+    BALLOON_SETTLE_TOLERANCE_CAP_MIB.min(target_mib / BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR)
+}
 
 #[derive(Debug)]
 struct BalloonSettleSummary {
@@ -3000,12 +3005,13 @@ impl BalloonSettleSummary {
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
-/// the remaining deficit is within [`BALLOON_SETTLE_TOLERANCE_MIB`],
+/// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// or after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better
 /// than none). Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
+    let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
     loop {
         match client.get_balloon_statistics().await {
@@ -3017,7 +3023,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                         actual = stats.actual_mib,
                         target = target_mib,
                         deficit_mib,
-                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        tolerance_mib,
                         elapsed_ms = summary.elapsed_ms(),
                         sample_count = summary.sample_count,
                         requested_target_mib = summary.requested_target_mib,
@@ -3035,13 +3041,13 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                     return;
                 }
 
-                if deficit_mib <= BALLOON_SETTLE_TOLERANCE_MIB {
+                if deficit_mib <= tolerance_mib {
                     info!(
                         id = %log_id,
                         actual = stats.actual_mib,
                         target = target_mib,
                         deficit_mib,
-                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        tolerance_mib,
                         elapsed_ms = summary.elapsed_ms(),
                         sample_count = summary.sample_count,
                         requested_target_mib = summary.requested_target_mib,
@@ -3064,7 +3070,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                     actual = stats.actual_mib,
                     target = target_mib,
                     deficit_mib,
-                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    tolerance_mib,
                     observed_target_mib = stats.target_mib,
                     sample_count = summary.sample_count,
                     "waiting for balloon"
@@ -3076,7 +3082,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                     actual = ?summary.last_actual_mib,
                     target = target_mib,
                     deficit_mib = ?summary.last_deficit_mib,
-                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    tolerance_mib,
                     elapsed_ms = summary.elapsed_ms(),
                     sample_count = summary.sample_count,
                     requested_target_mib = summary.requested_target_mib,
@@ -3102,7 +3108,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                 actual = ?summary.last_actual_mib,
                 target = target_mib,
                 deficit_mib = ?summary.last_deficit_mib,
-                tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                tolerance_mib,
                 elapsed_ms = summary.elapsed_ms(),
                 sample_count = summary.sample_count,
                 requested_target_mib = summary.requested_target_mib,
@@ -6940,6 +6946,23 @@ mod tests {
     }
 
     #[test]
+    fn balloon_settle_tolerance_is_capped_and_scales_for_small_targets() {
+        assert_eq!(
+            balloon_settle_tolerance_mib(4096 - balloon::MIN_GUEST_MIB),
+            256
+        );
+        assert_eq!(
+            balloon_settle_tolerance_mib(2048 - balloon::MIN_GUEST_MIB),
+            192
+        );
+        assert_eq!(
+            balloon_settle_tolerance_mib(1024 - balloon::MIN_GUEST_MIB),
+            64
+        );
+        assert_eq!(balloon_settle_tolerance_mib(1), 0);
+    }
+
+    #[test]
     fn balloon_settle_summary_classifies_progressing_timeout() {
         let target_mib = 2048 - balloon::MIN_GUEST_MIB;
         let mut summary = BalloonSettleSummary::new(target_mib);
@@ -7902,7 +7925,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
         let target_mib = 4096 - balloon::MIN_GUEST_MIB;
-        let balloon_actual = Arc::new(AtomicU32::new(target_mib - BALLOON_SETTLE_TOLERANCE_MIB));
+        let balloon_actual = Arc::new(AtomicU32::new(
+            target_mib - balloon_settle_tolerance_mib(target_mib),
+        ));
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
             Some(Arc::clone(&balloon_actual)),
