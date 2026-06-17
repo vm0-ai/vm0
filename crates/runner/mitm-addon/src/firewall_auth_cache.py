@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 
 from firewall_auth_client import (
-    _FirewallAuthPayload,
+    FirewallAuthPayload,
     fetch_firewall_headers,
 )
 
@@ -19,7 +19,7 @@ class InvalidBillableAuthExpiryError(Exception):
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
-    payload: _FirewallAuthPayload
+    payload: FirewallAuthPayload
     expires_at: object = None
 
 
@@ -111,7 +111,7 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
 
 
 def _build_token_meta(
-    payload: _FirewallAuthPayload,
+    payload: FirewallAuthPayload,
     *,
     cache_hit: bool,
     refreshed_connectors: list[str] | None = None,

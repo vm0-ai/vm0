@@ -58,7 +58,7 @@ class _ResponseBodyReader(Protocol):
 
 
 @dataclass(frozen=True)
-class _FirewallAuthPayload:
+class FirewallAuthPayload:
     """Cacheable /firewall/auth data applied to outbound requests."""
 
     headers: dict[str, str]
@@ -69,10 +69,10 @@ class _FirewallAuthPayload:
 
 
 @dataclass(frozen=True)
-class _FirewallAuthSuccess:
+class FirewallAuthSuccess:
     """Validated /firewall/auth success response consumed by the auth cache."""
 
-    payload: _FirewallAuthPayload
+    payload: FirewallAuthPayload
     expires_at: object = None
     refreshed_connectors: list[str] = field(default_factory=list)
     refreshed_secrets: list[str] = field(default_factory=list)
@@ -188,7 +188,7 @@ def _parse_optional_aws_sigv4_credentials(
     )
 
 
-def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
+def _parse_firewall_auth_success(decoded: object) -> FirewallAuthSuccess:
     if not isinstance(decoded, dict):
         raise _malformed_firewall_auth_success("response must be an object")
 
@@ -206,14 +206,14 @@ def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
     refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
     query = _parse_optional_string_map(decoded_map, "query")
     aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
-    payload = _FirewallAuthPayload(
+    payload = FirewallAuthPayload(
         headers=headers,
         resolved_secrets=resolved_secrets,
         base=base,
         query=query,
         aws_sigv4=aws_sigv4,
     )
-    return _FirewallAuthSuccess(
+    return FirewallAuthSuccess(
         payload=payload,
         expires_at=decoded_map.get("expiresAt"),
         refreshed_connectors=refreshed_connectors,
@@ -235,7 +235,7 @@ def _fetch_firewall_headers_sync(
     auth_aws_sigv4: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> _FirewallAuthSuccess:
+) -> FirewallAuthSuccess:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
     api_url is resolved by the async caller (fetch_firewall_headers) while
@@ -307,7 +307,7 @@ async def fetch_firewall_headers(
     auth_aws_sigv4: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> _FirewallAuthSuccess:
+) -> FirewallAuthSuccess:
     """Resolve auth headers via server-side decryption.
 
     encrypted_secrets is the encrypted runtime secret namespace. After API-side

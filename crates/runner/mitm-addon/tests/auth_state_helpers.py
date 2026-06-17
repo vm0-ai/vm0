@@ -2,7 +2,7 @@
 
 import firewall_auth_cache as auth_cache
 from aws_sigv4 import AwsSigV4Credentials
-from firewall_auth_client import _FirewallAuthPayload
+from firewall_auth_client import FirewallAuthPayload
 
 
 def clear_auth_state() -> None:
@@ -24,7 +24,7 @@ def set_cached_headers(
     aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> None:
     auth_cache._get_auth_state(cache_key).cache = auth_cache._FirewallHeaderCacheEntry(
-        payload=_FirewallAuthPayload(
+        payload=FirewallAuthPayload(
             headers=headers,
             resolved_secrets=resolved_secrets or [],
             base=base,

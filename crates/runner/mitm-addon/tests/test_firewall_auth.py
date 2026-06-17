@@ -54,9 +54,9 @@ def _auth_success(
     base: str | None = None,
     query: dict[str, str] | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
-) -> auth_client._FirewallAuthSuccess:
-    return auth_client._FirewallAuthSuccess(
-        payload=auth_client._FirewallAuthPayload(
+) -> auth_client.FirewallAuthSuccess:
+    return auth_client.FirewallAuthSuccess(
+        payload=auth_client.FirewallAuthPayload(
             headers=headers,
             resolved_secrets=resolved_secrets or [],
             base=base,
