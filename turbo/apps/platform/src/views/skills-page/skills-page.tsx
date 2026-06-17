@@ -1,8 +1,4 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import type {
-  ZeroAgentCustomSkill,
-  ZeroAgentSkillDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   IconChevronRight,
@@ -53,9 +49,23 @@ const LEADING_YAML_FRONTMATTER_PATTERN =
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_INDENT_PX = 16;
 
+type ZeroAgentCustomSkill = {
+  readonly name: string;
+  readonly displayName: string | null;
+  readonly description: string | null;
+};
+
 type SkillFileMetadata = {
   readonly path: string;
   readonly size: number;
+};
+
+type ZeroAgentSkillDetailResponse = ZeroAgentCustomSkill & {
+  readonly content: string | null;
+  readonly files: readonly SkillFileMetadata[] | null;
+  readonly fileContents:
+    | readonly { readonly path: string; readonly content: string }[]
+    | null;
 };
 
 type SkillFileTreeNode = SkillFileTreeFolderNode | SkillFileTreeFileNode;

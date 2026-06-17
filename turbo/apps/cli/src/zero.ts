@@ -18,7 +18,7 @@ import { zeroTelegramCommand } from "./commands/zero/telegram";
 import { zeroPhoneCommand } from "./commands/zero/phone";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
-import { zeroSkillCommand } from "./commands/zero/skill";
+import { zeroWorkflowCommand } from "./commands/zero/workflow";
 import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
@@ -49,7 +49,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   string | readonly string[] | null
 > = {
   agent: "agent:read",
-  skill: "agent:read",
+  workflow: "agent:read",
   connector: "connector:read",
   // "schedule" is deliberately absent: the rename stub stays out of
   // token-scoped (agent) help but remains invokable and visible to humans.
@@ -97,7 +97,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSearchCommand,
   zeroResourceCommand,
   zeroWhoamiCommand,
-  zeroSkillCommand,
+  zeroWorkflowCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
   generateCommand,
@@ -151,7 +151,7 @@ export function buildZeroHelpText(
     "  List models?          zero model ls",
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
-    "  Manage custom skills?  zero skill --help",
+    "  Manage workflows?     zero workflow --help",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',

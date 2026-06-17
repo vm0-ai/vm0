@@ -3,8 +3,13 @@
 // skill composer can both reuse them without an import cycle.
 import { IconChevronRight, IconFileText } from "@tabler/icons-react";
 import { cn, PopoverContent } from "@vm0/ui";
-import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
 import { Link } from "../router/link.tsx";
+
+interface ZeroAgentCustomSkill {
+  readonly name: string;
+  readonly displayName: string | null;
+  readonly description: string | null;
+}
 
 export interface SlashSkillRange {
   readonly start: number;

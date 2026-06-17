@@ -1,5 +1,5 @@
 /**
- * Tests for zero skill view command
+ * Tests for zero workflow view command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../../mocks/server";
 import { viewCommand } from "../view";
 import chalk from "chalk";
 
-describe("zero skill view command", () => {
+describe("zero workflow view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -35,34 +35,41 @@ describe("zero skill view command", () => {
   });
 
   describe("successful view", () => {
-    it("should display skill with content", async () => {
+    it("should display workflow with content", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills/my-skill", () => {
+        http.get("http://localhost:3000/api/zero/workflows/my-workflow", () => {
           return HttpResponse.json({
-            name: "my-skill",
-            displayName: "My Skill",
-            description: "A helpful skill",
-            content: "# My Skill\nDoes helpful things.",
+            name: "my-workflow",
+            displayName: "My Workflow",
+            description: "A helpful workflow",
+            visibility: "private",
+            ownerUserId: "user-123",
+            attachedAgentCount: 0,
+            attachedAgents: [],
+            canManage: true,
+            content: "# My Workflow\nDoes helpful things.",
+            files: [],
+            fileContents: [],
           });
         }),
       );
 
-      await viewCommand.parseAsync(["node", "cli", "my-skill"]);
+      await viewCommand.parseAsync(["node", "cli", "my-workflow"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-skill");
-      expect(logCalls).toContain("My Skill");
-      expect(logCalls).toContain("A helpful skill");
-      expect(logCalls).toContain("# My Skill");
+      expect(logCalls).toContain("my-workflow");
+      expect(logCalls).toContain("My Workflow");
+      expect(logCalls).toContain("A helpful workflow");
+      expect(logCalls).toContain("# My Workflow");
     });
   });
 
   describe("error handling", () => {
-    it("should handle skill not found", async () => {
+    it("should handle workflow not found", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills/missing", () => {
+        http.get("http://localhost:3000/api/zero/workflows/missing", () => {
           return HttpResponse.json(
-            { error: { message: "Skill not found", code: "NOT_FOUND" } },
+            { error: { message: "Workflow not found", code: "NOT_FOUND" } },
             { status: 404 },
           );
         }),

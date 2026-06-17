@@ -1,10 +1,10 @@
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-  type ZeroAgentCustomSkill,
-  type ZeroAgentSkillContentResponse,
-  type ZeroAgentSkillDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowsCollectionContract as zeroSkillsCollectionContract,
+  zeroWorkflowsDetailContract as zeroSkillsDetailContract,
+  type ZeroWorkflowContentResponse as ZeroAgentSkillContentResponse,
+  type ZeroWorkflowDetailResponse as ZeroAgentSkillDetailResponse,
+  type ZeroWorkflowSummary as ZeroAgentCustomSkill,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
 
@@ -17,6 +17,11 @@ function metadata(skill: ZeroAgentSkillDetailResponse): ZeroAgentCustomSkill {
     name: skill.name,
     displayName: skill.displayName,
     description: skill.description,
+    visibility: skill.visibility,
+    ownerUserId: skill.ownerUserId,
+    attachedAgentCount: skill.attachedAgentCount,
+    attachedAgents: skill.attachedAgents,
+    canManage: skill.canManage,
   };
 }
 
@@ -58,13 +63,15 @@ export const apiSkillsHandlers = [
     }
 
     const existing = mockSkills[index]!;
-    const skillFile = body.files.find((file) => {
+    const files = body.files ?? existing.fileContents ?? [];
+    const skillFile = files.find((file) => {
       return file.path === "SKILL.md";
     });
     const response: ZeroAgentSkillContentResponse = {
       ...existing,
+      visibility: body.visibility ?? existing.visibility,
       content: skillFile?.content ?? null,
-      files: body.files.map((file) => {
+      files: files.map((file) => {
         return {
           path: file.path,
           size: new TextEncoder().encode(file.content).length,
@@ -73,7 +80,7 @@ export const apiSkillsHandlers = [
     };
     const updated: ZeroAgentSkillDetailResponse = {
       ...response,
-      fileContents: body.files,
+      fileContents: files,
     };
     mockSkills[index] = updated;
     return respond(200, response);

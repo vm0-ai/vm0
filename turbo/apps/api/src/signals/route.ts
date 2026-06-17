@@ -116,7 +116,7 @@ import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
-import { zeroSkillsRoutes } from "./routes/zero-skills";
+import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
@@ -304,7 +304,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...zeroSecretsRoutes,
-  ...zeroSkillsRoutes,
+  ...zeroWorkflowsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,
   ...zeroSlackConnectRoutes,

@@ -5,9 +5,10 @@ import { asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowAgentsContract,
+  zeroWorkflowsCollectionContract as zeroSkillsCollectionContract,
+  zeroWorkflowsDetailContract as zeroSkillsDetailContract,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -2492,10 +2493,8 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     expect(promoted.content).toBe("queued from v1");
     await cancelChatRun(actor, promoted.runId);
 
-    // Custom skills registered through the skills API mount into the claim
-    // as additional volumes. (The storage-missing fallback at dispatch is
-    // not API-constructible: skill create uploads the volume server-side and
-    // skill delete clears agent references in the same transaction.)
+    // Workflows registered through the workflow API mount into the claim as
+    // the existing custom skill volumes.
     const skillName = `bdd-skill-${randomUUID().slice(0, 12)}`;
     await accept(
       setupApp({ context })(zeroSkillsCollectionContract).create({
@@ -2507,7 +2506,14 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       }),
       [201],
     );
-    await bdd.updateAgent(actor, agentId, { customSkills: [skillName] });
+    await accept(
+      setupApp({ context })(zeroWorkflowAgentsContract).attach({
+        headers: sessionHeaders(actor),
+        params: { name: skillName },
+        body: { agentId },
+      }),
+      [200],
+    );
 
     const skillSend = await chat.requestV1Send(
       bearer,

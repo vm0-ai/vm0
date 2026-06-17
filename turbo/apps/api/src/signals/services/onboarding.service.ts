@@ -649,7 +649,6 @@ export const setupOnboarding$ = command(
         description: null,
         sound: args.sound ?? null,
         avatarUrl: args.avatarUrl ?? null,
-        customSkills: [],
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],

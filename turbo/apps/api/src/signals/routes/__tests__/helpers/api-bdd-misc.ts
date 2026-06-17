@@ -10,10 +10,11 @@ import type {
   UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-  type SkillFileEntry,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowAgentsContract,
+  zeroWorkflowsCollectionContract as zeroSkillsCollectionContract,
+  zeroWorkflowsDetailContract as zeroSkillsDetailContract,
+  type WorkflowFileEntry as SkillFileEntry,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroModelProvidersByTypeContract,
@@ -366,6 +367,22 @@ export function createMiscRoutesApi(context: TestContext) {
         setupApp({ context })(zeroSkillsDetailContract).delete({
           headers: authenticate(context, actor),
           params: { name },
+        }),
+        statuses,
+      );
+    },
+
+    async attachWorkflowToAgent(
+      actor: ApiTestUser,
+      name: string,
+      agentId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowAgentsContract).attach({
+          headers: authenticate(context, actor),
+          params: { name },
+          body: { agentId },
         }),
         statuses,
       );
