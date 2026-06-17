@@ -5292,88 +5292,88 @@
       },
       "glm-5-2": {
         "name": "GLM-5.2",
-        "pageTitle": "GLM-5.2 on VM0. Z.AI's default long-context model",
-        "tagline": "The current Z.AI default on VM0. Up to a 1M-token context window, Anthropic-compatible routing, and cost-saving x0.4 VM0 Managed pricing.",
-        "cardIntro": "Z.AI's current default on VM0. Long-context text and code agents at x0.4 VM0 Managed pricing.",
-        "metaTitle": "GLM-5.2 on VM0: Pricing, Context & Best Agent Tasks",
-        "metaDescription": "GLM-5.2 on VM0. Z.AI's current default model with up to 1M-token context, x0.4 credit cost, OpenRouter-backed VM0 Managed routing, and direct Z.AI BYOK support.",
-        "summary": "GLM-5.2 is the current GLM default on VM0 for Z.AI API-key users and is also available through VM0 Managed via OpenRouter. It keeps the GLM series' long-context profile while becoming the preferred Z.AI route for new agents.\n\nUse it for large codebases, large document sets, and cost-sensitive long-context planning where Sonnet-class pricing is unnecessary. GLM-5.1 remains available for compatibility, but new Z.AI routes should start on GLM-5.2 unless a workflow has been tuned specifically against 5.1.",
-        "releaseDate": "June 2026",
-        "familyPosition": "Current default model in VM0's Z.AI / GLM route.",
+        "pageTitle": "GLM-5.2 en VM0. El modelo predeterminado de contexto largo de Z.AI",
+        "tagline": "El predeterminado actual de Z.AI en VM0. Hasta 1M tokens de contexto, enrutamiento compatible con Anthropic y precio económico de ×0,4 en VM0 Managed.",
+        "cardIntro": "El predeterminado actual de Z.AI en VM0. Agentes de texto y código de contexto largo a precio ×0,4 en VM0 Managed.",
+        "metaTitle": "GLM-5.2 en VM0: precios, contexto y mejores tareas de agente",
+        "metaDescription": "GLM-5.2 en VM0. Modelo predeterminado actual de Z.AI con hasta 1M tokens de contexto, costo de ×0,4 créditos, enrutamiento VM0 Managed mediante OpenRouter y soporte BYOK directo de Z.AI.",
+        "summary": "GLM-5.2 es el GLM predeterminado actual en VM0 para usuarios con clave API de Z.AI y también está disponible en VM0 Managed mediante OpenRouter. Mantiene el perfil de contexto largo de la serie GLM y se convierte en la ruta Z.AI preferida para nuevos agentes.\n\nÚsalo para grandes bases de código, grandes conjuntos de documentos y planificación de contexto largo sensible al costo donde el precio de clase Sonnet no es necesario. GLM-5.1 sigue disponible por compatibilidad, pero las nuevas rutas Z.AI deberían empezar en GLM-5.2 salvo que un flujo ya esté ajustado específicamente para 5.1.",
+        "releaseDate": "Junio de 2026",
+        "familyPosition": "Modelo predeterminado actual en la ruta Z.AI / GLM de VM0.",
         "background": [
-          "GLM-5.2 extends the GLM 5 family as the current Z.AI default exposed by VM0. It is available through VM0 Managed, where VM0 routes to OpenRouter with the upstream id `z-ai/glm-5.2`, and through direct Z.AI API keys using the canonical `glm-5.2` id.",
-          "The route is Anthropic-compatible, so Claude-style agents can keep the same runtime interface. Existing GLM-5.1 agents do not need to migrate immediately, but new Z.AI-backed agents should prefer GLM-5.2.",
-          "On VM0 Managed it sits at x0.4 credits, matching GLM-5.1's cost tier while taking over the Z.AI default slot."
+          "GLM-5.2 amplía la familia GLM 5 como el predeterminado actual de Z.AI expuesto por VM0. Está disponible mediante VM0 Managed, donde VM0 enruta a OpenRouter con el id upstream `z-ai/glm-5.2`, y mediante claves API directas de Z.AI usando el id canónico `glm-5.2`.",
+          "La ruta es compatible con Anthropic, así que los agentes estilo Claude pueden conservar la misma interfaz de runtime. Los agentes existentes con GLM-5.1 no necesitan migrar de inmediato, pero los agentes nuevos respaldados por Z.AI deberían preferir GLM-5.2.",
+          "En VM0 Managed está en ×0,4 créditos, igualando la capa de costo de GLM-5.1 mientras ocupa el slot predeterminado de Z.AI."
         ],
-        "architecture": "GLM-5.2 is exposed on VM0 through Anthropic-compatible endpoints. VM0 Managed uses OpenRouter's `z-ai/glm-5.2` id; direct Z.AI BYOK uses `glm-5.2`.",
+        "architecture": "GLM-5.2 se expone en VM0 mediante endpoints compatibles con Anthropic. VM0 Managed usa el id `z-ai/glm-5.2` de OpenRouter; Z.AI BYOK directo usa `glm-5.2`.",
         "specs": [
           {
-            "label": "Family",
+            "label": "Familia",
             "value": "GLM-5 series"
           },
           {
-            "label": "Modalities",
-            "value": "Text, code"
+            "label": "Modalidades",
+            "value": "Texto, código"
           },
           {
-            "label": "Languages",
-            "value": "Multilingual"
+            "label": "Idiomas",
+            "value": "Multilingüe"
           },
           {
-            "label": "Context window",
-            "value": "Up to 1M tokens"
+            "label": "Ventana de contexto",
+            "value": "Hasta 1M tokens"
           },
           {
-            "label": "Prompt caching",
-            "value": "Supported"
+            "label": "Caché de prompts",
+            "value": "Soportado"
           },
           {
-            "label": "Available on VM0",
-            "value": "June 2026"
+            "label": "Disponible en VM0",
+            "value": "Junio de 2026"
           }
         ],
-        "benchmarksNote": "Treat GLM-5.2 as the preferred GLM route on VM0. Third-party rankings can move quickly, so VM0 keeps the page focused on routing, cost, and operational fit rather than frozen leaderboard percentages.",
+        "benchmarksNote": "Trata GLM-5.2 como la ruta GLM preferida en VM0. Los rankings de terceros pueden moverse rápido, así que VM0 mantiene esta página centrada en enrutamiento, costo y encaje operativo en lugar de porcentajes congelados de leaderboard.",
         "benchmarks": [
           {
-            "name": "Long-context tasks",
-            "score": "Strong fit",
-            "note": "VM0 routing profile"
+            "name": "Tareas de contexto largo",
+            "score": "Buen encaje",
+            "note": "Perfil de enrutamiento de VM0"
           },
           {
-            "name": "Cost tier",
-            "score": "x0.4 credits",
+            "name": "Capa de costo",
+            "score": "×0,4 créditos",
             "note": "VM0 Managed"
           }
         ],
         "performance": [
           {
-            "title": "Long-context work",
-            "body": "GLM-5.2 is best used when the agent needs a large working set: repositories, documentation folders, design notes, or long research material."
+            "title": "Trabajo de contexto largo",
+            "body": "GLM-5.2 encaja mejor cuando el agente necesita un conjunto de trabajo grande: repositorios, carpetas de documentación, notas de diseño o material de investigación extenso."
           },
           {
-            "title": "Cost control",
-            "body": "At x0.4 credits it is a cost-saving alternative to Sonnet-class routes for workflows where context size and price matter more than maximum English reasoning depth."
+            "title": "Control de costos",
+            "body": "Con ×0,4 créditos es una alternativa económica a rutas de clase Sonnet para flujos donde el tamaño de contexto y el precio importan más que la máxima profundidad de razonamiento en inglés."
           },
           {
-            "title": "Routing",
-            "body": "VM0 Managed routes through OpenRouter using `z-ai/glm-5.2`; direct Z.AI API keys use `glm-5.2`. Both paths keep the Claude-compatible agent interface."
+            "title": "Enrutamiento",
+            "body": "VM0 Managed enruta mediante OpenRouter usando `z-ai/glm-5.2`; las claves API directas de Z.AI usan `glm-5.2`. Ambos caminos conservan la interfaz de agente compatible con Claude."
           }
         ],
         "bestForExamples": [
           {
-            "title": "Whole-repo review on a budget",
-            "body": "Use GLM-5.2 when the agent needs to inspect a large codebase and produce concrete file-level recommendations without paying for a premium reasoning model on every pass."
+            "title": "Revisión de repositorio completo con presupuesto",
+            "body": "Usa GLM-5.2 cuando el agente debe inspeccionar una base de código grande y producir recomendaciones concretas por archivo sin pagar por un modelo de razonamiento premium en cada pasada."
           },
           {
-            "title": "Large document synthesis",
-            "body": "Load policy documents, tickets, transcripts, or internal docs together and ask for cross-document patterns. The long context and x0.4 multiplier keep repeated runs practical."
+            "title": "Síntesis de grandes conjuntos de documentos",
+            "body": "Carga documentos de política, tickets, transcripciones o documentación interna en conjunto y pide patrones entre documentos. El contexto largo y el multiplicador ×0,4 hacen prácticos los runs repetidos."
           },
           {
-            "title": "Z.AI BYOK default route",
-            "body": "Teams using a direct Z.AI API key get GLM-5.2 as the default VM0 model while retaining GLM-5.1 for existing tuned workflows."
+            "title": "Ruta predeterminada para Z.AI BYOK",
+            "body": "Los equipos que usan una clave API directa de Z.AI reciben GLM-5.2 como modelo predeterminado en VM0 y conservan GLM-5.1 para flujos existentes ya ajustados."
           }
         ],
-        "avoidFor": "Skip GLM-5.2 for workflows that depend on vision input, or when maximum English-language reasoning and tool routing quality matter more than context size and cost.",
+        "avoidFor": "Evita GLM-5.2 en flujos que dependen de entrada visual, o cuando la máxima calidad de razonamiento en inglés y enrutamiento de herramientas importa más que el tamaño de contexto y el costo.",
         "comparisons": [
           {
             "vs": "GLM-5.1",
@@ -5392,19 +5392,19 @@
             "body": "DeepSeek V4 Pro tiene un multiplicador VM0 más bajo y es la opción de razonamiento más fuerte cuando el costo va primero. Úsalo cuando domina el precio; usa GLM-5.2 cuando importan más el ajuste con Z.AI o el contexto largo."
           }
         ],
-        "verdict": "Pick GLM-5.2 as the default Z.AI route on VM0. Keep GLM-5.1 only for compatibility with workflows already tuned against it.",
+        "verdict": "Elige GLM-5.2 como la ruta Z.AI predeterminada en VM0. Conserva GLM-5.1 solo por compatibilidad con flujos ya ajustados para él.",
         "faqs": [
           {
-            "q": "Is GLM-5.2 available through VM0 Managed?",
-            "a": "Yes. VM0 Managed routes GLM-5.2 through OpenRouter with the upstream id `z-ai/glm-5.2`."
+            "q": "¿GLM-5.2 está disponible mediante VM0 Managed?",
+            "a": "Sí. VM0 Managed enruta GLM-5.2 mediante OpenRouter con el id upstream `z-ai/glm-5.2`."
           },
           {
-            "q": "Is GLM-5.2 the default for direct Z.AI API keys?",
-            "a": "Yes. The Z.AI provider defaults to `glm-5.2` while keeping `glm-5.1` available."
+            "q": "¿GLM-5.2 es el predeterminado para claves API directas de Z.AI?",
+            "a": "Sí. El proveedor Z.AI usa `glm-5.2` por defecto y mantiene `glm-5.1` disponible."
           },
           {
-            "q": "Does GLM-5.2 support image input?",
-            "a": "No. VM0 exposes GLM-5.2 for text and code agents. Use Claude Sonnet 4.6 or Kimi K2.7 Code when vision input is required."
+            "q": "¿GLM-5.2 soporta entrada de imagen?",
+            "a": "No. VM0 expone GLM-5.2 para agentes de texto y código. Usa Claude Sonnet 4.6 o Kimi K2.7 Code cuando se necesite entrada visual."
           }
         ],
         "alternatives": [
@@ -5421,8 +5421,8 @@
             "reason": "Alternativa más barata para contexto estándar"
           }
         ],
-        "routingNotes": "On VM0 Managed, GLM-5.2 routes through OpenRouter with the upstream id `z-ai/glm-5.2`. With a Z.AI API key it talks directly to `api.z.ai` as `glm-5.2`. It is the default model on the Z.AI provider.",
-        "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider, so long-context planning and analysis runs have room to finish."
+        "routingNotes": "En VM0 Managed, GLM-5.2 se enruta mediante OpenRouter con el id upstream `z-ai/glm-5.2`. Con una clave API de Z.AI habla directamente con `api.z.ai` como `glm-5.2`. Es el modelo predeterminado del proveedor Z.AI.",
+        "vm0Notes": "VM0 establece un timeout de API de 50 minutos para el proveedor Z.AI, de modo que las ejecuciones de planificación y análisis de contexto largo tengan margen para terminar."
       },
       "glm-5-1": {
         "name": "GLM-5.1",
@@ -6071,88 +6071,88 @@
       },
       "minimax-m3": {
         "name": "MiniMax M3",
-        "pageTitle": "MiniMax M3 on VM0. Official MiniMax coding model at ×0.2",
-        "tagline": "Official MiniMax M3 routing for coding agents, 1M context, and native multimodal understanding.",
-        "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
-        "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
-        "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
-        "releaseDate": "June 1, 2026",
-        "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
+        "pageTitle": "MiniMax M3 en VM0. Modelo oficial de código de MiniMax a ×0,2",
+        "tagline": "Enrutamiento oficial de MiniMax M3 para agentes de código, contexto de 1M y comprensión multimodal nativa.",
+        "cardIntro": "Enrutamiento oficial de MiniMax M3 para agentes de código con contexto de 1M, lecturas de caché de prompt y multiplicador ×0,2 en VM0.",
+        "metaTitle": "MiniMax M3 en VM0: precios, especificaciones y enrutamiento oficial",
+        "metaDescription": "MiniMax M3 en VM0. Modelo oficial de código de MiniMax con contexto de 1M, comprensión multimodal, lecturas de caché de prompt y ×0,2 créditos.",
+        "summary": "MiniMax M3 es el modelo frontier de MiniMax para código y trabajo agéntico, expuesto en VM0 mediante el endpoint oficial de MiniMax compatible con Anthropic. Es la elección correcta dentro de MiniMax cuando un agente necesita mejor codificación, uso de herramientas, razonamiento de contexto largo y comprensión visual nativa que la serie M2 conservada.\n\nVM0 fija el precio de M3 usando la capa estándar no promocional pay-as-you-go de MiniMax para la banda base de contexto: $0.60 / $2.40 por 1M tokens, con lecturas de caché de prompt a $0.12 / 1M y sin facturación separada por escrituras de caché en la tabla de M3. MiniMax M2.1 sigue disponible por compatibilidad de menor costo, mientras M3 es el modelo MiniMax BYOK predeterminado.",
+        "releaseDate": "1 de junio de 2026",
+        "familyPosition": "Modelo de texto oficial MiniMax M3 junto a la serie M2 conservada.",
         "background": [
-          "MiniMax M3 is the new official MiniMax text model for coding and agentic workloads. MiniMax describes it as combining frontier coding capability, a 1M-token context window, and native multimodal understanding.",
-          "On VM0, M3 is added to the existing MiniMax API-key provider instead of creating a new integration. It uses the same `api.minimax.io/anthropic` routing surface and the same `MINIMAX_API_KEY` secret as M2.",
-          "The existing M2 entries stay available, while M3 is the MiniMax provider default for new selections."
+          "MiniMax M3 es el nuevo modelo de texto oficial de MiniMax para cargas de código y agentes. MiniMax lo describe como una combinación de capacidad frontier de código, una ventana de contexto de 1M tokens y comprensión multimodal nativa.",
+          "En VM0, M3 se añade al proveedor existente de claves API de MiniMax en lugar de crear una integración nueva. Usa la misma superficie de enrutamiento `api.minimax.io/anthropic` y el mismo secreto `MINIMAX_API_KEY` que M2.",
+          "Las entradas M2 existentes siguen disponibles, mientras M3 es el valor predeterminado del proveedor MiniMax para nuevas selecciones."
         ],
-        "architecture": "M3 uses MiniMax Sparse Attention for ultra-long context. The official API supports up to 1M tokens with a 512K guaranteed minimum, automatic prompt cache support, and native multimodal understanding.",
+        "architecture": "M3 usa MiniMax Sparse Attention para contexto ultralargo. La API oficial soporta hasta 1M tokens con un mínimo garantizado de 512K, soporte automático de caché de prompts y comprensión multimodal nativa.",
         "specs": [
           {
-            "label": "Family",
+            "label": "Familia",
             "value": "MiniMax M3"
           },
           {
-            "label": "Modalities",
-            "value": "Text, vision, code"
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
           },
           {
-            "label": "Languages",
-            "value": "Multilingual"
+            "label": "Idiomas",
+            "value": "Multilingüe"
           },
           {
-            "label": "Context window",
-            "value": "1M tokens (512K guaranteed minimum)"
+            "label": "Ventana de contexto",
+            "value": "1M tokens (mínimo garantizado de 512K)"
           },
           {
-            "label": "Prompt caching",
-            "value": "Supported with automatic cache reads"
+            "label": "Caché de prompts",
+            "value": "Soportado con lecturas automáticas de caché"
           },
           {
-            "label": "Available on VM0",
-            "value": "June 1, 2026"
+            "label": "Disponible en VM0",
+            "value": "1 de junio de 2026"
           }
         ],
-        "benchmarksNote": "MiniMax positions M3 around coding, agentic tasks, and long-horizon execution. Treat these as vendor-reported signals and validate against your own VM0 agent regression set.",
+        "benchmarksNote": "MiniMax posiciona M3 alrededor de código, tareas agénticas y ejecución de horizonte largo. Trata estos datos como señales reportadas por el proveedor y valídalas contra tu propio conjunto de regresión de agentes en VM0.",
         "benchmarks": [
           {
             "name": "PostTrainBench Live",
-            "score": "Rank #3",
-            "note": "vendor reported"
+            "score": "Puesto #3",
+            "note": "reportado por el proveedor"
           },
           {
             "name": "BrowseComp",
             "score": "83.5",
-            "note": "vendor reported"
+            "note": "reportado por el proveedor"
           }
         ],
         "performance": [
           {
-            "title": "Coding agents",
-            "body": "The best MiniMax option for coding assistants, long tool chains, and multi-step repository work."
+            "title": "Agentes de código",
+            "body": "La mejor opción de MiniMax para asistentes de código, cadenas largas de herramientas y trabajo de repositorio en varios pasos."
           },
           {
-            "title": "Long context",
-            "body": "A 1M context window lets agents keep large documents, code, logs, and previous work in scope without switching model families."
+            "title": "Contexto largo",
+            "body": "Una ventana de contexto de 1M permite mantener documentos grandes, código, logs y trabajo previo dentro del alcance sin cambiar de familia de modelos."
           },
           {
             "title": "Multimodal",
-            "body": "Native vision understanding makes M3 a better fit than M2 when screenshots, diagrams, or visual artifacts are part of the workflow."
+            "body": "La comprensión visual nativa hace que M3 encaje mejor que M2 cuando el flujo incluye capturas de pantalla, diagramas o artefactos visuales."
           }
         ],
         "bestForExamples": [
           {
-            "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
+            "title": "El agente de código que debe quedarse en MiniMax",
+            "body": "Ediciones de repositorio, debugging y flujos agénticos de código donde tu despliegue ya usa claves MiniMax pero necesita un modelo de código más fuerte que M2.1."
           },
           {
-            "title": "The long-context review run",
-            "body": "Large pull requests, logs, notebooks, or design documents that should stay in one model context while the agent reasons and edits."
+            "title": "La revisión de contexto largo",
+            "body": "Pull requests grandes, logs, notebooks o documentos de diseño que deberían mantenerse en un solo contexto de modelo mientras el agente razona y edita."
           },
           {
-            "title": "The multimodal investigation",
-            "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
+            "title": "La investigación multimodal",
+            "body": "Flujos que mezclan texto con capturas de pantalla o diagramas. M3 está marcado en VM0 como capaz de recibir imágenes, mientras las entradas M2 siguen siendo solo texto/código."
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "Evita M3 cuando necesitas el costo MiniMax absolutamente más bajo y M2.1 solo texto ya es suficiente, o cuando necesitas enrutamiento por OpenRouter/Vercel porque esta entrada de VM0 usa intencionalmente solo la ruta oficial de MiniMax.",
         "comparisons": [
           {
             "vs": "Kimi K2.7 Code",
@@ -6167,19 +6167,19 @@
             "body": "GLM-5.2 es la ruta Z.AI predeterminada actual en VM0. Es la mejor comparación para nuevos agentes respaldados por Z.AI, mientras GLM-5.1 queda disponible solo por compatibilidad con flujos ya ajustados."
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
+        "verdict": "Usa MiniMax M3 cuando quieres el modelo oficial de código de MiniMax con contexto largo y soporte visual. Conserva M2.1 cuando importan más el costo y la compatibilidad.",
         "faqs": [
           {
-            "q": "Is MiniMax M2.1 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "¿MiniMax M2.1 sigue disponible?",
+            "a": "Sí. VM0 conserva MiniMax M2.1 en el proveedor directo de MiniMax. M3 es ahora el modelo MiniMax BYOK predeterminado."
           },
           {
-            "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
-            "a": "No. This entry intentionally uses only the official MiniMax Anthropic-compatible endpoint."
+            "q": "¿VM0 enruta MiniMax M3 mediante OpenRouter o Vercel?",
+            "a": "No. Esta entrada usa intencionalmente solo el endpoint oficial de MiniMax compatible con Anthropic."
           },
           {
-            "q": "Which M3 pricing tier does VM0 show?",
-            "a": "The VM0 model page and usage seed use MiniMax's non-promotional standard base tier. MiniMax also documents a higher standard tier for input above 512K tokens."
+            "q": "¿Qué capa de precios de M3 muestra VM0?",
+            "a": "La página de modelo de VM0 y el seed de uso emplean la capa base estándar no promocional de MiniMax. MiniMax también documenta una capa estándar superior para entradas por encima de 512K tokens."
           }
         ],
         "alternatives": [
@@ -6192,8 +6192,8 @@
             "reason": "Base más fiable para uso complejo de herramientas"
           }
         ],
-        "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
+        "routingNotes": "Enrutado mediante el endpoint oficial de MiniMax compatible con Anthropic en `api.minimax.io`. Disponible solo en VM0 Managed y proveedores con clave API de MiniMax.",
+        "vm0Notes": "VM0 mapea `MiniMax-M3` al pool existente de claves de proveedor MiniMax para el enrutamiento Built-in. El proveedor directo MiniMax usa M3 como modelo predeterminado y mantiene M2.1 seleccionable."
       },
       "gpt-image-2": {
         "name": "GPT Image 2",

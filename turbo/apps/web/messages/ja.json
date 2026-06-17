@@ -4710,7 +4710,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and Kimi K2.7 Code; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
+            "body": "Sonnet 4.6 や Kimi K2.7 Code より遅く、Opus 4.7 と同程度です。Artificial Analysis によると、最大 effort で約 41 トークン/秒です。"
           }
         ],
         "bestForExamples": [
@@ -5036,7 +5036,7 @@
           },
           {
             "title": "Speed",
-            "body": "Faster than Opus and slower than Kimi K2.7 Code. The right speed/quality balance for production agents."
+            "body": "Opus より速く、Kimi K2.7 Code より遅いモデルです。本番エージェントにとって速度と品質のバランスがよい選択肢です。"
           },
           {
             "title": "Cost predictability",
@@ -5288,88 +5288,88 @@
       },
       "glm-5-2": {
         "name": "GLM-5.2",
-        "pageTitle": "GLM-5.2 on VM0. Z.AI's default long-context model",
-        "tagline": "The current Z.AI default on VM0. Up to a 1M-token context window, Anthropic-compatible routing, and cost-saving x0.4 VM0 Managed pricing.",
-        "cardIntro": "Z.AI's current default on VM0. Long-context text and code agents at x0.4 VM0 Managed pricing.",
-        "metaTitle": "GLM-5.2 on VM0: Pricing, Context & Best Agent Tasks",
-        "metaDescription": "GLM-5.2 on VM0. Z.AI's current default model with up to 1M-token context, x0.4 credit cost, OpenRouter-backed VM0 Managed routing, and direct Z.AI BYOK support.",
-        "summary": "GLM-5.2 is the current GLM default on VM0 for Z.AI API-key users and is also available through VM0 Managed via OpenRouter. It keeps the GLM series' long-context profile while becoming the preferred Z.AI route for new agents.\n\nUse it for large codebases, large document sets, and cost-sensitive long-context planning where Sonnet-class pricing is unnecessary. GLM-5.1 remains available for compatibility, but new Z.AI routes should start on GLM-5.2 unless a workflow has been tuned specifically against 5.1.",
-        "releaseDate": "June 2026",
-        "familyPosition": "Current default model in VM0's Z.AI / GLM route.",
+        "pageTitle": "VM0 の GLM-5.2。Z.AI のデフォルト長文コンテキストモデル",
+        "tagline": "VM0 における現在の Z.AI デフォルト。最大 1M トークンのコンテキスト、Anthropic 互換ルーティング、VM0 Managed で ×0.4 の低コスト料金。",
+        "cardIntro": "VM0 における Z.AI の現在のデフォルト。長文コンテキストのテキスト・コードエージェントを VM0 Managed の ×0.4 で利用できます。",
+        "metaTitle": "VM0 の GLM-5.2: 料金、コンテキスト、適したエージェントタスク",
+        "metaDescription": "VM0 の GLM-5.2。最大 1M トークンのコンテキスト、×0.4 クレジット、OpenRouter 経由の VM0 Managed ルーティング、直接 Z.AI BYOK をサポートする Z.AI の現在のデフォルトモデル。",
+        "summary": "GLM-5.2 は、Z.AI API キーユーザー向けの VM0 における現在の GLM デフォルトであり、OpenRouter 経由の VM0 Managed でも利用できます。GLM シリーズの長文コンテキスト特性を保ちながら、新しいエージェント向けの推奨 Z.AI ルートになっています。\n\n大きなコードベース、大量の文書、Sonnet 級の価格が不要なコスト重視の長文コンテキスト計画に使います。GLM-5.1 は互換性のために残りますが、5.1 向けに特別に調整済みのワークフローでない限り、新しい Z.AI ルートは GLM-5.2 から始めるべきです。",
+        "releaseDate": "2026年6月",
+        "familyPosition": "VM0 の Z.AI / GLM ルートにおける現在のデフォルトモデル。",
         "background": [
-          "GLM-5.2 extends the GLM 5 family as the current Z.AI default exposed by VM0. It is available through VM0 Managed, where VM0 routes to OpenRouter with the upstream id `z-ai/glm-5.2`, and through direct Z.AI API keys using the canonical `glm-5.2` id.",
-          "The route is Anthropic-compatible, so Claude-style agents can keep the same runtime interface. Existing GLM-5.1 agents do not need to migrate immediately, but new Z.AI-backed agents should prefer GLM-5.2.",
-          "On VM0 Managed it sits at x0.4 credits, matching GLM-5.1's cost tier while taking over the Z.AI default slot."
+          "GLM-5.2 は、VM0 で公開される現在の Z.AI デフォルトとして GLM 5 ファミリーを拡張します。VM0 Managed では upstream id `z-ai/glm-5.2` で OpenRouter にルーティングされ、直接 Z.AI API キーでは正規の `glm-5.2` id を使います。",
+          "このルートは Anthropic 互換なので、Claude スタイルのエージェントは同じランタイムインターフェースを維持できます。既存の GLM-5.1 エージェントはすぐ移行する必要はありませんが、新しい Z.AI ベースのエージェントでは GLM-5.2 を優先してください。",
+          "VM0 Managed では ×0.4 クレジットで、GLM-5.1 と同じコスト帯にありながら Z.AI のデフォルト枠を引き継ぎます。"
         ],
-        "architecture": "GLM-5.2 is exposed on VM0 through Anthropic-compatible endpoints. VM0 Managed uses OpenRouter's `z-ai/glm-5.2` id; direct Z.AI BYOK uses `glm-5.2`.",
+        "architecture": "GLM-5.2 は VM0 上で Anthropic 互換エンドポイントとして提供されます。VM0 Managed は OpenRouter の `z-ai/glm-5.2` id を使い、直接 Z.AI BYOK は `glm-5.2` を使います。",
         "specs": [
           {
-            "label": "Family",
+            "label": "ファミリー",
             "value": "GLM-5 series"
           },
           {
-            "label": "Modalities",
-            "value": "Text, code"
+            "label": "モダリティ",
+            "value": "テキスト、コード"
           },
           {
-            "label": "Languages",
-            "value": "Multilingual"
+            "label": "言語",
+            "value": "多言語"
           },
           {
-            "label": "Context window",
-            "value": "Up to 1M tokens"
+            "label": "コンテキストウィンドウ",
+            "value": "最大 1M トークン"
           },
           {
-            "label": "Prompt caching",
-            "value": "Supported"
+            "label": "プロンプトキャッシュ",
+            "value": "対応"
           },
           {
-            "label": "Available on VM0",
-            "value": "June 2026"
+            "label": "VM0での利用開始",
+            "value": "2026年6月"
           }
         ],
-        "benchmarksNote": "Treat GLM-5.2 as the preferred GLM route on VM0. Third-party rankings can move quickly, so VM0 keeps the page focused on routing, cost, and operational fit rather than frozen leaderboard percentages.",
+        "benchmarksNote": "GLM-5.2 は VM0 における推奨 GLM ルートとして扱ってください。サードパーティのランキングはすばやく変わるため、このページでは固定された leaderboard の割合ではなく、ルーティング、コスト、運用上の適合性に焦点を当てています。",
         "benchmarks": [
           {
-            "name": "Long-context tasks",
-            "score": "Strong fit",
-            "note": "VM0 routing profile"
+            "name": "長文コンテキストタスク",
+            "score": "適合度が高い",
+            "note": "VM0 のルーティング特性"
           },
           {
-            "name": "Cost tier",
-            "score": "x0.4 credits",
+            "name": "コスト帯",
+            "score": "×0.4 クレジット",
             "note": "VM0 Managed"
           }
         ],
         "performance": [
           {
-            "title": "Long-context work",
-            "body": "GLM-5.2 is best used when the agent needs a large working set: repositories, documentation folders, design notes, or long research material."
+            "title": "長文コンテキスト作業",
+            "body": "GLM-5.2 は、リポジトリ、ドキュメントフォルダ、設計メモ、長い調査資料など、エージェントが大きな作業セットを必要とする場合に向いています。"
           },
           {
-            "title": "Cost control",
-            "body": "At x0.4 credits it is a cost-saving alternative to Sonnet-class routes for workflows where context size and price matter more than maximum English reasoning depth."
+            "title": "コスト管理",
+            "body": "×0.4 クレジットなので、コンテキストサイズと価格が英語推論の最大品質より重要なワークフローでは、Sonnet クラスのルートに対する低コストな代替になります。"
           },
           {
-            "title": "Routing",
-            "body": "VM0 Managed routes through OpenRouter using `z-ai/glm-5.2`; direct Z.AI API keys use `glm-5.2`. Both paths keep the Claude-compatible agent interface."
+            "title": "ルーティング",
+            "body": "VM0 Managed は `z-ai/glm-5.2` を使って OpenRouter 経由でルーティングし、直接 Z.AI API キーでは `glm-5.2` を使います。どちらの経路も Claude 互換のエージェントインターフェースを維持します。"
           }
         ],
         "bestForExamples": [
           {
-            "title": "Whole-repo review on a budget",
-            "body": "Use GLM-5.2 when the agent needs to inspect a large codebase and produce concrete file-level recommendations without paying for a premium reasoning model on every pass."
+            "title": "予算を抑えたリポジトリ全体レビュー",
+            "body": "エージェントが大きなコードベースを確認し、ファイル単位の具体的な提案を出す必要がある一方で、毎回プレミアム推論モデルに支払いたくない場合に GLM-5.2 を使います。"
           },
           {
-            "title": "Large document synthesis",
-            "body": "Load policy documents, tickets, transcripts, or internal docs together and ask for cross-document patterns. The long context and x0.4 multiplier keep repeated runs practical."
+            "title": "大量ドキュメントの統合",
+            "body": "ポリシー文書、チケット、議事録、社内ドキュメントをまとめて読み込み、文書横断のパターンを尋ねます。長いコンテキストと ×0.4 のマルチプライヤーにより、繰り返し実行しても現実的です。"
           },
           {
-            "title": "Z.AI BYOK default route",
-            "body": "Teams using a direct Z.AI API key get GLM-5.2 as the default VM0 model while retaining GLM-5.1 for existing tuned workflows."
+            "title": "Z.AI BYOK のデフォルトルート",
+            "body": "直接 Z.AI API キーを使うチームでは、GLM-5.2 が VM0 のデフォルトモデルになり、既存の調整済みワークフロー向けに GLM-5.1 も保持されます。"
           }
         ],
-        "avoidFor": "Skip GLM-5.2 for workflows that depend on vision input, or when maximum English-language reasoning and tool routing quality matter more than context size and cost.",
+        "avoidFor": "画像入力に依存するワークフローや、英語推論とツールルーティングの最大品質がコンテキストサイズやコストより重要な場合は、GLM-5.2 を避けてください。",
         "comparisons": [
           {
             "vs": "GLM-5.1",
@@ -5388,19 +5388,19 @@
             "body": "DeepSeek V4 ProはVM0クレジットが低く、コスト優先の推論ではより強い選択肢です。価格が支配的ならDeepSeekを、Z.AIとの相性や長いコンテキストが重要ならGLM-5.2を使います。"
           }
         ],
-        "verdict": "Pick GLM-5.2 as the default Z.AI route on VM0. Keep GLM-5.1 only for compatibility with workflows already tuned against it.",
+        "verdict": "VM0 の Z.AI 標準ルートには GLM-5.2 を選んでください。GLM-5.1 は、すでにそれ向けに調整されたワークフローとの互換性が必要な場合だけ残します。",
         "faqs": [
           {
-            "q": "Is GLM-5.2 available through VM0 Managed?",
-            "a": "Yes. VM0 Managed routes GLM-5.2 through OpenRouter with the upstream id `z-ai/glm-5.2`."
+            "q": "GLM-5.2 は VM0 Managed で利用できますか？",
+            "a": "はい。VM0 Managed は upstream id `z-ai/glm-5.2` で OpenRouter 経由に GLM-5.2 をルーティングします。"
           },
           {
-            "q": "Is GLM-5.2 the default for direct Z.AI API keys?",
-            "a": "Yes. The Z.AI provider defaults to `glm-5.2` while keeping `glm-5.1` available."
+            "q": "GLM-5.2 は直接 Z.AI API キーのデフォルトですか？",
+            "a": "はい。Z.AI プロバイダーは `glm-5.2` をデフォルトにしつつ、`glm-5.1` も利用可能なままにしています。"
           },
           {
-            "q": "Does GLM-5.2 support image input?",
-            "a": "No. VM0 exposes GLM-5.2 for text and code agents. Use Claude Sonnet 4.6 or Kimi K2.7 Code when vision input is required."
+            "q": "GLM-5.2 は画像入力をサポートしていますか？",
+            "a": "いいえ。VM0 は GLM-5.2 をテキストとコードのエージェント向けに提供しています。画像入力が必要な場合は Claude Sonnet 4.6 または Kimi K2.7 Code を使ってください。"
           }
         ],
         "alternatives": [
@@ -5417,8 +5417,8 @@
             "reason": "標準コンテキスト向けの安価な代替"
           }
         ],
-        "routingNotes": "On VM0 Managed, GLM-5.2 routes through OpenRouter with the upstream id `z-ai/glm-5.2`. With a Z.AI API key it talks directly to `api.z.ai` as `glm-5.2`. It is the default model on the Z.AI provider.",
-        "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider, so long-context planning and analysis runs have room to finish."
+        "routingNotes": "VM0 Managed では、GLM-5.2 は upstream id `z-ai/glm-5.2` で OpenRouter 経由にルーティングされます。Z.AI API キーを使う場合は `glm-5.2` として `api.z.ai` に直接接続します。Z.AI プロバイダーのデフォルトモデルです。",
+        "vm0Notes": "VM0 は Z.AI プロバイダーに 50 分の API タイムアウトを設定しているため、長文コンテキストの計画や分析の実行が完了しやすくなっています。"
       },
       "glm-5-1": {
         "name": "GLM-5.1",
@@ -5462,45 +5462,45 @@
             "value": "2026年4月"
           }
         ],
-        "benchmarksNote": "Independent reviews place GLM-5.1 in the top tier of open-weight models for long-context tasks. Numbers shift weekly on third-party leaderboards. We deliberately don't pin exact percentages here.",
+        "benchmarksNote": "独立レビューでは、GLM-5.1 は長文コンテキストタスク向けのオープンウェイトモデルの上位層に位置付けられています。サードパーティの leaderboard は週ごとに変動するため、ここでは意図的に正確な割合を固定していません。",
         "benchmarks": [
           {
             "name": "Code Arena",
             "score": "Top-3 (open weights)",
-            "note": "third-party leaderboard"
+            "note": "サードパーティ leaderboard"
           },
           {
-            "name": "Long-context recall",
-            "score": "Strong across 1M-token window",
-            "note": "vendor-reported"
+            "name": "長文コンテキスト再現",
+            "score": "1M トークン全体で強い",
+            "note": "ベンダー報告"
           }
         ],
         "performance": [
           {
-            "title": "Long-context recall",
-            "body": "GLM-5.1's 1M-token window is genuinely usable. It maintains coherence well past the 200K boundary that limits the Anthropic family on the older 200K models. Useful for whole-repo or whole-doc-corpus agents."
+            "title": "長文コンテキスト再現",
+            "body": "GLM-5.1 の 1M トークンウィンドウは実用的です。古い 200K モデルの Anthropic ファミリーを制限していた 200K 境界を大きく超えても一貫性を保ちます。リポジトリ全体や文書コーパス全体を扱うエージェントに有用です。"
           },
           {
-            "title": "Reasoning",
-            "body": "Solid general reasoning. Below Sonnet 4.6 on the hardest English-language multi-tool routing, but the gap is small relative to the cost difference."
+            "title": "推論",
+            "body": "一般的な推論は堅実です。最難関の英語マルチツールルーティングでは Sonnet 4.6 を下回りますが、コスト差に比べれば差は小さいです。"
           },
           {
-            "title": "Tool use",
-            "body": "Reliable across the common VM0 tool surface (Slack, GitHub, Notion, Linear). Some edge cases in deeply nested tool calls are handled less crisply than Claude Sonnet 4.6."
+            "title": "ツール利用",
+            "body": "Slack、GitHub、Notion、Linear など一般的な VM0 ツール面では信頼できます。深くネストしたツール呼び出しの一部のエッジケースでは、Claude Sonnet 4.6 ほど明瞭には処理しません。"
           }
         ],
         "bestForExamples": [
           {
-            "title": "The whole-repo refactor that fits in one prompt",
-            "body": "Drop a 500K-token mid-sized codebase into a single GLM-5.1 call and ask for a cross-file rename, an architectural review, or a security pass. Models with smaller windows force you to chunk the repo and stitch results together, which is where bugs creep in. GLM-5.1 keeps every file in working memory and references the right paths in its output."
+            "title": "1つのプロンプトに収まるリポジトリ全体リファクタ",
+            "body": "500K トークン規模の中規模コードベースを1回の GLM-5.1 呼び出しに入れ、ファイル横断のリネーム、アーキテクチャレビュー、セキュリティ確認を依頼します。小さいウィンドウのモデルではリポジトリを分割して結果をつなぐ必要があり、そこにバグが入り込みます。GLM-5.1 は各ファイルを作業メモリに保持し、出力で正しいパスを参照します。"
           },
           {
-            "title": "The research run over hundreds of documents",
-            "body": "Wikis, RFCs, contracts, last year's support tickets — load the whole pile at once and ask for cross-document patterns. The cost-per-run stays manageable because of the low vendor price, which is what makes this kind of \"read everything, summarise once\" workflow actually affordable in production rather than a one-off science project."
+            "title": "数百の文書をまたぐ調査実行",
+            "body": "Wiki、RFC、契約書、昨年のサポートチケットをまとめて読み込み、文書横断のパターンを尋ねます。低いベンダー価格により実行あたりのコストが管理しやすく、この「全部読んで一度で要約する」ワークフローを単発の実験ではなく本番で使えるものにします。"
           },
           {
-            "title": "The thinking job that needs more than ten minutes",
-            "body": "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts."
+            "title": "10分以上かかる思考ジョブ",
+            "body": "深い調査、複数文書分析、長い計画パスなど、一部のエージェントステップは本当に5分から30分かかります。VM0 は Z.AI プロバイダーに 50 分の API タイムアウトを設定しているため、長い思考ステップが途中で切れません。デフォルトタイムアウトが短いプロバイダー経由のモデルより、GLM-5.1 を安全に選べます。"
           }
         ],
         "avoidFor": "最難関の英語推論ではSonnet 4.6やOpus 4.7がまだ優位であり、低レイテンシのチャット応答ではKimi K2.7 Codeの方が大幅に高速なため、GLM-5.1は避けてください。",
@@ -5511,29 +5511,29 @@
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 (×1) leads on tool-routing accuracy and English-language reasoning. GLM-5.1 (×0.4) leads on context window and is the right pick when cost or context size dominates the decision."
+            "body": "Sonnet 4.6（×1）はツールルーティング精度と英語推論で優れています。GLM-5.1（×0.4）はコンテキストウィンドウで優れ、コストやコンテキストサイズが意思決定を支配する場合に適しています。"
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0.1) is cheaper and benchmarks higher on Code Arena per third-party reviews. GLM-5.1 still wins on context size. Pick DeepSeek for cost-sensitive standard-context work; pick GLM-5.1 when context size is the constraint."
+            "body": "DeepSeek V4 Pro（×0.1）はより安く、サードパーティレビューでは Code Arena でより高いベンチマークを出しています。GLM-5.1 はコンテキストサイズでまだ勝ります。コスト重視の標準コンテキスト作業には DeepSeek、コンテキストサイズが制約なら GLM-5.1 を選びます。"
           }
         ],
         "verdict": "GLM-5.1はテキストとコードベースのタスクに堅実なコスト効率の選択肢です。画像入力不要で、Claude Sonnet 4.6のより安価な代替を探している場合に検討してください。",
         "faqs": [
           {
-            "q": "How big is GLM-5.1's context window on VM0?",
-            "a": "Up to 1 million tokens. The largest in our Built-in lineup. Enough to fit a mid-sized repository or several hundred documents in a single prompt."
+            "q": "VM0 での GLM-5.1 のコンテキストウィンドウはどれくらいですか？",
+            "a": "最大 100 万トークンです。Built-in ラインアップで最大で、中規模リポジトリや数百の文書を1つのプロンプトに収められます。"
           },
           {
-            "q": "Which provider should I use for GLM-5.1?",
-            "a": "VM0 Managed is the simplest path. If you want vendor-direct billing, connect a Z.AI API key."
+            "q": "GLM-5.1 にはどのプロバイダーを使うべきですか？",
+            "a": "VM0 Managed が最も簡単です。ベンダー直接課金が必要なら、Z.AI API キーを接続してください。"
           },
           {
-            "q": "Is GLM-5.1 open weights?",
-            "a": "Z.AI publishes open-weight variants of the GLM series. The version exposed on VM0 routes to the Z.AI hosted API for production reliability."
+            "q": "GLM-5.1 はオープンウェイトですか？",
+            "a": "Z.AI は GLM シリーズのオープンウェイト版を公開しています。VM0 で公開されているバージョンは、本番信頼性のため Z.AI のホスト API にルーティングされます。"
           },
           {
-            "q": "Does GLM-5.1 support image input?",
+            "q": "GLM-5.1 は画像入力をサポートしますか？",
             "a": "VM0のGLM-5.1はテキストとコード向けです。マルチモーダル入力（画像/動画）にはClaude Sonnet 4.6またはKimi K2.7 Codeを選んでください。"
           }
         ],
@@ -5555,8 +5555,8 @@
             "reason": "コストが制約でない場合のより強い推論"
           }
         ],
-        "routingNotes": "On VM0 Managed, GLM-5.1 is routed through OpenRouter with the upstream id `z-ai/glm-5.1`. With a Z.AI API key it talks to `api.z.ai`'s Anthropic-compatible endpoint directly. GLM-5.2 is now the default model on the Z.AI provider.",
-        "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider so long thinking steps complete reliably without dropping, and pairs the model's 1M-token context with high-volume document agents that need the room."
+        "routingNotes": "VM0 Managed では、GLM-5.1 は upstream id `z-ai/glm-5.1` で OpenRouter 経由にルーティングされます。Z.AI API キーを使う場合は、`api.z.ai` の Anthropic 互換エンドポイントに直接接続します。GLM-5.2 は現在 Z.AI プロバイダーのデフォルトモデルです。",
+        "vm0Notes": "VM0 は Z.AI プロバイダーに 50 分の API タイムアウトを設定しているため、長い思考ステップが確実に完了しやすく、1M トークンのコンテキストを必要とする高ボリュームの文書エージェントにも適しています。"
       },
       "gpt-5-4-mini": {
         "name": "GPT-5.4 Mini",
@@ -6067,88 +6067,88 @@
       },
       "minimax-m3": {
         "name": "MiniMax M3",
-        "pageTitle": "MiniMax M3 on VM0. Official MiniMax coding model at ×0.2",
-        "tagline": "Official MiniMax M3 routing for coding agents, 1M context, and native multimodal understanding.",
-        "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
-        "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
-        "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
-        "releaseDate": "June 1, 2026",
-        "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
+        "pageTitle": "VM0 の MiniMax M3。×0.2 の公式 MiniMax コードモデル",
+        "tagline": "コードエージェント向けの公式 MiniMax M3 ルーティング、1M コンテキスト、ネイティブなマルチモーダル理解。",
+        "cardIntro": "1M コンテキスト、プロンプトキャッシュ読み取り、×0.2 の VM0 マルチプライヤーを備えたコードエージェント向け公式 MiniMax M3 ルーティング。",
+        "metaTitle": "VM0 の MiniMax M3: 料金、仕様、公式ルーティング",
+        "metaDescription": "VM0 の MiniMax M3。1M コンテキスト、マルチモーダル理解、プロンプトキャッシュ読み取り、×0.2 クレジットを備えた公式 MiniMax コードモデル。",
+        "summary": "MiniMax M3 は、MiniMax の frontier コード・エージェントモデルで、VM0 では公式の Anthropic 互換 MiniMax エンドポイントを通じて提供されます。保持されている M2 シリーズよりも強いコーディング、ツール利用、長文コンテキスト推論、ネイティブな画像理解が必要なエージェントに適した MiniMax の選択肢です。\n\nVM0 は、基準コンテキスト帯について MiniMax の非プロモーション標準 pay-as-you-go 料金を M3 に使います。1M トークンあたり $0.60 / $2.40、プロンプトキャッシュ読み取りは $0.12 / 1M で、M3 の表ではキャッシュ書き込みの別課金はありません。MiniMax M2.1 は低コスト互換性のため引き続き利用でき、M3 が MiniMax BYOK のデフォルトモデルになります。",
+        "releaseDate": "2026年6月1日",
+        "familyPosition": "保持されている M2 シリーズと並ぶ公式 MiniMax M3 テキストモデル。",
         "background": [
-          "MiniMax M3 is the new official MiniMax text model for coding and agentic workloads. MiniMax describes it as combining frontier coding capability, a 1M-token context window, and native multimodal understanding.",
-          "On VM0, M3 is added to the existing MiniMax API-key provider instead of creating a new integration. It uses the same `api.minimax.io/anthropic` routing surface and the same `MINIMAX_API_KEY` secret as M2.",
-          "The existing M2 entries stay available, while M3 is the MiniMax provider default for new selections."
+          "MiniMax M3 は、コード作業とエージェント型ワークロード向けの新しい公式 MiniMax テキストモデルです。MiniMax は、frontier レベルのコーディング能力、1M トークンのコンテキストウィンドウ、ネイティブなマルチモーダル理解を組み合わせたモデルと説明しています。",
+          "VM0 では、新しい統合を作るのではなく、既存の MiniMax API キープロバイダーに M3 を追加します。M2 と同じ `api.minimax.io/anthropic` ルーティング面と同じ `MINIMAX_API_KEY` シークレットを使います。",
+          "既存の M2 エントリは引き続き利用でき、M3 は新規選択時の MiniMax プロバイダーデフォルトになります。"
         ],
-        "architecture": "M3 uses MiniMax Sparse Attention for ultra-long context. The official API supports up to 1M tokens with a 512K guaranteed minimum, automatic prompt cache support, and native multimodal understanding.",
+        "architecture": "M3 は超長文コンテキスト向けに MiniMax Sparse Attention を使います。公式 API は最大 1M トークン、512K の保証最小値、自動プロンプトキャッシュ対応、ネイティブなマルチモーダル理解をサポートします。",
         "specs": [
           {
-            "label": "Family",
+            "label": "ファミリー",
             "value": "MiniMax M3"
           },
           {
-            "label": "Modalities",
-            "value": "Text, vision, code"
+            "label": "モダリティ",
+            "value": "テキスト、ビジョン、コード"
           },
           {
-            "label": "Languages",
-            "value": "Multilingual"
+            "label": "言語",
+            "value": "多言語"
           },
           {
-            "label": "Context window",
-            "value": "1M tokens (512K guaranteed minimum)"
+            "label": "コンテキストウィンドウ",
+            "value": "1M トークン（512K の保証最小値）"
           },
           {
-            "label": "Prompt caching",
-            "value": "Supported with automatic cache reads"
+            "label": "プロンプトキャッシュ",
+            "value": "自動キャッシュ読み取りに対応"
           },
           {
-            "label": "Available on VM0",
-            "value": "June 1, 2026"
+            "label": "VM0での利用開始",
+            "value": "2026年6月1日"
           }
         ],
-        "benchmarksNote": "MiniMax positions M3 around coding, agentic tasks, and long-horizon execution. Treat these as vendor-reported signals and validate against your own VM0 agent regression set.",
+        "benchmarksNote": "MiniMax は M3 をコード、エージェント型タスク、長い実行ホライズン向けに位置付けています。これらはベンダー報告のシグナルとして扱い、自分の VM0 エージェント回帰セットで検証してください。",
         "benchmarks": [
           {
             "name": "PostTrainBench Live",
-            "score": "Rank #3",
-            "note": "vendor reported"
+            "score": "3位",
+            "note": "ベンダー報告"
           },
           {
             "name": "BrowseComp",
             "score": "83.5",
-            "note": "vendor reported"
+            "note": "ベンダー報告"
           }
         ],
         "performance": [
           {
-            "title": "Coding agents",
-            "body": "The best MiniMax option for coding assistants, long tool chains, and multi-step repository work."
+            "title": "コードエージェント",
+            "body": "コードアシスタント、長いツールチェーン、複数ステップのリポジトリ作業に最適な MiniMax の選択肢です。"
           },
           {
-            "title": "Long context",
-            "body": "A 1M context window lets agents keep large documents, code, logs, and previous work in scope without switching model families."
+            "title": "長文コンテキスト",
+            "body": "1M のコンテキストウィンドウにより、モデルファミリーを切り替えずに大きな文書、コード、ログ、過去の作業をスコープ内に保てます。"
           },
           {
-            "title": "Multimodal",
-            "body": "Native vision understanding makes M3 a better fit than M2 when screenshots, diagrams, or visual artifacts are part of the workflow."
+            "title": "マルチモーダル",
+            "body": "スクリーンショット、図、視覚的な成果物がワークフローに含まれる場合、ネイティブな画像理解により M3 は M2 より適しています。"
           }
         ],
         "bestForExamples": [
           {
-            "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
+            "title": "MiniMax に留める必要があるコードエージェント",
+            "body": "デプロイがすでに MiniMax キーを使っているが、M2.1 より強いコードモデルが必要なリポジトリ編集、デバッグ、エージェント型コードフロー。"
           },
           {
-            "title": "The long-context review run",
-            "body": "Large pull requests, logs, notebooks, or design documents that should stay in one model context while the agent reasons and edits."
+            "title": "長文コンテキストのレビュー実行",
+            "body": "エージェントが推論と編集を行う間、1つのモデルコンテキスト内に留めたい大きな Pull Request、ログ、ノートブック、設計文書。"
           },
           {
-            "title": "The multimodal investigation",
-            "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
+            "title": "マルチモーダル調査",
+            "body": "テキストとスクリーンショットや図を組み合わせるワークフロー。VM0 では M3 が画像入力対応としてマークされ、M2 エントリはテキスト/コードのみです。"
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "MiniMax の絶対的な最低コストが必要で、テキストのみの M2.1 で十分な場合、または OpenRouter/Vercel ルーティングが必要な場合は M3 を避けてください。この VM0 エントリは意図的に公式 MiniMax パスのみを使います。",
         "comparisons": [
           {
             "vs": "Kimi K2.7 Code",
@@ -6163,19 +6163,19 @@
             "body": "GLM-5.2はVM0における現在のZ.AIデフォルトルートです。新しいZ.AIベースのエージェントではこちらがより適切な比較対象で、GLM-5.1は調整済みワークフローとの互換性のためだけに残ります。"
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
+        "verdict": "長文コンテキストと Vision サポートを備えた公式 MiniMax コードモデルが必要な場合は MiniMax M3 を使います。コストと互換性がより重要な場合は M2.1 を維持してください。",
         "faqs": [
           {
-            "q": "Is MiniMax M2.1 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "MiniMax M2.1 はまだ利用できますか？",
+            "a": "はい。VM0 は直接 MiniMax プロバイダーで MiniMax M2.1 を保持しています。M3 は現在 MiniMax BYOK のデフォルトモデルです。"
           },
           {
-            "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
-            "a": "No. This entry intentionally uses only the official MiniMax Anthropic-compatible endpoint."
+            "q": "VM0 は MiniMax M3 を OpenRouter や Vercel 経由でルーティングしますか？",
+            "a": "いいえ。このエントリは意図的に公式の Anthropic 互換 MiniMax エンドポイントだけを使います。"
           },
           {
-            "q": "Which M3 pricing tier does VM0 show?",
-            "a": "The VM0 model page and usage seed use MiniMax's non-promotional standard base tier. MiniMax also documents a higher standard tier for input above 512K tokens."
+            "q": "VM0 はどの M3 料金ティアを表示していますか？",
+            "a": "VM0 のモデルページと usage seed は、MiniMax の非プロモーション標準ベースティアを使います。MiniMax は 512K トークンを超える入力向けの上位標準ティアも文書化しています。"
           }
         ],
         "alternatives": [
@@ -6188,8 +6188,8 @@
             "reason": "複雑なツール利用のためのより信頼できる基準"
           }
         ],
-        "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
+        "routingNotes": "`api.minimax.io` の公式 Anthropic 互換 MiniMax エンドポイント経由でルーティングされます。VM0 Managed と MiniMax API キープロバイダーでのみ利用できます。",
+        "vm0Notes": "VM0 は Built-in ルーティングのために `MiniMax-M3` を既存の MiniMax ベンダーキープールへマップします。直接 MiniMax プロバイダーは M3 をデフォルトモデルにしつつ、M2.1 も選択可能なままにします。"
       },
       "gpt-image-2": {
         "name": "GPT Image 2",
