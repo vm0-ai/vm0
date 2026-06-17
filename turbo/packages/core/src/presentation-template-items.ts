@@ -9,6 +9,24 @@ export interface PresentationTemplateItem {
   readonly templateId: string;
 }
 
+const BOTANE_ORGANIC_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cffa8fca-ca7f-4ac5-ad36-519f5ecb07cb/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/574a6d33-82df-4a54-a025-817ef3c4f3ed/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9767f55a-bb7a-4af2-b217-97524db7ec0a/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00f0e836-7633-46cd-891c-00f91d6548aa/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12048060-6fff-4bce-b35d-e6d6a3ae572c/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0de0ec70-0046-45f1-ae59-dbaafa0d2e23/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c649ab1-5371-406f-89f1-2263621452af/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec35ba2d-64a6-4d18-a49b-107898e01446/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5748e93-58ec-4fca-84da-a910f9739476/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18ba55cd-5ad0-4552-9736-79c0d23a85e8/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3db6ea2-0174-4f3c-82b0-6320b6e684cc/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2a4a5ba-0092-446f-ab90-a36ded70a8e1/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/deedbfd5-cd9c-4273-80e6-cc13092edc48/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc326310-f32b-4773-8a95-1e9e53043de3/slide-15.png",
+];
+
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
@@ -1805,5 +1823,18 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
       designSystemId: "design-system:playful-editorial",
       templateId: "template:html-ppt-playful-launch",
+    },
+    {
+      slug: "botane-organic-deck",
+      title: "Botane organic deck",
+      prompt:
+        "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
+      previewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
+      previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
+      designSystemId: "design-system:mauve-dusk",
+      templateId: "template:html-ppt-botane-organic",
     },
   ];

@@ -90,5 +90,29 @@ describe("presentation template items", () => {
     expect(findTemplate(item?.templateId ?? "")?.targets).toContain(
       "presentation",
     );
+
+    const botaneItem = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return candidate.slug === "botane-organic-deck";
+    });
+
+    expect(botaneItem).toBeDefined();
+    if (!botaneItem) {
+      throw new Error("Botane picker item is missing");
+    }
+    expect(botaneItem.designSystemId).toBe("design-system:mauve-dusk");
+    expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
+    expect(botaneItem.previewImages.length).toBe(15);
+    expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
+    expect(botaneItem.embedUrl).toMatch(/^https:\/\/cdn\.vm0\.io\/.+\.html$/);
+    for (const previewUrl of botaneItem.previewImages) {
+      expect(previewUrl).toMatch(/^https:\/\/cdn\.vm0\.io\//);
+      expect(previewUrl).not.toMatch(
+        /drive\.google\.com|googleusercontent\.com|raw\.githubusercontent\.com|file:\/\//,
+      );
+    }
+    expect(findDesignSystem(botaneItem.designSystemId)).toBeDefined();
+    expect(findTemplate(botaneItem.templateId)?.targets).toContain(
+      "presentation",
+    );
   });
 });
