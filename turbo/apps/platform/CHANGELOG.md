@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.467.0](https://github.com/vm0-ai/vm0/compare/app-v0.466.0...app-v0.467.0) (2026-06-17)
+
+
+### Features
+
+* manage workflow agent attachments ([#18112](https://github.com/vm0-ai/vm0/issues/18112)) ([a15f2b9](https://github.com/vm0-ai/vm0/commit/a15f2b987a3a395fce952c71bcbd98e48b40e0b6))
+* rename slash suggestions to workflows ([#18119](https://github.com/vm0-ai/vm0/issues/18119)) ([64b8436](https://github.com/vm0-ai/vm0/commit/64b84366b00db57564b44e9b4e2a9e804c47fbab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.1
+    * @vm0/connectors bumped to 1.86.0
+    * @vm0/core bumped to 8.350.1
+
 ## [0.466.0](https://github.com/vm0-ai/vm0/compare/app-v0.465.0...app-v0.466.0) (2026-06-17)
 
 
