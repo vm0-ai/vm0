@@ -1829,7 +1829,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
-        "https://botane-organic-presentation-preview-715f6d07-715f6d07-e999775d.sites.vm0.io",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
       previewImage:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
