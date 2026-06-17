@@ -143,6 +143,21 @@ def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):
     message = log.error.call_args.args[0]
     assert log.error.call_count == 1
     assert "\n" not in message
-    assert "parse_error=first line\\n" in message
+    assert "parse_error=first\\sline\\n" in message
     assert "last line" not in message
     assert len(message) < 420
+
+
+def test_underbilling_stderr_fallback_sanitizes_field_keys(mitm_ctx):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Usage underbilling signal",
+            "expected_reason",
+            "risk",
+            **{"bad key\nname": "value with spaces"},
+        )
+
+    message = log.error.call_args.args[0]
+    assert "bad_key_name=value\\swith\\sspaces" in message
+    assert "bad key" not in message

@@ -14,6 +14,7 @@ USAGE_UNDERBILLING_LOG_TYPE = "usage_underbilling"
 USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
 _UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
 _SECRET_FIELD_MARKERS = ("token", "secret", "password", "authorization")
+_STDERR_FIELD_KEY_MAX_CHARS = 80
 _STDERR_FIELD_VALUE_MAX_CHARS = 256
 _TRUNCATION_SUFFIX = "..."
 
@@ -22,17 +23,32 @@ def _stderr_field_is_secret_like(key: str, value: object) -> bool:
     return isinstance(value, str) and any(marker in key.lower() for marker in _SECRET_FIELD_MARKERS)
 
 
-def _single_line_stderr_value(value: str) -> str:
+def _truncate_stderr_text(value: str, max_chars: int) -> str:
+    if len(value) <= max_chars:
+        return value
+    limit = max_chars - len(_TRUNCATION_SUFFIX)
+    return value[:limit] + _TRUNCATION_SUFFIX
+
+
+def _render_stderr_field_key(key: str) -> str:
+    rendered = "".join(
+        ch if ch.isascii() and (ch.isalnum() or ch in ("_", "-", ".")) else "_" for ch in key
+    )
+    return _truncate_stderr_text(rendered or "_", _STDERR_FIELD_KEY_MAX_CHARS)
+
+
+def _single_token_stderr_value(value: str) -> str:
     return (
-        value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+        value.replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace(" ", "\\s")
     )
 
 
 def _truncate_stderr_value(value: str) -> str:
-    if len(value) <= _STDERR_FIELD_VALUE_MAX_CHARS:
-        return value
-    limit = _STDERR_FIELD_VALUE_MAX_CHARS - len(_TRUNCATION_SUFFIX)
-    return value[:limit] + _TRUNCATION_SUFFIX
+    return _truncate_stderr_text(value, _STDERR_FIELD_VALUE_MAX_CHARS)
 
 
 def _render_stderr_field_value(key: str, value: object) -> str:
@@ -45,12 +61,12 @@ def _render_stderr_field_value(key: str, value: object) -> str:
         rendered = "null"
     else:
         rendered = str(sanitized)
-    return _truncate_stderr_value(_single_line_stderr_value(rendered))
+    return _truncate_stderr_value(_single_token_stderr_value(rendered))
 
 
 def _render_stderr_extra_fields(fields: dict[str, object]) -> str:
     return " ".join(
-        f"{key}={_render_stderr_field_value(key, fields[key])}"
+        f"{_render_stderr_field_key(key)}={_render_stderr_field_value(key, fields[key])}"
         for key in sorted(fields)
         if key not in _UNDERBILLING_PROTECTED_FIELDS
     )
