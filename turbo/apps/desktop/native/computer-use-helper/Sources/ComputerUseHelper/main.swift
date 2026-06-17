@@ -667,9 +667,9 @@ final class ComputerUseVisualPointerView: NSView {
         path.close()
 
         let bottomShadow = NSShadow()
-        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.48)
-        bottomShadow.shadowBlurRadius = 3.4
-        bottomShadow.shadowOffset = NSSize(width: 0.9, height: -2.1)
+        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.54)
+        bottomShadow.shadowBlurRadius = 6.8
+        bottomShadow.shadowOffset = NSSize(width: 1.8, height: -4.2)
         bottomShadow.set()
 
         NSColor(calibratedRed: 0.34, green: 0.37, blue: 0.40, alpha: 1).setFill()
@@ -687,7 +687,7 @@ final class ComputerUseVisualPointerView: NSView {
 final class ComputerUseVisualPointer: @unchecked Sendable {
     static let shared = ComputerUseVisualPointer()
 
-    private let pointerSize = CGSize(width: 30, height: 30)
+    private let pointerSize = CGSize(width: 34, height: 36)
     private let targetAnchor = CGPoint(x: 8, y: 6)
     private let idleHideDelay: TimeInterval = 60
     private var window: NSPanel?
@@ -826,7 +826,7 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
         }
         let elapsed = Date.timeIntervalSinceReferenceDate - swayStartedAt
         let phase = elapsed * Double.pi * 2 / 3.8
-        pointerView()?.rotationDegrees = CGFloat(sin(phase) * 5)
+        pointerView()?.rotationDegrees = CGFloat(sin(phase) * 10)
         window?.alphaValue = 0.94 + CGFloat((sin(phase - Double.pi / 2) + 1) * 0.025)
     }
 
