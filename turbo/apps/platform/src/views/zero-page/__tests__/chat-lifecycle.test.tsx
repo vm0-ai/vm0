@@ -3057,10 +3057,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Automations" }),
+      ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Automations"));
+    click(screen.getByRole("button", { name: "Automations" }));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
@@ -3091,10 +3093,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Automations" }),
+      ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Automations"));
+    click(screen.getByRole("button", { name: "Automations" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
@@ -3142,7 +3146,7 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
-    click(await screen.findByLabelText("Automations"));
+    click(await screen.findByRole("button", { name: "Automations" }));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();

@@ -2572,9 +2572,9 @@ describe("getAvailableConnectorAuthMethodIds", () => {
   });
 
   it("exposes Google Maps OAuth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual([
-      "oauth",
-    ]);
+    expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
+      ["oauth"],
+    );
   });
 
   it("exposes Google Analytics OAuth without a feature switch", () => {

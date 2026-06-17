@@ -1681,7 +1681,6 @@ interface RunTrackingDeps {
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
@@ -1742,7 +1741,6 @@ function createRunTracking({
   allMessages$,
   latestChatMessageId$,
   rawMessages$,
-  knownServerMessageIds$,
   initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
@@ -2461,7 +2459,6 @@ export function createChatThreadSignals(
     allMessages$,
     latestChatMessageId$,
     rawMessages$,
-    knownServerMessageIds$,
     initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,
