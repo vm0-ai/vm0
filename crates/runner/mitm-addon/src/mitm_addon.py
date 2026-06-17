@@ -159,6 +159,18 @@ _RequestClassificationKind = Literal[
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
+_REQUEST_HEADERS_PROBE_METADATA_KEYS = (
+    metadata_keys.VM_RUN_ID,
+    metadata_keys.VM_NETWORK_LOG_PATH,
+    metadata_keys.VM_PROXY_LOG_PATH,
+    metadata_keys.CAPTURE_BODY,
+    metadata_keys.VM_SANDBOX_AUTH_KEY,
+    metadata_keys.CLI_AGENT_TYPE,
+    metadata_keys.BROWSER_USER_AGENT,
+    metadata_keys.ORIGINAL_URL,
+    metadata_keys.TRUSTED_AUTHORITY_HOST,
+    metadata_keys.NETWORK_LOG_TARGET,
+)
 
 
 @dataclass(frozen=True)
@@ -765,6 +777,16 @@ def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
     return (parsed_length or 0) <= STREAM_BUFFER_LIMIT
 
 
+def _restore_request_headers_probe_metadata(
+    flow: http.HTTPFlow, snapshot: dict[str, object]
+) -> None:
+    for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS:
+        if key in snapshot:
+            flow.metadata[key] = snapshot[key]
+        else:
+            flow.metadata.pop(key, None)
+
+
 def _record_connector_diagnostic_candidate(
     flow: http.HTTPFlow,
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
@@ -1275,7 +1297,12 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
         return
 
-    classification = _request_classification(flow, cache=True)
+    metadata_snapshot = {
+        key: flow.metadata[key]
+        for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS
+        if key in flow.metadata
+    }
+    classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     if (
@@ -1309,8 +1336,12 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         return
 
     if _should_stream_capture_request(classification):
+        flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
+        return
+
+    _restore_request_headers_probe_metadata(flow, metadata_snapshot)
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:

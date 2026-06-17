@@ -26,6 +26,7 @@ def _assert_no_request_stream(flow) -> None:
     assert flow.request.stream is False
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
 
 
 def test_capture_enabled_api_allow_installs_request_stream(tmp_path, real_flow, mitm_ctx):
@@ -226,6 +227,25 @@ def test_capture_disabled_final_allow_does_not_install_request_stream(
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
+
+
+def test_non_stream_requestheaders_probe_restores_request_metadata(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.NETWORK_LOG_TARGET not in flow.metadata
+    assert metadata_keys.CAPTURE_BODY not in flow.metadata
 
 
 def test_capture_enabled_firewall_allow_does_not_install_request_stream(
