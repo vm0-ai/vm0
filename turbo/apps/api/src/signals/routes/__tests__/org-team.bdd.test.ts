@@ -986,7 +986,6 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       description: null,
       sound: "calm",
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
     });
     expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);

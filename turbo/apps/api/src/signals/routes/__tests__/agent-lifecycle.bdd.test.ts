@@ -63,7 +63,6 @@ describe("AGENT-01: zero agent lifecycle through public API", () => {
       sound: "focus",
       avatarUrl: "preset:3",
       visibility: "public",
-      customSkills: [],
     });
 
     const readAfterReplace = await api.readAgent(admin, created.agentId);

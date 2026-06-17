@@ -178,10 +178,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
   },
   {
-    path: ROUTES.skills,
-    setup: setupAuthPageWrapper(redirectTo(ROUTES.workflows)),
-  },
-  {
     path: ROUTES.memory,
     setup: setupAuthSidebarPageWrapper(setupMemoryPage$),
   },

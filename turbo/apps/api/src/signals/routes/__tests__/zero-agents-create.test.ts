@@ -35,11 +35,11 @@ import {
 } from "./helpers/zero-model-providers";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
-  deleteSkillsForFixture$,
+  deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
-  seedSkillsFixture$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
+  seedWorkflowsFixture$,
+  type WorkflowsFixture,
+} from "./helpers/zero-workflows";
 
 const context = testContext();
 const store = createStore();
@@ -114,8 +114,8 @@ function expectRecord(value: unknown, label: string): Record<string, unknown> {
 }
 
 describe("POST /api/zero/agents", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
   const trackModelProvider = createFixtureTracker<OrgModelProviderFixture>(
     (fixture) => {
@@ -164,7 +164,7 @@ describe("POST /api/zero/agents", () => {
 
   it("creates agent metadata, compose content, and instructions storage", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -189,7 +189,6 @@ describe("POST /api/zero/agents", () => {
       description: "Tracks research context",
       sound: "calm",
       avatarUrl: "preset:2",
-      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -265,7 +264,7 @@ describe("POST /api/zero/agents", () => {
 
   it("returns 409 when the public agent limit has been reached", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     for (let i = 0; i < 7; i += 1) {
       await store.set(
@@ -315,7 +314,7 @@ describe("POST /api/zero/agents", () => {
 
   it("excludes private agents from the public agent create limit", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -353,7 +352,7 @@ describe("POST /api/zero/agents", () => {
 
   it("allows creating another public agent after one is deleted", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -407,7 +406,7 @@ describe("POST /api/zero/agents", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     await trackModelProvider(seedDefaultAnthropicProvider(fixture.orgId));
     mocks.clerk.session(fixture.userId, fixture.orgId);

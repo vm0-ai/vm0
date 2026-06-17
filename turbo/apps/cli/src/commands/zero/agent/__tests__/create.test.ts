@@ -90,7 +90,6 @@ describe("zero agent create command", () => {
       ]);
 
       expect(capturedBody?.displayName).toBe("New Agent");
-      expect(capturedBody).not.toHaveProperty("customSkills");
     });
 
     it("should send preset avatar in request body", async () => {

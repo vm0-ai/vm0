@@ -20,11 +20,11 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
-  deleteSkillsForFixture$,
+  deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
-  seedSkillsFixture$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
+  seedWorkflowsFixture$,
+  type WorkflowsFixture,
+} from "./helpers/zero-workflows";
 
 const context = testContext();
 const store = createStore();
@@ -39,7 +39,7 @@ function currentSecond(): number {
 }
 
 async function cliAuthHeaders(
-  fixture: SkillsFixture,
+  fixture: WorkflowsFixture,
   role: "admin" | "member" = "admin",
 ): Promise<{ readonly authorization: string }> {
   const tokenId = randomUUID();
@@ -99,8 +99,8 @@ function s3PutInputs(): readonly Record<string, unknown>[] {
 }
 
 describe("PUT /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -162,7 +162,7 @@ describe("PUT /api/zero/agents/:id", () => {
 
   it("updates agent metadata and model selection while preserving omitted fields", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -195,7 +195,6 @@ describe("PUT /api/zero/agents/:id", () => {
       ownerId: fixture.userId,
       displayName: "Updated Agent",
       sound: "calm",
-      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -210,16 +209,16 @@ describe("PUT /api/zero/agents/:id", () => {
     expect(compose?.headVersionId).toBeTruthy();
   });
 
-  it("keeps workflow bindings out of agent update responses", async () => {
+  it("updates an agent that has workflow bindings", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        customSkills: ["existing-skill"],
+        workflowNames: ["existing-skill"],
       },
       context.signal,
     );
@@ -234,13 +233,12 @@ describe("PUT /api/zero/agents/:id", () => {
       [200],
     );
 
-    expect(response.body.customSkills).toStrictEqual([]);
     expect(response.body.description).toBe("Updated description");
   });
 
   it("allows an owner member to update their own agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -271,7 +269,7 @@ describe("PUT /api/zero/agents/:id", () => {
 
   it("clears stale model fields on PUT", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -304,7 +302,7 @@ describe("PUT /api/zero/agents/:id", () => {
 
   it("returns 403 when a non-owner member updates another user's agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -336,7 +334,7 @@ describe("PUT /api/zero/agents/:id", () => {
 
   it("returns 404 for an unknown agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const agentId = randomUUID();
@@ -357,8 +355,8 @@ describe("PUT /api/zero/agents/:id", () => {
 });
 
 describe("PATCH /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -407,7 +405,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("updates metadata fields and preserves omitted fields without recomposing", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -418,7 +416,7 @@ describe("PATCH /api/zero/agents/:id", () => {
         description: "Original description",
         sound: "calm",
         avatarUrl: "preset:4",
-        customSkills: ["existing-skill"],
+        workflowNames: ["existing-skill"],
       },
       context.signal,
     );
@@ -444,7 +442,6 @@ describe("PATCH /api/zero/agents/:id", () => {
       description: "Updated description",
       sound: "calm",
       avatarUrl: null,
-      customSkills: [],
       preferPersonalProvider: false,
     });
 
@@ -471,7 +468,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("returns 404 for an unknown agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const agentId = randomUUID();
@@ -492,7 +489,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("returns 403 when a non-owner member updates another user's agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -523,7 +520,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("allows an org admin to update another user's public agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const adminUserId = `user_${randomUUID()}`;
     const agent = await store.set(
@@ -555,7 +552,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("returns 403 when an org admin changes another user's public agent visibility", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const adminUserId = `user_${randomUUID()}`;
     const agent = await store.set(
@@ -588,7 +585,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("returns 403 when an org admin updates another user's private agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const adminUserId = `user_${randomUUID()}`;
     const agent = await store.set(
@@ -621,7 +618,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("returns 409 when changing a private agent to public would exceed the public limit", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     for (let index = 0; index < 7; index += 1) {
       await store.set(
@@ -665,7 +662,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("allows an owner to update private agent metadata without changing visibility", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -697,7 +694,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("clears stale model fields on PATCH", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -730,7 +727,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
   it("clears stale agent model fields on PATCH", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -780,8 +777,8 @@ describe("PATCH /api/zero/agents/:id", () => {
 });
 
 describe("PUT /api/zero/agents/:id/instructions", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -830,7 +827,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("returns 400 for an invalid agent id", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -853,7 +850,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("updates instructions storage and preserves agent metadata", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -861,7 +858,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
         displayName: "Instructions Agent",
-        customSkills: ["existing-skill"],
+        workflowNames: ["existing-skill"],
       },
       context.signal,
     );
@@ -880,7 +877,6 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
       agentId: agent.agentId,
       ownerId: fixture.userId,
       displayName: "Instructions Agent",
-      customSkills: [],
     });
 
     const putInputs = s3PutInputs();
@@ -904,7 +900,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("allows an owner CLI token to update instructions", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -934,7 +930,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("allows an owner member to update private agent instructions", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -965,7 +961,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("returns 403 when a non-owner member updates another user's instructions", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agent = await store.set(
       seedAgentForInstructions$,
@@ -997,7 +993,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
   it("returns 404 for an unknown agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const agentId = randomUUID();

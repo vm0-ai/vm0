@@ -372,10 +372,10 @@ interface CreateAgentRunArgs {
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
-  // When set, system + custom skill volumes are built and prepended in
+  // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
   readonly injectSkillVolumes?: {
-    readonly customSkills: readonly string[];
+    readonly workflowNames: readonly string[];
   };
   readonly allowedConnectorTypes?: readonly ConnectorType[];
   readonly allowedCustomConnectorIds?: readonly string[];
@@ -501,11 +501,11 @@ function buildSystemSkillVolumes(
   });
 }
 
-function buildCustomSkillVolumes(
-  customSkills: readonly string[],
+function buildWorkflowSkillVolumes(
+  workflowNames: readonly string[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
-  return customSkills
+  return workflowNames
     .filter((name) => {
       return !SEED_SKILLS.includes(name);
     })
@@ -526,7 +526,10 @@ function buildInjectedSkillVolumes(
   }
   return [
     ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
-    ...buildCustomSkillVolumes(args.injectSkillVolumes.customSkills, framework),
+    ...buildWorkflowSkillVolumes(
+      args.injectSkillVolumes.workflowNames,
+      framework,
+    ),
   ];
 }
 

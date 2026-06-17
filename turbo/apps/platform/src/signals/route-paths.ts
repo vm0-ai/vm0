@@ -2,7 +2,6 @@ export const ROUTES = {
   home: "/",
   agents: "/agents",
   workflows: "/workflows",
-  skills: "/skills",
   memory: "/memory",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",

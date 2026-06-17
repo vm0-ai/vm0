@@ -475,7 +475,6 @@ async function collectAgentConfig(
     displayName: agent.displayName,
     description: agent.description,
     sound: agent.sound,
-    customSkills: [],
     workflows: [],
     composeContent: agent.composeContent,
   };

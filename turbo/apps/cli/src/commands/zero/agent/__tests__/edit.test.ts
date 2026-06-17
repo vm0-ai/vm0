@@ -94,7 +94,6 @@ describe("zero agent edit command", () => {
       ]);
 
       expect(capturedBody?.description).toBe("Updated role");
-      expect(capturedBody).not.toHaveProperty("customSkills");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });

@@ -17,9 +17,6 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  // Deprecated response-only compatibility field. Workflow attachments are
-  // managed through /api/zero/workflows/* and no longer live on agents.
-  customSkills: z.array(z.string()).default([]),
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
   preferPersonalProvider: z.boolean().default(false),

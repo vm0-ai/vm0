@@ -25,17 +25,17 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { TestContext } from "../../../../__tests__/test-helpers";
 import { writeDb$ } from "../../../external/db";
 
-export interface SkillsFixture {
+export interface WorkflowsFixture {
   readonly orgId: string;
   readonly userId: string;
 }
 
-export const seedSkillsFixture$ = command(
+export const seedWorkflowsFixture$ = command(
   async (
     { set },
     _input: void,
     signal: AbortSignal,
-  ): Promise<SkillsFixture> => {
+  ): Promise<WorkflowsFixture> => {
     const db = set(writeDb$);
     const fixture = {
       orgId: `org_${randomUUID()}`,
@@ -51,10 +51,10 @@ export const seedSkillsFixture$ = command(
   },
 );
 
-export const deleteSkillsForFixture$ = command(
+export const deleteWorkflowsForFixture$ = command(
   async (
     { set },
-    fixture: SkillsFixture,
+    fixture: WorkflowsFixture,
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
@@ -86,7 +86,7 @@ export const deleteSkillsForFixture$ = command(
   },
 );
 
-export const seedSkill$ = command(
+export const seedWorkflow$ = command(
   async (
     { set },
     args: {
@@ -112,24 +112,24 @@ export const seedSkill$ = command(
   },
 );
 
-interface SkillStorageSeed {
+interface WorkflowStorageSeed {
   readonly orgId: string;
   readonly userId: string;
-  readonly skillName: string;
+  readonly workflowName: string;
   readonly s3Key: string;
   readonly headVersionId: string;
   readonly type?: string;
 }
 
-export const seedSkillStorage$ = command(
+export const seedWorkflowStorage$ = command(
   async (
     { set },
-    args: SkillStorageSeed,
+    args: WorkflowStorageSeed,
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
     const storageId = randomUUID();
-    const storageName = getCustomSkillStorageName(args.skillName);
+    const storageName = getCustomSkillStorageName(args.workflowName);
 
     await db.insert(storages).values({
       id: storageId,
@@ -157,15 +157,15 @@ export const seedSkillStorage$ = command(
   },
 );
 
-interface SkillContentMockExtra {
+interface WorkflowContentMockExtra {
   readonly path: string;
   readonly content: string;
 }
 
-interface SkillContentMockArgs {
+interface WorkflowContentMockArgs {
   readonly s3Key: string;
   readonly content: string;
-  readonly extraFiles?: readonly SkillContentMockExtra[];
+  readonly extraFiles?: readonly WorkflowContentMockExtra[];
 }
 
 type AgentFramework = "claude-code" | "codex";
@@ -261,9 +261,9 @@ function commandKey(command: unknown): string {
   return (input as { Key: string }).Key;
 }
 
-export function mockSkillContent(
+export function mockWorkflowContent(
   context: TestContext,
-  args: SkillContentMockArgs,
+  args: WorkflowContentMockArgs,
 ): void {
   const contentBuffer = Buffer.from(args.content, "utf8");
   const extraFiles = (args.extraFiles ?? []).map((file) => {
@@ -382,7 +382,7 @@ export const seedAgentForInstructions$ = command(
       description?: string | null;
       sound?: string | null;
       avatarUrl?: string | null;
-      customSkills?: readonly string[];
+      workflowNames?: readonly string[];
       modelProviderId?: string | null;
       selectedModel?: string | null;
       preferPersonalProvider?: boolean;
@@ -449,8 +449,8 @@ export const seedAgentForInstructions$ = command(
         .onConflictDoNothing();
       signal.throwIfAborted();
 
-      if (args.customSkills && args.customSkills.length > 0) {
-        const workflowNames = [...new Set(args.customSkills)];
+      if (args.workflowNames && args.workflowNames.length > 0) {
+        const workflowNames = [...new Set(args.workflowNames)];
         await db
           .insert(zeroWorkflows)
           .values(
