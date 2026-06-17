@@ -70,5 +70,5 @@ pre-commit:
     - name: ensure-connector-firewalls-index-only
       run: ./scripts/ensure-connector-firewalls-index-only.sh
       fail_text: |
-        Only turbo/packages/connectors/src/firewalls/index.ts may be committed under turbo/packages/connectors/src/firewalls.
+        Generated connector firewall files and metadata must not be committed.
         Run 'git rm --cached -- <file>' for each listed file.
