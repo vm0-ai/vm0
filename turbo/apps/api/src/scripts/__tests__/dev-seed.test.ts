@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildUsagePricing, buildVm0ApiKeys } from "../dev-seed";
+import { buildVm0ApiKeys } from "../dev-seed";
 
 function readEnvFrom(
   values: Readonly<Record<string, string | undefined>>,
@@ -149,42 +149,5 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["provider-deepseek-key"]));
-  });
-});
-
-describe("buildUsagePricing", () => {
-  it("builds GLM 5.2 model usage pricing rows", () => {
-    const glm52Pricing = buildUsagePricing().filter((row) => {
-      return row.kind === "model" && row.provider === "glm-5.2";
-    });
-
-    expect(glm52Pricing).toStrictEqual([
-      {
-        kind: "model",
-        provider: "glm-5.2",
-        category: "tokens.input",
-        unitPrice: 1400,
-        unitSize: 1_000_000,
-      },
-      {
-        kind: "model",
-        provider: "glm-5.2",
-        category: "tokens.output",
-        unitPrice: 4400,
-        unitSize: 1_000_000,
-      },
-      {
-        kind: "model",
-        provider: "glm-5.2",
-        category: "tokens.cache_read",
-        unitPrice: 260,
-        unitSize: 1_000_000,
-      },
-    ]);
-    expect(
-      glm52Pricing.some((row) => {
-        return row.category === "tokens.cache_creation";
-      }),
-    ).toBeFalsy();
   });
 });

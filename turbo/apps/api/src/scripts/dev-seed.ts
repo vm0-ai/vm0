@@ -407,10 +407,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 ];
 
-export function buildUsagePricing(): readonly (typeof usagePricing.$inferInsert)[] {
-  return USAGE_PRICING;
-}
-
 function getVendorApiKeyEnvVars(vendor: string): string[] {
   const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
   if (vendor === "anthropic") {
