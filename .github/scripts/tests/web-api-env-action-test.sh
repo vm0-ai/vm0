@@ -128,7 +128,7 @@ run_action() {
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
     INPUT_API_URL="https://pr-123-api.vm0.test" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
-    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test"}' \
+    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","GMAIL_PUBSUB_TOPIC_NAME":"projects/vm0-ai-488909/topics/gmail-events","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.vm0.ai/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com"}' \
     REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret"}' \
     DOPPLER_SECRETS_JSON="$doppler_secrets_json" \
     bash "$action_script"
@@ -157,6 +157,9 @@ assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-se
 assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
+assert_env_value "$success_env_file" GMAIL_PUBSUB_TOPIC_NAME "projects/vm0-ai-488909/topics/gmail-events"
+assert_env_value "$success_env_file" GMAIL_PUBSUB_PUSH_AUDIENCE "https://api.vm0.ai/api/webhooks/gmail"
+assert_env_value "$success_env_file" GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_value "$success_env_file" PAID_ONBOARDING_URL "https://staging-so.vm6.ai"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"

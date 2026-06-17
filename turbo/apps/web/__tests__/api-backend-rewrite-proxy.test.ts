@@ -494,6 +494,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the cron renew Gmail watches rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/renew-gmail-watches")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/cron/renew-gmail-watches/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the cron reconcile billing entitlements rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/cron/reconcile-billing-entitlements"),
@@ -1606,6 +1616,14 @@ describe("API backend rewrite proxy behavior", () => {
   it("matches the GitHub webhook rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/github")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/webhooks/github/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+  });
+
+  it("matches the Gmail webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/gmail")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks/gmail/extra")).toBe(
       false,
     );
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);

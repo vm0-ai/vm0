@@ -24,11 +24,16 @@ export function formatTriggerConfig(
       return `every ${formatDurationSeconds(trigger.intervalSeconds)}`;
     case "webhook":
       return trigger.webhookUrl;
+    case "event":
+      return trigger.config.provider === "gmail" &&
+        trigger.config.event === "new_message"
+        ? "Gmail new message"
+        : `${trigger.config.provider} event`;
   }
 }
 
 function formatNextRun(trigger: AutomationTriggerResponse): string {
-  if (trigger.kind === "webhook") {
+  if (trigger.kind === "webhook" || trigger.kind === "event") {
     return chalk.dim("-");
   }
   if (!trigger.nextRunAt) {
@@ -118,9 +123,20 @@ export function printTriggerDetails(trigger: AutomationTriggerResponse): void {
     case "webhook":
       console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);
       break;
+    case "event":
+      console.log(`${"Provider:".padEnd(14)}${trigger.config.provider}`);
+      console.log(`${"Event:".padEnd(14)}${trigger.config.event}`);
+      console.log(
+        `${"Action:".padEnd(14)}${trigger.config.action?.type ?? "draft_reply"}`,
+      );
+      break;
   }
 
-  if (trigger.kind !== "webhook") {
+  if (
+    trigger.kind === "cron" ||
+    trigger.kind === "once" ||
+    trigger.kind === "loop"
+  ) {
     console.log(`${"Timezone:".padEnd(14)}${trigger.timezone}`);
     console.log(
       `${"Next run:".padEnd(14)}${

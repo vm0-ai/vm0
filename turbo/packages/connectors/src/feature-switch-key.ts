@@ -62,6 +62,7 @@ export enum FeatureSwitchKey {
   ConnectorReconnectReasons = "connectorReconnectReasons",
   AssistantTextStreaming = "assistantTextStreaming",
   AutomationWebhookTriggers = "automationWebhookTriggers",
+  AutomationGmailEventTriggers = "automationGmailEventTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
   PaidOnboardingRedirect = "paidOnboardingRedirect",
 }

@@ -222,6 +222,7 @@ const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
   "/api/webhooks/agent/checkpoints/prepare-history";
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
+const GMAIL_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/gmail";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
 const TELEGRAM_REGISTER_REWRITE_SOURCE = "/api/telegram/register";
@@ -538,6 +539,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-automations", "/api/cron/execute-automations"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
+  ["/api/cron/renew-gmail-watches", "/api/cron/renew-gmail-watches"],
   [
     "/api/cron/reconcile-billing-entitlements",
     "/api/cron/reconcile-billing-entitlements",
@@ -621,6 +623,7 @@ export const API_BACKEND_REWRITES = [
     "/api/webhooks/agent/checkpoints/prepare-history",
   ],
   [CLERK_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/clerk"],
+  [GMAIL_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/gmail"],
   [GITHUB_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/github"],
   [STRIPE_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/stripe"],
   [

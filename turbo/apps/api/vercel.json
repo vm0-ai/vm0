@@ -13,6 +13,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/renew-gmail-watches",
+      "schedule": "17 */6 * * *"
+    },
+    {
       "path": "/api/cron/aggregate-usage",
       "schedule": "5 0 * * *"
     },

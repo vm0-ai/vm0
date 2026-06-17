@@ -359,6 +359,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AutomationGmailEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Gmail new-message event triggers on automations: watch registration, Pub/Sub push dispatch, and draft-reply run context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AutomationMultiTrigger]: {
     maintainer: "lancy@vm0.ai",
     description:

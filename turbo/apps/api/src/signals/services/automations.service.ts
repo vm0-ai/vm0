@@ -1,11 +1,13 @@
 import { command } from "ccstate";
-import type {
-  CreateTriggerRequest,
-  UpdateTriggerRequest,
+import {
+  gmailNewMessageEventConfigSchema,
+  type CreateTriggerRequest,
+  type UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
@@ -33,6 +35,7 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { generateAutomationDescription } from "./automations/describe";
+import { ensureGmailWatchForUser } from "./gmail-event.service";
 
 /**
  * Interpreter key persisted for natively-created automations (D1 on
@@ -133,6 +136,42 @@ interface ResolvedTriggerInsert {
 type TriggerInsertResult =
   | { readonly kind: "ok"; readonly insert: ResolvedTriggerInsert }
   | { readonly kind: "bad_request"; readonly message: string };
+
+function isGmailNewMessageTrigger(request: CreateTriggerRequest): boolean {
+  return (
+    request.kind === "event" &&
+    request.config.provider === "gmail" &&
+    request.config.event === "new_message"
+  );
+}
+
+function isPersistedGmailNewMessageTrigger(
+  trigger: AutomationTriggerRow,
+): boolean {
+  return (
+    trigger.kind === "event" &&
+    gmailNewMessageEventConfigSchema.safeParse(trigger.config).success
+  );
+}
+
+async function enableGmailConnectorForAgent(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<void> {
+  await db
+    .insert(userConnectors)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      connectorType: "gmail",
+    })
+    .onConflictDoNothing();
+}
 
 // `calculateNextRun` throws on a malformed cron expression and returns null
 // when the expression has no further occurrences; both collapse to null here
@@ -239,6 +278,15 @@ async function resolveTriggerInsert(args: {
     };
   }
 
+  if (request.kind === "event") {
+    return {
+      kind: "ok",
+      insert: {
+        values: { kind: "event", config: request.config, ...timestamps },
+      },
+    };
+  }
+
   const webhookToken = mintWebhookToken();
   const secret = mintWebhookSecret();
   const encryptedSecret = await encryptStoredSecretValue(secret);
@@ -308,6 +356,7 @@ async function insertAutomationWithTrigger(
     readonly enabled: boolean;
     readonly currentTime: Date;
     readonly triggerInsert: ResolvedTriggerInsert | null;
+    readonly enableGmailConnector: boolean;
   },
 ): Promise<AutomationView> {
   const { body, currentTime } = args;
@@ -362,6 +411,14 @@ async function insertAutomationWithTrigger(
         throw new Error(`Failed to create trigger for ${body.name}`);
       }
       triggers.push(trigger);
+    }
+
+    if (args.enableGmailConnector) {
+      await enableGmailConnectorForAgent(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: body.agentId,
+      });
     }
 
     return { automation, displayName: args.displayName, triggers };
@@ -433,7 +490,21 @@ export const createAutomation$ = command(
     const enabled = body.enabled ?? true;
     const currentTime = nowDate();
     let triggerInsert: ResolvedTriggerInsert | null = null;
+    const enableGmailConnector =
+      body.trigger !== undefined && isGmailNewMessageTrigger(body.trigger);
     if (body.trigger) {
+      if (enableGmailConnector) {
+        const watch = await ensureGmailWatchForUser({
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          signal,
+        });
+        signal.throwIfAborted();
+        if (watch.kind === "bad_request") {
+          return watch;
+        }
+      }
       const resolved = await resolveTriggerInsert({
         request: body.trigger,
         automationEnabled: enabled,
@@ -480,6 +551,7 @@ export const createAutomation$ = command(
       enabled,
       currentTime,
       triggerInsert,
+      enableGmailConnector,
     });
     signal.throwIfAborted();
 
@@ -914,14 +986,37 @@ export const addTrigger$ = command(
     if (result.kind === "bad_request") {
       return result;
     }
+    const enableGmailConnector = isGmailNewMessageTrigger(args.request);
+    if (enableGmailConnector) {
+      const watch = await ensureGmailWatchForUser({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watch.kind === "bad_request") {
+        return watch;
+      }
+    }
 
-    const [trigger] = await db
-      .insert(automationTriggers)
-      .values({
-        automationId: resolved.automation.id,
-        ...result.insert.values,
-      })
-      .returning();
+    const [trigger] = await db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(automationTriggers)
+        .values({
+          automationId: resolved.automation.id,
+          ...result.insert.values,
+        })
+        .returning();
+      if (enableGmailConnector) {
+        await enableGmailConnectorForAgent(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: resolved.automation.agentId,
+        });
+      }
+      return rows;
+    });
     signal.throwIfAborted();
     if (!trigger) {
       throw new Error(`Failed to create trigger for ${args.ref}`);
@@ -1081,15 +1176,40 @@ export const setTriggerEnabled$ = command(
       };
     }
 
-    const [trigger] = await db
-      .update(automationTriggers)
-      .set({
-        enabled: args.enabled,
-        ...recomputedState,
-        updatedAt: currentTime,
-      })
-      .where(eq(automationTriggers.id, owned.trigger.id))
-      .returning();
+    const enableGmailConnector =
+      args.enabled && isPersistedGmailNewMessageTrigger(owned.trigger);
+    if (enableGmailConnector) {
+      const watch = await ensureGmailWatchForUser({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watch.kind === "bad_request") {
+        return watch;
+      }
+    }
+
+    const [trigger] = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(automationTriggers)
+        .set({
+          enabled: args.enabled,
+          ...recomputedState,
+          updatedAt: currentTime,
+        })
+        .where(eq(automationTriggers.id, owned.trigger.id))
+        .returning();
+      if (enableGmailConnector) {
+        await enableGmailConnectorForAgent(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: owned.automation.agentId,
+        });
+      }
+      return rows;
+    });
     signal.throwIfAborted();
     if (!trigger) {
       return { kind: "not_found" };
@@ -1130,10 +1250,10 @@ export const updateTrigger$ = command(
     if (!owned) {
       return { kind: "not_found" };
     }
-    if (owned.trigger.kind === "webhook") {
+    if (owned.trigger.kind === "webhook" || owned.trigger.kind === "event") {
       return {
         kind: "bad_request",
-        message: "Webhook triggers have no schedule to update",
+        message: "This trigger has no schedule to update",
       };
     }
 

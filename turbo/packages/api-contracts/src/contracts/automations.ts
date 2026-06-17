@@ -31,6 +31,50 @@ const timeTriggerRuntimeShape = {
   consecutiveFailures: z.number(),
 };
 
+const nonEmptyStringArraySchema = z.array(z.string().min(1)).min(1);
+
+const gmailTextMatchSchema = z
+  .object({
+    contains: z.string().min(1).optional(),
+    containsAny: nonEmptyStringArraySchema.optional(),
+    doesNotContain: z.string().min(1).optional(),
+    doesNotContainAny: nonEmptyStringArraySchema.optional(),
+  })
+  .strict();
+
+const gmailLabelMatchSchema = z
+  .object({
+    includeAny: nonEmptyStringArraySchema.optional(),
+    excludeAny: nonEmptyStringArraySchema.optional(),
+  })
+  .strict();
+
+export const gmailNewMessageEventConfigSchema = z
+  .object({
+    provider: z.literal("gmail"),
+    event: z.literal("new_message"),
+    match: z
+      .object({
+        from: gmailTextMatchSchema.optional(),
+        subject: gmailTextMatchSchema.optional(),
+        snippet: gmailTextMatchSchema.optional(),
+        body: gmailTextMatchSchema.optional(),
+        to: gmailTextMatchSchema.optional(),
+        cc: gmailTextMatchSchema.optional(),
+        labels: gmailLabelMatchSchema.optional(),
+        hasAttachment: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    action: z
+      .object({
+        type: z.literal("draft_reply"),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
   z.object({
     ...triggerBaseShape,
@@ -58,6 +102,11 @@ export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
     // creation or rotation).
     webhookToken: z.string(),
     webhookUrl: z.string(),
+  }),
+  z.object({
+    ...triggerBaseShape,
+    kind: z.literal("event"),
+    config: gmailNewMessageEventConfigSchema,
   }),
 ]);
 
@@ -98,6 +147,11 @@ const loopTriggerConfigSchema = z.object({
   intervalSeconds: z.number().int().positive(),
 });
 
+const eventTriggerConfigSchema = z.object({
+  kind: z.literal("event"),
+  config: gmailNewMessageEventConfigSchema,
+});
+
 /**
  * Trigger creation input: the kind plus exactly its own config. Webhook
  * triggers mint their token + HMAC secret server-side.
@@ -106,6 +160,7 @@ export const createTriggerRequestSchema = z.discriminatedUnion("kind", [
   cronTriggerConfigSchema,
   onceTriggerConfigSchema,
   loopTriggerConfigSchema,
+  eventTriggerConfigSchema,
   z.object({
     kind: z.literal("webhook"),
   }),

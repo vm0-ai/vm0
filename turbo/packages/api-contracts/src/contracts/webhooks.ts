@@ -100,6 +100,30 @@ export const webhookAutomationInboundContract = c.router({
   },
 });
 
+/**
+ * Gmail Pub/Sub push webhook contract for /api/webhooks/gmail.
+ *
+ * Gmail publishes only mailbox identity and history cursor data through
+ * Pub/Sub. The API verifies the Pub/Sub OIDC JWT, resolves the user's stored
+ * Gmail connector token, reads Gmail history, and dispatches matching
+ * automation event triggers.
+ */
+export const webhookGmailPubSubContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/gmail",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",
@@ -685,6 +709,7 @@ export const webhookStoragesCommitContract = c.router({
 
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
+export type WebhookGmailPubSubContract = typeof webhookGmailPubSubContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
 export type WebhookAutomationInboundContract =
