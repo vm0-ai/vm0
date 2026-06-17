@@ -10,6 +10,7 @@ from mitmproxy import http
 
 import body_decoding
 import flow_metadata_keys as metadata_keys
+import request_streaming
 import response_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 
@@ -290,6 +291,9 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     #         request_body_truncated, response_headers, response_body,
     #         response_body_encoding, response_body_truncated
 
+    Request bodies prefer request streaming metadata when requestheaders()
+    installed a safe capped stream before mitmproxy buffered the body.
+
     Response bodies prefer streaming metadata from
     ``response_streaming.configure_response_stream()`` because that path keeps a
     bounded raw wire-byte buffer and records whether it was truncated. The
@@ -301,20 +305,41 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     # Request body
     if flow.metadata.get(metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE):
-        if flow.request.raw_content:
-            log_entry["request_body_truncated"] = True
-    elif flow.request.raw_content:
-        req_ct = flow.request.headers.get("content-type", "")
-        request_body = body_decoding.decode_body_bounded(
-            flow.request.raw_content,
-            flow.request.headers,
-            max_output=STREAM_BUFFER_LIMIT + 1,
-            fail_on_unsupported_encoding=True,
-        )
-        if request_body.failed:
-            log_entry["request_body_encoding"] = "binary"
-        else:
-            _set_body_fields(log_entry, "request", request_body.body, req_ct)
+        log_entry["request_body_truncated"] = True
+    else:
+        request_stream_body = request_streaming.captured_request_stream_body(flow)
+        if request_stream_body is not None:
+            req_ct = flow.request.headers.get("content-type", "")
+            request_body = body_decoding.decode_body_bounded(
+                bytes(request_stream_body.buffer),
+                flow.request.headers,
+                max_output=STREAM_BUFFER_LIMIT + 1,
+                fail_on_unsupported_encoding=True,
+            )
+            if request_body.failed:
+                if request_stream_body.truncated:
+                    log_entry["request_body_truncated"] = True
+                log_entry["request_body_encoding"] = "binary"
+            else:
+                _set_body_fields(
+                    log_entry,
+                    "request",
+                    request_body.body,
+                    req_ct,
+                    already_truncated=request_stream_body.truncated,
+                )
+        elif flow.request.raw_content:
+            req_ct = flow.request.headers.get("content-type", "")
+            request_body = body_decoding.decode_body_bounded(
+                flow.request.raw_content,
+                flow.request.headers,
+                max_output=STREAM_BUFFER_LIMIT + 1,
+                fail_on_unsupported_encoding=True,
+            )
+            if request_body.failed:
+                log_entry["request_body_encoding"] = "binary"
+            else:
+                _set_body_fields(log_entry, "request", request_body.body, req_ct)
 
     # Response headers
     if flow.response:
