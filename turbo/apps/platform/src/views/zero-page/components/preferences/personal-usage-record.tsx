@@ -112,9 +112,10 @@ const ROW_CLASS =
 // overflow-hidden. inline-block + max-w-full keeps the hover fill hugging the
 // title text (not the whole row), truncating long titles; the chip padding /
 // negative margin are right-only (-mr-1.5/pr-1.5) so the hover chip's left edge
-// stays flush with the title text and the breakdown bar below.
+// stays flush with the title text and the breakdown bar below. The keyboard
+// focus ring is inset so the list card's overflow-hidden cannot clip it.
 const TITLE_LINK_CLASS =
-  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
+  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground focus-visible:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }

@@ -163,4 +163,19 @@ describe("personal usage settings", () => {
       expect(requestedRanges).toContain("7d");
     });
   });
+
+  it("keeps keyboard focus styling on the usage title instead of the row", async () => {
+    mockPersonalUsageStory();
+    await openUsageSettings();
+
+    const titleLink = await screen.findByText("Quarterly planning chat");
+
+    titleLink.focus();
+    expect(titleLink).toHaveFocus();
+    expect(titleLink.parentElement?.closest("a")).toBeNull();
+    expect(titleLink).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-inset",
+    );
+  });
 });
