@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.148.3](https://github.com/vm0-ai/vm0/compare/api-v1.148.2...api-v1.148.3) (2026-06-17)
+
+
+### Refactoring
+
+* dispatch agentphone typing in process ([#18011](https://github.com/vm0-ai/vm0/issues/18011)) ([f46b208](https://github.com/vm0-ai/vm0/commit/f46b2085e1ec9e6ba04caea9e8e3098a6f052e86))
+* dispatch telegram typing in process ([#18006](https://github.com/vm0-ai/vm0/issues/18006)) ([9819d08](https://github.com/vm0-ai/vm0/commit/9819d08c68f2232ccecca5addb86e0fb2efbb1ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.6
+    * @vm0/core bumped to 8.347.1
+    * @vm0/db bumped to 1.53.6
+
 ## [1.148.2](https://github.com/vm0-ai/vm0/compare/api-v1.148.1...api-v1.148.2) (2026-06-17)
 
 
