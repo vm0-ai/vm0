@@ -80,6 +80,7 @@ function listTsFiles(dir: string): string[] {
 function importSpecifiers(source: string): string[] {
   return [
     ...staticImportSpecifiers(source),
+    ...exportFromSpecifiers(source),
     ...dynamicImportSpecifiers(source),
   ];
 }
@@ -92,6 +93,16 @@ function staticImportSpecifiers(source: string): string[] {
     specifiers.push(match[1]!);
   }
   for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function exportFromSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*export(?:\s+type)?(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
     specifiers.push(match[1]!);
   }
   return specifiers;

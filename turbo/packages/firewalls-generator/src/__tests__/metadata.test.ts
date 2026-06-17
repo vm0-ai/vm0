@@ -15,6 +15,23 @@ function staticValueImportSpecifiers(source: string): string[] {
   return specifiers;
 }
 
+function staticValueExportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*export(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function staticValueModuleSpecifiers(source: string): string[] {
+  return [
+    ...staticValueImportSpecifiers(source),
+    ...staticValueExportSpecifiers(source),
+  ];
+}
+
 function dynamicImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
@@ -30,10 +47,10 @@ describe("firewall metadata generator", () => {
       "utf-8",
     );
 
-    expect(staticValueImportSpecifiers(source)).not.toContain(
+    expect(staticValueModuleSpecifiers(source)).not.toContain(
       "../../connectors/src/connectors",
     );
-    expect(staticValueImportSpecifiers(source)).not.toContain(
+    expect(staticValueModuleSpecifiers(source)).not.toContain(
       "../../connectors/src/firewalls",
     );
     expect(dynamicImportSpecifiers(source)).not.toContain(
