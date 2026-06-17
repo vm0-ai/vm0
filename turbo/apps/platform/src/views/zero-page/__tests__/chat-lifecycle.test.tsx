@@ -2502,7 +2502,7 @@ describe("chat lifecycle", () => {
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
     expect(expandButton.querySelectorAll('[aria-hidden="true"]')).toHaveLength(
-      1,
+      2,
     );
     const foldedAssistantGroup = expandButton.closest(
       '[data-role="assistant"]',

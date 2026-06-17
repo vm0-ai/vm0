@@ -3014,9 +3014,14 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <IconClock size={14} className="shrink-0 text-muted-foreground/70" />
+        <IconClock
+          aria-hidden
+          size={14}
+          className="shrink-0 text-muted-foreground/70"
+        />
         <span className="text-[13px]">{label}</span>
         <IconChevronRight
+          aria-hidden
           size={14}
           className={cn(
             "shrink-0 text-muted-foreground/70 transition-transform",
