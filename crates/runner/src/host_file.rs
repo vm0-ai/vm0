@@ -338,7 +338,7 @@ fn chmod_created_dir_entry(
             parent.as_raw_fd(),
             c_name.as_ptr(),
             mode as nix::libc::mode_t,
-            nix::libc::AT_SYMLINK_NOFOLLOW,
+            0,
         )
     };
     if result == 0 {
