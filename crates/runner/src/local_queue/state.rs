@@ -487,6 +487,7 @@ mod tests {
             cli_agent_type: "claude-code".into(),
             vars: None,
             environment: None,
+            secret_environment: None,
             user_timezone: None,
             profile: Some(profile.to_owned()),
             session_id: Some("session-123".into()),
