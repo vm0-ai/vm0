@@ -422,6 +422,70 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("caps the local command log so long sessions stay bounded", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
+    // The cap mirrors LOCAL_COMMAND_LOG_LIMIT in computer-use-host.ts.
+    const logLimit = 50;
+    const totalCommands = logLimit + 10;
+    let claimed = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        if (claimed >= totalCommands) {
+          return jsonResponse({ status: "idle" });
+        }
+        claimed += 1;
+        return jsonResponse({
+          status: "claimed",
+          command: {
+            id: `cmd-${claimed}`,
+            kind: "app.state",
+            payload: { app: "Things" },
+          },
+        });
+      }
+      if (url.includes("/api/zero/computer-use/host/commands/")) {
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ status: "idle" });
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => {
+      return {
+        status: "succeeded",
+        result: {
+          appState: "0 standard window Inbox",
+          screenshot: "data:image/png;base64,abc123",
+          screenshotWidth: 800,
+          screenshotHeight: 600,
+          screenshotSourceName: "Inbox",
+        },
+      };
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    for (let poll = 0; poll < totalCommands + 5; poll += 1) {
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+
+    const log = runtime.getState().localCommandLog;
+    expect(claimed).toBe(totalCommands);
+    expect(log).toHaveLength(logLimit);
+    // Newest command is kept at the front and the oldest entries are evicted.
+    expect(log[0]?.commandId).toBe(`cmd-${totalCommands}`);
+    expect(log.some((entry) => entry.commandId === "cmd-1")).toBe(false);
+
+    await runtime.stop();
+  });
+
   it("keeps heartbeats running while a command is executing", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
