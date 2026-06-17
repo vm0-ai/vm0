@@ -3,6 +3,7 @@ import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/r
 import {
   findDesignSystem,
   findImageStyle,
+  findSkill,
   findTemplate,
   findVideoTemplate,
   type RegistryEntry,
@@ -44,6 +45,13 @@ function privateRegistryResourceArchive(
   id: string,
 ): PrivateRegistryResourceArchive | undefined {
   switch (id) {
+    case "skill:presentation-deck-tools": {
+      return {
+        storageName: "registry-resource@skill:presentation-deck-tools",
+        versionId:
+          "a11aab6b73aad5796a77875492564f269d8e4f62c7fbfbf302ab228d43fca5ff",
+      };
+    }
     case "design-system:berry-pop": {
       return {
         storageName: "registry-resource@design-system:berry-pop",
@@ -125,77 +133,77 @@ function privateRegistryResourceArchive(
       return {
         storageName: "registry-resource@template:html-ppt-botane-organic",
         versionId:
-          "dd38f6ead8da5be5121d285de1f61cde522b3c2eda4d8c3917bea65bf9e852cc",
+          "9006d9269fc2062a7495c9b16ff44ca114893ecfbccf44b61fd15cbff285e084",
       };
     }
     case "template:html-ppt-playful-launch": {
       return {
         storageName: "registry-resource@template:html-ppt-playful-launch",
         versionId:
-          "debf60cf13d32df7b31fd9078576512257b1a2e1e17b2464cdd17efd6f3638c5",
+          "0ead582418a76f734c609b792fc85d747c636029938210129d55ce912d7711f6",
       };
     }
     case "template:html-ppt-business-data": {
       return {
         storageName: "registry-resource@template:html-ppt-business-data",
         versionId:
-          "5d981ea6d44248fdfffb7b467e40177a394f234d5f8ba9b3ff0c33e39d1c7081",
+          "57a1072b1c5e045c260de7e9d40c0b8836a3b3239d42873597433f1d77925305",
       };
     }
     case "template:html-ppt-crayon": {
       return {
         storageName: "registry-resource@template:html-ppt-crayon",
         versionId:
-          "e885701f8ba8947cf37b6ccc999691b7aa4402ad323ad95a5131f27574d913a3",
+          "7991ad80f051da3d1715f3f1c10c3bf61de69f7746b5a8c67d655c13f6057119",
       };
     }
     case "template:html-ppt-creative-agency": {
       return {
         storageName: "registry-resource@template:html-ppt-creative-agency",
         versionId:
-          "6ff526c7dbafe03d535b6638bd385cd807dd1a7cf72fea1f873f45469e8792c7",
+          "97bb467bff00a2b9b6c3e9a2ca2b633d9993937de58c10ce2d5f3a7cd372f86b",
       };
     }
     case "template:html-ppt-data-report": {
       return {
         storageName: "registry-resource@template:html-ppt-data-report",
         versionId:
-          "c35349b5768d49b2254c354956fac7efa2c956f1095d3631a274e896f319efc7",
+          "37cf5cfefa5a03a9e420a09dec3e180fd8160ee4375e76d8e24940e6fb166fe7",
       };
     }
     case "template:html-ppt-editorial-magazine": {
       return {
         storageName: "registry-resource@template:html-ppt-editorial-magazine",
         versionId:
-          "7a4652c92458d46648df9c05e2c07e155083716ad16327782848b54df5b87eb3",
+          "1d6ef172bff161ad705877b12ba3b6419d317e8810b42f0ef6c9312fc38d2b99",
       };
     }
     case "template:html-ppt-landing-consulting": {
       return {
         storageName: "registry-resource@template:html-ppt-landing-consulting",
         versionId:
-          "8eeb740e95d7091996cb60c16d5bb22d084b74fd994b5f56cd13637dc7b9921c",
+          "621b5383d04b3d6214e9b12423cedf23900ddb07cae2e90b80937b2b662a668c",
       };
     }
     case "template:html-ppt-lumina": {
       return {
         storageName: "registry-resource@template:html-ppt-lumina",
         versionId:
-          "be61e9c94791814099e110103ffb5f69860a52e8f9a5091e24bc6bdd6d5fe441",
+          "31a7d9abd766a12851a1e0f5b2ac09f08d31f5cf469fa4f8f2f5b1835892bebb",
       };
     }
     case "template:html-ppt-mosaic-geometric": {
       return {
         storageName: "registry-resource@template:html-ppt-mosaic-geometric",
         versionId:
-          "937aca081fb347504fd4e98127d153a331a2d2595ced3668750e8a3820e6a5ee",
+          "bd2ca98aba4e61281c7b431d1dd042fa26783b32196d993101861fbb2648a307",
       };
     }
     case "template:html-ppt-playful-pop": {
       return {
         storageName: "registry-resource@template:html-ppt-playful-pop",
         versionId:
-          "32927f2b0a559ef47427b573a9a8b35677501bfe0f7366c2d8486dd54365d994",
+          "9e8d84ec293962f6162b4ce609d849d5c61645f4894240e2a1fa3f6d6e179aec",
       };
     }
     default: {
@@ -206,6 +214,7 @@ function privateRegistryResourceArchive(
 
 function findRegistryResource(id: string): PullableRegistryEntry | undefined {
   return (
+    findSkill(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findImageStyle(id) ??

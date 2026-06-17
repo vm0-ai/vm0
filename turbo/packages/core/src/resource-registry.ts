@@ -57,10 +57,8 @@ export interface RegistryEntry {
   readonly targets?: readonly GenerationTarget[];
 }
 
-export interface VideoTemplateRegistryEntry extends Omit<
-  RegistryEntry,
-  "kind" | "source"
-> {
+export interface VideoTemplateRegistryEntry
+  extends Omit<RegistryEntry, "kind" | "source"> {
   readonly kind: "video-template";
   readonly source: ResourceSourceRef & {
     readonly repo: string;
@@ -96,6 +94,10 @@ export interface ResourceCandidateSlice {
   };
 }
 
+export const PRESENTATION_REQUIRED_RESOURCE_IDS = [
+  "skill:presentation-deck-tools",
+] as const;
+
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
@@ -125,43 +127,45 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
   mauveDusk: "a83c3d566c133234db5c31e4c93d06b403c9c651dcc62fce9d597a226712c61b",
   playfulEditorial:
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "f5fd07c53c3f5f047975895d4a4d0af25345389a22d193c1020f032419f54c49",
+  aplocoto: "f81eb007394492bca0892ecc306e6277d00fd37f9a7e45705edcf6c9fe87a5d2",
   botaneOrganic:
-    "6b4015b5e81692586af89ba03f58eb0ccf966dfb0caa712d5414971824f83429",
+    "ba068d143065a04115363682d479ab645b49729efa449ead35d21092f1ddbafe",
   businessData:
-    "a5e0777b924534404a7be2e0a8b34feb546b70ec1f9b91058673e12c39772d86",
+    "1b6c4058bfc1edfc0ad18710e4e0674639dec8146e694306be9d8e90f1c06712",
+  presentationDeckTools:
+    "8496e875b20bb8df3e9af967c8815a0770d1e4c20e9258e64a6cae7a473e5ca3",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
-    "ab85de845692ec7e0aa8d6d71609a433536f644cd52b50dba835d8fb7ababef6",
+    "293f41b98c8266858a27aea3f75e94b424dc3997182b6d3c0436361b16ce451c",
   designSystemCreativeAgency:
     "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
   templateCreativeAgency:
-    "c497c6ca6be67a0d2296780e08f78945b6d4bc8d0c6b188cce6db09e241c7626",
+    "5c4092656abf7f529bc6439d0f581d303dd1489cf640bda9ff29c5dde2130ebd",
   designSystemDataReport:
     "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
   templateDataReport:
-    "be17f8411f5107ced0773d2d91b71be49397a9ac96dd2d2c9be6afb285dcb1db",
+    "c8d062ec2dbdea6c8e51f4debbc31e4894b27dfceadb1c0f9255330cc9405a68",
   designSystemEditorialMagazine:
     "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
   templateEditorialMagazine:
-    "851f88ea5e76552d21d4e8639c92958274c3338b9b0ff0241e4a64a01d0a532a",
+    "1c23ab5091b89b58ede9086669f4a0714d643bb436f8a54664d81a0b1a9acb9a",
   designSystemLandingConsulting:
     "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
   templateLandingConsulting:
-    "c9cef4a69c7bae25e5de9c2e367492d40174153bbd93a1dd2f077e1b830ed256",
+    "6b2ae64734c389e9347e8b2b5af902ea81a16265f1ed5f7d51ddd05ccbc786f6",
   designSystemLumina:
     "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
   templateLumina:
-    "3f650fae46df93a4496fc6c144eaf1bcdf6229be05eba3497eff3b7542dd75a4",
+    "73062bb286bd100229ee2cf11e3bc2e94189363ae5e05014b72626f9ee59c0a0",
   designSystemMosaicGeometric:
     "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
   templateMosaicGeometric:
-    "86c20308e5a56287b6d6a7fd5228594afc012ec23f202f4c32c58809638f78a2",
+    "ab5170d701a1cd827ccad51e33c1b2d6a91bf2738d32886e8db1551756b30278",
   designSystemPlayfulPop:
     "feb843f2affa5137c44b222c4230e6aeb38dd016486cf451f99194876ffa106b",
   templatePlayfulPop:
-    "e8b53705906e71bf1efc950edaa76c621e567b9cda03e7b1ace08bd85bb3f9b2",
+    "9bf259f8278c89e411a6903b36d5033a1135bc8952f841fa6ebd3dfafb300ccc",
 } as const;
 
 function videoTemplateSource(
@@ -257,6 +261,17 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
 ];
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
+  {
+    id: "skill:presentation-deck-tools",
+    kind: "skill",
+    name: "Presentation Deck Tools",
+    description:
+      "Shared HTML presentation deck shell, device primitives, render scripts, and QA gate required for vm0 presentation generation.",
+    source: privateR2ArchiveSource(
+      "presentation-runtime/html-ppt-deck-tools",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.presentationDeckTools,
+    ),
+  },
   {
     id: "skill:article-magazine",
     kind: "skill",
@@ -3781,6 +3796,16 @@ export function listImageStyles(): readonly RegistryEntry[] {
   return filterByKind("image-style");
 }
 
+export function listSkills(): readonly RegistryEntry[] {
+  return filterByKind("skill");
+}
+
+export function findSkill(id: string): RegistryEntry | undefined {
+  return listSkills().find((entry) => {
+    return entry.id === id;
+  });
+}
+
 export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
@@ -3889,7 +3914,7 @@ export function selectResourceCandidates(
       },
     ],
     candidates: {
-      skills: filterByKind("skill"),
+      skills: listSkills(),
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
