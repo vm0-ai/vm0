@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.463.0](https://github.com/vm0-ai/vm0/compare/app-v0.462.0...app-v0.463.0) (2026-06-17)
+
+
+### Features
+
+* add sidebar chat double-click rename ([#18001](https://github.com/vm0-ai/vm0/issues/18001)) ([cf6f6ad](https://github.com/vm0-ai/vm0/commit/cf6f6ad59af6e4d972382b6bab043c062b27120a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.97.5
+    * @vm0/connectors bumped to 1.84.0
+    * @vm0/core bumped to 8.347.0
+
 ## [0.462.0](https://github.com/vm0-ai/vm0/compare/app-v0.461.0...app-v0.462.0) (2026-06-17)
 
 

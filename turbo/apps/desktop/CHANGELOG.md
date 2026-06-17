@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.2...desktop-v0.14.3) (2026-06-17)
+
+
+### Bug Fixes
+
+* **desktop:** align tray command labels ([#17990](https://github.com/vm0-ai/vm0/issues/17990)) ([1a59bda](https://github.com/vm0-ai/vm0/commit/1a59bda9660f1d9f6d44a83e1910c8f05bbae25d))
+
 ## [0.14.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.1...desktop-v0.14.2) (2026-06-17)
 
 
