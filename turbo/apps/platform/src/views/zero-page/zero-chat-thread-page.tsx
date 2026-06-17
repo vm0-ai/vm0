@@ -2086,7 +2086,7 @@ function HeaderAutomationSidebarCard({
   return (
     <article
       className={cn(
-        "rounded-lg border border-border bg-background p-3 transition-colors",
+        "rounded-lg border border-border bg-background p-4 transition-colors",
         !automation.enabled && "opacity-75",
       )}
     >
@@ -2099,8 +2099,8 @@ function HeaderAutomationSidebarCard({
         {automationDescription(automation)}
       </p>
 
-      <dl className="mt-2 text-xs">
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2">
+      <dl className="mt-3 text-xs">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
           <dt className="shrink-0 text-muted-foreground">Status</dt>
           <dd className="flex shrink-0 items-center gap-2">
             <span
@@ -2121,13 +2121,13 @@ function HeaderAutomationSidebarCard({
             />
           </dd>
         </div>
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
           <dt className="shrink-0 text-muted-foreground">Schedule</dt>
           <dd className="min-w-0 truncate text-right font-medium text-foreground">
             {automation.rule}
           </dd>
         </div>
-        <div className="flex items-center justify-between gap-3 py-2">
+        <div className="flex items-center justify-between gap-3 py-2.5">
           <dt className="shrink-0 text-muted-foreground">Next run</dt>
           <dd className="min-w-0 truncate text-right font-medium text-foreground">
             {formatAutomationNextRun(automation)}
@@ -2135,7 +2135,7 @@ function HeaderAutomationSidebarCard({
         </div>
       </dl>
 
-      <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+      <div className="mt-4 flex min-w-0 items-center justify-between gap-2">
         <Link
           pathname="/automations/:automationId"
           options={{ pathParams: { automationId: automation.id } }}
