@@ -974,6 +974,40 @@ class TestResponseHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert flow.request.stream is False
 
+    async def test_unknown_length_get_without_body_logs_zero_request_size(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="example.com",
+            method="GET",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            assert callable(flow.request.stream)
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "2", "content-type": "text/plain"}),
+                content=b"ok",
+            )
+            mitm_addon.response(flow)
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["request_size"] == 0
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert "request_body_truncated" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
     @pytest.mark.parametrize(
         ("content_length", "expected_size"),
         [
