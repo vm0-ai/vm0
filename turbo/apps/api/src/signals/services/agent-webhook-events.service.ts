@@ -16,6 +16,7 @@ import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { ingestAxiomEvents$ } from "./agent-event-consumer-axiom.service";
 import { processChatAssistantEvents$ } from "./agent-event-consumer-chat-assistant.service";
+import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
 import { settle } from "../utils";
 
 const L = logger("webhook:events");
@@ -29,7 +30,8 @@ interface ConsumerResult {
   readonly status: number;
 }
 
-type ConsumerCommand = Command<Promise<ConsumerResult>, [AbortSignal]>;
+type ConsumerCommandResult = ConsumerResult | Promise<ConsumerResult>;
+type ConsumerCommand = Command<ConsumerCommandResult, [AbortSignal]>;
 
 interface AgentEventsBody {
   readonly runId: string;
@@ -71,6 +73,10 @@ const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
     name: "chat-assistant",
     command$: processChatAssistantEvents$,
     eventTypes: ["assistant", "item.completed"],
+  },
+  {
+    name: "telegram-typing",
+    command$: refreshTelegramTypingEvents$,
   },
 ];
 
@@ -122,7 +128,10 @@ const runEventConsumer$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     set(eventConsumerPayloadState$, params.payload);
-    const result = await settle(set(params.consumer.command$, signal), signal);
+    const result = await settle(
+      Promise.resolve(set(params.consumer.command$, signal)),
+      signal,
+    );
 
     if (!result.ok) {
       L.error(`Event consumer "${params.consumer.name}" failed`, {

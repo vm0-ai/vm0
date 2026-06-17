@@ -14,51 +14,8 @@ export const eventConsumerHeadersSchema = z.object({
   "x-vm0-timestamp": z.string().optional(),
 });
 
-export const eventConsumerEventSchema = z
-  .object({
-    type: z.string(),
-    sequenceNumber: z.number(),
-  })
-  .passthrough();
-
-export const eventConsumerPayloadSchema = z
-  .object({
-    runId: z.string(),
-    events: z.array(eventConsumerEventSchema),
-    context: z
-      .object({
-        userId: z.string(),
-        orgId: z.string(),
-      })
-      .passthrough(),
-  })
-  .passthrough();
-
 export const eventConsumerUnauthorizedSchema = z.object({
   error: z.string(),
-});
-
-/**
- * Refresh Telegram typing indicators for all pending Telegram callbacks
- * attached to a run. Triggered by the events webhook on every batch.
- *
- * The body schema only requires `runId`; everything else is forwarded
- * verbatim to the background refresh task without validation, matching
- * web's permissive behaviour.
- */
-export const internalEventConsumerTelegramTypingContract = c.router({
-  refresh: {
-    method: "POST",
-    path: "/api/internal/event-consumers/telegram-typing",
-    headers: eventConsumerHeadersSchema,
-    body: z.object({ runId: z.string() }).passthrough(),
-    responses: {
-      200: z.object({ scheduled: z.literal(true) }),
-      401: eventConsumerUnauthorizedSchema,
-    },
-    summary:
-      "Refresh Telegram typing indicators for all pending callbacks of a run",
-  },
 });
 
 export const internalEventConsumerAgentPhoneTypingContract = c.router({
@@ -75,9 +32,6 @@ export const internalEventConsumerAgentPhoneTypingContract = c.router({
       "Refresh AgentPhone typing indicators for all pending iMessage callbacks of a run",
   },
 });
-
-export type InternalEventConsumerTelegramTypingContract =
-  typeof internalEventConsumerTelegramTypingContract;
 
 export type InternalEventConsumerAgentPhoneTypingContract =
   typeof internalEventConsumerAgentPhoneTypingContract;

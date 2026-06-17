@@ -352,9 +352,7 @@ export {
 } from "./test-telegram-state";
 export {
   internalEventConsumerAgentPhoneTypingContract,
-  internalEventConsumerTelegramTypingContract,
   type InternalEventConsumerAgentPhoneTypingContract,
-  type InternalEventConsumerTelegramTypingContract,
 } from "./internal-event-consumers";
 export {
   cronAggregateInsightsContract,

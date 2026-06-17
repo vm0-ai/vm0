@@ -2102,12 +2102,12 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the internal event consumer telegram typing rewrite path exactly", () => {
+  it("does not match the removed internal event consumer telegram typing rewrite path", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/internal/event-consumers/telegram-typing",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/internal/event-consumers/telegram-typing/extra",

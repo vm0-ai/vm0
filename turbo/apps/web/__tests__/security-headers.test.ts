@@ -2319,11 +2319,6 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/internal/event-consumers/agentphone-typing",
         },
         {
-          source: "/api/internal/event-consumers/telegram-typing",
-          destination:
-            "https://api.example.test/api/internal/event-consumers/telegram-typing",
-        },
-        {
           source: "/api/user/export",
           destination: "https://api.example.test/api/user/export",
         },
