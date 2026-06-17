@@ -128,9 +128,9 @@ const PRIVATE_ARCHIVE_FIXTURES = [
       "bd2ca98aba4e61281c7b431d1dd042fa26783b32196d993101861fbb2648a307",
   },
   {
-    id: "design-system:playful-pop",
+    id: "design-system:pop-art",
     versionId:
-      "26e0a7900ee895e9efd8aefbb71406a5ac9c0f4065dbb41d19d8688e755bf23b",
+      "1b1d654c9cc605abe0b7fd230d706a66b72cf4ae9a5951cd743ccc4eff09ee5f",
   },
   {
     id: "template:html-ppt-playful-pop",

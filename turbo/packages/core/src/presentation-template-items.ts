@@ -2252,13 +2252,13 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "playful-pop-deck",
       title: "Playful pop deck",
       prompt:
-        "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
+        "/gen presentation with design system `pop-art` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30030f16-caf2-4bd4-bec9-b07b08d67a0b/example.html",
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
-      designSystemId: "design-system:playful-pop",
+      designSystemId: "design-system:pop-art",
       templateId: "template:html-ppt-playful-pop",
     },
   ];

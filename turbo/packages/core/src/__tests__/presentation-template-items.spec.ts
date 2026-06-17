@@ -121,9 +121,9 @@ const BATCH_PRESENTATION_PICKER_ITEMS = [
   },
   {
     slug: "playful-pop-deck",
-    designSystemId: "design-system:playful-pop",
+    designSystemId: "design-system:pop-art",
     templateId: "template:html-ppt-playful-pop",
-    designSourcePath: "presentation-design-system/playful-pop",
+    designSourcePath: "presentation-design-system/pop-art",
     templateSourcePath: "presentation-template/playful-pop",
   },
 ] as const;

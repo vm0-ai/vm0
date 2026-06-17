@@ -122,11 +122,11 @@ function privateRegistryResourceArchive(
           "42850801add7bff2d66fa34434fa48c01b53aedbe4e14146c23e017659905dde",
       };
     }
-    case "design-system:playful-pop": {
+    case "design-system:pop-art": {
       return {
-        storageName: "registry-resource@design-system:playful-pop",
+        storageName: "registry-resource@design-system:pop-art",
         versionId:
-          "26e0a7900ee895e9efd8aefbb71406a5ac9c0f4065dbb41d19d8688e755bf23b",
+          "1b1d654c9cc605abe0b7fd230d706a66b72cf4ae9a5951cd743ccc4eff09ee5f",
       };
     }
     case "template:html-ppt-botane-organic": {

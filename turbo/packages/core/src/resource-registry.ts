@@ -162,8 +162,8 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
   templateMosaicGeometric:
     "ab5170d701a1cd827ccad51e33c1b2d6a91bf2738d32886e8db1551756b30278",
-  designSystemPlayfulPop:
-    "feb843f2affa5137c44b222c4230e6aeb38dd016486cf451f99194876ffa106b",
+  designSystemPopArt:
+    "e5a05d62cc00e50edd1154f293e09eb748478eadae64f51a4f54ad25505f5121",
   templatePlayfulPop:
     "9bf259f8278c89e411a6903b36d5033a1135bc8952f841fa6ebd3dfafb300ccc",
 } as const;
@@ -2929,14 +2929,14 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     ),
   },
   {
-    id: "design-system:playful-pop",
+    id: "design-system:pop-art",
     kind: "design-system",
-    name: "Playful Pop",
+    name: "Pop Art",
     description:
-      "Loud playful pop look with Pop Art palette, Space Grotesk display, Lexend body, round geometry, offset-shadow cards, organic blobs, dot grids, solid dots, burst rosettes, pill chips, and white hairline outlines.",
+      "Dark Pop Art color skin with near-black grounds, bright ink, blue accent, magenta/lime/orange supports, Space Grotesk display, Lexend body, and playful rounded motifs.",
     source: privateR2ArchiveSource(
-      "presentation-design-system/playful-pop",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
+      "presentation-design-system/pop-art",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPopArt,
     ),
   },
   {
