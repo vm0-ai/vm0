@@ -128,18 +128,12 @@ impl LocalQueue {
         job_file: &Path,
     ) -> LocalClaimResult {
         // Atomic claim via O_EXCL — only the first runner to create the file wins.
-        let claim_dir = super::claims_dir(&self.group_dir);
-        if let Err(e) = std::fs::create_dir_all(&claim_dir) {
-            warn!(path = %claim_dir.display(), error = %e, "local: failed to create claim dir");
+        if let Err(e) = super::ensure_claims_dir(&self.group_dir) {
+            warn!(path = %super::claims_dir(&self.group_dir).display(), error = %e, "local: failed to create claim dir");
             return LocalClaimResult::NotClaimed;
         }
         let claim_file = super::claim_path(&self.group_dir, run_id);
-        if std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&claim_file)
-            .is_err()
-        {
+        if super::create_private_marker(&claim_file, "local claim marker").is_err() {
             return LocalClaimResult::NotClaimed;
         }
         if self.result_file_has_content(run_id) {
@@ -343,16 +337,18 @@ impl LocalQueue {
             }
         };
 
-        let result_dir = super::results_dir(&self.group_dir);
-        if let Err(e) = std::fs::create_dir_all(&result_dir) {
-            warn!(path = %result_dir.display(), error = %e, "local: failed to create result dir");
-            return false;
-        }
+        let result_dir = match super::ensure_results_dir(&self.group_dir) {
+            Ok(dir) => dir,
+            Err(e) => {
+                warn!(path = %super::results_dir(&self.group_dir).display(), error = %e, "local: failed to create result dir");
+                return false;
+            }
+        };
 
         // Atomic write: tmp then rename, so submit never reads a partial file.
         let tmp_file = result_dir.join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
         let result_file = super::result_path(&self.group_dir, run_id);
-        if let Err(e) = std::fs::write(&tmp_file, &json) {
+        if let Err(e) = super::write_private_file(&tmp_file, &json, "local result temporary file") {
             warn!(run_id = %run_id, error = %e, "local: failed to write result file");
             let _ = std::fs::remove_file(&tmp_file);
             return false;
@@ -468,5 +464,78 @@ impl LocalQueue {
         }
 
         JobFileScan::Complete(paths)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn write_job_request(group_dir: &Path, run_id: RunId, profile: &str) -> PathBuf {
+        let job_path = super::super::job_path(group_dir, profile, run_id).unwrap();
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        let request = JobRequest {
+            job_id: run_id,
+            prompt: "secret prompt".into(),
+            cli_agent_type: "claude-code".into(),
+            vars: None,
+            environment: None,
+            user_timezone: None,
+            profile: Some(profile.to_owned()),
+            session_id: Some("session-123".into()),
+            feature_flags: None,
+        };
+        std::fs::write(&job_path, serde_json::to_vec(&request).unwrap()).unwrap();
+        job_path
+    }
+
+    #[test]
+    fn write_result_sync_creates_private_result_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+
+        assert!(queue.write_result_sync(run_id, 1, Some("sensitive error")));
+
+        assert_eq!(mode(&super::super::results_dir(group_dir)), 0o700);
+        assert_eq!(mode(&super::super::result_path(group_dir, run_id)), 0o600);
+    }
+
+    #[test]
+    fn write_result_sync_tightens_existing_permissive_result_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let result_dir = super::super::results_dir(group_dir);
+        std::fs::create_dir_all(&result_dir).unwrap();
+        std::fs::set_permissions(&result_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+
+        assert!(queue.write_result_sync(RunId::new_v4(), 0, None));
+
+        assert_eq!(mode(&result_dir), 0o700);
+    }
+
+    #[test]
+    fn claim_job_sync_creates_private_claim_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let job_path = write_job_request(group_dir, run_id, profile);
+
+        let claim = queue.claim_job_sync(run_id, profile, &job_path);
+
+        assert!(matches!(claim, LocalClaimResult::Claimed { .. }));
+        assert_eq!(mode(&super::super::claims_dir(group_dir)), 0o700);
+        assert_eq!(mode(&super::super::claim_path(group_dir, run_id)), 0o600);
     }
 }

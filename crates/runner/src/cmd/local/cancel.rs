@@ -44,11 +44,10 @@ async fn run_cancel_with_home(args: CancelArgs, home: HomePaths) -> RunnerResult
 
     let run_id = resolve_run_id(&group_dir, &args.run)?;
 
-    let cancel_dir = local_queue::cancels_dir(&group_dir);
-    std::fs::create_dir_all(&cancel_dir)
+    local_queue::ensure_cancels_dir(&group_dir)
         .map_err(|e| RunnerError::Internal(format!("create cancel dir: {e}")))?;
     let cancel_path = local_queue::cancel_path(&group_dir, run_id);
-    std::fs::write(&cancel_path, b"")
+    local_queue::write_private_marker(&cancel_path, "local cancel marker")
         .map_err(|e| RunnerError::Internal(format!("write cancel file: {e}")))?;
 
     eprintln!("cancel request written for {run_id}");
@@ -116,6 +115,11 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn mode(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
 
     #[test]
     fn resolve_exact_uuid() {
@@ -190,6 +194,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(code, ExitCode::SUCCESS);
-        assert!(local_queue::cancel_path(&group_dir, run_id).exists());
+        let cancel_path = local_queue::cancel_path(&group_dir, run_id);
+        assert!(cancel_path.exists());
+        assert_eq!(mode(&local_queue::cancels_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&cancel_path), 0o600);
     }
 }
