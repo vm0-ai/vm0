@@ -106,6 +106,58 @@ def test_ec2_query_action_from_form_body_matches():
     assert result.permission == "ec2:DescribeInstances"
 
 
+def test_ec2_query_action_conflicting_form_body_uses_unknown_policy():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "ec2:DescribeInstances",
+            "POST / AWS sigv4=ec2 action=DescribeInstances",
+        )
+    )
+    policies = {"aws": network_policy(unknown_policy="deny")}
+
+    matching_body = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context(
+            "ec2",
+            headers=(("content-type", "application/x-www-form-urlencoded"),),
+            body=b"Action=DescribeInstances&Version=2016-11-15",
+        ),
+    )
+    assert isinstance(matching_body, matching.FirewallAllow)
+    assert matching_body.permission == "ec2:DescribeInstances"
+
+    conflicting_body = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/?Action=DescribeInstances",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context(
+            "ec2",
+            headers=(("content-type", "application/x-www-form-urlencoded"),),
+            body=b"Action=RunInstances&Version=2016-11-15",
+        ),
+    )
+    assert isinstance(conflicting_body, matching.FirewallBlock)
+    assert conflicting_body.reason == "unknown_endpoint"
+
+    duplicate_body = match_compiled_firewalls(
+        "https://ec2.us-east-1.amazonaws.com/",
+        firewalls,
+        policies,
+        method="POST",
+        request_context=_sigv4_context(
+            "ec2",
+            headers=(("content-type", "application/x-www-form-urlencoded"),),
+            body=b"Action=DescribeInstances&Action=DescribeInstances",
+        ),
+    )
+    assert isinstance(duplicate_body, matching.FirewallBlock)
+    assert duplicate_body.reason == "unknown_endpoint"
+
+
 def test_ec2_missing_or_duplicate_action_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(

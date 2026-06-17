@@ -1771,10 +1771,10 @@ def _unique_query_value(query_pairs: list[tuple[str, str]], name: str) -> str | 
     return values[0]
 
 
-def _form_action_value(
+def _form_action_values(
     headers: tuple[tuple[str, str], ...] | None,
     body: bytes | None,
-) -> str | None:
+) -> list[str] | None:
     if not body or len(body) > _AWS_FORM_BODY_MAX_BYTES:
         return None
     content_type = _unique_header_value(headers, "content-type")
@@ -1787,7 +1787,7 @@ def _form_action_value(
         decoded = body.decode("utf-8")
     except UnicodeDecodeError:
         return None
-    return _unique_query_value(parse_qsl(decoded, keep_blank_values=True), "Action")
+    return _query_values(parse_qsl(decoded, keep_blank_values=True), "Action")
 
 
 def _aws_query_action_matches(
@@ -1798,11 +1798,16 @@ def _aws_query_action_matches(
     body: bytes | None,
 ) -> bool:
     query_actions = _query_values(query_pairs, "Action")
+    form_actions = _form_action_values(headers, body)
     if len(query_actions) == 1:
+        if form_actions is not None and form_actions and form_actions != query_actions:
+            return False
         return query_actions[0] == action
     if len(query_actions) > 1:
         return False
-    return _form_action_value(headers, body) == action
+    if form_actions is None or len(form_actions) != 1:
+        return False
+    return form_actions[0] == action
 
 
 def _aws_target_matches(
