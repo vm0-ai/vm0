@@ -13,6 +13,7 @@ from mitmproxy.test import tutils
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_websocket_helpers import (
     _append_websocket_message,
     _capture_deferred_websocket_trims,
@@ -159,6 +160,50 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 20,
             "tokens.cache_read": 10,
         }
+
+    def test_model_websocket_missing_context_releases_positive_source(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_missing_context",
+                input_tokens=10,
+                output_tokens=4,
+            ),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry["type"] == "usage_underbilling"
+        ]
+        assert entry["type"] == "usage_underbilling"
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["underbilling_class"] == "confirmed"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["firewall_name"] == "model-provider:openai-api-key"
+        assert entry["missing_sandbox_token"] is True
+
+    def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_zero_missing_context",
+                input_tokens=0,
+                output_tokens=0,
+            ),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert not jsonl_exists_after_flush(proxy_log)
 
     def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)

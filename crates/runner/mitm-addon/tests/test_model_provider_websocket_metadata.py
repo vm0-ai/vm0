@@ -3,12 +3,14 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import usage
 from tests.model_provider_websocket_helpers import (
     _capture_deferred_websocket_trims,
     _feed_websocket_server_message,
@@ -26,12 +28,23 @@ def deferred_websocket_trim_scheduler(
     return _capture_deferred_websocket_trims(monkeypatch)
 
 
+@pytest.fixture(autouse=True)
+def keep_websocket_usage_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    def keep_source(
+        _flow: http.HTTPFlow,
+        _run_id: str,
+        _message_id: str,
+        _source_usage: dict,
+    ) -> Literal["keep"]:
+        return "keep"
+
+    monkeypatch.setattr(usage, "report_model_provider_usage_source", keep_source)
+
+
 def _openai_model_websocket_metadata_flow(
     tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
 ) -> http.HTTPFlow:
-    flow = _openai_model_websocket_flow(tmp_path, real_flow)
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-    return flow
+    return _openai_model_websocket_flow(tmp_path, real_flow)
 
 
 class TestModelProviderWebSocketUsageMetadata:
