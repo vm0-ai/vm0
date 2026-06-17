@@ -1,12 +1,7 @@
 import { command } from "ccstate";
-import { internalEventConsumerChatAssistantContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 
-import {
-  eventConsumerPayload$,
-  eventConsumerRoute,
-} from "../../lib/event-consumer/route";
+import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import type { AgentEvent } from "../../lib/event-consumer/verify";
-import type { RouteEntry } from "../route";
 import {
   chatThreadForRun,
   insertAssistantEventMessages$,
@@ -123,10 +118,3 @@ export const processChatAssistantEvents$ = command(
     return { status: 200 as const, body: { processed: written } };
   },
 );
-
-export const internalEventConsumerChatAssistantRoutes: readonly RouteEntry[] = [
-  {
-    route: internalEventConsumerChatAssistantContract.process,
-    handler: eventConsumerRoute(processChatAssistantEvents$),
-  },
-];

@@ -1,10 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import {
-  internalEventConsumerChatAssistantContract,
-  type eventConsumerPayloadSchema,
-} from "@vm0/api-contracts/contracts/internal-event-consumers";
-import {
   zeroEmailInboundContract,
   zeroEmailTriggerCallbackContract,
 } from "@vm0/api-contracts/contracts/zero-email";
@@ -41,7 +37,6 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 
-type EventConsumerPayload = z.input<typeof eventConsumerPayloadSchema>;
 type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;
 type AgentCompleteBody = z.infer<
   (typeof webhookCompleteContract.complete)["body"]
@@ -521,38 +516,6 @@ export function createWebhookCallbackApi(context: TestContext) {
       const signature = delivery.headers["x-vm0-signature"] ?? "";
       const flipped = signature.startsWith("a") ? "b" : "a";
       return `${flipped}${signature.slice(1)}`;
-    },
-
-    async requestChatAssistantEventConsumer(
-      body: EventConsumerPayload,
-      headers: Partial<Vm0SignatureHeaders>,
-      statuses: readonly (200 | 401)[],
-    ) {
-      return await accept(
-        setupApp({ context })(
-          internalEventConsumerChatAssistantContract,
-        ).process({
-          headers,
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestInvalidChatAssistantEventConsumerBody(
-      body: string,
-      headers: Vm0SignatureHeaders,
-      statuses: readonly 401[],
-    ) {
-      return await accept(
-        setupApp({ context })(
-          internalEventConsumerChatAssistantContract,
-        ).process({
-          headers,
-          body: body as unknown as EventConsumerPayload,
-        }),
-        statuses,
-      );
     },
 
     sandboxWebhookHeaders,

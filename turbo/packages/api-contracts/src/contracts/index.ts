@@ -352,10 +352,8 @@ export {
 } from "./test-telegram-state";
 export {
   internalEventConsumerAgentPhoneTypingContract,
-  internalEventConsumerChatAssistantContract,
   internalEventConsumerTelegramTypingContract,
   type InternalEventConsumerAgentPhoneTypingContract,
-  type InternalEventConsumerChatAssistantContract,
   type InternalEventConsumerTelegramTypingContract,
 } from "./internal-event-consumers";
 export {
