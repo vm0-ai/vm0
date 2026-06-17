@@ -71,7 +71,7 @@ fn detect_system_timezone() -> Option<String> {
 /// Try to read a non-empty result file.  Returns `None` if the file does
 /// not exist, is empty, or cannot be read.
 fn try_read_result(result_path: &std::path::Path) -> Option<Vec<u8>> {
-    match std::fs::read(result_path) {
+    match local_queue::read_private_file(result_path, "local result file") {
         Ok(b) if !b.is_empty() => Some(b),
         _ => None,
     }
@@ -211,22 +211,26 @@ fn write_abandoned_result_marker(
 }
 
 fn result_file_is_empty(result_path: &std::path::Path) -> bool {
-    std::fs::metadata(result_path)
-        .map(|metadata| metadata.is_file() && metadata.len() == 0)
-        .unwrap_or(false)
+    let is_file =
+        local_queue::marker_file_exists(result_path, "local result file").unwrap_or(false);
+    is_file
+        && !local_queue::private_file_has_content(result_path, "local result file").unwrap_or(true)
 }
 
 fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&PublishedMarker>) {
     let Some(marker) = marker else {
         return;
     };
-    let Ok(metadata) = std::fs::metadata(result_path) else {
+    let Ok(metadata) = std::fs::symlink_metadata(result_path) else {
         return;
     };
+    if !metadata.file_type().is_file() {
+        return;
+    }
     if metadata.dev() != marker.dev || metadata.ino() != marker.ino {
         return;
     }
-    if std::fs::read(result_path)
+    if local_queue::read_private_file(result_path, "local result file")
         .map(|current| current == marker.bytes)
         .unwrap_or(false)
     {
@@ -588,6 +592,32 @@ mod tests {
         std::fs::write(&path, b"{\"exit_code\":0}").unwrap();
         let result = try_read_result(&path).unwrap();
         assert_eq!(result, b"{\"exit_code\":0}");
+    }
+
+    #[test]
+    fn try_read_result_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let result_path = local_queue::result_path(group_dir, RunId::new_v4());
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"{\"exit_code\":0}").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert!(try_read_result(&result_path).is_none());
+    }
+
+    #[test]
+    fn result_file_is_empty_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let result_path = local_queue::result_path(group_dir, RunId::new_v4());
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert!(!result_file_is_empty(&result_path));
     }
 
     #[test]

@@ -51,8 +51,8 @@ enum JobFileScan {
 
 #[derive(Clone, Copy)]
 enum JobFileScanMode {
-    First,
-    All,
+    FirstRegular,
+    AllExisting,
 }
 
 impl LocalQueue {
@@ -91,11 +91,19 @@ impl LocalQueue {
                 }
             };
 
-            let mut job_paths: Vec<_> = entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("job"))
-                .collect();
+            let mut job_paths = Vec::new();
+            for entry in entries.filter_map(Result::ok) {
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if !file_type.is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("job") {
+                    job_paths.push(path);
+                }
+            }
             job_paths.sort();
 
             for path in job_paths {
@@ -147,7 +155,7 @@ impl LocalQueue {
             return LocalClaimResult::NotClaimed;
         }
 
-        let buf = match std::fs::read(job_file) {
+        let buf = match super::read_private_file(job_file, "local job file") {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warn!(run_id = %run_id, error = %e, "local: failed to read job file");
@@ -244,6 +252,10 @@ impl LocalQueue {
 
     pub(crate) fn collect_cancel_markers_sync(&self) -> Vec<LocalCancelMarker> {
         let cancel_dir = super::cancels_dir(&self.group_dir);
+        if let Err(e) = validate_optional_cancel_dir(&self.group_dir, &cancel_dir) {
+            warn!(path = %cancel_dir.display(), error = %e, "local: invalid cancel dir");
+            return Vec::new();
+        }
         let entries = match std::fs::read_dir(&cancel_dir) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
@@ -255,6 +267,12 @@ impl LocalQueue {
         let mut cancel_markers = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for entry in entries.filter_map(Result::ok) {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_file() {
+                continue;
+            }
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("cancel") {
                 continue;
@@ -316,14 +334,12 @@ impl LocalQueue {
 
     pub(crate) fn result_file_has_content(&self, run_id: RunId) -> bool {
         let result_path = super::result_path(&self.group_dir, run_id);
-        std::fs::metadata(result_path)
-            .map(|metadata| metadata.is_file() && metadata.len() > 0)
-            .unwrap_or(false)
+        super::private_file_has_content(&result_path, "local result file").unwrap_or(false)
     }
 
     pub(crate) fn remove_job_files_if_present(&self, run_id: RunId) -> bool {
         let (paths, mut removed_all) =
-            match self.collect_job_file_paths(run_id, JobFileScanMode::All) {
+            match self.collect_job_file_paths(run_id, JobFileScanMode::AllExisting) {
                 JobFileScan::Complete(paths) => (paths, true),
                 JobFileScan::ScanFailed(paths) => (paths, false),
             };
@@ -393,7 +409,7 @@ impl LocalQueue {
     }
 
     fn lookup_job_file(&self, run_id: RunId) -> JobFileLookup {
-        match self.collect_job_file_paths(run_id, JobFileScanMode::First) {
+        match self.collect_job_file_paths(run_id, JobFileScanMode::FirstRegular) {
             JobFileScan::Complete(paths) => {
                 if paths.is_empty() {
                     JobFileLookup::NotFound
@@ -471,13 +487,17 @@ impl LocalQueue {
                     continue;
                 }
                 let path = profile.path().join(format!("{run_id}.job"));
-                match std::fs::metadata(&path) {
-                    Ok(_) => {
+                match std::fs::symlink_metadata(&path) {
+                    Ok(metadata)
+                        if matches!(mode, JobFileScanMode::AllExisting)
+                            || metadata.file_type().is_file() =>
+                    {
                         paths.push(path);
-                        if matches!(mode, JobFileScanMode::First) {
+                        if matches!(mode, JobFileScanMode::FirstRegular) {
                             return JobFileScan::Complete(paths);
                         }
                     }
+                    Ok(_) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) => {
                         warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
@@ -488,6 +508,20 @@ impl LocalQueue {
         }
 
         JobFileScan::Complete(paths)
+    }
+}
+
+fn validate_optional_cancel_dir(group_dir: &Path, cancel_dir: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(cancel_dir) {
+        Ok(_) => super::validate_cancels_dir(group_dir).map(|_| ()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(std::io::Error::new(
+            e.kind(),
+            format!(
+                "stat local queue cancels directory {}: {e}",
+                cancel_dir.display()
+            ),
+        )),
     }
 }
 
@@ -565,6 +599,50 @@ mod tests {
     }
 
     #[test]
+    fn discover_candidate_skips_job_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let job_path = super::super::job_path(group_dir, profile, run_id).unwrap();
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-job");
+        std::fs::write(&target, b"{}").unwrap();
+        symlink(&target, &job_path).unwrap();
+
+        assert!(
+            queue
+                .discover_candidate_sync(&[profile.to_owned()], 0)
+                .is_none(),
+            "job symlinks must not be discovered"
+        );
+    }
+
+    #[test]
+    fn claim_job_sync_rejects_job_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let job_path = super::super::job_path(group_dir, profile, run_id).unwrap();
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-job");
+        std::fs::write(&target, b"{}").unwrap();
+        symlink(&target, &job_path).unwrap();
+
+        let claim = queue.claim_job_sync(run_id, profile, &job_path);
+
+        assert!(matches!(claim, LocalClaimResult::NotClaimed));
+        assert!(
+            std::fs::symlink_metadata(&job_path).is_err(),
+            "failed symlink jobs should be removed after terminal result write"
+        );
+        assert!(queue.result_file_has_content(run_id));
+    }
+
+    #[test]
     fn discover_candidate_skips_occupied_claim_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -626,5 +704,73 @@ mod tests {
             queue.cancel_target_state(run_id),
             CancelTargetState::NotPending
         );
+    }
+
+    #[test]
+    fn result_file_has_content_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let result_path = super::super::result_path(group_dir, run_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"terminal").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert!(
+            !queue.result_file_has_content(run_id),
+            "result symlinks must not be treated as terminal markers"
+        );
+    }
+
+    #[test]
+    fn cancel_target_state_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        write_job_request(group_dir, run_id, profile);
+        let result_path = super::super::result_path(group_dir, run_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"terminal").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert_eq!(
+            queue.cancel_target_state(run_id),
+            CancelTargetState::Pending
+        );
+    }
+
+    #[test]
+    fn collect_cancel_markers_ignores_cancel_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let cancel_path = super::super::cancel_path(group_dir, run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-cancel");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, &cancel_path).unwrap();
+
+        assert!(queue.collect_cancel_markers_sync().is_empty());
+    }
+
+    #[test]
+    fn collect_cancel_markers_rejects_cancel_dir_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("group");
+        std::fs::create_dir(&group_dir).unwrap();
+        let target = dir.path().join("target-cancels");
+        std::fs::create_dir(&target).unwrap();
+        let run_id = RunId::new_v4();
+        std::fs::write(target.join(format!("{run_id}.cancel")), b"").unwrap();
+        symlink(&target, super::super::cancels_dir(&group_dir)).unwrap();
+        let queue = LocalQueue::new(group_dir);
+
+        assert!(queue.collect_cancel_markers_sync().is_empty());
     }
 }

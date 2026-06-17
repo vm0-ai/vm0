@@ -1,7 +1,7 @@
 //! Filesystem helpers for private local queue state.
 
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
@@ -43,6 +43,13 @@ pub(crate) fn ensure_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
     Ok(dir)
 }
 
+pub(crate) fn validate_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
+    validate_group_dir(group_dir)?;
+    let dir = super::cancels_dir(group_dir);
+    host_file::validate_dir(&dir, DirMode::Private, "local queue cancels directory")?;
+    Ok(dir)
+}
+
 pub(crate) fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
     host_file::ensure_dir(
         group_dir,
@@ -67,6 +74,26 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8], context: &str) -> io
     let mut file = open_private_file(path, false, true, context)?;
     file.write_all(bytes)
         .map_err(|e| io::Error::new(e.kind(), format!("write {context} {}: {e}", path.display())))
+}
+
+pub(crate) fn read_private_file(path: &Path, context: &str) -> io::Result<Vec<u8>> {
+    let mut file = open_private_read_file(path, context)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| io::Error::new(e.kind(), format!("read {context} {}: {e}", path.display())))?;
+    Ok(bytes)
+}
+
+pub(crate) fn private_file_has_content(path: &Path, context: &str) -> io::Result<bool> {
+    let file = match open_private_read_file(path, context) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|e| io::Error::new(e.kind(), format!("stat {context} {}: {e}", path.display())))?;
+    Ok(metadata.len() > 0)
 }
 
 pub(crate) fn write_private_marker(path: &Path, context: &str) -> io::Result<()> {
@@ -101,6 +128,21 @@ pub(crate) fn marker_path_occupied(path: &Path, context: &str) -> io::Result<boo
 
 pub(crate) fn open_private_new_file(path: &Path, context: &str) -> io::Result<File> {
     open_private_file(path, true, false, context)
+}
+
+fn open_private_read_file(path: &Path, context: &str) -> io::Result<File> {
+    let parent = host_file::file_parent(path);
+    host_file::validate_dir(parent, DirMode::Private, context)?;
+
+    let mut options = File::options();
+    options
+        .read(true)
+        .custom_flags(host_file::private_file_open_flags());
+    let file = options
+        .open(path)
+        .map_err(|e| io::Error::new(e.kind(), format!("open {context} {}: {e}", path.display())))?;
+    host_file::secure_regular_private_file(&file, path, context)?;
+    Ok(file)
 }
 
 fn open_private_file(
