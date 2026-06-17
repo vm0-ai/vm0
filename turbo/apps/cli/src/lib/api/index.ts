@@ -35,6 +35,9 @@ export {
   listStorages,
 } from "./domains/storages";
 
+// Domain modules - Registry Resources
+export { getRegistryResourceDownload } from "./domains/registry-resources";
+
 // Domain modules - Zero User Preferences
 export {
   getZeroUserPreferences,

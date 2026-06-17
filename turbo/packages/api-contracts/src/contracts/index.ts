@@ -184,6 +184,10 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  registryResourceDownloadContract,
+  type RegistryResourceDownloadContract,
+} from "./registry-resources";
+export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";

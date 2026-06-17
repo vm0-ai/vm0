@@ -20,6 +20,7 @@ function buildCommands(): Command[] {
     new Command("connector"),
     new Command("credit"),
     new Command("logs"),
+    new Command("resource"),
     new Command("preference"),
     new Command("schedule"),
     new Command("secret"),
@@ -144,6 +145,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "resource",
       "whoami",
       "generate",
       "web",
@@ -199,6 +201,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "resource",
       "whoami",
       "generate",
       "web",
@@ -654,6 +657,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "resource",
       "whoami",
       "generate",
       "web",

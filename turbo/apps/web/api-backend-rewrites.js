@@ -636,6 +636,7 @@ export const API_BACKEND_REWRITES = [
     ZERO_LOGS_BY_ID_PATH_RE,
   ],
   ["/api/zero/logs/search", "/api/zero/logs/search"],
+  ["/api/registry/resources/download", "/api/registry/resources/download"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],
