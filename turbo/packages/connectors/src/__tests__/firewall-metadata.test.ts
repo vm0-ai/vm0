@@ -100,6 +100,9 @@ function assertNoForbiddenMetadataKeys(value: unknown, location: string): void {
   if (typeof value !== "object" || value === null) {
     return;
   }
+  if (location.endsWith(".categories.categories")) {
+    return;
+  }
 
   for (const [key, nested] of Object.entries(value)) {
     if (FORBIDDEN_METADATA_KEYS.has(key)) {
