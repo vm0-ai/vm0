@@ -36,7 +36,7 @@ pub(crate) fn ensure_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
     Ok(dir)
 }
 
-fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
+pub(crate) fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
     host_file::ensure_dir(
         group_dir,
         DirMode::SharedTrustedParent,
@@ -138,6 +138,22 @@ mod tests {
 
         assert_eq!(mode(&group_dir), host_file::SHARED_TRUSTED_DIR_MODE);
         assert_eq!(mode(&job_dir), host_file::PRIVATE_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_group_dir_rejects_final_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let groups_dir = dir.path().join("groups").join("org");
+        std::fs::create_dir_all(&groups_dir).unwrap();
+        let target = dir.path().join("target-group");
+        let group_dir = groups_dir.join("group");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &group_dir).unwrap();
+
+        let error =
+            ensure_group_dir(&group_dir).expect_err("final group symlink should be rejected");
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
     }
 
     #[test]

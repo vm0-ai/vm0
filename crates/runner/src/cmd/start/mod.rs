@@ -378,7 +378,7 @@ async fn run_start_with_home(
     let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let local_group_dir = if args.local {
         let group_dir = home.groups_dir().join(&group);
-        std::fs::create_dir_all(&group_dir).map_err(|e| {
+        crate::local_queue::ensure_group_dir(&group_dir).map_err(|e| {
             RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
         })?;
         Some(group_dir)
