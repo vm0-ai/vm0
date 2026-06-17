@@ -209,7 +209,10 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 # Optional: Stripe Billing (subscription + credits)
 STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
-ZERO_PRICE=op://Development/stripe/ZERO_PRICE
+ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
+ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
+ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
+ZERO_PRICE_CONCURRENCY=op://Development/stripe/ZERO_PRICE_CONCURRENCY
 ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN
 
 # Optional: AgentPhone (Phone/iMessage Channel)

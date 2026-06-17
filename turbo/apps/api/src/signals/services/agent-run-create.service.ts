@@ -148,6 +148,11 @@ import {
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import {
+  activePaidConcurrencySlots,
+  cappedBaseConcurrencyLimit,
+  totalConcurrencyLimit,
+} from "./org-concurrency-entitlements.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -164,13 +169,15 @@ const TIER_LIMITS = Object.freeze({
   team: 10,
 });
 
-function getEffectiveConcurrencyLimit(tier: keyof typeof TIER_LIMITS): number {
-  const tierLimit = TIER_LIMITS[tier];
-  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
-  if (cap === 0) {
-    return 0;
-  }
-  return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
+function getEffectiveConcurrencyLimit(
+  tier: keyof typeof TIER_LIMITS,
+  paidSlots: number,
+): number {
+  const limit = totalConcurrencyLimit({
+    baseLimit: cappedBaseConcurrencyLimit(TIER_LIMITS[tier]),
+    paidSlots,
+  });
+  return Number.isFinite(limit) ? limit : 0;
 }
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -181,6 +188,7 @@ const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type RunAdmissionDb = Pick<Db, "select">;
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -2424,7 +2432,7 @@ function parseAdditionalVolumesSnapshot(
 }
 
 async function orgTier(
-  db: Db,
+  db: RunAdmissionDb,
   orgId: string,
 ): Promise<keyof typeof TIER_LIMITS> {
   const [row] = await db
@@ -2437,10 +2445,14 @@ async function orgTier(
 }
 
 async function checkRunConcurrencyLimit(
-  tx: Db,
+  tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const limit = getEffectiveConcurrencyLimit(await orgTier(tx, orgId));
+  const [tier, paidSlots] = await Promise.all([
+    orgTier(tx, orgId),
+    activePaidConcurrencySlots(tx, orgId),
+  ]);
+  const limit = getEffectiveConcurrencyLimit(tier, paidSlots);
   if (limit === 0) {
     return null;
   }

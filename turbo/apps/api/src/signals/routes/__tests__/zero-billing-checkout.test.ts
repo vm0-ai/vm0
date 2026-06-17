@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroBillingCheckoutContract,
+  zeroBillingConcurrencyCheckoutContract,
   zeroBillingCreditCheckoutContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
@@ -25,16 +26,13 @@ const APP_ORIGIN = "http://localhost:3002";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 const TEST_PRICE_CUSTOM_CREDITS = "price_test_custom_credits";
+const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
 
 function setZeroPrice(): void {
-  mockEnv(
-    "ZERO_PRICE",
-    JSON.stringify({
-      pro: [TEST_PRICE_PRO],
-      team: [TEST_PRICE_TEAM],
-      customCredits: [TEST_PRICE_CUSTOM_CREDITS],
-    }),
-  );
+  mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
+  mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("ZERO_PRICE_CUSTOM_CREDITS", TEST_PRICE_CUSTOM_CREDITS);
+  mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
 }
 
 function currentSecond(): number {
@@ -690,14 +688,13 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 400 when ZERO_PRICE is unset for the tier", async () => {
+  it("returns 400 when the tier price is unset", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    // Override the beforeEach setZeroPrice() with an empty mapping so
-    // activePriceId(tier) returns undefined and the route falls into the
-    // "Price not configured" branch.
-    mockEnv("ZERO_PRICE", JSON.stringify({}));
+    // Override the beforeEach setZeroPrice() so activePriceId(tier) returns
+    // undefined and the route falls into the "Price not configured" branch.
+    mockEnv("ZERO_PRICE_PRO", undefined);
 
     const client = setupApp({ context })(zeroBillingCheckoutContract);
 
@@ -1055,6 +1052,158 @@ describe("POST /api/zero/billing/checkout/complete", () => {
   });
 });
 
+describe("POST /api/zero/billing/concurrency-checkout", () => {
+  const createdOrgIds: string[] = [];
+
+  beforeEach(() => {
+    setZeroPrice();
+  });
+
+  afterEach(async () => {
+    while (createdOrgIds.length > 0) {
+      const orgId = createdOrgIds.pop();
+      if (orgId) {
+        await deleteOrgRow(orgId);
+      }
+    }
+  });
+
+  async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
+    const fixture = await seedOrgRow();
+    createdOrgIds.push(fixture.orgId);
+    return fixture;
+  }
+
+  it("creates concurrency subscription checkout with the requested quantity", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/concurrency",
+    });
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencyCheckoutContract,
+    );
+
+    const response = await accept(
+      client.create({
+        body: {
+          quantity: 3,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/concurrency",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 3 }],
+      allow_promotion_codes: true,
+      success_url: `${APP_ORIGIN}/billing?concurrency=success`,
+      cancel_url: `${APP_ORIGIN}/billing?concurrency=canceled`,
+      metadata: {
+        purpose: "concurrency_subscription",
+        orgId: fixture.orgId,
+        priceId: TEST_PRICE_CONCURRENCY,
+        quantity: "3",
+      },
+      subscription_data: {
+        metadata: {
+          purpose: "concurrency_subscription",
+          orgId: fixture.orgId,
+          priceId: TEST_PRICE_CONCURRENCY,
+          quantity: "3",
+        },
+      },
+    });
+  });
+
+  it("creates concurrency checkout for zero tokens with billing write capability", async () => {
+    const fixture = await trackedSeed();
+    await seedMemberRole({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role: "admin",
+    });
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/zero-concurrency",
+    });
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["billing:write"],
+    });
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencyCheckoutContract,
+    );
+
+    const response = await accept(
+      client.create({
+        body: {
+          quantity: 2,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/zero-concurrency",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "subscription",
+        customer: customerId,
+        line_items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 2 }],
+      }),
+    );
+  });
+
+  it("returns 400 when concurrency price is not configured", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockEnv("ZERO_PRICE_CONCURRENCY", undefined);
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencyCheckoutContract,
+    );
+
+    const response = await accept(
+      client.create({
+        body: {
+          quantity: 1,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Concurrency price not configured",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+});
+
 describe("POST /api/zero/billing/credit-checkout", () => {
   const createdOrgIds: string[] = [];
 
@@ -1348,13 +1497,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
   it("returns 400 when credit price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv(
-      "ZERO_PRICE",
-      JSON.stringify({
-        pro: [TEST_PRICE_PRO],
-        team: [TEST_PRICE_TEAM],
-      }),
-    );
+    mockEnv("ZERO_PRICE_CUSTOM_CREDITS", undefined);
 
     const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
 

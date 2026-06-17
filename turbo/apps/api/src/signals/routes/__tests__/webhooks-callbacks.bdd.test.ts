@@ -2,6 +2,7 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -2187,6 +2188,126 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     await runs.requestCancelRun(actor, third.runId, [200]);
     const settled = await runs.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
+  });
+
+  it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    const granted = await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Concurrency Add-on Agent",
+      visibility: "private",
+    });
+
+    await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "concurrency add-on run one",
+      modelProvider: "anthropic-api-key",
+    });
+    await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "concurrency add-on run two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "concurrency add-on queued run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+    const before = await runs.readRunQueue(actor);
+    expect(before.body.concurrency.limit).toBe(2);
+    expect(before.body.concurrency.active).toBe(2);
+    expect(before.body.queue).toHaveLength(1);
+
+    const suffix = randomUUID().slice(0, 8);
+    const lineId = `il_bdd_concurrency_${suffix}`;
+    const subscriptionId = `sub_bdd_concurrency_${suffix}`;
+    const periodStart = epochSeconds(-1);
+    const periodEnd = epochSeconds(30);
+    const invoice = {
+      id: `in_bdd_concurrency_${suffix}`,
+      customer: granted.customerId,
+      metadata: {},
+      parent: {
+        subscription_details: {
+          subscription: subscriptionId,
+          metadata: {
+            purpose: "concurrency_subscription",
+            orgId,
+          },
+        },
+      },
+      lines: {
+        data: [
+          {
+            id: lineId,
+            quantity: 2,
+            price: { id: "price_bdd_concurrency" },
+            period: { start: periodStart, end: periodEnd },
+            parent: { type: "subscription_item_details" },
+          },
+        ],
+      },
+    };
+
+    await api.postStripeEvent(
+      stripeEvent({ type: "invoice.paid", object: invoice }),
+      [200],
+    );
+
+    const db = store.set(writeDb$);
+    const entitlements = await db
+      .select({
+        stripeInvoiceLineId: orgConcurrencyEntitlements.stripeInvoiceLineId,
+        stripeSubscriptionId: orgConcurrencyEntitlements.stripeSubscriptionId,
+        slots: orgConcurrencyEntitlements.slots,
+        startsAt: orgConcurrencyEntitlements.startsAt,
+        expiresAt: orgConcurrencyEntitlements.expiresAt,
+      })
+      .from(orgConcurrencyEntitlements)
+      .where(eq(orgConcurrencyEntitlements.orgId, orgId));
+    expect(entitlements).toStrictEqual([
+      {
+        stripeInvoiceLineId: lineId,
+        stripeSubscriptionId: subscriptionId,
+        slots: 2,
+        startsAt: new Date(periodStart * 1000),
+        expiresAt: new Date(periodEnd * 1000),
+      },
+    ]);
+
+    const after = await runs.readRunQueue(actor);
+    expect(after.body.concurrency.limit).toBe(4);
+    expect(after.body.concurrency.active).toBe(3);
+    expect(after.body.queue).toHaveLength(0);
+
+    const admitted = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "concurrency add-on admitted run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(admitted.status).toBe("pending");
+    const afterAdmitted = await runs.readRunQueue(actor);
+    expect(afterAdmitted.body.concurrency.active).toBe(4);
+    expect(afterAdmitted.body.queue).toHaveLength(0);
+
+    await api.postStripeEvent(
+      stripeEvent({ type: "invoice.paid", object: invoice }),
+      [200],
+    );
+    const afterReplay = await db
+      .select({ id: orgConcurrencyEntitlements.id })
+      .from(orgConcurrencyEntitlements)
+      .where(eq(orgConcurrencyEntitlements.orgId, orgId));
+    expect(afterReplay).toHaveLength(1);
   });
 
   it("binds checkout and dashboard subscriptions to orgs without double-binding", async () => {

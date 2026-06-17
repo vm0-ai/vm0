@@ -9,6 +9,10 @@ import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  CONCURRENCY_SUBSCRIPTION_PURPOSE,
+  activeConcurrencyPriceId,
+} from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -42,27 +46,45 @@ interface CreateCreditCheckoutSessionArgs {
   readonly cancelUrl: string;
 }
 
+interface CreateConcurrencyCheckoutSessionArgs {
+  readonly orgId: string;
+  readonly quantity: number;
+  readonly priceId: string;
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+}
+
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
+function priceIdsForTier(
+  tier: SubscriptionCheckoutTier,
+): readonly string[] | undefined {
+  switch (tier) {
+    case "pro": {
+      return env("ZERO_PRICE_PRO");
+    }
+    case "team": {
+      return env("ZERO_PRICE_TEAM");
+    }
+  }
+}
+
 /** Returns the active (first) price ID for a given tier. */
 export function activePriceId(
   tier: SubscriptionCheckoutTier,
 ): string | undefined {
-  return env("ZERO_PRICE")?.[tier]?.[0];
+  return priceIdsForTier(tier)?.[0];
 }
 
 export function tierForKnownPriceId(
   priceId: string,
 ): SubscriptionCheckoutTier | null {
-  const priceMap = env("ZERO_PRICE");
-  if (priceMap) {
-    for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-      if (priceMap[tier]?.includes(priceId)) {
-        return tier;
-      }
+  for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
+    if (priceIdsForTier(tier)?.includes(priceId)) {
+      return tier;
     }
   }
   return null;
@@ -127,8 +149,10 @@ export function checkoutTierConflictMessage(args: {
 }
 
 export function activeCustomCreditPriceId(): string | undefined {
-  return env("ZERO_PRICE")?.customCredits?.[0];
+  return env("ZERO_PRICE_CUSTOM_CREDITS")?.[0];
 }
+
+export { activeConcurrencyPriceId };
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;
@@ -391,6 +415,48 @@ export const createCreditCheckoutSession$ = command(
         },
       },
       metadata,
+    });
+    signal.throwIfAborted();
+
+    if (!session.url) {
+      throw new Error("Stripe checkout session did not return a URL");
+    }
+    return session.url;
+  },
+);
+
+export const createConcurrencyCheckoutSession$ = command(
+  async (
+    { set },
+    args: CreateConcurrencyCheckoutSessionArgs,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const customerId = await set(
+      getOrCreateStripeCustomer$,
+      { orgId: args.orgId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const metadata: Stripe.MetadataParam = {
+      purpose: CONCURRENCY_SUBSCRIPTION_PURPOSE,
+      orgId: args.orgId,
+      priceId: args.priceId,
+      quantity: String(args.quantity),
+      ...stripePreviewMetadata(),
+    };
+    const stripe = getStripeClient();
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: args.priceId, quantity: args.quantity }],
+      allow_promotion_codes: true,
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+      metadata,
+      subscription_data: {
+        metadata,
+      },
     });
     signal.throwIfAborted();
 

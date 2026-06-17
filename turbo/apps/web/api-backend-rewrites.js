@@ -412,6 +412,8 @@ const ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE =
 const ZERO_BILLING_CHECKOUT_REWRITE_SOURCE = "/api/zero/billing/checkout";
 const ZERO_BILLING_CHECKOUT_COMPLETE_REWRITE_SOURCE =
   "/api/zero/billing/checkout/complete";
+const ZERO_BILLING_CONCURRENCY_CHECKOUT_REWRITE_SOURCE =
+  "/api/zero/billing/concurrency-checkout";
 const ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE =
   "/api/zero/billing/credit-checkout";
 const ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE = "/api/zero/billing/downgrade";
@@ -745,6 +747,10 @@ export const API_BACKEND_REWRITES = [
   [
     ZERO_BILLING_CHECKOUT_COMPLETE_REWRITE_SOURCE,
     "/api/zero/billing/checkout/complete",
+  ],
+  [
+    ZERO_BILLING_CONCURRENCY_CHECKOUT_REWRITE_SOURCE,
+    "/api/zero/billing/concurrency-checkout",
   ],
   [
     ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE,

@@ -114,6 +114,12 @@ const checkoutCompleteRequestSchema = z.object({
   sessionId: z.string().min(1),
 });
 
+const concurrencyCheckoutRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
+});
+
 const creditCheckoutRequestSchema = z
   .object({
     credits: z.number().int().min(1000).max(10_000_000),
@@ -238,6 +244,30 @@ export const zeroBillingCheckoutContract = c.router({
 });
 
 export type ZeroBillingCheckoutContract = typeof zeroBillingCheckoutContract;
+
+/**
+ * Zero contract for POST /api/zero/billing/concurrency-checkout
+ */
+export const zeroBillingConcurrencyCheckoutContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-checkout",
+    headers: authHeadersSchema,
+    body: concurrencyCheckoutRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Create Stripe checkout session for concurrency add-on",
+  },
+});
+
+export type ZeroBillingConcurrencyCheckoutContract =
+  typeof zeroBillingConcurrencyCheckoutContract;
 
 /**
  * Zero contract for POST /api/zero/billing/credit-checkout
@@ -496,6 +526,9 @@ export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
 export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
+export type ConcurrencyCheckoutRequest = z.infer<
+  typeof concurrencyCheckoutRequestSchema
+>;
 export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 export type BillingInvoice = z.infer<typeof invoiceSchema>;

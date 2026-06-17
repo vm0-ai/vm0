@@ -1,6 +1,7 @@
 import type { Stripe } from "stripe";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
@@ -32,6 +33,10 @@ import {
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
+import {
+  CONCURRENCY_SUBSCRIPTION_PURPOSE,
+  isConcurrencyPriceId,
+} from "./org-concurrency-entitlements.service";
 
 const L = logger("WebhookStripe");
 
@@ -67,7 +72,15 @@ interface InvoiceInput {
   readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly {
-      readonly period: { readonly end: number };
+      readonly id?: string;
+      readonly quantity?: number | null;
+      readonly price?: { readonly id: string } | null;
+      readonly pricing?: {
+        readonly price_details?: {
+          readonly price?: string | { readonly id: string } | null;
+        } | null;
+      } | null;
+      readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";
       } | null;
@@ -1245,6 +1258,107 @@ async function invoicePaidOrgForCustomerOrMetadata(
   return bound ? await invoicePaidOrgForCustomer(db, args.customerId) : null;
 }
 
+async function handleConcurrencyInvoicePaid(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  const lines = concurrencyInvoiceLines(invoice);
+  const hasConcurrencyPurpose = invoiceHasConcurrencyPurpose(invoice);
+  if (lines.length === 0 && !hasConcurrencyPurpose) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    L.warn("concurrency invoice.paid without subscription; skipping", {
+      invoiceId: invoice.id,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const customerId = customerIdFromInvoice(invoice);
+  if (!customerId) {
+    L.warn("concurrency invoice.paid without customer ID", {
+      invoiceId: invoice.id,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
+    customerId,
+    subscriptionId,
+  });
+  if (!org) {
+    L.warn("concurrency invoice.paid for unknown customer", {
+      customerId,
+      invoiceId: invoice.id,
+      subscriptionId,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const values = lines.flatMap(({ line, index }) => {
+    const priceId = invoiceLinePriceId(line);
+    const startsAtUnix = line.period.start;
+    const expiresAtUnix = line.period.end;
+    if (!priceId || !startsAtUnix || !expiresAtUnix) {
+      L.warn("concurrency invoice line missing price or period", {
+        invoiceId: invoice.id,
+        orgId: org.orgId,
+        lineId: line.id ?? null,
+        hasPriceId: Boolean(priceId),
+        hasPeriodStart: Boolean(startsAtUnix),
+        hasPeriodEnd: Boolean(expiresAtUnix),
+      });
+      return [];
+    }
+
+    return [
+      {
+        orgId: org.orgId,
+        stripeSubscriptionId: subscriptionId,
+        stripeInvoiceId: invoice.id,
+        stripeInvoiceLineId: invoiceLineId(invoice, line, index),
+        stripePriceId: priceId,
+        slots: invoiceLineQuantity(line),
+        startsAt: new Date(startsAtUnix * 1000),
+        expiresAt: new Date(expiresAtUnix * 1000),
+      },
+    ];
+  });
+
+  if (values.length === 0) {
+    L.warn("concurrency invoice.paid had no usable entitlement lines", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+      subscriptionId,
+    });
+    return { handled: true, drainOrgId: org.orgId };
+  }
+
+  const inserted = await db.transaction(async (tx) => {
+    return await tx
+      .insert(orgConcurrencyEntitlements)
+      .values(values)
+      .onConflictDoNothing()
+      .returning({ slots: orgConcurrencyEntitlements.slots });
+  });
+
+  const slots = inserted.reduce((sum, row) => {
+    return sum + row.slots;
+  }, 0);
+  L.debug("concurrency invoice.paid processed", {
+    invoiceId: invoice.id,
+    orgId: org.orgId,
+    subscriptionId,
+    insertedLines: inserted.length,
+    slots,
+  });
+
+  return { handled: true, drainOrgId: org.orgId };
+}
+
 type BindSubscriptionToCustomerOrgArgs = {
   readonly customerId: string;
   readonly subscription: SubscriptionInput;
@@ -1276,6 +1390,8 @@ async function bindSubscriptionToCustomerOrg(
       subscriptionId: args.subscription.id,
       source: args.source,
     });
+  } else if (isConcurrencyPriceId(priceId)) {
+    return [];
   } else if (
     await shouldSkipSubscriptionBinding(db, {
       customerId: args.customerId,
@@ -1466,6 +1582,47 @@ function customerIdFromInvoice(invoice: InvoiceInput): string | null {
     : (invoice.customer?.id ?? null);
 }
 
+type InvoiceLineInput = InvoiceInput["lines"]["data"][number];
+
+function invoiceLinePriceId(line: InvoiceLineInput): string | null {
+  const pricingPrice = line.pricing?.price_details?.price;
+  if (typeof pricingPrice === "string") {
+    return line.price?.id ?? pricingPrice;
+  }
+  return line.price?.id ?? pricingPrice?.id ?? null;
+}
+
+function invoiceLineQuantity(line: InvoiceLineInput): number {
+  return typeof line.quantity === "number" && line.quantity > 0
+    ? line.quantity
+    : 1;
+}
+
+function invoiceLineId(
+  invoice: InvoiceInput,
+  line: InvoiceLineInput,
+  index: number,
+): string {
+  return line.id ?? `${invoice.id}:${index}`;
+}
+
+function invoiceHasConcurrencyPurpose(invoice: InvoiceInput): boolean {
+  return (
+    invoice.metadata?.purpose === CONCURRENCY_SUBSCRIPTION_PURPOSE ||
+    invoice.parent?.subscription_details?.metadata?.purpose ===
+      CONCURRENCY_SUBSCRIPTION_PURPOSE
+  );
+}
+
+function concurrencyInvoiceLines(
+  invoice: InvoiceInput,
+): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
+  return invoice.lines.data.flatMap((line, index) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+  });
+}
+
 function subscriptionPeriodEndFromInvoice(
   invoice: InvoiceInput,
   orgId: string,
@@ -1496,6 +1653,9 @@ async function subscriptionInvoiceDetails(
     L.warn("subscription has no price ID for credit grant", {
       subscriptionId: args.subscriptionId,
     });
+    return null;
+  }
+  if (isConcurrencyPriceId(priceId)) {
     return null;
   }
 
@@ -1742,6 +1902,10 @@ async function handleCheckoutCompleted(
     };
   }
 
+  if (session.metadata?.purpose === CONCURRENCY_SUBSCRIPTION_PURPOSE) {
+    return { drainOrgId: null, orgIds: [] };
+  }
+
   const checkoutContext = checkoutSubscriptionContext(session);
   if (!checkoutContext) {
     return { drainOrgId: null, orgIds: [] };
@@ -1795,6 +1959,15 @@ async function handleInvoicePaid(
   );
   if (creditPurchaseResult.handled) {
     return creditPurchaseResult.drainOrgId;
+  }
+
+  const concurrencyResult = await handleConcurrencyInvoicePaid(
+    db,
+    getClerk,
+    invoice,
+  );
+  if (concurrencyResult.handled) {
+    return concurrencyResult.drainOrgId;
   }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
