@@ -43,7 +43,6 @@ import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { internalEventConsumerTelegramTypingContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import {
   zeroSlackBrowserConnectContract,
@@ -1720,20 +1719,6 @@ export function createBddIntegrationApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async requestTelegramTypingEventConsumer(
-      body: { readonly runId: string } & Record<string, unknown>,
-      headers: {
-        readonly "x-vm0-signature"?: string;
-        readonly "x-vm0-timestamp"?: string;
-      },
-      statuses: readonly (200 | 401)[],
-    ) {
-      const client = setupApp({ context })(
-        internalEventConsumerTelegramTypingContract,
-      );
-      return await accept(client.refresh({ headers, body }), statuses);
     },
   };
 }

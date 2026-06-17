@@ -2,12 +2,8 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { internalEventConsumerTelegramTypingContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 
-import {
-  eventConsumerPayload$,
-  eventConsumerRoute,
-} from "../../lib/event-consumer/route";
+import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { logger } from "../../lib/log";
 import { waitUntil } from "../context/wait-until";
 import { db$ } from "../external/db";
@@ -19,7 +15,6 @@ import {
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { internalRunCallbackKindForRecord } from "../services/internal-run-callback";
-import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
 const L = logger("event-consumer:telegram-typing");
@@ -113,7 +108,7 @@ const refreshTelegramTypingForRun$ = command(
   },
 );
 
-const refreshInner$ = command(
+export const refreshTelegramTypingEvents$ = command(
   ({ get, set }, signal: AbortSignal): RefreshResponse => {
     const payload = get(eventConsumerPayload$);
     signal.throwIfAborted();
@@ -138,11 +133,3 @@ interface RefreshResponse {
   readonly status: 200;
   readonly body: { readonly scheduled: true };
 }
-
-export const internalEventConsumerTelegramTypingRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: internalEventConsumerTelegramTypingContract.refresh,
-      handler: eventConsumerRoute(refreshInner$),
-    },
-  ];

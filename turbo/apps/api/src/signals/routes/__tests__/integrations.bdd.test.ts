@@ -3312,22 +3312,24 @@ describe("INT-02: Telegram integration", () => {
         status: "pending",
         attempts: 0,
       });
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-
     const typingBody = {
       runId,
       events: [{ type: "assistant", sequenceNumber: 1 }],
-      context: { userId: actor.userId, orgId: actor.orgId },
+    };
+    const sandboxHeaders = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, runId)}`,
     };
     const actionsBeforeTyping = chatActions.length;
-    const typing = await integrations.requestTelegramTypingEventConsumer(
+    const typing = await webhooks.requestAgentEvents(
       typingBody,
-      webhooks.signedEventConsumerHeaders(typingBody),
+      sandboxHeaders,
       [200],
     );
-    expect(typing.body).toStrictEqual({ scheduled: true });
+    expect(typing.body).toStrictEqual({
+      received: 1,
+      firstSequence: 1,
+      lastSequence: 1,
+    });
     await waitForExpectation(() => {
       expect(chatActions.slice(actionsBeforeTyping)).toStrictEqual([
         { chat_id: String(dmChatId), action: "typing" },
@@ -3344,12 +3346,16 @@ describe("INT-02: Telegram integration", () => {
       })
       .toBe("cancelled");
     const actionsAfterCancel = chatActions.length;
-    const idleTyping = await integrations.requestTelegramTypingEventConsumer(
+    const idleTyping = await webhooks.requestAgentEvents(
       typingBody,
-      webhooks.signedEventConsumerHeaders(typingBody),
+      sandboxHeaders,
       [200],
     );
-    expect(idleTyping.body).toStrictEqual({ scheduled: true });
+    expect(idleTyping.body).toStrictEqual({
+      received: 1,
+      firstSequence: 1,
+      lastSequence: 1,
+    });
     expect(chatActions).toHaveLength(actionsAfterCancel);
   });
 });

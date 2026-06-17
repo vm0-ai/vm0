@@ -39,7 +39,6 @@ import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
-import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
 import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
@@ -199,7 +198,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
-  ...internalEventConsumerTelegramTypingRoutes,
   ...legacyFileRoutes,
   ...logsSearchRoutes,
   ...usageRoutes,
