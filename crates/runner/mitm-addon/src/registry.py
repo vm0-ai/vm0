@@ -32,6 +32,8 @@ _AUTHORITY_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "@", "\\"))
 _AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
 _PERCENT_DECODED_BOUNDARY_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
 _BASE_URL_VAR_PARAMETER_CHARS = frozenset(("{", "}"))
+_PATH_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "\\"))
+_PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
 
 
 class _RegistryFormatError(ValueError):
@@ -204,8 +206,9 @@ def _validate_base_url_variable_percent_encoding(
     base: str,
     name: str,
     value: str,
-) -> None:
-    decoded = percent_decode_host(value, syntax_chars=_PERCENT_DECODED_BOUNDARY_CHARS)
+    structure_chars: frozenset[str] = _PERCENT_DECODED_BOUNDARY_CHARS,
+) -> str:
+    decoded = percent_decode_host(value, syntax_chars=structure_chars)
     if decoded.invalid_encoding:
         raise _base_url_variable_error(
             firewall_name=firewall_name,
@@ -227,6 +230,7 @@ def _validate_base_url_variable_percent_encoding(
             name=name,
             detail="must not contain encoded control characters or invalid Unicode",
         )
+    return decoded.value
 
 
 def _validate_base_url_prefix_variable(
@@ -304,12 +308,74 @@ def _validate_base_url_authority_fragment_variable(
     )
 
 
+def _validate_base_url_port_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    if _PORT_VAR_PATTERN.fullmatch(value) is None:
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must be a numeric URL port",
+        )
+
+
+def _validate_base_url_path_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+    prefix: str,
+    suffix: str,
+) -> None:
+    if any(char in _PATH_VAR_STRUCTURE_CHARS for char in value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not introduce path structure",
+        )
+    decoded = _validate_base_url_variable_percent_encoding(
+        firewall_name=firewall_name,
+        base=base,
+        name=name,
+        value=value,
+        structure_chars=_PATH_VAR_STRUCTURE_CHARS,
+    )
+    prefix_segment = prefix[prefix.rfind("/") + 1 :]
+    suffix_delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
+    suffix_segment = suffix if suffix_delimiter is None else suffix[: suffix_delimiter.start()]
+    decoded_segment = f"{prefix_segment}{decoded}{suffix_segment}"
+    if decoded_segment in (".", ".."):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not be a path dot segment",
+        )
+
+
 def _prefix_is_inside_authority(prefix: str) -> bool:
     scheme_end = prefix.find("://")
     if scheme_end == -1:
         return False
     after_scheme = prefix[scheme_end + 3 :]
     return _URL_COMPONENT_DELIMITER_PATTERN.search(after_scheme) is None
+
+
+def _prefix_is_inside_path(prefix: str) -> bool:
+    scheme_end = prefix.find("://")
+    if scheme_end == -1:
+        return False
+    after_scheme = prefix[scheme_end + 3 :]
+    if "?" in after_scheme or "#" in after_scheme:
+        return False
+    return "/" in after_scheme
 
 
 def _suffix_authority_prefix(suffix: str) -> str:
@@ -352,12 +418,34 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
+    if (
+        _prefix_is_inside_authority(prefix)
+        and prefix.endswith(":")
+        and (suffix == "" or suffix.startswith("/"))
+    ):
+        _validate_base_url_port_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+        )
+        return
     if _prefix_is_inside_authority(prefix) and _suffix_authority_prefix(suffix) != "":
         _validate_base_url_authority_fragment_variable(
             firewall_name=firewall_name,
             base=base,
             name=name,
             value=value,
+        )
+        return
+    if _prefix_is_inside_path(prefix):
+        _validate_base_url_path_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+            prefix=prefix,
+            suffix=suffix,
         )
         return
     raise _base_url_variable_error(

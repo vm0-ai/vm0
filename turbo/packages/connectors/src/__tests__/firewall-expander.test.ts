@@ -1306,6 +1306,48 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const tenantPathFirewall = {
+    name: "tenant-path",
+    apis: [
+      {
+        base: "https://api.example.test/accounts/${{ vars.TENANT }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const portFirewall = {
+    name: "port-api",
+    apis: [
+      {
+        base: "https://api.example.test:${{ vars.API_PORT }}/v1",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const pathFragmentFirewall = {
+    name: "path-fragment",
+    apis: [
+      {
+        base: "https://api.example.test/v${{ vars.VERSION }}",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
   const nonCredentialFirewall = {
     name: "diagnostic",
     apis: [
@@ -1386,6 +1428,53 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[0]!.apis[0]!.base).toBe(
       "https://n8n.example.test/workflows/api/v1",
     );
+  });
+
+  it("accepts path segment variables without crossing path boundaries", () => {
+    const result = resolveFirewallBaseUrlVars([tenantPathFirewall], {
+      TENANT: "acme:prod",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://api.example.test/accounts/acme:prod/v1",
+    );
+  });
+
+  it("rejects path segment variables that inject path structure", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "acme/../admin",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects path segment variables that normalize as dot segments", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([tenantPathFirewall], {
+        TENANT: "%2e%2e",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts path variable dots that do not form dot segments", () => {
+    const result = resolveFirewallBaseUrlVars([pathFragmentFirewall], {
+      VERSION: "%2e1",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.example.test/v%2e1");
+  });
+
+  it("accepts authority port variables", () => {
+    const result = resolveFirewallBaseUrlVars([portFirewall], {
+      API_PORT: "8443",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.example.test:8443/v1");
+  });
+
+  it("rejects authority port variables that are not numeric", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([portFirewall], {
+        API_PORT: "443/path",
+      });
+    }).toThrow("base URL variable");
   });
 
   it("leaves static base URLs unchanged", () => {

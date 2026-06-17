@@ -661,6 +661,8 @@ const AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = new Set([
 ]);
 const PERCENT_DECODED_BOUNDARY_CHARS = new Set(["/", ":", "?", "#", "@", "\\"]);
 const BASE_URL_VAR_PARAMETER_CHARS = new Set(["{", "}"]);
+const PATH_VAR_STRUCTURE_CHARS = new Set(["/", "?", "#", "\\"]);
+const PORT_VAR_PATTERN = /^[0-9]+$/;
 
 /**
  * Check if a base URL contains `${{ vars.X }}` template references.
@@ -724,14 +726,18 @@ function validateBaseUrlVariablePercentEncoding({
   serviceName,
   name,
   value,
+  structureChars,
 }: {
   readonly base: string;
   readonly serviceName: string;
   readonly name: string;
   readonly value: string;
-}): void {
+  readonly structureChars: ReadonlySet<string>;
+}): string {
   for (let i = 0; i < value.length; i += 1) {
-    if (value[i] !== "%") continue;
+    if (value[i] !== "%") {
+      continue;
+    }
     if (
       i + 2 >= value.length ||
       !isHexDigit(value[i + 1]!) ||
@@ -768,7 +774,7 @@ function validateBaseUrlVariablePercentEncoding({
     }
     for (const char of decoded) {
       if (
-        PERCENT_DECODED_BOUNDARY_CHARS.has(char) ||
+        structureChars.has(char) ||
         WHITESPACE_PATTERN.test(char) ||
         UNICODE_CONTROL_PATTERN.test(char)
       ) {
@@ -781,6 +787,19 @@ function validateBaseUrlVariablePercentEncoding({
       }
     }
     i = end - 1;
+  }
+  if (!value.includes("%")) {
+    return value;
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "has invalid percent encoding",
+    );
   }
 }
 
@@ -828,7 +847,13 @@ function validateBaseUrlAuthorityVariable({
       );
     }
   }
-  validateBaseUrlVariablePercentEncoding({ base, serviceName, name, value });
+  validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PERCENT_DECODED_BOUNDARY_CHARS,
+  });
   validateBaseUrl(`https://${value}`, serviceName);
 }
 
@@ -853,7 +878,81 @@ function validateBaseUrlAuthorityFragmentVariable({
       );
     }
   }
-  validateBaseUrlVariablePercentEncoding({ base, serviceName, name, value });
+  validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PERCENT_DECODED_BOUNDARY_CHARS,
+  });
+}
+
+function validateBaseUrlPortVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  if (!PORT_VAR_PATTERN.test(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must be a numeric URL port",
+    );
+  }
+}
+
+function validateBaseUrlPathVariable({
+  base,
+  serviceName,
+  name,
+  value,
+  prefix,
+  suffix,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly prefix: string;
+  readonly suffix: string;
+}): void {
+  for (const char of value) {
+    if (PATH_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce path structure",
+      );
+    }
+  }
+  const decoded = validateBaseUrlVariablePercentEncoding({
+    base,
+    serviceName,
+    name,
+    value,
+    structureChars: PATH_VAR_STRUCTURE_CHARS,
+  });
+  const prefixSegment = prefix.slice(prefix.lastIndexOf("/") + 1);
+  const suffixSegmentEnd = suffix.search(URL_COMPONENT_DELIMITER_PATTERN);
+  const suffixSegment =
+    suffixSegmentEnd === -1 ? suffix : suffix.slice(0, suffixSegmentEnd);
+  const decodedSegment = `${prefixSegment}${decoded}${suffixSegment}`;
+  if (decodedSegment === "." || decodedSegment === "..") {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not be a path dot segment",
+    );
+  }
 }
 
 function prefixIsInsideAuthority(prefix: string): boolean {
@@ -861,6 +960,14 @@ function prefixIsInsideAuthority(prefix: string): boolean {
   if (schemeEnd === -1) return false;
   const afterScheme = prefix.slice(schemeEnd + 3);
   return !URL_COMPONENT_DELIMITER_PATTERN.test(afterScheme);
+}
+
+function prefixIsInsidePath(prefix: string): boolean {
+  const schemeEnd = prefix.indexOf("://");
+  if (schemeEnd === -1) return false;
+  const afterScheme = prefix.slice(schemeEnd + 3);
+  if (afterScheme.includes("?") || afterScheme.includes("#")) return false;
+  return afterScheme.includes("/");
 }
 
 function suffixAuthorityPrefix(suffix: string): string {
@@ -895,12 +1002,31 @@ function validateBaseUrlTemplateVariable({
     validateBaseUrlAuthorityVariable({ base, serviceName, name, value });
     return;
   }
+  if (
+    prefixIsInsideAuthority(prefix) &&
+    prefix.endsWith(":") &&
+    (suffix === "" || suffix.startsWith("/"))
+  ) {
+    validateBaseUrlPortVariable({ base, serviceName, name, value });
+    return;
+  }
   if (prefixIsInsideAuthority(prefix) && suffixAuthorityPrefix(suffix) !== "") {
     validateBaseUrlAuthorityFragmentVariable({
       base,
       serviceName,
       name,
       value,
+    });
+    return;
+  }
+  if (prefixIsInsidePath(prefix)) {
+    validateBaseUrlPathVariable({
+      base,
+      serviceName,
+      name,
+      value,
+      prefix,
+      suffix,
     });
     return;
   }
