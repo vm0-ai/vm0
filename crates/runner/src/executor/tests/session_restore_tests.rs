@@ -544,6 +544,38 @@ async fn restore_session_redacts_write_file_invalid_state() {
 }
 
 #[tokio::test]
+async fn restore_session_redaction_does_not_rewrite_markers() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "session";
+    let session_path = "/home/user/.claude/projects/-home-user-workspace/session.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
+        "redaction markers should stay readable: {message}"
+    );
+    assert!(
+        !message.contains("[redacted-[redacted-session-id]"),
+        "redaction markers must not be recursively rewritten: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();

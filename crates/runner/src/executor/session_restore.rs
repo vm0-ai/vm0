@@ -325,11 +325,18 @@ fn redact_session_restore_diagnostic(
     session_id: &str,
     session_path: &str,
 ) -> String {
-    let mut redacted = message.replace(session_path, "[redacted-session-path]");
+    const SESSION_PATH_SENTINEL: &str = "\u{0}\u{1}";
+    const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
+    const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
+    const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
+
+    let mut redacted = message.replace(session_path, SESSION_PATH_SENTINEL);
     for sensitive in session_redaction_variants(session_id) {
-        redacted = redacted.replace(&sensitive, "[redacted-session-id]");
+        redacted = redacted.replace(&sensitive, SESSION_ID_SENTINEL);
     }
     redacted
+        .replace(SESSION_PATH_SENTINEL, REDACTED_SESSION_PATH)
+        .replace(SESSION_ID_SENTINEL, REDACTED_SESSION_ID)
 }
 
 fn session_redaction_variants(session_id: &str) -> Vec<String> {
