@@ -15,14 +15,14 @@ import { and, eq } from "drizzle-orm";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import {
-  deleteSkillsForFixture$,
-  mockSkillContent,
+  deleteWorkflowsForFixture$,
+  mockWorkflowContent,
   seedAgentForInstructions$,
-  seedSkill$,
-  seedSkillStorage$,
-  seedSkillsFixture$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
+  seedWorkflow$,
+  seedWorkflowStorage$,
+  seedWorkflowsFixture$,
+  type WorkflowsFixture,
+} from "./helpers/zero-workflows";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -53,13 +53,13 @@ function workflowFiles(content: string) {
 }
 
 describe("zero workflows", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   it("creates private workflows by default and hides them from other org members", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
@@ -114,7 +114,7 @@ describe("zero workflows", () => {
 
   it("requires admin permission to create public workflows", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -173,7 +173,7 @@ describe("zero workflows", () => {
 
   it("attaches private workflows to public agents for the workflow owner only", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const agentOwnerId = `user_${randomUUID()}`;
     const agent = await store.set(
@@ -305,12 +305,12 @@ describe("zero workflows", () => {
 
   it("reads workflow content from the existing skill volume storage", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const workflowName = "content-workflow";
     const s3Key = "test-workflows/content-workflow";
     await store.set(
-      seedSkill$,
+      seedWorkflow$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -321,17 +321,17 @@ describe("zero workflows", () => {
       context.signal,
     );
     await store.set(
-      seedSkillStorage$,
+      seedWorkflowStorage$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        skillName: workflowName,
+        workflowName: workflowName,
         s3Key,
         headVersionId: randomUUID(),
       },
       context.signal,
     );
-    mockSkillContent(context, {
+    mockWorkflowContent(context, {
       s3Key,
       content: "# Content workflow\n",
       extraFiles: [{ path: "notes.md", content: "details" }],
@@ -365,7 +365,7 @@ describe("zero workflows", () => {
 
   it("deletes workflows and cascades agent attachments", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const workflowName = "delete-workflow";
     const agent = await store.set(
@@ -373,7 +373,7 @@ describe("zero workflows", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        customSkills: [workflowName],
+        workflowNames: [workflowName],
       },
       context.signal,
     );

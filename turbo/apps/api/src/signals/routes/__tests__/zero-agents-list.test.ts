@@ -5,11 +5,11 @@ import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
-  deleteSkillsForFixture$,
+  deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
-  seedSkillsFixture$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
+  seedWorkflowsFixture$,
+  type WorkflowsFixture,
+} from "./helpers/zero-workflows";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -28,8 +28,8 @@ function apiClient() {
 }
 
 describe("GET /api/zero/agents", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -52,7 +52,7 @@ describe("GET /api/zero/agents", () => {
 
   it("returns empty array when no agents exist", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -66,7 +66,7 @@ describe("GET /api/zero/agents", () => {
 
   it("returns the list with the seeded agent", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const { agentId } = await store.set(
       seedAgentForInstructions$,
@@ -96,7 +96,7 @@ describe("GET /api/zero/agents", () => {
 
   it("returns an agent created through POST /api/zero/agents", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -129,10 +129,10 @@ describe("GET /api/zero/agents", () => {
 
   it("returns agents only scoped to caller's org", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     const otherFixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     await store.set(
       seedAgentForInstructions$,

@@ -202,9 +202,7 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
 function mockAgent(options?: {
   selectedModel?: string | null;
   modelProviderId?: string | null;
-  customSkills?: string[];
 }): void {
-  const customSkills = options?.customSkills ?? [];
   context.mocks.data.team([
     {
       id: AGENT_ID,
@@ -212,7 +210,6 @@ function mockAgent(options?: {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
@@ -225,7 +222,6 @@ function mockAgent(options?: {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills,
       modelProviderId: options?.modelProviderId ?? null,
       selectedModel: options?.selectedModel ?? null,
       preferPersonalProvider: false,
@@ -580,7 +576,7 @@ describe("chat composer models", () => {
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["legacy-skill"] });
+    mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
@@ -624,7 +620,6 @@ describe("chat composer models", () => {
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     expect(screen.queryByText("/other-agent-workflow")).not.toBeInTheDocument();
-    expect(screen.queryByText("/legacy-skill")).not.toBeInTheDocument();
     // The menu renders in a Radix Popover portal (Floating UI handles
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
@@ -655,7 +650,7 @@ describe("chat composer models", () => {
   it("does not suggest workflows that are not attached to the current agent", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: [] });
+    mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
@@ -691,7 +686,7 @@ describe("chat composer models", () => {
   it("links to the workflows page from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: [] });
+    mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
@@ -727,7 +722,7 @@ describe("chat composer models", () => {
   it("hides slash workflow suggestions when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: [] });
+    mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
@@ -764,7 +759,7 @@ describe("chat composer models", () => {
     const customWorkflows = Array.from({ length: 12 }, (_, index) => {
       return `custom-workflow-${index + 1}`;
     });
-    mockAgent({ customSkills: [] });
+    mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(
         200,
@@ -806,7 +801,7 @@ describe("chat composer models", () => {
     try {
       const user = userEvent.setup({ delay: null });
       mockOrgModelRoutes("kimi-k2.7-code");
-      mockAgent({ customSkills: [] });
+      mockAgent();
       context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
         return respond(200, []);
       });

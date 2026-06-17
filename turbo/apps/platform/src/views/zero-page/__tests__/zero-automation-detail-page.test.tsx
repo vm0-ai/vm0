@@ -34,7 +34,6 @@ function createZeroAgent(): TeamComposeItem {
     description: "Default workspace agent",
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "public",
     headVersionId: "version_1",
     updatedAt: "2026-03-10T00:00:00Z",

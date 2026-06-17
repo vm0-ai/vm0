@@ -57,7 +57,6 @@ function opsAgent(): TeamComposeItem {
     description: "Runs release checks",
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "private",
     headVersionId: "version_ops",
     updatedAt: "2026-06-17T00:00:00Z",
@@ -72,7 +71,6 @@ function sharedAgent(): TeamComposeItem {
     description: "Shared public agent",
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "public",
     headVersionId: "version_shared",
     updatedAt: "2026-06-17T00:00:00Z",
@@ -87,7 +85,6 @@ function otherPrivateAgent(): TeamComposeItem {
     description: "Not configurable by the current user",
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "private",
     headVersionId: "version_other_private",
     updatedAt: "2026-06-17T00:00:00Z",
@@ -437,21 +434,6 @@ describe("workflows page", () => {
         screen.queryByText("Use CRM context before outreach."),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("redirects the legacy skills route to workflows", async () => {
-    mockWorkflowApis();
-
-    detachedSetupPage({
-      context,
-      path: "/skills",
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Workflows")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Sales Research")).toBeInTheDocument();
   });
 
   it("attaches and detaches configurable agents from workflow details", async () => {
