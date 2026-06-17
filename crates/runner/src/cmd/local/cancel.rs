@@ -41,14 +41,19 @@ async fn run_cancel_with_home(args: CancelArgs, home: HomePaths) -> RunnerResult
             group_dir.display()
         )));
     }
+    local_queue::validate_group_dir(&group_dir).map_err(|e| {
+        RunnerError::Config(format!(
+            "invalid group directory {}: {e}",
+            group_dir.display()
+        ))
+    })?;
 
     let run_id = resolve_run_id(&group_dir, &args.run)?;
 
-    let cancel_dir = local_queue::cancels_dir(&group_dir);
-    std::fs::create_dir_all(&cancel_dir)
+    local_queue::ensure_cancels_dir(&group_dir)
         .map_err(|e| RunnerError::Internal(format!("create cancel dir: {e}")))?;
     let cancel_path = local_queue::cancel_path(&group_dir, run_id);
-    std::fs::write(&cancel_path, b"")
+    local_queue::write_private_marker(&cancel_path, "local cancel marker")
         .map_err(|e| RunnerError::Internal(format!("write cancel file: {e}")))?;
 
     eprintln!("cancel request written for {run_id}");
@@ -58,10 +63,18 @@ async fn run_cancel_with_home(args: CancelArgs, home: HomePaths) -> RunnerResult
 /// Resolve a (possibly prefix) run ID against group-wide `.claim` files.
 /// Returns an error if the prefix is ambiguous or matches nothing.
 fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<RunId> {
+    let Some(claims_dir) = validated_claims_dir(group_dir)? else {
+        return Err(RunnerError::Config(format!(
+            "no claimed job matches prefix '{prefix}'"
+        )));
+    };
+
     // Try exact UUID parse first.
     if let Ok(id) = prefix.parse::<RunId>() {
         let claim = local_queue::claim_path(group_dir, id);
-        if claim.exists() {
+        if local_queue::marker_file_exists(&claim, "claim file")
+            .map_err(|e| RunnerError::Config(e.to_string()))?
+        {
             return Ok(id);
         }
         return Err(RunnerError::Config(format!(
@@ -70,7 +83,6 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
     }
 
     // Prefix match against .claim files.
-    let claims_dir = local_queue::claims_dir(group_dir);
     let entries = match std::fs::read_dir(&claims_dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -83,6 +95,12 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
 
     let mut matches = Vec::new();
     for entry in entries.filter_map(Result::ok) {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("claim") {
             continue;
@@ -113,9 +131,25 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Run
     }
 }
 
+fn validated_claims_dir(group_dir: &std::path::Path) -> RunnerResult<Option<std::path::PathBuf>> {
+    let claims_dir = local_queue::claims_dir(group_dir);
+    match std::fs::symlink_metadata(&claims_dir) {
+        Ok(_) => local_queue::validate_claims_dir(group_dir)
+            .map(Some)
+            .map_err(|e| RunnerError::Config(format!("invalid claims directory: {e}"))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(RunnerError::Config(format!("stat claims directory: {e}"))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    fn mode(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
 
     #[test]
     fn resolve_exact_uuid() {
@@ -170,6 +204,28 @@ mod tests {
         assert!(err.to_string().contains("no claimed job"), "got: {err}");
     }
 
+    #[test]
+    fn resolve_ignores_claim_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = RunId::new_v4();
+        let claims_dir = local_queue::claims_dir(dir.path());
+        std::fs::create_dir_all(&claims_dir).unwrap();
+        let target = dir.path().join("target-claim");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, local_queue::claim_path(dir.path(), id)).unwrap();
+
+        let exact_err = resolve_run_id(dir.path(), &id.to_string()).unwrap_err();
+        assert!(
+            exact_err.to_string().contains("no claimed job"),
+            "got: {exact_err}"
+        );
+        let prefix_err = resolve_run_id(dir.path(), &id.to_string()[..8]).unwrap_err();
+        assert!(
+            prefix_err.to_string().contains("no claimed job"),
+            "got: {prefix_err}"
+        );
+    }
+
     #[tokio::test]
     async fn run_cancel_writes_group_wide_cancel_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -190,6 +246,66 @@ mod tests {
         .unwrap();
 
         assert_eq!(code, ExitCode::SUCCESS);
-        assert!(local_queue::cancel_path(&group_dir, run_id).exists());
+        let cancel_path = local_queue::cancel_path(&group_dir, run_id);
+        assert!(cancel_path.exists());
+        assert_eq!(mode(&local_queue::cancels_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&cancel_path), 0o600);
+    }
+
+    #[tokio::test]
+    async fn run_cancel_rejects_group_symlink_before_claim_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let groups_dir = home.groups_dir();
+        std::fs::create_dir_all(&groups_dir).unwrap();
+        let target = dir.path().join("target-group");
+        std::fs::create_dir(&target).unwrap();
+        let org_dir = groups_dir.join("test");
+        std::fs::create_dir(&org_dir).unwrap();
+        let group_dir = org_dir.join("group");
+        symlink(&target, &group_dir).unwrap();
+
+        let err = run_cancel_with_home(
+            CancelArgs {
+                run: RunId::new_v4().to_string(),
+                group: "test/group".into(),
+            },
+            home,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid group directory"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_cancel_rejects_claims_symlink_before_prefix_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group_dir = home.groups_dir().join("test/group");
+        std::fs::create_dir_all(&group_dir).unwrap();
+        let target = dir.path().join("target-claims");
+        std::fs::create_dir(&target).unwrap();
+        let run_id = RunId::new_v4();
+        std::fs::write(target.join(format!("{run_id}.claim")), b"").unwrap();
+        symlink(&target, local_queue::claims_dir(&group_dir)).unwrap();
+
+        let err = run_cancel_with_home(
+            CancelArgs {
+                run: run_id.to_string()[..8].into(),
+                group: "test/group".into(),
+            },
+            home,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid claims directory"),
+            "got: {err}"
+        );
     }
 }

@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -14,7 +14,6 @@ use std::time::Duration;
 use clap::Args;
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_file;
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
@@ -72,7 +71,7 @@ fn detect_system_timezone() -> Option<String> {
 /// Try to read a non-empty result file.  Returns `None` if the file does
 /// not exist, is empty, or cannot be read.
 fn try_read_result(result_path: &std::path::Path) -> Option<Vec<u8>> {
-    match std::fs::read(result_path) {
+    match local_queue::read_private_file(result_path, "local result file") {
         Ok(b) if !b.is_empty() => Some(b),
         _ => None,
     }
@@ -130,7 +129,10 @@ impl SubmitQueueEntry {
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
         let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
             .remove_job_files_if_present(self.job_id);
-        if jobs_removed && !self.claim.exists() {
+        let has_claim =
+            local_queue::marker_file_exists(&self.claim, "local claim marker").unwrap_or(true);
+        if jobs_removed && !has_claim {
+            let _ = remove_file_if_exists(&self.claim);
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
                 remove_marker_if_unchanged(&self.result, marker);
@@ -167,16 +169,16 @@ fn write_abandoned_result_marker(
         return None;
     };
     let result_dir = result_path.parent()?;
-    if std::fs::create_dir_all(result_dir).is_err() {
+    let group_dir = result_dir.parent()?;
+    if local_queue::ensure_results_dir(group_dir).is_err() {
         return None;
     }
 
     let tmp_path = result_dir.join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
-    let mut file = match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp_path)
-    {
+    let mut file = match local_queue::open_private_new_file(
+        &tmp_path,
+        "local abandoned result marker temporary file",
+    ) {
         Ok(file) => file,
         Err(_) => return None,
     };
@@ -209,22 +211,26 @@ fn write_abandoned_result_marker(
 }
 
 fn result_file_is_empty(result_path: &std::path::Path) -> bool {
-    std::fs::metadata(result_path)
-        .map(|metadata| metadata.is_file() && metadata.len() == 0)
-        .unwrap_or(false)
+    let is_file =
+        local_queue::marker_file_exists(result_path, "local result file").unwrap_or(false);
+    is_file
+        && !local_queue::private_file_has_content(result_path, "local result file").unwrap_or(true)
 }
 
 fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&PublishedMarker>) {
     let Some(marker) = marker else {
         return;
     };
-    let Ok(metadata) = std::fs::metadata(result_path) else {
+    let Ok(metadata) = std::fs::symlink_metadata(result_path) else {
         return;
     };
+    if !metadata.file_type().is_file() {
+        return;
+    }
     if metadata.dev() != marker.dev || metadata.ino() != marker.ino {
         return;
     }
-    if std::fs::read(result_path)
+    if local_queue::read_private_file(result_path, "local result file")
         .map(|current| current == marker.bytes)
         .unwrap_or(false)
     {
@@ -274,14 +280,13 @@ impl SubmitPlan {
         let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let group_dir = home.groups_dir().join(&group);
-        let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
-
-        std::fs::create_dir_all(&job_dir).map_err(|e| {
-            RunnerError::Config(format!("create job dir {}: {e}", job_dir.display()))
+        local_queue::ensure_profile_jobs_dir(&group_dir, &profile).map_err(|e| {
+            RunnerError::Config(format!("create job dir for profile {profile}: {e}"))
         })?;
-        std::fs::create_dir_all(local_queue::results_dir(&group_dir))
+
+        local_queue::ensure_results_dir(&group_dir)
             .map_err(|e| RunnerError::Config(format!("create results dir: {e}")))?;
-        std::fs::create_dir_all(local_queue::cancels_dir(&group_dir))
+        local_queue::ensure_cancels_dir(&group_dir)
             .map_err(|e| RunnerError::Config(format!("create cancels dir: {e}")))?;
 
         let job_id = RunId::new_v4();
@@ -410,30 +415,19 @@ impl SubmitPlan {
             .queue
             .job_dir
             .join(format!("{}.job.tmp", self.queue.job_id));
-        let result = (|| {
-            let mut file = std::fs::File::options()
-                .write(true)
-                .create_new(true)
-                .mode(host_file::PRIVATE_FILE_MODE)
-                .custom_flags(host_file::private_file_open_flags())
-                .open(&tmp_path)
-                .map_err(|e| RunnerError::Internal(format!("open job file tmp: {e}")))?;
-            host_file::secure_regular_private_file(&file, &tmp_path, "job file").map_err(|e| {
-                RunnerError::Internal(format!("validate job file tmp {}: {e}", tmp_path.display()))
-            })?;
-            file.write_all(&self.request_json)
-                .map_err(|e| RunnerError::Internal(format!("write job file: {e}")))?;
-            drop(file);
-
-            std::fs::rename(&tmp_path, &self.queue.job)
-                .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
-            Ok(())
-        })();
-
-        if result.is_err() {
+        if let Err(e) = local_queue::write_private_file(
+            &tmp_path,
+            &self.request_json,
+            "local job temporary file",
+        ) {
             let _ = remove_file_if_exists(&tmp_path);
+            return Err(RunnerError::Internal(format!("write job file: {e}")));
         }
-        result
+        if let Err(e) = std::fs::rename(&tmp_path, &self.queue.job) {
+            let _ = remove_file_if_exists(&tmp_path);
+            return Err(RunnerError::Internal(format!("rename job file: {e}")));
+        }
+        Ok(())
     }
 
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
@@ -458,7 +452,7 @@ impl SubmitPlan {
                 () = tokio::time::sleep(POLL_INTERVAL) => {}
                 _ = tokio::signal::ctrl_c() => {
                     eprintln!("interrupted — requesting cancel for {}", self.queue.job_id);
-                    let _ = std::fs::write(&self.queue.cancel, b"");
+                    let _ = local_queue::write_private_marker(&self.queue.cancel, "local cancel marker");
                     return Ok(self.wait_for_cancel_grace().await);
                 }
             }
@@ -526,6 +520,7 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::sync::Mutex;
 
     /// Serialize tests that mutate environment variables to prevent UB.
@@ -540,6 +535,10 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"{}").unwrap();
         path
+    }
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
     #[test]
@@ -596,6 +595,32 @@ mod tests {
     }
 
     #[test]
+    fn try_read_result_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let result_path = local_queue::result_path(group_dir, RunId::new_v4());
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"{\"exit_code\":0}").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert!(try_read_result(&result_path).is_none());
+    }
+
+    #[test]
+    fn result_file_is_empty_ignores_result_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let result_path = local_queue::result_path(group_dir, RunId::new_v4());
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        assert!(!result_file_is_empty(&result_path));
+    }
+
+    #[test]
     fn abandoned_marker_write_publishes_without_tmp_residue() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -606,13 +631,31 @@ mod tests {
             write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
 
         assert_eq!(std::fs::read(&result_path).unwrap(), marker.bytes);
+        assert_eq!(mode(&result_path), 0o600);
         let result_dir = local_queue::results_dir(group_dir);
+        assert_eq!(mode(&result_dir), 0o700);
         let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
             .unwrap()
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
             .collect();
         assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
+    #[test]
+    fn abandoned_marker_write_creates_missing_group_dir_as_shared_trusted() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("groups").join("org").join("group");
+        let job_id = RunId::new_v4();
+        let result_path = local_queue::result_path(&group_dir, job_id);
+
+        let marker =
+            write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
+
+        assert_eq!(std::fs::read(&result_path).unwrap(), marker.bytes);
+        assert_eq!(mode(&group_dir), crate::host_file::SHARED_TRUSTED_DIR_MODE);
+        assert_eq!(mode(&local_queue::results_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&result_path), 0o600);
     }
 
     #[test]
@@ -1035,7 +1078,7 @@ mod tests {
             .permissions()
             .mode()
             & 0o777;
-        assert_eq!(mode, host_file::PRIVATE_FILE_MODE);
+        assert_eq!(mode, crate::host_file::PRIVATE_FILE_MODE);
     }
 
     #[test]
@@ -1064,6 +1107,74 @@ mod tests {
             .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
             .collect();
         assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
+    #[test]
+    fn submit_plan_creates_private_queue_dirs_and_job_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let home = HomePaths::with_root(root.clone());
+        let group = "test/group";
+        let group_dir = root.join("groups").join(group);
+        let plan = SubmitPlan::from_args(
+            SubmitArgs {
+                group: group.into(),
+                prompt: "secret prompt".into(),
+                cli_agent_type: "claude-code".into(),
+                profile: None,
+                session_id: Some("session-123".into()),
+                feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
+                timeout: 5,
+            },
+            home,
+        )
+        .unwrap();
+
+        plan.write_job_file().unwrap();
+
+        assert_eq!(mode(&plan.queue.job_dir), 0o700);
+        assert_eq!(mode(&local_queue::results_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&local_queue::cancels_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&plan.queue.job), 0o600);
+    }
+
+    #[test]
+    fn submit_plan_tightens_existing_permissive_queue_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let home = HomePaths::with_root(root.clone());
+        let group = "test/group";
+        let group_dir = root.join("groups").join(group);
+        let job_dir =
+            local_queue::profile_jobs_dir(&group_dir, crate::profile::DEFAULT_PROFILE).unwrap();
+        let results_dir = local_queue::results_dir(&group_dir);
+        let cancels_dir = local_queue::cancels_dir(&group_dir);
+        for path in [&job_dir, &results_dir, &cancels_dir] {
+            std::fs::create_dir_all(path).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let plan = SubmitPlan::from_args(
+            SubmitArgs {
+                group: group.into(),
+                prompt: "secret prompt".into(),
+                cli_agent_type: "claude-code".into(),
+                profile: None,
+                session_id: None,
+                feature_flags: vec![],
+                env: vec![],
+                secret_env: vec![],
+                timeout: 5,
+            },
+            home,
+        )
+        .unwrap();
+
+        assert_eq!(mode(&plan.queue.job_dir), 0o700);
+        assert_eq!(mode(&results_dir), 0o700);
+        assert_eq!(mode(&cancels_dir), 0o700);
     }
 
     #[tokio::test]
@@ -1290,6 +1401,30 @@ mod tests {
             !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
         );
+    }
+
+    #[test]
+    fn abandoned_cleanup_ignores_claim_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let target = dir.path().join("target-claim");
+        std::fs::write(&target, b"").unwrap();
+        symlink(&target, &queue.claim).unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!queue.job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]
