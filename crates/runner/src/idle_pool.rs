@@ -681,6 +681,10 @@ impl IdleEntry {
         self.budget_lease.memory_mb()
     }
 
+    fn is_expired_at(&self, now: Instant) -> bool {
+        now.duration_since(self.parked_at) >= self.idle_timeout
+    }
+
     /// Unpark and consume this idle entry. On failure the entry becomes an
     /// idle-owned destroy job so callers cannot keep using a partially
     /// unparked sandbox.
@@ -842,22 +846,44 @@ impl IdlePool {
     /// Remove and return all entries that have exceeded their idle timeout.
     pub fn evict_expired(&mut self) -> Vec<IdleDestroyJob> {
         let now = Instant::now();
-        let expired_keys: Vec<String> = self
+        let expired: Vec<IdleDestroyJob> = self
             .entries
-            .iter()
-            .filter(|(_, e)| now.duration_since(e.parked_at) >= e.idle_timeout)
-            .map(|(k, _)| k.clone())
-            .collect();
-
-        let expired: Vec<IdleDestroyJob> = expired_keys
-            .into_iter()
-            .filter_map(|k| self.entries.remove(&k))
-            .map(IdleEntry::into_destroy_job)
+            .extract_if(|_, entry| entry.is_expired_at(now))
+            .map(|(_, entry)| entry.into_destroy_job())
             .collect();
         if !expired.is_empty() {
             self.bump_revision();
         }
         expired
+    }
+
+    /// Remove expired entries and return the post-eviction idle status snapshot.
+    pub fn evict_expired_with_snapshot(&mut self) -> (Vec<IdleDestroyJob>, IdlePoolSnapshot) {
+        let now = Instant::now();
+        let mut idle_vms = Vec::with_capacity(self.entries.len());
+        let expired: Vec<IdleDestroyJob> = self
+            .entries
+            .extract_if(|session_id, entry| {
+                if entry.is_expired_at(now) {
+                    true
+                } else {
+                    idle_vms.push(idle_vm_for_entry(session_id, entry));
+                    false
+                }
+            })
+            .map(|(_, entry)| entry.into_destroy_job())
+            .collect();
+        if !expired.is_empty() {
+            self.bump_revision();
+        }
+        idle_vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        (
+            expired,
+            IdlePoolSnapshot {
+                revision: self.revision,
+                idle_vms,
+            },
+        )
     }
 
     /// Evict the oldest idle entry (by park time). Used for resource
@@ -886,10 +912,7 @@ impl IdlePool {
         let mut vms: Vec<IdleVm> = self
             .entries
             .iter()
-            .map(|(session_id, entry)| IdleVm {
-                session_id: session_id.clone(),
-                sandbox_id: entry.metadata.sandbox_id,
-            })
+            .map(|(session_id, entry)| idle_vm_for_entry(session_id, entry))
             .collect();
         vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
         IdlePoolSnapshot {
@@ -978,6 +1001,13 @@ impl IdlePool {
 
     fn bump_revision(&mut self) {
         self.revision = self.revision.saturating_add(1);
+    }
+}
+
+fn idle_vm_for_entry(session_id: &str, entry: &IdleEntry) -> IdleVm {
+    IdleVm {
+        session_id: session_id.to_owned(),
+        sandbox_id: entry.metadata.sandbox_id,
     }
 }
 
@@ -1368,6 +1398,99 @@ mod tests {
     }
 
     #[test]
+    fn evict_expired_with_snapshot_none_expired_keeps_revision() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let now = Instant::now();
+        let fresh = make_candidate_for("fresh", 2, 2048);
+        let fresh_sandbox_id = fresh.sandbox_id();
+        let _ = park_at(&mut pool, "fresh", fresh, now, Duration::from_secs(300));
+        let before_revision = pool.status_snapshot().revision;
+
+        let (evicted, snapshot) = pool.evict_expired_with_snapshot();
+
+        assert!(evicted.is_empty());
+        assert_eq!(pool.len(), 1);
+        assert_eq!(snapshot.revision, before_revision);
+        assert_eq!(snapshot.idle_vms.len(), 1);
+        assert_eq!(snapshot.idle_vms[0].session_id, "fresh");
+        assert_eq!(snapshot.idle_vms[0].sandbox_id, fresh_sandbox_id);
+    }
+
+    #[test]
+    fn evict_expired_with_snapshot_returns_retained_entries_sorted() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let now = Instant::now();
+
+        let expired = make_candidate_for("expired", 2, 2048);
+        let _ = park_at(
+            &mut pool,
+            "expired",
+            expired,
+            now - Duration::from_secs(310),
+            Duration::from_secs(300),
+        );
+        let retained_b = make_candidate_for("sess-b", 4, 4096);
+        let retained_b_sandbox_id = retained_b.sandbox_id();
+        let _ = park_at(
+            &mut pool,
+            "sess-b",
+            retained_b,
+            now,
+            Duration::from_secs(300),
+        );
+        let retained_a = make_candidate_for("sess-a", 1, 1024);
+        let retained_a_sandbox_id = retained_a.sandbox_id();
+        let _ = park_at(
+            &mut pool,
+            "sess-a",
+            retained_a,
+            now,
+            Duration::from_secs(300),
+        );
+        let before_revision = pool.status_snapshot().revision;
+
+        let (evicted, snapshot) = pool.evict_expired_with_snapshot();
+
+        assert_eq!(evicted.len(), 1);
+        assert_eq!(pool.len(), 2);
+        assert_eq!(snapshot.revision, before_revision + 1);
+        assert_eq!(snapshot.idle_vms.len(), 2);
+        assert_eq!(snapshot.idle_vms[0].session_id, "sess-a");
+        assert_eq!(snapshot.idle_vms[0].sandbox_id, retained_a_sandbox_id);
+        assert_eq!(snapshot.idle_vms[1].session_id, "sess-b");
+        assert_eq!(snapshot.idle_vms[1].sandbox_id, retained_b_sandbox_id);
+    }
+
+    #[test]
+    fn evict_expired_with_snapshot_all_expired_returns_empty_snapshot() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let now = Instant::now();
+
+        let _ = park_at(
+            &mut pool,
+            "s1",
+            make_candidate_for("s1", 2, 2048),
+            now - Duration::from_secs(400),
+            Duration::from_secs(300),
+        );
+        let _ = park_at(
+            &mut pool,
+            "s2",
+            make_candidate_for("s2", 4, 4096),
+            now - Duration::from_secs(310),
+            Duration::from_secs(300),
+        );
+        let before_revision = pool.status_snapshot().revision;
+
+        let (evicted, snapshot) = pool.evict_expired_with_snapshot();
+
+        assert_eq!(evicted.len(), 2);
+        assert_eq!(pool.len(), 0);
+        assert_eq!(snapshot.revision, before_revision + 1);
+        assert!(snapshot.idle_vms.is_empty());
+    }
+
+    #[test]
     fn evict_oldest() {
         let mut pool = IdlePool::new(pool_config(0));
         let now = Instant::now();
@@ -1569,6 +1692,7 @@ mod tests {
         let evicted = pool.evict_expired();
         assert!(evicted.is_empty());
         assert_eq!(pool.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, 1);
     }
 
     #[test]
@@ -1603,6 +1727,7 @@ mod tests {
         let evicted = pool.evict_expired();
         assert_eq!(evicted.len(), 2);
         assert_eq!(pool.len(), 0);
+        assert_eq!(pool.status_snapshot().revision, 3);
     }
 
     #[test]
