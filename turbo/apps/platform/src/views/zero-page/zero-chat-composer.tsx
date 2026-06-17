@@ -2749,8 +2749,11 @@ function ComputerUseConnectorMenuSection({
             return (
               <div
                 key={host.id}
+                onClick={() => {
+                  computerUse.onChange(checked ? null : host.id);
+                }}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 transition-colors",
+                  "flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer",
                   checked ? "bg-primary/5" : "hover:bg-muted/50",
                 )}
               >
@@ -2767,15 +2770,22 @@ function ComputerUseConnectorMenuSection({
                     </span>
                   )}
                 </span>
-                <LoadingSwitch
-                  checked={checked}
-                  onCheckedChange={onDomEventFn((nextChecked) => {
-                    computerUse.onChange(nextChecked ? host.id : null);
-                  })}
-                  loading={false}
-                  ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
-                  size="sm"
-                />
+                <span
+                  className="flex shrink-0 items-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <LoadingSwitch
+                    checked={checked}
+                    onCheckedChange={onDomEventFn((nextChecked) => {
+                      computerUse.onChange(nextChecked ? host.id : null);
+                    })}
+                    loading={false}
+                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    size="sm"
+                  />
+                </span>
               </div>
             );
           })}
@@ -2904,7 +2914,13 @@ function ConnectorsPopoverButton({
                   return (
                     <div
                       key={item.type}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      onClick={onDomEventFn(async () => {
+                        if (savingType === item.type) {
+                          return;
+                        }
+                        await onToggle(item.type, !item.authorized);
+                      })}
+                      className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors cursor-pointer"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         <ConnectorIcon type={item.type} size={16} />
@@ -2912,15 +2928,22 @@ function ConnectorsPopoverButton({
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
                       </span>
-                      <LoadingSwitch
-                        checked={item.authorized}
-                        onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(item.type, checked);
-                        })}
-                        loading={savingType === item.type}
-                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
-                        size="sm"
-                      />
+                      <span
+                        className="flex shrink-0 items-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                      >
+                        <LoadingSwitch
+                          checked={item.authorized}
+                          onCheckedChange={onDomEventFn(async (checked) => {
+                            await onToggle(item.type, checked);
+                          })}
+                          loading={savingType === item.type}
+                          ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                          size="sm"
+                        />
+                      </span>
                     </div>
                   );
                 })}
