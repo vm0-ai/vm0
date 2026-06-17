@@ -259,7 +259,7 @@ describe("presentation template items", () => {
     expect(item.templateId).toBe("template:html-ppt-business-data");
     expect(item.previewImages.length).toBe(15);
     expect(item.embedUrl).toMatch(
-      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/example\.html$/,
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/business-data\.html$/,
     );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
@@ -314,7 +314,9 @@ describe("presentation template items", () => {
     expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
     expect(botaneItem.previewImages.length).toBe(15);
     expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
-    expect(botaneItem.embedUrl).toMatch(/^https:\/\/cdn\.vm0\.io\/.+\.html$/);
+    expect(botaneItem.embedUrl).toMatch(
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/botane-organic\.html$/,
+    );
     expectCdnPreviewImages(botaneItem);
     expect(findDesignSystem(botaneItem.designSystemId)).toBeDefined();
     expect(findTemplate(botaneItem.templateId)?.targets).toContain(

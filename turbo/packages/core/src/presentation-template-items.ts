@@ -2138,7 +2138,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/763fcebf-f68e-4709-a870-55519282db1a/botane-organic.html",
       previewImage:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
@@ -2151,7 +2151,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3ff9478-a282-4946-9b1b-431c4cdb1788/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3650eb44-eb5e-452e-800c-9de51b339aeb/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
       designSystemId: "design-system:business-data",
