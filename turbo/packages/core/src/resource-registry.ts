@@ -53,6 +53,17 @@ export interface RegistryEntry {
   readonly targets?: readonly GenerationTarget[];
 }
 
+export interface VideoTemplateRegistryEntry extends Omit<
+  RegistryEntry,
+  "kind" | "source"
+> {
+  readonly kind: "video-template";
+  readonly source: ResourceSourceRef & {
+    readonly repo: string;
+    readonly ref: string;
+  };
+}
+
 export interface ResourceCandidateSlice {
   readonly registryVersion: string;
   readonly source: {
@@ -69,7 +80,7 @@ export interface ResourceCandidateSlice {
     readonly designSystems: readonly RegistryEntry[];
     readonly imageStyles: readonly RegistryEntry[];
     readonly audioStyles: readonly RegistryEntry[];
-    readonly videoTemplates: readonly RegistryEntry[];
+    readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
     readonly bundleTemplates: readonly RegistryEntry[];
   };
 }
@@ -78,8 +89,104 @@ const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
 const VM0_SKILLS_REF = "main";
+const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
+  repo: VM0_SKILLS_REPO,
+  ref: VM0_SKILLS_REF,
+} as const;
 
 const RESOURCE_REGISTRY_VERSION = "v1";
+
+function videoTemplateSource(
+  path: string,
+): VideoTemplateRegistryEntry["source"] {
+  return {
+    ...VIDEO_TEMPLATE_REGISTRY_SOURCE,
+    path,
+  };
+}
+
+const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
+  {
+    id: "video-template:epic-grandeur",
+    kind: "video-template",
+    name: "Epic Grandeur",
+    description:
+      "Large-format epic cinematic video style with wide framing, aerial scale, golden backlight, and awe-struck tone.",
+    source: videoTemplateSource("video-template/epic-grandeur"),
+  },
+  {
+    id: "video-template:gourmet-documentary",
+    kind: "video-template",
+    name: "Gourmet Documentary",
+    description:
+      "Sensory culinary-documentary video style with macro food texture, steam, warm backlight, and artisan hands.",
+    source: videoTemplateSource("video-template/gourmet-documentary"),
+  },
+  {
+    id: "video-template:luxury-product",
+    kind: "video-template",
+    name: "Luxury Product Macro",
+    description:
+      "Dark luxury product macro video style with premium material detail, black studio, pinpoint highlights, and refined reveals.",
+    source: videoTemplateSource("video-template/luxury-product"),
+  },
+  {
+    id: "video-template:shortform-viral",
+    kind: "video-template",
+    name: "Shortform Viral",
+    description:
+      "Short-form viral video style with vertical framing, fast hook, handheld creator energy, bright color, and quick rhythm.",
+    source: videoTemplateSource("video-template/shortform-viral"),
+  },
+  {
+    id: "video-template:fashion-editorial",
+    kind: "video-template",
+    name: "Fashion Editorial",
+    description:
+      "High-fashion editorial video style with cold desaturated grade, strong silhouettes, luxury texture, and deliberate pose.",
+    source: videoTemplateSource("video-template/fashion-editorial"),
+  },
+  {
+    id: "video-template:sports-performance-ad",
+    kind: "video-template",
+    name: "Sports Performance Ad",
+    description:
+      "Sports performance advertising video style with athlete effort, gear close-ups, impact rhythm, and dramatic rim light.",
+    source: videoTemplateSource("video-template/sports-performance-ad"),
+  },
+  {
+    id: "video-template:japanese-wabi-sabi",
+    kind: "video-template",
+    name: "Japanese Wabi-Sabi",
+    description:
+      "Japanese wabi-sabi lifestyle video style with natural imperfection, warm soft light, negative space, and quiet mood.",
+    source: videoTemplateSource("video-template/japanese-wabi-sabi"),
+  },
+  {
+    id: "video-template:hand-drawn-fantasy-anime",
+    kind: "video-template",
+    name: "Hand Drawn Fantasy Anime",
+    description:
+      "Hand-drawn fantasy animation video style with painterly 2D backgrounds, expressive characters, and gentle wonder.",
+    source: videoTemplateSource("video-template/hand-drawn-fantasy-anime"),
+  },
+  {
+    id: "video-template:cyberpunk-anime",
+    kind: "video-template",
+    name: "Cyberpunk Anime",
+    description:
+      "2D cyberpunk anime video style with neon megacity atmosphere, rain-slick streets, cel shading, and melancholic mood.",
+    source: videoTemplateSource("video-template/cyberpunk-anime"),
+  },
+  {
+    id: "video-template:chinese-ink-art",
+    kind: "video-template",
+    name: "Chinese Ink Painting",
+    description:
+      "Chinese ink-wash video style with monochrome brush texture, white space, mist, and calm classical-poetry mood.",
+    source: videoTemplateSource("video-template/chinese-ink-art"),
+  },
+];
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
@@ -3384,6 +3491,39 @@ export function findImageStyle(id: string): RegistryEntry | undefined {
   });
 }
 
+const VIDEO_TEMPLATE_ID_ALIASES: Readonly<Record<string, string>> = {
+  "athletic-motivation": "video-template:sports-performance-ad",
+  "video-template:athletic-motivation": "video-template:sports-performance-ad",
+  "imax-epic-cinematic": "video-template:epic-grandeur",
+  "video-template:imax-epic-cinematic": "video-template:epic-grandeur",
+  "luxury-watch-product": "video-template:luxury-product",
+  "video-template:luxury-watch-product": "video-template:luxury-product",
+};
+
+export function canonicalizeVideoTemplateId(id: string): string {
+  const alias = VIDEO_TEMPLATE_ID_ALIASES[id];
+  if (alias) {
+    return alias;
+  }
+  if (id.startsWith("video-template:")) {
+    return id;
+  }
+  return `video-template:${id}`;
+}
+
+export function listVideoTemplates(): readonly VideoTemplateRegistryEntry[] {
+  return VIDEO_TEMPLATE_REGISTRY;
+}
+
+export function findVideoTemplate(
+  id: string,
+): VideoTemplateRegistryEntry | undefined {
+  const canonicalId = canonicalizeVideoTemplateId(id);
+  return listVideoTemplates().find((entry) => {
+    return entry.id === canonicalId;
+  });
+}
+
 export function listDesignSystems(): readonly RegistryEntry[] {
   return filterByKind("design-system");
 }
@@ -3453,7 +3593,7 @@ export function selectResourceCandidates(
       designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
       audioStyles: filterByKind("audio-style"),
-      videoTemplates: filterByKind("video-template"),
+      videoTemplates: listVideoTemplates(),
       bundleTemplates: filterByKind("bundle-template"),
     },
   };

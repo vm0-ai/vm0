@@ -3,7 +3,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_STYLE_PRESETS,
+  VIDEO_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
@@ -84,7 +84,7 @@ describe("buildGenerationTemplatePrompt", () => {
   });
 
   it("builds video template preset guidance", () => {
-    const item = VIDEO_STYLE_PRESETS[0]!;
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
       type: "video",
@@ -100,25 +100,14 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    expect(result.prompt).toContain(`Preset: ${item.nameEn} (${item.id})`);
-    expect(result.prompt).toContain("- Visual tone:");
-    expect(result.prompt).toContain("- Camera style:");
-    expect(result.prompt).toContain("- Editing pace:");
-    expect(result.prompt).toContain("- Narrative mode:");
-    expect(result.prompt).toContain("- Production type:");
-    expect(result.prompt).toContain("- Emotional tone:");
-    expect(result.prompt).toContain("- Style reference:");
-    expect(result.prompt).toContain("- Prompt style notes:");
+    expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
     expect(result.prompt).toContain(
-      "Reflect the style dimensions and prompt notes above in the final video prompt.",
+      `Template source: vm0-ai/vm0-skills@main:${item.sourcePath}`,
     );
-    // The content-safety guardrail is the only video moderation in the repo, so
-    // it must survive every rewrite of this prompt.
+    expect(result.prompt).not.toContain("nexu-io/open-design");
     expect(result.prompt).toContain(
-      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+      `zero generate video --provider built-in --template ${item.id}`,
     );
-    expect(result.prompt).toContain(
-      "zero generate video --provider built-in --prompt",
-    );
+    expect(result.prompt).toContain("Follow the returned authoring packet.");
   });
 });

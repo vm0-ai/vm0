@@ -75,8 +75,8 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findVideoTemplateItem,
   r2ImageTransformUrl,
-  VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type {
@@ -5631,6 +5631,7 @@ function UserMessageActions({
 function formatTemplateIdLabel(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
+    .replace(/^video-template:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
@@ -5643,10 +5644,8 @@ function generationTemplateLabel(
     return null;
   }
   if (value.type === "video") {
-    const item = VIDEO_STYLE_PRESETS.find((candidate) => {
-      return candidate.id === value.selection.stylePresetId;
-    });
-    return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
+    const item = findVideoTemplateItem(value.selection.stylePresetId);
+    return item?.title ?? formatTemplateIdLabel(value.selection.stylePresetId);
   }
   if (value.type === "illustration") {
     const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {

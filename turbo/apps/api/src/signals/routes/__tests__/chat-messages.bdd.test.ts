@@ -6,7 +6,7 @@ import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
-  VIDEO_STYLE_PRESETS,
+  VIDEO_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
   chatMessagesContract,
@@ -1897,37 +1897,29 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     await cancelChatRun(actor, presentation.runId);
 
-    const preset = VIDEO_STYLE_PRESETS.find((item) => {
-      return item.id === "tech-minimalist-reveal";
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "video-template:epic-grandeur";
     });
-    if (!preset) {
-      throw new Error("Expected the tech-minimalist-reveal video preset");
+    if (!videoTemplate) {
+      throw new Error("Expected the epic-grandeur video template");
     }
     const video = await sendChatRun(actor, {
       agentId,
       prompt: "make a product video",
       generationTemplate: {
         type: "video",
-        selection: { stylePresetId: preset.id },
+        selection: { stylePresetId: videoTemplate.id },
       },
     });
     const videoRun = await api.readRun(actor, video.runId);
     const videoPrompt = videoRun.appendSystemPrompt ?? "";
     expect(videoPrompt).toContain("# Artifact Template Context");
-    expect(videoPrompt).toContain(`Preset: ${preset.nameEn} (${preset.id})`);
     expect(videoPrompt).toContain(
-      `- Visual tone: ${preset.dimensions.visualTone}`,
+      `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(videoPrompt).toContain(
-      `- Camera style: ${preset.dimensions.cameraStyle}`,
+      `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(videoPrompt).toContain(
-      `- Style reference: ${preset.dimensions.styleReference}`,
-    );
-    expect(videoPrompt).toContain(
-      "safe for all audiences, positive and uplifting, no violence, no explicit content",
-    );
-    expect(videoPrompt).not.toContain(preset.scene);
     await cancelChatRun(actor, video.runId);
   }, 90_000);
 
@@ -1982,11 +1974,11 @@ describe("CHAT-02: generation templates and attachments", () => {
 
     // Turn 3: attaching a video preset in the same thread keeps it alongside the
     // illustration style — multiple template types coexist per thread.
-    const preset = VIDEO_STYLE_PRESETS.find((item) => {
-      return item.id === "tech-minimalist-reveal";
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "video-template:epic-grandeur";
     });
-    if (!preset) {
-      throw new Error("Expected the tech-minimalist-reveal video preset");
+    if (!videoTemplate) {
+      throw new Error("Expected the epic-grandeur video template");
     }
     const third = await sendChatRun(actor, {
       agentId,
@@ -1994,15 +1986,19 @@ describe("CHAT-02: generation templates and attachments", () => {
       prompt: "now make a video",
       generationTemplate: {
         type: "video",
-        selection: { stylePresetId: preset.id },
+        selection: { stylePresetId: videoTemplate.id },
       },
     });
     const thirdPrompt = (await api.readRun(actor, third.runId))
       .appendSystemPrompt;
     // Both template types coexist in the thread, so the combined prompt carries
     // each type's distinguishing command and facts.
-    expect(thirdPrompt).toContain(`Preset: ${preset.nameEn} (${preset.id})`);
-    expect(thirdPrompt).toContain("zero generate video --provider built-in");
+    expect(thirdPrompt).toContain(
+      `Template: ${videoTemplate.title} (${videoTemplate.id})`,
+    );
+    expect(thirdPrompt).toContain(
+      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+    );
     expect(thirdPrompt).toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
     );
@@ -2073,7 +2069,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           type: "video",
           selection: { stylePresetId: "video-style:missing" },
         },
-        message: "Unknown video style preset",
+        message: "Unknown video template",
       },
     ];
     for (const arm of arms) {

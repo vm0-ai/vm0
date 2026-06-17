@@ -11,9 +11,9 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
   type PresentationTemplateItem,
-  VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
   chatThreadByIdContract,
@@ -75,16 +75,6 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
-}
-
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
 }
 
 function linkByText(text: string): HTMLElement {
@@ -1748,29 +1738,74 @@ describe("chat composer templates", () => {
   });
 
   it("opens video templates by default when only the video picker is enabled", async () => {
-    const videoStyle = VIDEO_STYLE_PRESETS[0]!;
+    const videoStyle = VIDEO_TEMPLATE_ITEMS[0]!;
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const pauseSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => {});
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
-    });
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+      });
 
-    click(
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+
       await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
+        expect(tabByText("Video")).toBeInTheDocument();
+        expect(
+          screen.getByLabelText(`Select video template ${videoStyle.title}`),
+        ).toBeInTheDocument();
+        const previewVideo = Array.from(
+          document.querySelectorAll("video"),
+        ).find((video) => {
+          return video.getAttribute("src") === videoStyle.previewVideo;
+        });
+        if (!previewVideo) {
+          throw new Error("Video template preview video not found");
+        }
+        expect(previewVideo).toHaveAttribute(
+          "poster",
+          r2ImageTransformUrl(videoStyle.previewImage, {
+            width: 640,
+            height: 360,
+          }),
+        );
+        expect(previewVideo).toHaveAttribute("preload", "none");
+        expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
+        expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
+      });
 
-    await waitFor(() => {
-      expect(tabByText("Video")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
-      expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
-    });
+      const previewVideo = Array.from(document.querySelectorAll("video")).find(
+        (video) => {
+          return video.getAttribute("src") === videoStyle.previewVideo;
+        },
+      );
+      if (!previewVideo) {
+        throw new Error("Video template preview video not found");
+      }
+      fireEvent.mouseEnter(previewVideo);
+      expect(playSpy).toHaveBeenCalledTimes(1);
+      expect(previewVideo.defaultMuted).toBeTruthy();
+      expect(previewVideo.muted).toBeTruthy();
+
+      previewVideo.currentTime = 3;
+      fireEvent.mouseLeave(previewVideo);
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(previewVideo.currentTime).toBe(0);
+    } finally {
+      playSpy.mockRestore();
+      pauseSpy.mockRestore();
+    }
   });
 
   it("queues a selected template during an active run and clears the picker state", async () => {
@@ -1857,9 +1892,9 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("selects and removes a video style from the picker", async () => {
-    const videoStyle = VIDEO_STYLE_PRESETS.find((item) => {
-      return item.nameEn === "Phone Product Showcase";
+  it("selects and removes a video template from the picker", async () => {
+    const videoStyle = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.title === "Luxury Product Macro";
     })!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1883,15 +1918,10 @@ describe("chat composer templates", () => {
     click(tabByText("Video"));
 
     await waitFor(() => {
-      expect(buttonByText("Brand & Commercial")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Brand & Commercial"));
-    await waitFor(() => {
+      expect(screen.queryByText("Brand & Commercial")).not.toBeInTheDocument();
       expect(
-        screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
+        screen.getByLabelText(`Select video template ${videoStyle.title}`),
       ).toBeInTheDocument();
-      expect(screen.queryByText("Symmetrical Pastel Quirky")).toBeNull();
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");
@@ -1899,8 +1929,8 @@ describe("chat composer templates", () => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "phone");
-    click(screen.getByLabelText(`Select video style ${videoStyle.nameEn}`));
+    await fill(screen.getByLabelText("Search templates"), "luxury");
+    click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -1909,11 +1939,11 @@ describe("chat composer templates", () => {
         "true",
       );
       expect(
-        screen.getByLabelText(`Remove video style ${videoStyle.nameEn}`),
+        screen.getByLabelText(`Remove video template ${videoStyle.title}`),
       ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText(`Remove video style ${videoStyle.nameEn}`));
+    click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -1921,7 +1951,7 @@ describe("chat composer templates", () => {
         "false",
       );
       expect(
-        screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
+        screen.queryByLabelText(`Remove video template ${videoStyle.title}`),
       ).not.toBeInTheDocument();
     });
   });

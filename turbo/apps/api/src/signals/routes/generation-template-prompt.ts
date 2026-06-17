@@ -2,8 +2,8 @@ import {
   findDesignSystem,
   findImageStyle,
   findTemplate,
+  findVideoTemplate,
 } from "@vm0/core/resource-registry";
-import { VIDEO_STYLE_PRESETS, VIDEO_DIMENSION_DESCRIPTIONS } from "@vm0/core";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -129,38 +129,31 @@ function buildPresentationGenerationTemplatePrompt(
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
-  const preset = VIDEO_STYLE_PRESETS.find((p) => {
-    return p.id === generationTemplate.selection.stylePresetId;
-  });
-  if (!preset) {
-    return { status: "invalid", message: "Unknown video style preset" };
+  const template = findVideoTemplate(
+    generationTemplate.selection.stylePresetId,
+  );
+  if (!template) {
+    return { status: "invalid", message: "Unknown video template" };
   }
-
-  const describeSlug = (slug: string): string => {
-    const desc = VIDEO_DIMENSION_DESCRIPTIONS[slug];
-    return desc ? `${slug} — ${desc}` : slug;
-  };
+  const sourceRepo = template.source.repo;
+  const sourceRef = template.source.ref;
+  const sourcePath = template.source.path;
+  const templateSource = `${sourceRepo}@${sourceRef}:${sourcePath}`;
 
   return {
     status: "resolved",
     prompt: [
       ...templateFraming("a video"),
-      "Selected video style preset:",
+      "Selected video template:",
       "- Artifact type: video",
-      `- Preset: ${preset.nameEn} (${preset.id})`,
-      `- Visual tone: ${describeSlug(preset.dimensions.visualTone)}`,
-      `- Camera style: ${describeSlug(preset.dimensions.cameraStyle)}`,
-      `- Editing pace: ${describeSlug(preset.dimensions.editingPace)}`,
-      `- Narrative mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
-      `- Production type: ${describeSlug(preset.dimensions.productionType)}`,
-      `- Emotional tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
-      `- Style reference: ${describeSlug(preset.dimensions.styleReference)}`,
-      `- Prompt style notes: ${preset.promptConstraints}`,
+      `- Template: ${template.name} (${template.id})`,
+      `- Template description: ${template.description}`,
+      `- Template source: ${templateSource}`,
       "",
       "When you produce a video from the user's request:",
-      "- Reflect the style dimensions and prompt notes above in the final video prompt.",
-      "- Always end the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content.",
-      `- Run: zero generate video --provider built-in --prompt "<user request, plus the style dimensions and the safety line above>" — or follow connector guidance when a connector/provider is requested.`,
+      `- Resolve the selected template source first: ${templateSource}`,
+      `- Run: zero generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
+      "- Follow the returned authoring packet. If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
     ].join("\n"),
   };
