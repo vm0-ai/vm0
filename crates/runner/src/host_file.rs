@@ -1,5 +1,5 @@
-//! Low-level host filesystem primitives for runner lock/log hardening.
-//! Keep policy-specific entry points in `lock.rs` and `log_file.rs`.
+//! Low-level host filesystem primitives for runner-owned state hardening.
+//! Keep policy-specific entry points in caller modules.
 
 use std::ffi::OsStr;
 use std::fs::File;
@@ -630,10 +630,12 @@ mod tests {
     #[test]
     fn ensure_dir_creates_shared_trusted_parent_as_shared() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("base").join("child");
+        let base = dir.path().join("base");
+        let path = base.join("child");
 
         ensure_dir(&path, DirMode::SharedTrustedParent, "test directory").unwrap();
 
+        assert_eq!(mode(&base), SHARED_TRUSTED_DIR_MODE);
         assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
     }
 
