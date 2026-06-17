@@ -306,11 +306,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     # Request body
     request_stream_body = request_streaming.captured_request_stream_body(flow)
     if flow.metadata.get(metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE):
-        if request_stream_body is not None:
-            if request_stream_body.buffer or request_stream_body.truncated:
-                log_entry["request_body_truncated"] = True
-        elif flow.request.raw_content:
-            log_entry["request_body_truncated"] = True
+        log_entry["request_body_truncated"] = True
     elif request_stream_body is not None:
         req_ct = flow.request.headers.get("content-type", "")
         request_body = body_decoding.decode_body_bounded(
