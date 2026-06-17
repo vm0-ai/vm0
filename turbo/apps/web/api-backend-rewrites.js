@@ -652,23 +652,6 @@ export const API_BACKEND_REWRITES = [
     BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH_RE,
   ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
-  ["/api/internal/callbacks/agent", "/api/internal/callbacks/agent"],
-  ["/api/internal/callbacks/chat", "/api/internal/callbacks/chat"],
-  [
-    "/api/internal/callbacks/github/issues",
-    "/api/internal/callbacks/github/issues",
-  ],
-  [
-    "/api/internal/callbacks/trigger/cron",
-    "/api/internal/callbacks/trigger/cron",
-  ],
-  [
-    "/api/internal/callbacks/trigger/loop",
-    "/api/internal/callbacks/trigger/loop",
-  ],
-  ["/api/internal/callbacks/slack/org", "/api/internal/callbacks/slack/org"],
-  ["/api/internal/callbacks/telegram", "/api/internal/callbacks/telegram"],
-  ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/cron/aggregate-model-stats",
     "/api/internal/cron/aggregate-model-stats",
