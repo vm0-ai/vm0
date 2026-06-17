@@ -19,8 +19,13 @@ _UNDERBILLING_PROTECTED_FIELDS = frozenset(
 _SECRET_FIELD_WORDS = frozenset(
     (
         "authorization",
+        "bearer",
+        "cookie",
         "credential",
+        "jwt",
         "password",
+        "passwd",
+        "pwd",
         "secret",
     )
 )
@@ -47,6 +52,11 @@ _SECRET_TOKEN_KEYS = frozenset(
     )
 )
 _SECRET_COMPACT_KEYS = frozenset(("accesskey", "apikey", "privatekey"))
+_SECRET_COMPACT_FIELD_MARKERS = (
+    _SECRET_COMPACT_KEYS
+    | _SECRET_COMPACT_TOKEN_KEYS
+    | frozenset(("bearer", "cookie", "jwt", "passwd"))
+)
 
 
 def _stderr_field_key_words(key: str) -> tuple[str, ...]:
@@ -95,8 +105,7 @@ def _stderr_field_is_secret_like(key: str, value: object) -> bool:
         return True
     if any(word in _SECRET_TOKEN_KEYS for word in words):
         return True
-    compact_secret_markers = _SECRET_COMPACT_KEYS | _SECRET_COMPACT_TOKEN_KEYS
-    if any(marker in normalized_key for marker in compact_secret_markers):
+    if any(marker in normalized_key for marker in _SECRET_COMPACT_FIELD_MARKERS):
         return True
     return any(marker in normalized_key for marker in _SECRET_FIELD_MARKERS)
 

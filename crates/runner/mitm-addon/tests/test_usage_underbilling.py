@@ -151,6 +151,8 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
             access_key_id="access-key-value",
             private_key="private-key-value",
             credential_value="credential-value",
+            bearer="bearer-value",
+            jwt="jwt-value",
             sandbox_token_bytes=b"bytes-token-value",
             auth_header="short-auth-header-value",
             authentication_header="authentication-header-value",
@@ -164,11 +166,17 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
                 "access key number": 456789,
                 "accessKeyId": "camel-access-key-value",
                 "oauth_token": "oauth-token-value",
+                "passwd": "passwd-value",
+                "pwd": "pwd-value",
                 "APIToken": "upper-api-token-value",
                 "XApiKey": "prefixed-api-key-value",
                 "AWSACCESSKEYID": "upper-compact-access-key-value",
                 "github_accesstoken": "compact-access-token-value",
                 "openai_apikey": "compact-api-key-value",
+                "sessioncookie": "compact-cookie-value",
+                "signedjwt": "compact-jwt-value",
+                "dbpasswd": "compact-passwd-value",
+                "bearerCredential": "compact-bearer-value",
                 "private.key": "dotted-private-key-value",
                 "privateKey": "camel-private-key-value",
                 "ssh_privatekey": "compact-private-key-value",
@@ -180,6 +188,10 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "access_key_id=[redacted]" in message
     assert "private_key=[redacted]" in message
     assert "credential_value=[redacted]" in message
+    assert "bearer=[redacted]" in message
+    assert "jwt=[redacted]" in message
+    assert "passwd=[redacted]" in message
+    assert "pwd=[redacted]" in message
     assert "auth_header=[redacted]" in message
     assert "authentication_header=[redacted]" in message
     assert "oauth_token=[redacted]" in message
@@ -196,6 +208,10 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "AWSACCESSKEYID=[redacted]" in message
     assert "github_accesstoken=[redacted]" in message
     assert "openai_apikey=[redacted]" in message
+    assert "sessioncookie=[redacted]" in message
+    assert "signedjwt=[redacted]" in message
+    assert "dbpasswd=[redacted]" in message
+    assert "bearerCredential=[redacted]" in message
     assert "ssh_privatekey=[redacted]" in message
     assert "idempotency_key=diagnostic-key" in message
     assert "input_tokens=42" in message
@@ -206,6 +222,10 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "456789" not in message
     assert "private-key-value" not in message
     assert "credential-value" not in message
+    assert "bearer-value" not in message
+    assert "jwt-value" not in message
+    assert "passwd-value" not in message
+    assert "pwd-value" not in message
     assert "short-auth-header-value" not in message
     assert "authentication-header-value" not in message
     assert "oauth-token-value" not in message
@@ -214,6 +234,10 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "upper-compact-access-key-value" not in message
     assert "compact-access-token-value" not in message
     assert "compact-api-key-value" not in message
+    assert "compact-cookie-value" not in message
+    assert "compact-jwt-value" not in message
+    assert "compact-passwd-value" not in message
+    assert "compact-bearer-value" not in message
     assert "bytes-token-value" not in message
     assert "hyphen-api-key-value" not in message
     assert "spaced-api-key-value" not in message
