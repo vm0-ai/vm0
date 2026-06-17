@@ -45,6 +45,7 @@ import {
   IconX,
   IconClock,
   IconCoins,
+  IconHourglass,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -3012,9 +3013,9 @@ function CompletedWorkFoldRow({
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+        className="mt-0.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <IconClock
+        <IconHourglass
           aria-hidden
           size={14}
           className="shrink-0 text-muted-foreground/70"
