@@ -20,6 +20,12 @@ fn session_id_validation_rejects_path_traversal() {
     for id in invalid_ids {
         assert!(!is_valid_session_id(id), "expected rejection for: {id:?}");
     }
+
+    let overlong_id = "a".repeat(129);
+    assert!(
+        !is_valid_session_id(&overlong_id),
+        "expected overlong session id rejection"
+    );
 }
 
 #[test]

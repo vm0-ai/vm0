@@ -343,6 +343,16 @@ async fn read_guest_session_id_rejects_invalid_content() {
 }
 
 #[tokio::test]
+async fn read_guest_session_id_rejects_overlong_content() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_read_file_result(Ok(Some("a".repeat(129).into_bytes())));
+
+    let session_id = read_guest_session_id(&sandbox, RunId::nil()).await;
+
+    assert!(session_id.is_none());
+}
+
+#[tokio::test]
 async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
     let sandbox = MockSandbox::new("test");
     let diagnostic = FailureDiagnostic::new(

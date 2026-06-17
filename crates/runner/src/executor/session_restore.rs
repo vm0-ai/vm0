@@ -14,6 +14,7 @@ const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
 const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
 const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
 const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
+const MAX_SESSION_ID_LEN: usize = 128;
 
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
@@ -386,9 +387,11 @@ fn session_redaction_variants(session_id: &str) -> Vec<String> {
     .collect()
 }
 
-/// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
+/// Returns true if the session ID is short enough for guest filenames and
+/// contains only safe characters (alphanumeric, dash, underscore).
 pub(super) fn is_valid_session_id(id: &str) -> bool {
     !id.is_empty()
+        && id.len() <= MAX_SESSION_ID_LEN
         && id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
