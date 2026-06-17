@@ -28,7 +28,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroWorkflowsCollectionContract as zeroSkillsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
@@ -49,6 +49,7 @@ import {
 const context = testContext();
 
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
+const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
 const THREAD_ID = "thread-model-template-1";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
@@ -499,7 +500,7 @@ function composerElementFrom(textarea: HTMLElement): HTMLElement {
   return composer;
 }
 
-// The slash-skill composer renders a TipTap contenteditable instead of a
+// The slash-workflow composer renders a TipTap contenteditable instead of a
 // textarea, so locate it directly rather than by placeholder.
 async function findComposerEditor(): Promise<HTMLElement> {
   return await waitFor(() => {
@@ -539,19 +540,34 @@ function placeCaretAfterText(root: HTMLElement, text: string): void {
   throw new Error(`${text} text node not found`);
 }
 
-function workflowSummary(
-  name: string,
-  displayName: string | null,
-  description: string | null,
-) {
+function workflowSummary({
+  name,
+  displayName,
+  description,
+  attachedAgentIds = [],
+}: {
+  readonly name: string;
+  readonly displayName: string | null;
+  readonly description: string | null;
+  readonly attachedAgentIds?: readonly string[];
+}) {
   return {
     name,
     displayName,
     description,
     visibility: "public" as const,
     ownerUserId: "user-1",
-    attachedAgentCount: 0,
-    attachedAgents: [],
+    attachedAgentCount: attachedAgentIds.length,
+    attachedAgents: attachedAgentIds.map((agentId) => {
+      return {
+        agentId,
+        ownerId: "test-user-123",
+        displayName: agentId === AGENT_ID ? "Scout" : "Other Agent",
+        description: null,
+        avatarUrl: null,
+        visibility: "public" as const,
+      };
+    }),
     canManage: true,
   };
 }
@@ -561,23 +577,35 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
-  it("suggests current agent skills from slash input and highlights inserted skill tokens", async () => {
+  it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["sales-research", "support-escalation"] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+    mockAgent({ customSkills: ["legacy-skill"] });
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        workflowSummary(
-          "sales-research",
-          "Sales Research",
-          "Find account context before outreach",
-        ),
-        workflowSummary(
-          "support-escalation",
-          "Support Escalation",
-          "Summarize customer issues for handoff",
-        ),
-        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          attachedAgentIds: [AGENT_ID],
+        }),
+        workflowSummary({
+          name: "support-escalation",
+          displayName: "Support Escalation",
+          description: "Summarize customer issues for handoff",
+          attachedAgentIds: [AGENT_ID],
+        }),
+        workflowSummary({
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org workflow",
+        }),
+        workflowSummary({
+          name: "other-agent-workflow",
+          displayName: "Other Agent Workflow",
+          description: "Attached somewhere else",
+          attachedAgentIds: [OTHER_AGENT_ID],
+        }),
       ]);
     });
 
@@ -595,10 +623,12 @@ describe("chat composer models", () => {
     expect(salesSuggestion).toBeInTheDocument();
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    expect(screen.queryByText("/other-agent-workflow")).not.toBeInTheDocument();
+    expect(screen.queryByText("/legacy-skill")).not.toBeInTheDocument();
     // The menu renders in a Radix Popover portal (Floating UI handles
     // cross-browser placement), so it lives outside the composer element.
-    const slashSkillMenu = screen.getByTestId("slash-skill-menu");
-    expect(slashSkillMenu).toBeInTheDocument();
+    const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
+    expect(slashWorkflowMenu).toBeInTheDocument();
 
     await user.keyboard("sales");
 
@@ -614,21 +644,31 @@ describe("chat composer models", () => {
     });
     // The colored token is a real inline decoration in the same layer as the
     // text (no overlay), so it stays aligned when the composer scrolls.
-    const highlightedSkill = screen
+    const highlightedWorkflow = screen
       .getAllByText("/sales-research")
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
-    expect(highlightedSkill).toHaveClass("text-primary");
+    expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
-  it("does not suggest org skills that are not enabled on the current agent", async () => {
+  it("does not suggest workflows that are not attached to the current agent", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
+        workflowSummary({
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org workflow",
+        }),
+        workflowSummary({
+          name: "other-agent-workflow",
+          displayName: "Other Agent Workflow",
+          description: null,
+          attachedAgentIds: [OTHER_AGENT_ID],
+        }),
       ]);
     });
 
@@ -648,13 +688,17 @@ describe("chat composer models", () => {
     expect(editor.textContent).toContain("/");
   });
 
-  it("links to the skills page from the slash skill menu footer", async () => {
+  it("links to the workflows page from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
+        workflowSummary({
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org workflow",
+        }),
       ]);
     });
 
@@ -672,21 +716,26 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     await expect(
-      screen.findByText("No matching skills"),
+      screen.findByText("No matching workflows"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
-    const link = linkByText("View all skills");
-    expect(link).toHaveAttribute("href", "/skills");
+    const link = linkByText("View all workflows");
+    expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
   });
 
-  it("hides slash skill suggestions when the feature switch is off", async () => {
+  it("hides slash workflow suggestions when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent({ customSkills: ["sales-research"] });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        workflowSummary("sales-research", "Sales Research", null),
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: null,
+          attachedAgentIds: [AGENT_ID],
+        }),
       ]);
     });
 
@@ -704,7 +753,7 @@ describe("chat composer models", () => {
     expect(textarea).toHaveValue("/");
   });
 
-  it("scrolls the slash picker with keyboard selection", async () => {
+  it("scrolls the slash workflow picker with keyboard selection", async () => {
     const user = userEvent.setup({ delay: null });
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -712,15 +761,20 @@ describe("chat composer models", () => {
       value: scrollIntoView,
     });
     mockOrgModelRoutes("kimi-k2.7-code");
-    const customSkills = Array.from({ length: 12 }, (_, index) => {
-      return `custom-skill-${index + 1}`;
+    const customWorkflows = Array.from({ length: 12 }, (_, index) => {
+      return `custom-workflow-${index + 1}`;
     });
-    mockAgent({ customSkills });
-    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(
         200,
-        customSkills.map((name) => {
-          return workflowSummary(name, null, null);
+        customWorkflows.map((name) => {
+          return workflowSummary({
+            name,
+            displayName: null,
+            description: null,
+            attachedAgentIds: [AGENT_ID],
+          });
         }),
       );
     });
@@ -735,7 +789,7 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("/");
     await expect(
-      screen.findByText("/custom-skill-1"),
+      screen.findByText("/custom-workflow-1"),
     ).resolves.toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
@@ -753,7 +807,7 @@ describe("chat composer models", () => {
       const user = userEvent.setup({ delay: null });
       mockOrgModelRoutes("kimi-k2.7-code");
       mockAgent({ customSkills: [] });
-      context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
         return respond(200, []);
       });
 
