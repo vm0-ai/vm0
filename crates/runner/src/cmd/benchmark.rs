@@ -471,13 +471,18 @@ mod tests {
 
     #[test]
     fn parse_env_args_rejects_invalid_shell_identifier_keys() {
-        for value in ["=value", "1BAD=value", "BAD-NAME=value"] {
+        for value in [
+            "=secret-value",
+            "1BAD=secret-value",
+            "BAD-NAME=secret-value",
+        ] {
             let input = vec![value.to_string()];
             let err = parse_env_args(&input).unwrap_err();
             assert!(
                 err.to_string().contains("expected shell identifier"),
                 "got: {err}"
             );
+            assert!(!err.to_string().contains("secret-value"), "got: {err}");
         }
     }
 

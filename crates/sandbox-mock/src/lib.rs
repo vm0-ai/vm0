@@ -3298,7 +3298,8 @@ mod tests {
 
     #[tokio::test]
     async fn start_process_rejects_invalid_env_key() {
-        let sandbox = MockSandbox::new("test-1");
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
         let result = sandbox
             .start_process(&StartProcessRequest {
                 cmd: "agent",
@@ -3320,6 +3321,7 @@ mod tests {
             SandboxOperationReason::Other,
             "invalid environment variable name",
         );
+        assert!(overrides.start_process_calls().is_empty());
     }
 
     #[tokio::test]
