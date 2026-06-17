@@ -229,6 +229,9 @@ describe("presentation template items", () => {
     expect(item.templateId).toBe("template:html-ppt-playful-launch");
     expect(item.previewImages.length).toBe(15);
     expect(item.previewImage).toBe(item.previewImages[0]);
+    expect(item.embedUrl).toMatch(
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/aplocoto\.html$/,
+    );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
     expect(findTemplate(item.templateId)?.targets).toContain("presentation");
