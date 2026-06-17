@@ -14,10 +14,48 @@ const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_STREAM_JSON_EVENTS: usize = 32;
 
 struct StreamJsonChild {
-    child: Child,
-    stdin: ChildStdin,
+    child: Option<Child>,
+    stdin: Option<ChildStdin>,
     rx: Receiver<Result<Value, String>>,
-    stdout_thread: JoinHandle<()>,
+    stdout_thread: Option<JoinHandle<()>>,
+}
+
+impl StreamJsonChild {
+    fn stdin_mut(&mut self) -> Result<&mut ChildStdin, Box<dyn std::error::Error>> {
+        self.stdin
+            .as_mut()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stdin closed"))
+            .map_err(Into::into)
+    }
+
+    fn close_stdin(&mut self) {
+        self.stdin.take();
+    }
+
+    fn wait(mut self) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
+        self.close_stdin();
+        let child = self.child.take().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "mock child already reaped")
+        })?;
+        let stdout_thread = self
+            .stdout_thread
+            .take()
+            .ok_or_else(|| std::io::Error::other("stdout reader thread already joined"))?;
+        wait_child(child, stdout_thread)
+    }
+}
+
+impl Drop for StreamJsonChild {
+    fn drop(&mut self) {
+        self.close_stdin();
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(stdout_thread) = self.stdout_thread.take() {
+            let _ = stdout_thread.join();
+        }
+    }
 }
 
 fn mock_claude() -> Command {
@@ -137,10 +175,10 @@ fn spawn_stream_json_child(
     });
 
     Ok(StreamJsonChild {
-        child,
-        stdin,
+        child: Some(child),
+        stdin: Some(stdin),
         rx,
-        stdout_thread,
+        stdout_thread: Some(stdout_thread),
     })
 }
 
@@ -429,32 +467,31 @@ fn one_shot_stream_json_drains_trailing_stdin() -> Result<(), Box<dyn std::error
 fn active_input_stream_reads_followups_after_first_result() -> Result<(), Box<dyn std::error::Error>>
 {
     let home = tempfile::tempdir()?;
-    let StreamJsonChild {
-        child,
-        mut stdin,
-        rx,
-        stdout_thread,
-    } = spawn_stream_json_child(home.path(), false)?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
 
-    stdin.write_all(
+    stream.stdin_mut()?.write_all(
         stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
     )?;
-    stdin.flush()?;
+    stream.stdin_mut()?.flush()?;
 
-    let mut events = recv_until_result(&rx, ACTIVE_INPUT_READY_RESULT)?;
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
     assert_eq!(
         events.iter().map(event_kind).collect::<Vec<_>>(),
         ["system/init", "result/success"]
     );
 
-    stdin.write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
-    stdin.write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
-    stdin.flush()?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
 
-    events.extend(recv_until_result(&rx, "RESULT=first+second")?);
-    drop(stdin);
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
 
-    let (status, stderr) = wait_child(child, stdout_thread)?;
+    let (status, stderr) = stream.wait()?;
     assert!(status.success(), "expected success, stderr: {stderr}");
     assert!(stderr.is_empty());
     assert_eq!(
@@ -471,26 +508,25 @@ fn active_input_stream_reads_followups_after_first_result() -> Result<(), Box<dy
 #[test]
 fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
-    let StreamJsonChild {
-        child,
-        mut stdin,
-        rx,
-        stdout_thread,
-    } = spawn_stream_json_child(home.path(), true)?;
+    let mut stream = spawn_stream_json_child(home.path(), true)?;
 
-    stdin.write_all(
+    stream.stdin_mut()?.write_all(
         stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
     )?;
-    stdin.flush()?;
+    stream.stdin_mut()?.flush()?;
 
-    let mut events = recv_until_result(&rx, ACTIVE_INPUT_READY_RESULT)?;
-    stdin.write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
-    stdin.write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
-    stdin.flush()?;
-    events.extend(recv_until_result(&rx, "RESULT=first+second")?);
-    drop(stdin);
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
 
-    let (status, stderr) = wait_child(child, stdout_thread)?;
+    let (status, stderr) = stream.wait()?;
     assert!(status.success(), "expected success, stderr: {stderr}");
     assert!(stderr.is_empty());
 
@@ -531,21 +567,16 @@ fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error:
 #[test]
 fn active_input_stream_rejects_early_eof() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
-    let StreamJsonChild {
-        child,
-        mut stdin,
-        rx,
-        stdout_thread,
-    } = spawn_stream_json_child(home.path(), false)?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
 
-    stdin.write_all(
+    stream.stdin_mut()?.write_all(
         stream_json_user_frame_with_uuid("@active-input-smoke:2", "active-initial").as_bytes(),
     )?;
-    stdin.flush()?;
-    let _ = recv_until_result(&rx, ACTIVE_INPUT_READY_RESULT)?;
-    drop(stdin);
+    stream.stdin_mut()?.flush()?;
+    let _ = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    stream.close_stdin();
 
-    let (status, stderr) = wait_child(child, stdout_thread)?;
+    let (status, stderr) = stream.wait()?;
     assert!(!status.success());
     assert!(
         stderr.contains("active-input stdin closed after 0 of 2 follow-up user messages"),
