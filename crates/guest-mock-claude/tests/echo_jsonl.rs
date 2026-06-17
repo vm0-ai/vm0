@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
+const CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct StreamJsonChild {
@@ -174,15 +175,47 @@ fn wait_child(
     mut child: Child,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
-    let status = child.wait()?;
-    let mut stderr = String::new();
-    if let Some(mut child_stderr) = child.stderr.take() {
-        child_stderr.read_to_string(&mut stderr)?;
-    }
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = (|| -> Result<(ExitStatus, String), std::io::Error> {
+            let status = child.wait()?;
+            let mut stderr = String::new();
+            if let Some(mut child_stderr) = child.stderr.take() {
+                child_stderr.read_to_string(&mut stderr)?;
+            }
+            Ok((status, stderr))
+        })();
+        let _ = tx.send(result);
+    });
+
+    let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // SAFETY: this is a test cleanup path for the child process that
+            // this helper just spawned. The wait thread reaps it below.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mock child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "mock child wait thread exited without status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
     stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
-    Ok((status, stderr))
+    Ok(child_result?)
 }
 
 #[test]
