@@ -104,6 +104,43 @@ class TestErrorHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
 
+    def test_streamed_authenticated_connector_candidate_error_keeps_original_error(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b"partial request") == b"partial request"
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is None
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 0
+        assert entry["request_size"] == len(b"partial request")
+        assert entry["error"] == "connection reset by peer"
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
     async def test_browser_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
