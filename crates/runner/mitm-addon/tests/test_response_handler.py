@@ -135,6 +135,47 @@ class TestResponseHandler:
 
         assert flow.response.content == b"upstream auth error"
 
+    async def test_streamed_connector_401_with_user_auth_keeps_upstream_response(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            request_stream = flow.request.stream
+            assert callable(request_stream)
+            assert request_stream(b"partial request") == b"partial request"
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"upstream auth error") == b"upstream auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 401
+        assert entry["request_size"] == len(b"partial request")
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
     async def test_replaces_connector_401_body_when_auth_header_has_empty_bearer_token(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
