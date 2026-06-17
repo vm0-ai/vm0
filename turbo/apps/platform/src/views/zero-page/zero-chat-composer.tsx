@@ -2438,7 +2438,7 @@ function TemplatePickerButton({
                 src={templatePickerIcon}
                 alt=""
                 role="presentation"
-                className="h-[32px] w-[32px] scale-125 object-contain"
+                className="h-[32px] w-[32px] object-contain"
               />
             </button>
           </TooltipTrigger>
