@@ -270,6 +270,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadDoubleClickRename]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Open the existing chat rename dialog when a sidebar chat thread is double-clicked.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
     description:

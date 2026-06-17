@@ -155,17 +155,22 @@ function sidebar(): HTMLElement {
 }
 
 function threadRowByTitle(title: string): HTMLElement {
+  const link = threadLinkByTitle(title);
+  const row = link.parentElement;
+  if (!row) {
+    throw new Error(`${title} thread row not found`);
+  }
+  return row;
+}
+
+function threadLinkByTitle(title: string): HTMLElement {
   const link = queryAllByRoleFast("link", sidebar()).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === title;
   });
   if (!link) {
     throw new Error(`${title} thread link not found`);
   }
-  const row = link.parentElement;
-  if (!row) {
-    throw new Error(`${title} thread row not found`);
-  }
-  return row;
+  return link;
 }
 
 function openThreadMenu(title: string): void {
@@ -405,6 +410,63 @@ describe("zero sidebar", () => {
 
     openThreadMenu("Release plan");
     click(menuItemByText("Rename chat"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    const titleInput = within(dialog).getByPlaceholderText("Chat title");
+    expect(titleInput).toHaveValue("Release plan");
+
+    await fill(titleInput, "Launch plan");
+    click(buttonByText("Rename", dialog));
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
+      expect(
+        within(sidebar()).queryByText("Release plan"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps sidebar double-click rename disabled by default", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    fireEvent.doubleClick(threadLinkByTitle("Release plan"));
+
+    expect(
+      screen.queryByRole("dialog", { name: "Rename chat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renames a chat thread by double-clicking from the sidebar when enabled", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadDoubleClickRename]: true },
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    fireEvent.doubleClick(threadLinkByTitle("Release plan"));
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
