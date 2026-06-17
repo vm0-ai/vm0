@@ -143,6 +143,52 @@ def test_capture_enabled_body_at_stream_limit_does_not_install_request_stream(
     assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
+def test_capture_enabled_explicit_zero_length_body_does_not_install_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="GET",
+        request_headers=headers(("Host", "example.com"), ("Content-Length", "0")),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+
+
+def test_capture_enabled_bodyless_method_without_content_length_installs_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    for method in ("GET", "HEAD"):
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="example.com",
+            method=method,
+            request_headers=headers(("Host", "example.com")),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+
+        callback = _request_stream(flow)
+        assert callback(b"body over http2") == b"body over http2"
+        assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] == bytearray(b"body over http2")
+
+
 def test_capture_enabled_body_over_stream_limit_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, headers
 ):

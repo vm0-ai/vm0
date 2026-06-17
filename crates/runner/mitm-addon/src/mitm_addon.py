@@ -758,7 +758,10 @@ def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
 
     raw_content_lengths = flow.request.headers.get_all("Content-Length")
     if not raw_content_lengths:
-        return flow.request.method.upper() in _AUTH_BASE_BODYLESS_METHODS
+        # requestheaders() does not expose mitmproxy's end_stream flag. Treat
+        # missing Content-Length as unknown length even for GET/HEAD because
+        # HTTP/2 can carry DATA frames after headers without a length header.
+        return False
 
     parsed_length: int | None = None
     for raw_content_length in raw_content_lengths:
