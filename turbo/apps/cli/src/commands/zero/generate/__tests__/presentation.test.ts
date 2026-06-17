@@ -146,20 +146,20 @@ describe("zero generate presentation command", () => {
       "--design-system",
       "playful-editorial",
       "--template",
-      "html-ppt-playful-editorial",
+      "html-ppt-playful-launch",
       "--title",
       "Launch",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected design system: design-system:playful-editorial (Playful Editorial)",
+      "Selected design system: design-system:playful-editorial (Playful Launch)",
     );
     expect(stdout).toContain(
-      "Selected template: template:html-ppt-playful-editorial (Playful Editorial Presentation)",
+      "Selected template: template:html-ppt-playful-launch (Playful Launch Presentation)",
     );
     expect(stdout).toContain("vm0-ai/vm0-skills@main");
-    expect(stdout).toContain('"id": "template:html-ppt-playful-editorial"');
+    expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
     expect(stdout).toContain('"path": "presentation-template/aplocoto"');
     expect(stdout).toContain('"id": "design-system:playful-editorial"');
     expect(stdout).toContain(
