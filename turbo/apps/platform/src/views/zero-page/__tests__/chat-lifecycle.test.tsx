@@ -3478,8 +3478,9 @@ describe("chat lifecycle", () => {
     expect(
       within(sidebar).getByText("Manual launch reminder"),
     ).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Status")).toHaveLength(3);
+    expect(within(sidebar).getAllByText("Schedule")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Rule")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Edit")).toHaveLength(3);
     expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
