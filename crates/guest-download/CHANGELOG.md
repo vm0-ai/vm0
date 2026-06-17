@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.27](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.26...guest-download-v0.20.27) (2026-06-17)
+
+
+### Refactoring
+
+* **guest-download:** consolidate http test setup ([#18032](https://github.com/vm0-ai/vm0/issues/18032)) ([38c92d4](https://github.com/vm0-ai/vm0/commit/38c92d48a5b5ecb12058cff49d7590fce534f640))
+
 ## [0.20.26](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.25...guest-download-v0.20.26) (2026-06-17)
 
 ## [0.20.25](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.24...guest-download-v0.20.25) (2026-06-16)

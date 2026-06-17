@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.464.0](https://github.com/vm0-ai/vm0/compare/app-v0.463.2...app-v0.464.0) (2026-06-17)
+
+
+### Features
+
+* add GLM 5.2 model support ([#18012](https://github.com/vm0-ai/vm0/issues/18012)) ([f39a67f](https://github.com/vm0-ai/vm0/commit/f39a67f88e52bdbd406765d9cb8953dcf9952692))
+* redesign chat automation sidebar cards as flat-divider rows ([#18017](https://github.com/vm0-ai/vm0/issues/18017)) ([563baa5](https://github.com/vm0-ai/vm0/commit/563baa5e0f33d6fdc4efa2715f00327071ef0acd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.98.0
+    * @vm0/core bumped to 8.348.0
+
 ## [0.463.2](https://github.com/vm0-ai/vm0/compare/app-v0.463.1...app-v0.463.2) (2026-06-17)
 
 
