@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.148.4](https://github.com/vm0-ai/vm0/compare/api-v1.148.3...api-v1.148.4) (2026-06-17)
+
+
+### Bug Fixes
+
+* rename playful launch presentation template ([#18005](https://github.com/vm0-ai/vm0/issues/18005)) ([5bc2161](https://github.com/vm0-ai/vm0/commit/5bc2161ea257f194e16c2eae85c0d824eeaa02ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.347.2
+
 ## [1.148.3](https://github.com/vm0-ai/vm0/compare/api-v1.148.2...api-v1.148.3) (2026-06-17)
 
 

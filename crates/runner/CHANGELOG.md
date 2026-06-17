@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.118.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.10...runner-rs-v0.118.11) (2026-06-17)
+
+
+### Bug Fixes
+
+* **runner:** validate benchmark env keys before startup ([#17999](https://github.com/vm0-ai/vm0/issues/17999)) ([4e6b823](https://github.com/vm0-ai/vm0/commit/4e6b823eba479c95cc7dbc8e377621f99b7ea5bf))
+
+
+### Performance Improvements
+
+* **runner:** avoid cloned idle eviction keys ([#17998](https://github.com/vm0-ai/vm0/issues/17998)) ([49f87a9](https://github.com/vm0-ai/vm0/commit/49f87a964c3e136fb04b8013acbc0715b781babe))
+
 ## [0.118.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.9...runner-rs-v0.118.10) (2026-06-17)
 
 ## [0.118.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.118.8...runner-rs-v0.118.9) (2026-06-16)

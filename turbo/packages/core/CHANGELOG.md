@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.347.2](https://github.com/vm0-ai/vm0/compare/core-v8.347.1...core-v8.347.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* rename playful launch presentation template ([#18005](https://github.com/vm0-ai/vm0/issues/18005)) ([5bc2161](https://github.com/vm0-ai/vm0/commit/5bc2161ea257f194e16c2eae85c0d824eeaa02ea))
+
 ## [8.347.1](https://github.com/vm0-ai/vm0/compare/core-v8.347.0...core-v8.347.1) (2026-06-17)
 
 
