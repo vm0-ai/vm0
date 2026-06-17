@@ -101,9 +101,20 @@ const RANGE_OPTIONS = [
 }[];
 
 // Row divider is an inset hairline (pseudo-element with horizontal margin) so
-// it doesn't run edge-to-edge into the card border.
+// it doesn't run edge-to-edge into the card border. The row itself is no longer
+// clickable — only the title text is — so there's no row-wide hover fill.
 const ROW_CLASS =
-  "relative block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
+  "relative px-5 py-3.5 [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
+
+// Dotted-underline link affordance for the title, mirroring the insights page
+// (network-insights-page.tsx): click navigates. leading-6 keeps the line box
+// tall enough that the offset-4 underline isn't clipped by `truncate`'s
+// overflow-hidden. inline-block + max-w-full keeps the hover fill hugging the
+// title text (not the whole row), truncating long titles; the chip padding /
+// negative margin are right-only (-mr-1.5/pr-1.5) so the hover chip's left edge
+// stays flush with the title text and the breakdown bar below.
+const TITLE_LINK_CLASS =
+  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -266,62 +277,73 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
     detach(closeSettings(false, pageSignal), Reason.DomCallback);
   };
   const credits = formatCredits(row.credits);
-  const inner = (
-    <div className="flex min-w-0 items-start gap-3">
-      <span
-        title={label}
-        aria-label={label}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+
+  // Only the title is a navigation target. Thread rows open the chat, run rows
+  // open the activity; rows with neither stay plain text.
+  const titleLink = row.threadId
+    ? {
+        pathname: "/chats/:threadId" as const,
+        options: { pathParams: { threadId: row.threadId } },
+      }
+    : row.runId
+      ? {
+          pathname: "/activities/:activityRunId" as const,
+          options: { pathParams: { activityRunId: row.runId } },
+        }
+      : null;
+
+  const titleNode = titleLink ? (
+    // Wrapper reserves the flex space so date/credits stay right-aligned, while
+    // the inner link only grows to the text width — keeping the hover fill tight.
+    // flex (not block) so the inline-block link doesn't add a line-box descender
+    // strut, which would make this column taller than the square icon and leave
+    // the bar's bottom edge unaligned with the icon.
+    <span className="flex min-w-0 flex-1 items-center">
+      <Link
+        pathname={titleLink.pathname}
+        options={titleLink.options}
+        className={TITLE_LINK_CLASS}
+        onClick={closeOnNavigate}
       >
-        <Icon size={17} stroke={1.5} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-            {formatDate(row.lastActivityAt)}
-          </span>
-          <span className="shrink-0 whitespace-nowrap text-right text-sm font-medium text-foreground tabular-nums">
-            {credits}
-          </span>
-        </span>
-        {row.member ? (
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {row.member.email}
-          </span>
-        ) : null}
-        <UsageBreakdownBar row={row} max={max} />
-      </span>
-    </div>
+        {title}
+      </Link>
+    </span>
+  ) : (
+    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+      {title}
+    </span>
   );
 
-  if (row.threadId) {
-    return (
-      <Link
-        pathname="/chats/:threadId"
-        options={{ pathParams: { threadId: row.threadId } }}
-        className={ROW_CLASS}
-        onClick={closeOnNavigate}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  if (row.runId) {
-    return (
-      <Link
-        pathname="/activities/:activityRunId"
-        options={{ pathParams: { activityRunId: row.runId } }}
-        className={ROW_CLASS}
-        onClick={closeOnNavigate}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  return <div className={ROW_CLASS}>{inner}</div>;
+  return (
+    <div className={ROW_CLASS}>
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          title={label}
+          aria-label={label}
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+        >
+          <Icon size={20} stroke={1.5} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-h-8 min-w-0 items-center gap-3">
+            {titleNode}
+            <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+              {formatDate(row.lastActivityAt)}
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-right text-sm font-medium text-foreground tabular-nums">
+              {credits}
+            </span>
+          </span>
+          {row.member ? (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {row.member.email}
+            </span>
+          ) : null}
+          <UsageBreakdownBar row={row} max={max} />
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function UsageRecordSkeleton() {
