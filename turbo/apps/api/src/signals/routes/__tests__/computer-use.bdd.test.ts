@@ -245,6 +245,52 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ).toStrictEqual([first.hostId]);
   });
 
+  it("keeps installation hosts stable across stop and restart", async () => {
+    const actor = bdd.user();
+    await api.enableComputerUse(actor);
+    const installationId = randomUUID();
+
+    const started = await api.startComputerUseHost(actor, {
+      installationId,
+      hostName: "Studio Mac",
+    });
+
+    await api.stopComputerUseHost(started.hostToken);
+    const stoppedHeartbeat = await api.requestComputerUseHeartbeat(
+      started.hostToken,
+      [401],
+    );
+    expectApiError(stoppedHeartbeat.body);
+    expect(stoppedHeartbeat.body.error.message).toBe(
+      "Invalid computer-use host token",
+    );
+
+    const stoppedHosts = await api.listComputerUseHosts(actor);
+    expect(stoppedHosts.hosts).toStrictEqual([
+      expect.objectContaining({
+        id: started.hostId,
+        hostName: "Studio Mac",
+        status: "offline",
+      }),
+    ]);
+
+    const restarted = await api.startComputerUseHost(actor, {
+      installationId,
+      hostName: "Renamed Studio Mac",
+    });
+    expect(restarted.hostId).toBe(started.hostId);
+    expect(restarted.hostToken).not.toBe(started.hostToken);
+
+    const restartedHosts = await api.listComputerUseHosts(actor);
+    expect(restartedHosts.hosts).toStrictEqual([
+      expect.objectContaining({
+        id: started.hostId,
+        hostName: "Renamed Studio Mac",
+        status: "online",
+      }),
+    ]);
+  });
+
   it("publishes computer-use host list changes", async () => {
     const actor = bdd.user();
     await api.enableComputerUse(actor);

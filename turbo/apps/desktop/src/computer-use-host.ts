@@ -43,6 +43,7 @@ type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
+  readonly installationId: string;
   readonly hostName: string;
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
@@ -200,11 +201,13 @@ export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
 }
 
 export function buildComputerUseRuntimeBody(args: {
+  readonly installationId: string;
   readonly hostName: string;
   readonly appVersion: string;
   readonly permissions: ComputerUsePermissionState;
 }): Record<string, unknown> {
   return {
+    installationId: args.installationId,
     hostName: args.hostName,
     appVersion: args.appVersion,
     osVersion: `${os.type()} ${os.release()}`,
@@ -220,6 +223,7 @@ export function readSystemHostName(fallback: string): string {
 
 export class ComputerUseHostRuntime {
   private readonly apiBaseUrl: string;
+  private readonly installationId: string;
   private readonly hostName: string;
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
@@ -250,6 +254,7 @@ export class ComputerUseHostRuntime {
 
   constructor(options: ComputerUseHostRuntimeOptions) {
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
+    this.installationId = options.installationId;
     this.hostName = options.hostName;
     this.appVersion = options.appVersion;
     this.sessionFetch = options.sessionFetch;
@@ -308,6 +313,7 @@ export class ComputerUseHostRuntime {
 
   private async runtimeBody(): Promise<Record<string, unknown>> {
     return buildComputerUseRuntimeBody({
+      installationId: this.installationId,
       hostName: this.hostName,
       appVersion: this.appVersion,
       permissions: await this.getPermissions(),
