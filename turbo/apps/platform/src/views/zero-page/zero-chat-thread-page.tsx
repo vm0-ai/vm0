@@ -3012,12 +3012,17 @@ function CompletedWorkFoldRow({
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
+        className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <span className="flex items-center gap-2">
-          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-          <span aria-hidden className="h-px flex-1 bg-border/40" />
-        </span>
+        <IconClock size={14} className="shrink-0 text-muted-foreground/70" />
+        <span className="text-[13px]">{label}</span>
+        <IconChevronRight
+          size={14}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
       </button>
     </div>
   );
