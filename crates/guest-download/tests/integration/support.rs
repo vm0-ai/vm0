@@ -1,5 +1,6 @@
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use serde_json::{Map, Value, json};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -132,31 +133,38 @@ pub(crate) fn write_manifest(
     storages: &[(&str, Option<&str>)],
     artifact: Option<(&str, Option<&str>)>,
 ) -> std::io::Result<PathBuf> {
-    let storages_json: Vec<String> = storages
-        .iter()
-        .map(|(mount_path, archive_url)| match archive_url {
-            Some(url) => format!(r#"{{"mountPath":"{}","archiveUrl":"{}"}}"#, mount_path, url),
-            None => format!(r#"{{"mountPath":"{}"}}"#, mount_path),
-        })
-        .collect();
-
-    let artifact_json = artifact.map(|(mount_path, archive_url)| match archive_url {
-        Some(url) => format!(
-            r#","artifacts":[{{"mountPath":"{}","archiveUrl":"{}"}}]"#,
-            mount_path, url
+    let mut manifest = Map::new();
+    manifest.insert(
+        "storages".to_owned(),
+        Value::Array(
+            storages
+                .iter()
+                .map(|(mount_path, archive_url)| manifest_entry(mount_path, *archive_url))
+                .collect(),
         ),
-        None => format!(r#","artifacts":[{{"mountPath":"{}"}}]"#, mount_path),
-    });
-
-    let json = format!(
-        r#"{{"storages":[{}]{}}}"#,
-        storages_json.join(","),
-        artifact_json.unwrap_or_default(),
     );
+
+    if let Some((mount_path, archive_url)) = artifact {
+        manifest.insert(
+            "artifacts".to_owned(),
+            Value::Array(vec![manifest_entry(mount_path, archive_url)]),
+        );
+    }
+
+    let json = serde_json::to_vec(&Value::Object(manifest)).map_err(std::io::Error::other)?;
 
     let manifest_path = dir.path().join("manifest.json");
     std::fs::write(&manifest_path, json)?;
     Ok(manifest_path)
+}
+
+fn manifest_entry(mount_path: &str, archive_url: Option<&str>) -> Value {
+    let mut entry = Map::new();
+    entry.insert("mountPath".to_owned(), json!(mount_path));
+    if let Some(url) = archive_url {
+        entry.insert("archiveUrl".to_owned(), json!(url));
+    }
+    Value::Object(entry)
 }
 
 pub(crate) fn run_guest_download(manifest_path: &str) -> bool {
