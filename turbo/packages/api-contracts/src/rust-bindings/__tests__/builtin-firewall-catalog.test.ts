@@ -221,6 +221,29 @@ describe("builtin firewall catalog", () => {
     }
   });
 
+  it("bounds source lines when a single JSON line is long", () => {
+    const longRule = `GET /${"x".repeat(MAX_GENERATED_PYTHON_LINE_LENGTH * 2)}`;
+    const firewall = testFirewall("long-line", [longRule]);
+    const files = renderPythonBuiltinFirewallCatalogFiles({
+      catalog: testCatalog([firewall]),
+    });
+    const partFiles = files.filter((file) => {
+      return file.path.startsWith("long_line_");
+    });
+
+    for (const file of files) {
+      for (const line of file.content.split("\n")) {
+        expect(line.length).toBeLessThanOrEqual(
+          MAX_GENERATED_PYTHON_LINE_LENGTH,
+        );
+      }
+    }
+    expect(partFiles.length).toBeGreaterThan(1);
+    expect(
+      JSON.parse(partFiles.map(jsonPartFromModule).join("")),
+    ).toStrictEqual(firewall);
+  });
+
   it("renders chunk literals that preserve quote, backslash, and unicode boundaries", () => {
     const emoji = "\u{1f600}";
     const firewall = testFirewall("chunky", [
