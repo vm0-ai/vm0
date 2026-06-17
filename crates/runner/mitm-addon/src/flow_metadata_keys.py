@@ -7,22 +7,25 @@ When adding a shared metadata key, add its ownership and lifecycle notes here.
 
 Request context
 ---------------
-- ``VM_RUN_ID``: ``str`` copied from registry VM info by ``request()`` and
-  ``tcp_start()``. Read by HTTP, TCP, proxy logging, and usage reporting.
+- ``VM_RUN_ID``: ``str`` copied from registry VM info by HTTP request
+  classification and ``tcp_start()``. Header-phase HTTP probes restore this key
+  unless they intentionally keep the classification for a streaming or local
+  response path. Read by HTTP, TCP, proxy logging, and usage reporting.
 - ``VM_NETWORK_LOG_PATH``: ``str`` copied from registry VM info. Read by HTTP
   and TCP log writers; empty strings skip network-log writes.
 - ``VM_PROXY_LOG_PATH``: ``str`` copied from registry VM info. Read by proxy
   warnings, usage reporting, and auth/streaming diagnostics.
 - ``VM_SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry VM info.
   Read by usage webhook reporters.
-- ``ORIGINAL_URL``: absolute URL written by ``request()`` from trusted
-  authority, or from the authority-validation fallback URL on local denial.
-  Read by response/error logging and connector billing.
+- ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
+  trusted authority, or from the authority-validation fallback URL on local
+  denial. Read by response/error logging and connector billing.
 - ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
   trusted authority or authority-validation fallback URL. Read by network-log
   entry construction.
-- ``CAPTURE_BODY``: ``bool`` copied from registry VM info. Read by
-  ``response()`` to decide whether to add request/response bodies.
+- ``CAPTURE_BODY``: ``bool`` copied from registry VM info by HTTP request
+  classification. Read by ``response()`` to decide whether to add
+  request/response bodies.
 - ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
   handling. Read by body capture to mark oversized request bodies truncated.
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
@@ -34,8 +37,10 @@ Request context
 Timing context
 --------------
 - ``HTTP_REQUEST_START_MONOTONIC``: ``float`` from ``time.monotonic()``,
-  written by ``request()`` after registered-VM lookup. Popped by ``response()``
-  or ``error()`` when computing HTTP latency, and removed on request failures.
+  written when a request first reaches a registered-VM HTTP path, including
+  header-phase streaming and local auth.base rejection paths. Popped by
+  ``response()`` or ``error()`` when computing HTTP latency, and removed on
+  request failures.
 - ``TCP_START_MONOTONIC``: ``float`` from ``time.monotonic()``, written by
   ``tcp_start()``. Read by TCP end/error logging; it is not popped.
 
