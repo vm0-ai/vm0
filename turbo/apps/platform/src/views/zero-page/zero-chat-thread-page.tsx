@@ -3007,7 +3007,7 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold className="-mx-2">
+    <div data-chat-completed-work-fold className="-mx-2 -mb-2">
       <button
         type="button"
         aria-expanded={expanded}
