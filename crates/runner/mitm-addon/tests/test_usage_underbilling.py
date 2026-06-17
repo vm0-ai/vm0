@@ -332,3 +332,24 @@ def test_underbilling_stderr_fallback_escapes_nonstandard_whitespace_and_control
     assert "\u00a0" not in message
     assert "\f" not in message
     assert "\x1b" not in message
+
+
+def test_underbilling_stderr_fallback_escapes_reason_and_message_controls(
+    mitm_ctx,
+):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Usage underbilling\nsignal\twith\x1bcontrols",
+            "expected reason\nwith\tcontrols",
+            "risk",
+            run_id="run-1",
+        )
+
+    message = log.error.call_args.args[0]
+    assert "reason=expected\\sreason\\nwith\\tcontrols" in message
+    assert "run_id=run-1" in message
+    assert message.endswith("Usage underbilling\\nsignal\\twith\\u001bcontrols")
+    assert "\n" not in message
+    assert "\t" not in message
+    assert "\x1b" not in message

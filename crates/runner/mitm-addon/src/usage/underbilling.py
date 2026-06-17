@@ -87,6 +87,7 @@ _SECRET_FIELD_MARKERS = (
 )
 _STDERR_FIELD_KEY_MAX_CHARS = 80
 _STDERR_FIELD_VALUE_MAX_CHARS = 256
+_STDERR_MESSAGE_MAX_CHARS = 512
 _TRUNCATION_SUFFIX = "..."
 
 
@@ -124,12 +125,12 @@ def _render_stderr_field_key(key: str) -> str:
     return _truncate_stderr_text(rendered or "_", _STDERR_FIELD_KEY_MAX_CHARS)
 
 
-def _single_token_stderr_value(value: str) -> str:
+def _render_stderr_text(value: str, max_chars: int, *, preserve_spaces: bool) -> str:
     rendered: list[str] = []
     truncated_prefix: list[str] = []
     rendered_len = 0
     truncated_prefix_len = 0
-    truncated_prefix_limit = _STDERR_FIELD_VALUE_MAX_CHARS - len(_TRUNCATION_SUFFIX)
+    truncated_prefix_limit = max_chars - len(_TRUNCATION_SUFFIX)
     for ch in value:
         if ch == "\\":
             chunk = "\\\\"
@@ -139,13 +140,15 @@ def _single_token_stderr_value(value: str) -> str:
             chunk = "\\r"
         elif ch == "\t":
             chunk = "\\t"
+        elif ch == " " and preserve_spaces:
+            chunk = ch
         elif ch.isspace():
             chunk = "\\s"
         elif not ch.isprintable():
             chunk = f"\\u{ord(ch):04x}"
         else:
             chunk = ch
-        if rendered_len + len(chunk) > _STDERR_FIELD_VALUE_MAX_CHARS:
+        if rendered_len + len(chunk) > max_chars:
             return "".join(truncated_prefix) + _TRUNCATION_SUFFIX
         rendered.append(chunk)
         rendered_len += len(chunk)
@@ -153,6 +156,14 @@ def _single_token_stderr_value(value: str) -> str:
             truncated_prefix.append(chunk)
             truncated_prefix_len += len(chunk)
     return "".join(rendered)
+
+
+def _single_token_stderr_value(value: str) -> str:
+    return _render_stderr_text(value, _STDERR_FIELD_VALUE_MAX_CHARS, preserve_spaces=False)
+
+
+def _render_stderr_message(value: str) -> str:
+    return _render_stderr_text(value, _STDERR_MESSAGE_MAX_CHARS, preserve_spaces=True)
 
 
 def _render_stderr_field_value(key: str, value: object) -> str:
@@ -205,14 +216,15 @@ def log_usage_underbilling(
     if not proxy_log_path:
         parts = [
             (
-                f"type={USAGE_UNDERBILLING_LOG_TYPE} reason={reason} "
-                f"underbilling_class={underbilling_class} "
+                f"type={USAGE_UNDERBILLING_LOG_TYPE} "
+                f"reason={_single_token_stderr_value(reason)} "
+                f"underbilling_class={_single_token_stderr_value(underbilling_class)} "
                 f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON}"
             )
         ]
         if rendered_fields := _render_stderr_extra_fields(fields):
             parts.append(rendered_fields)
-        parts.append(message)
+        parts.append(_render_stderr_message(message))
         ctx.log.error(" ".join(parts))
         return
 
