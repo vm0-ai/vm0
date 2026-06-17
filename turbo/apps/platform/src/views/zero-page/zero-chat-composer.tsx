@@ -332,12 +332,14 @@ type ComposerTemplatePicker = NonNullable<
 >;
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
-const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
+const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
 const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
+const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
+const TEMPLATE_EAGER_IMAGE_COUNT = 9;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
-  width: 768,
-  height: 768,
+  width: 512,
+  height: 512,
   quality: 72,
 } as const;
 const ILLUSTRATION_VARIANT_THUMB_SIZE = {
@@ -851,14 +853,16 @@ function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
   video.currentTime = 0;
 }
 
+function videoTemplatePosterImage(item: VideoTemplateItem): string {
+  return r2ImageTransformUrl(item.previewImage, TEMPLATE_CARD_PREVIEW_SIZE);
+}
+
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
+  const posterImage = videoTemplatePosterImage(item);
   return (
     <video
       src={item.previewVideo}
-      poster={r2ImageTransformUrl(
-        item.previewImage,
-        TEMPLATE_CARD_PREVIEW_SIZE,
-      )}
+      poster={posterImage}
       className="h-full w-full object-cover"
       preload="none"
       playsInline
@@ -974,6 +978,16 @@ function presentationTemplateSlideImages(
   return item.previewImages;
 }
 
+function presentationTemplateCardPreviewImage(
+  item: PresentationTemplateItem,
+): string | undefined {
+  const firstSlideImage = presentationTemplateSlideImages(item)[0];
+  if (firstSlideImage === undefined) {
+    return undefined;
+  }
+  return r2ImageTransformUrl(firstSlideImage, TEMPLATE_CARD_PREVIEW_SIZE);
+}
+
 interface PresentationPreviewImageCache {
   readonly decoded: Set<string>;
   readonly pendingDecodes: Map<string, Promise<void>>;
@@ -1074,6 +1088,132 @@ function presentationPreviewImageDecoded(url: string): boolean {
   return presentationPreviewImageCache().decoded.has(url);
 }
 
+interface TemplatePreviewPrewarmCache {
+  readonly preloads: Map<string, HTMLImageElement>;
+}
+
+function templatePreviewPrewarmCache(): TemplatePreviewPrewarmCache {
+  const cacheKey = "vm0TemplatePreviewPrewarmCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | TemplatePreviewPrewarmCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: TemplatePreviewPrewarmCache = {
+    preloads: new Map<string, HTMLImageElement>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function prewarmTemplatePreviewImage(url: string): void {
+  if (typeof Image === "undefined") {
+    return;
+  }
+
+  const cache = templatePreviewPrewarmCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.loading = "eager";
+  image.fetchPriority = "high";
+  image.src = url;
+  cache.preloads.set(url, image);
+  if (image.decode !== undefined) {
+    detach(bestEffort(image.decode()), Reason.DomCallback);
+  }
+}
+
+function uniqueTemplatePreviewImageUrls(
+  imageUrls: readonly string[],
+): string[] {
+  const uniqueUrls: string[] = [];
+  const seenUrls = new Set<string>();
+  for (const imageUrl of imageUrls) {
+    if (seenUrls.has(imageUrl)) {
+      continue;
+    }
+    seenUrls.add(imageUrl);
+    uniqueUrls.push(imageUrl);
+  }
+  return uniqueUrls;
+}
+
+function prewarmTemplatePreviewImages(imageUrls: readonly string[]): void {
+  const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
+  for (const imageUrl of uniqueUrls.slice(0, TEMPLATE_PREWARM_IMAGE_COUNT)) {
+    prewarmTemplatePreviewImage(imageUrl);
+  }
+}
+
+function presentationPreviewImageUrlsForItems(
+  items: readonly PresentationTemplateItem[],
+): string[] {
+  return items.flatMap((item) => {
+    const imageUrl = presentationTemplateCardPreviewImage(item);
+    return imageUrl === undefined ? [] : [imageUrl];
+  });
+}
+
+function illustrationPreviewImageUrlsForItems({
+  items,
+  variantIndexBySlug,
+}: {
+  items: readonly IllustrationTemplateItem[];
+  variantIndexBySlug: Readonly<Record<string, number>>;
+}): string[] {
+  return items.map((item) => {
+    const images = item.previewImages;
+    const activeIndex = Math.max(
+      0,
+      Math.min(variantIndexBySlug[item.slug] ?? 0, images.length - 1),
+    );
+    return illustrationHeroImageUrl(images[activeIndex] ?? item.previewImage);
+  });
+}
+
+function videoPreviewImageUrlsForItems(
+  items: readonly VideoTemplateItem[],
+): string[] {
+  return items.map((item) => {
+    return videoTemplatePosterImage(item);
+  });
+}
+
+function initialTemplatePreviewImageUrlsForCategory({
+  category,
+  hasPptTab,
+  presentationItems,
+  hasIllustrationTab,
+  hasVideoTab,
+}: {
+  category: string;
+  hasPptTab: boolean;
+  presentationItems: readonly PresentationTemplateItem[];
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+}): string[] {
+  if (category === "slides" && hasPptTab) {
+    return presentationPreviewImageUrlsForItems(presentationItems);
+  }
+  if (category === "illustration" && hasIllustrationTab) {
+    return illustrationPreviewImageUrlsForItems({
+      items: ILLUSTRATION_TEMPLATE_ITEMS,
+      variantIndexBySlug: {},
+    });
+  }
+  if (category === "video" && hasVideoTab) {
+    return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
+  }
+  return [];
+}
+
 async function selectDecodedTemplatePreviewImage({
   container,
   imageUrl,
@@ -1115,9 +1255,11 @@ async function markPresentationPreviewImageLoaded(
 
 function TemplatePreview({
   item,
+  priority = false,
   onPreview,
 }: {
   item: PresentationTemplateItem;
+  priority?: boolean;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item).map((imageUrl) => {
@@ -1199,11 +1341,17 @@ function TemplatePreview({
             data-testid={`${item.title} card preview slide 1`}
             title={`${item.title} card preview slide 1`}
             className="absolute inset-0 h-full w-full object-contain"
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={priority ? "high" : "low"}
             onLoad={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.setAttribute("hidden", "");
+              detach(
+                markPresentationPreviewImageLoaded(
+                  previewImage,
+                  event.currentTarget,
+                ),
+                Reason.DomCallback,
+              );
             }}
             onError={(event) => {
               event.currentTarget.parentElement
@@ -1424,11 +1572,13 @@ function TemplatePreviewPage({
 function PptCard({
   item,
   selected,
+  priority = false,
   onSelect,
   onPreview,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
+  priority?: boolean;
   onSelect: (item: PresentationTemplateItem) => void;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
@@ -1439,7 +1589,7 @@ function PptCard({
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <TemplatePreview item={item} onPreview={onPreview} />
+      <TemplatePreview item={item} priority={priority} onPreview={onPreview} />
       <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <TooltipProvider delayDuration={300}>
@@ -1480,12 +1630,14 @@ function IllustrationTemplateHero({
   item,
   images,
   activeIndex,
+  priority = false,
   source,
   onVariantChange,
 }: {
   item: IllustrationTemplateItem;
   images: readonly string[];
   activeIndex: number;
+  priority?: boolean;
   source: string;
   onVariantChange: (slug: string, index: number) => void;
 }) {
@@ -1512,9 +1664,9 @@ function IllustrationTemplateHero({
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
           navigable && "cursor-pointer",
         )}
-        loading="lazy"
+        loading={priority ? "eager" : "lazy"}
         decoding="async"
-        fetchPriority="low"
+        fetchPriority={priority ? "high" : "low"}
         onMouseEnter={navigable ? preloadNeighbors : undefined}
         onClick={
           navigable
@@ -1751,19 +1903,46 @@ function preloadIllustrationVariant(
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
 ): void {
-  node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  if (node === null) {
+    return;
+  }
+
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return;
+  }
+
+  const visibleLeft = thumbnailStrip.scrollLeft;
+  const visibleRight = visibleLeft + thumbnailStrip.clientWidth;
+  const thumbnailLeft = node.offsetLeft;
+  const thumbnailRight = thumbnailLeft + node.offsetWidth;
+
+  if (thumbnailLeft < visibleLeft) {
+    thumbnailStrip.scrollTo({ left: thumbnailLeft });
+    return;
+  }
+
+  if (thumbnailRight > visibleRight) {
+    thumbnailStrip.scrollTo({
+      left: Math.max(0, thumbnailRight - thumbnailStrip.clientWidth),
+    });
+  }
 }
 
 function IllustrationTemplateCard({
   item,
   selected,
   activeIndex,
+  priority = false,
   onSelect,
   onVariantChange,
 }: {
   item: IllustrationTemplateItem;
   selected: boolean;
   activeIndex: number;
+  priority?: boolean;
   onSelect: (item: IllustrationTemplateItem) => void;
   onVariantChange: (slug: string, index: number) => void;
 }) {
@@ -1786,11 +1965,15 @@ function IllustrationTemplateCard({
         item={item}
         images={images}
         activeIndex={safeIndex}
+        priority={priority}
         source={heroSource}
         onVariantChange={onVariantChange}
       />
       {hasMultipleVariants && (
-        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          data-illustration-variant-strip=""
+          className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {images.map((image, index) => {
             const active = index === safeIndex;
             const thumbnailImage = r2ImageTransformUrl(
@@ -1801,10 +1984,6 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
-                // Keep the selected thumbnail fully in view when the active
-                // variant changes (e.g. via hero navigation), so later
-                // thumbnails past the clipped strip edge stay reachable.
-                ref={active ? scrollIllustrationThumbnailIntoView : undefined}
                 aria-label={`Show variant ${index + 1}`}
                 aria-pressed={active}
                 className={cn(
@@ -1830,6 +2009,9 @@ function IllustrationTemplateCard({
                     item,
                     onVariantChange,
                   });
+                  if (!active) {
+                    scrollIllustrationThumbnailIntoView(event.currentTarget);
+                  }
                 }}
               >
                 <img
@@ -2001,13 +2183,14 @@ function IllustrationTemplateGrid({
   // or fixed height), and the column count adapts to the dialog width.
   return (
     <div className="columns-[244px] gap-4">
-      {items.map((item) => {
+      {items.map((item, index) => {
         return (
           <IllustrationTemplateCard
             key={item.illustrationStyleId}
             item={item}
             selected={isSelectedIllustrationTemplate(item, value)}
             activeIndex={variantIndexBySlug[item.slug] ?? 0}
+            priority={index < TEMPLATE_EAGER_IMAGE_COUNT}
             onSelect={onSelect}
             onVariantChange={onVariantChange}
           />
@@ -2030,12 +2213,13 @@ function PptTemplateGrid({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
+      {items.map((item, index) => {
         return (
           <PptCard
             key={item.slug}
             item={item}
             selected={isSelectedPresentationTemplate(item, value)}
+            priority={index < TEMPLATE_EAGER_IMAGE_COUNT}
             onSelect={onSelect}
             onPreview={onPreview}
           />
@@ -2096,6 +2280,60 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+  });
+
+  const filteredPresentationItemsForSearch = (value: string) => {
+    return presentationItems.filter((item) => {
+      return presentationTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const filteredIllustrationItemsForSearch = (value: string) => {
+    return ILLUSTRATION_TEMPLATE_ITEMS.filter((item) => {
+      return illustrationTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const filteredVideoItemsForSearch = (value: string) => {
+    return VIDEO_TEMPLATE_ITEMS.filter((item) => {
+      return videoTemplateMatchesSearch(item, value);
+    });
+  };
+
+  const previewImageUrlsForCategory = (
+    targetCategory: string,
+    query: string,
+  ) => {
+    if (targetCategory === "slides" && hasPptTab) {
+      return presentationPreviewImageUrlsForItems(
+        filteredPresentationItemsForSearch(query),
+      );
+    }
+    if (targetCategory === "illustration" && hasIllustrationTab) {
+      return illustrationPreviewImageUrlsForItems({
+        items: filteredIllustrationItemsForSearch(query),
+        variantIndexBySlug: illustrationVariantIndex,
+      });
+    }
+    if (targetCategory === "video" && hasVideoTab) {
+      return videoPreviewImageUrlsForItems(filteredVideoItemsForSearch(query));
+    }
+    return [];
+  };
+
+  const prewarmTemplatePreviewsForCategory = (
+    targetCategory: string,
+    query = search,
+  ) => {
+    prewarmTemplatePreviewImages(
+      previewImageUrlsForCategory(targetCategory, query),
+    );
+  };
 
   const handleSelectPresentation = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
@@ -2117,38 +2355,57 @@ function TemplatePickerDialog({
     setPreviewSlug(item.slug);
   };
 
-  const selectedCategory = resolveTemplatePickerCategory({
-    category,
-    hasPptTab,
-    hasIllustrationTab,
-    hasVideoTab,
-  });
+  const handleBackFromPreview = () => {
+    setPreviewSlug(null);
+    prewarmTemplatePreviewsForCategory("slides");
+  };
+
+  const handleCategoryChange = (nextCategory: string) => {
+    setCategory(nextCategory);
+    if (!isPreviewing) {
+      prewarmTemplatePreviewsForCategory(nextCategory);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (!isPreviewing) {
+      prewarmTemplatePreviewsForCategory(selectedCategory, value);
+    }
+  };
+
+  const handleDialogCloseRequest = () => {
+    if (isPreviewing) {
+      handleBackFromPreview();
+      return;
+    }
+    onClose();
+  };
 
   return (
     <Dialog
       open
       onOpenChange={(open) => {
         if (!open) {
-          if (isPreviewing) {
-            setPreviewSlug(null);
-            return;
-          }
-          onClose();
+          handleDialogCloseRequest();
         }
       }}
     >
       <DialogContent
         className={dialogContentClassName}
         aria-describedby={undefined}
+        onOpenAutoFocus={() => {
+          if (!isPreviewing) {
+            prewarmTemplatePreviewsForCategory(selectedCategory);
+          }
+        }}
       >
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
             selectedSlideIndex={selectedSlideIndex}
             onSlideChange={setSelectedSlideIndex}
-            onBack={() => {
-              setPreviewSlug(null);
-            }}
+            onBack={handleBackFromPreview}
             onSelect={handleSelectPresentation}
           />
         ) : (
@@ -2162,7 +2419,7 @@ function TemplatePickerDialog({
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
-                onChange={setCategory}
+                onChange={handleCategoryChange}
               />
               <div className="w-full pb-3 sm:w-64">
                 <div className="relative">
@@ -2175,7 +2432,7 @@ function TemplatePickerDialog({
                     className="h-8 pl-9 text-sm"
                     value={search}
                     onChange={(event) => {
-                      setSearch(event.target.value);
+                      handleSearchChange(event.target.value);
                     }}
                     placeholder="Search templates"
                   />
@@ -2248,10 +2505,12 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onPrewarm,
   onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onPrewarm: () => void;
   onOpen: () => void;
   onRemove: () => void;
 }) {
@@ -2264,6 +2523,9 @@ function SelectedTemplateChip({
             type="button"
             aria-label={`Preview template ${label}`}
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onPointerEnter={onPrewarm}
+            onFocus={onPrewarm}
+            onPointerDown={onPrewarm}
             onClick={onOpen}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
@@ -2302,10 +2564,12 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onPrewarm,
   onOpen,
   onRemove,
 }: {
   item: VideoTemplateItem;
+  onPrewarm: () => void;
   onOpen: () => void;
   onRemove: () => void;
 }) {
@@ -2317,6 +2581,9 @@ function SelectedVideoTemplateChip({
             type="button"
             aria-label={`Preview video template ${item.title}`}
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onPointerEnter={onPrewarm}
+            onFocus={onPrewarm}
+            onPointerDown={onPrewarm}
             onClick={onOpen}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
@@ -2351,10 +2618,12 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onPrewarm,
   onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onPrewarm: () => void;
   onOpen: () => void;
   onRemove: () => void;
 }) {
@@ -2366,6 +2635,9 @@ function SelectedIllustrationTemplateChip({
             type="button"
             aria-label={`Preview template ${item.title}`}
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onPointerEnter={onPrewarm}
+            onFocus={onPrewarm}
+            onPointerDown={onPrewarm}
             onClick={onOpen}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
@@ -2409,6 +2681,16 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const features = useLastResolved(featureSwitch$);
+  const hasPptTab = Boolean(features?.[FeatureSwitchKey.ChatTemplatePicker]);
+  const hasIllustrationTab = hasPptTab;
+  const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  const useNewPresentationTemplates = Boolean(
+    features?.[FeatureSwitchKey.ChatNewPresentationTemplates],
+  );
+  const presentationItems = presentationTemplatePickerItems(
+    useNewPresentationTemplates,
+  );
   const setOpen = useSet(setTemplatePickerOpen$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
@@ -2420,9 +2702,21 @@ function SelectedTemplateChipSlot({
   if (!picker) {
     return null;
   }
+  const prewarmPicker = (category: string) => {
+    prewarmTemplatePreviewImages(
+      initialTemplatePreviewImageUrlsForCategory({
+        category,
+        hasPptTab,
+        presentationItems,
+        hasIllustrationTab,
+        hasVideoTab,
+      }),
+    );
+  };
   // Reopen the picker on the tab matching the selected template's type so the
   // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
   const openPicker = (category: string) => {
+    prewarmPicker(category);
     setSearch("");
     setPreviewSlug(null);
     setSelectedSlideIndex(0);
@@ -2433,6 +2727,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onPrewarm={() => {
+          prewarmPicker("slides");
+        }}
         onOpen={() => {
           return openPicker("slides");
         }}
@@ -2447,6 +2744,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onPrewarm={() => {
+          prewarmPicker("video");
+        }}
         onOpen={() => {
           return openPicker("video");
         }}
@@ -2461,6 +2761,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onPrewarm={() => {
+          prewarmPicker("illustration");
+        }}
         onOpen={() => {
           return openPicker("illustration");
         }}
@@ -2488,11 +2791,29 @@ function TemplatePickerButton({
   hasVideoTab: boolean;
 }) {
   const open = useGet(templatePickerOpen$);
+  const category = useGet(templatePickerCategory$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+  });
+  const prewarmPicker = () => {
+    prewarmTemplatePreviewImages(
+      initialTemplatePreviewImageUrlsForCategory({
+        category: selectedCategory,
+        hasPptTab,
+        presentationItems,
+        hasIllustrationTab,
+        hasVideoTab,
+      }),
+    );
+  };
 
   return (
     <>
@@ -2507,7 +2828,11 @@ function TemplatePickerButton({
               )}
               aria-label="Template"
               aria-pressed={picker.value !== undefined}
+              onPointerEnter={prewarmPicker}
+              onFocus={prewarmPicker}
+              onPointerDown={prewarmPicker}
               onClick={() => {
+                prewarmPicker();
                 setSearch("");
                 setPreviewSlug(null);
                 setSelectedSlideIndex(0);

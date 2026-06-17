@@ -1539,6 +1539,116 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("prewarms presentation preview images before opening the picker", async () => {
+    const firstTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const lastInitialTemplate = PRESENTATION_TEMPLATE_ITEMS[14]!;
+    const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[15]!;
+    const cardPreviewSrc = (template: PresentationTemplateItem) => {
+      return r2ImageTransformUrl(template.previewImages[0]!, {
+        width: 480,
+        height: 270,
+      });
+    };
+    const expectedPrewarmUrls = PRESENTATION_TEMPLATE_ITEMS.slice(
+      0,
+      15,
+    ).flatMap((template) => {
+      return template.previewImages[0] === undefined
+        ? []
+        : [cardPreviewSrc(template)];
+    });
+    const preloadedUrls: string[] = [];
+    const preloadedImagePriorities: {
+      readonly fetchPriority: string;
+      readonly loading: string;
+    }[] = [];
+    const originalImage = globalThis.Image;
+
+    class MockPrewarmImage {
+      public decoding = "auto";
+      public fetchPriority = "auto";
+      public loading = "auto";
+      private imageSrc = "";
+
+      public decode = vi.fn(() => {
+        return Promise.resolve();
+      });
+
+      public get src(): string {
+        return this.imageSrc;
+      }
+
+      public set src(value: string) {
+        this.imageSrc = value;
+        preloadedUrls.push(value);
+        preloadedImagePriorities.push({
+          fetchPriority: this.fetchPriority,
+          loading: this.loading,
+        });
+      }
+    }
+
+    Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
+    vi.stubGlobal("Image", MockPrewarmImage);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: true,
+          [FeatureSwitchKey.ChatNewPresentationTemplates]: false,
+        },
+      });
+
+      const templateButton = await waitFor(() => {
+        return screen.getByLabelText("Template");
+      });
+
+      fireEvent.focus(templateButton);
+      fireEvent.pointerDown(templateButton);
+
+      for (const imageUrl of expectedPrewarmUrls) {
+        expect(preloadedUrls).toContain(imageUrl);
+      }
+      expect(preloadedImagePriorities).toHaveLength(expectedPrewarmUrls.length);
+      for (const imagePriority of preloadedImagePriorities) {
+        expect(imagePriority).toStrictEqual({
+          fetchPriority: "high",
+          loading: "eager",
+        });
+      }
+      expect(preloadedUrls).not.toContain(cardPreviewSrc(nextTemplate));
+
+      vi.stubGlobal("Image", originalImage);
+      click(templateButton);
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      const firstPreview = screen.getByTestId(
+        `${firstTemplate.title} card preview slide 1`,
+      );
+      const lastInitialPreview = screen.getByTestId(
+        `${lastInitialTemplate.title} card preview slide 1`,
+      );
+      const lastInitialPreviewSrc = cardPreviewSrc(lastInitialTemplate);
+
+      expect(firstPreview).toHaveAttribute(
+        "src",
+        cardPreviewSrc(firstTemplate),
+      );
+      expect(firstPreview).toHaveAttribute("loading", "eager");
+      expect(firstPreview).toHaveAttribute("fetchpriority", "high");
+      expect(lastInitialPreview).toHaveAttribute("src", lastInitialPreviewSrc);
+      expect(lastInitialPreview).toHaveAttribute("loading", "lazy");
+      expect(lastInitialPreview).toHaveAttribute("fetchpriority", "low");
+    } finally {
+      vi.stubGlobal("Image", originalImage);
+      Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
+    }
+  });
+
   it("uses switched presentation templates when the new catalog switch is on", async () => {
     const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
     const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -1591,8 +1701,8 @@ describe("chat composer templates", () => {
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 768,
-        height: 768,
+        width: 512,
+        height: 512,
         quality: 72,
       });
     };
@@ -1604,6 +1714,11 @@ describe("chat composer templates", () => {
         ILLUSTRATION_TEMPLATE_ITEMS.length,
       );
     });
+    expect(screen.getByAltText(heroAlt)).toHaveAttribute("loading", "eager");
+    expect(screen.getByAltText(heroAlt)).toHaveAttribute(
+      "fetchpriority",
+      "high",
+    );
 
     // Variant thumbnails switch the hero inline within the card; there is no
     // longer a second preview dialog.
@@ -1658,12 +1773,17 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("navigates illustration variants by clicking the hero image halves and keeps the selected thumbnail in view", async () => {
+  it("scrolls illustration thumbnails only after clicking a variant thumbnail", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const scrollIntoView = vi.fn();
+    const scrollTo = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
     });
     Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
       configurable: true,
@@ -1707,8 +1827,8 @@ describe("chat composer templates", () => {
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 768,
-        height: 768,
+        width: 512,
+        height: 512,
         quality: 72,
       });
     };
@@ -1717,24 +1837,63 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
 
-    // Clicking the right half advances to the next variant.
-    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 150 });
+    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    if (!card) {
+      throw new Error("Illustration card not found");
+    }
+
+    // Clicking a thumbnail scrolls within the thumbnail strip only.
+    const variant2Thumbnail = within(card).getByLabelText("Show variant 2");
+    const thumbnailStrip = variant2Thumbnail.parentElement;
+    if (!thumbnailStrip) {
+      throw new Error("Illustration thumbnail strip not found");
+    }
+    Object.defineProperty(thumbnailStrip, "scrollLeft", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(thumbnailStrip, "clientWidth", {
+      configurable: true,
+      value: 48,
+    });
+    Object.defineProperty(variant2Thumbnail, "offsetLeft", {
+      configurable: true,
+      value: 96,
+    });
+    Object.defineProperty(variant2Thumbnail, "offsetWidth", {
+      configurable: true,
+      value: 48,
+    });
+    click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 96 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Switching the variant scrolls the now-selected thumbnail fully into view.
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: "nearest",
-      inline: "nearest",
+    // Switching away and back to Illustration remounts the active thumbnail but
+    // must not scroll the dialog.
+    scrollTo.mockClear();
+    scrollIntoView.mockClear();
+    click(tabByText("Presentation"));
+    click(tabByText("Illustration"));
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Clicking the left half goes back to the previous variant.
+    // Clicking the hero halves changes variants without scrolling thumbnails.
     fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Clicking the left half from the first variant wraps to the last one.
     fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
@@ -1744,6 +1903,8 @@ describe("chat composer templates", () => {
         heroSrc(lastIndex),
       );
     });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("keeps historical illustration labels behind the template picker feature switch", async () => {
@@ -1824,8 +1985,8 @@ describe("chat composer templates", () => {
         expect(previewVideo).toHaveAttribute(
           "poster",
           r2ImageTransformUrl(videoStyle.previewImage, {
-            width: 640,
-            height: 360,
+            width: 480,
+            height: 270,
           }),
         );
         expect(previewVideo).toHaveAttribute("preload", "none");
@@ -1854,6 +2015,56 @@ describe("chat composer templates", () => {
       playSpy.mockRestore();
       pauseSpy.mockRestore();
     }
+  });
+
+  it("loads video template posters immediately while they fit in the first batch", async () => {
+    const firstVideoStyle = VIDEO_TEMPLATE_ITEMS[0]!;
+    const lastVideoStyle =
+      VIDEO_TEMPLATE_ITEMS[VIDEO_TEMPLATE_ITEMS.length - 1]!;
+    const posterSrc = (template: (typeof VIDEO_TEMPLATE_ITEMS)[number]) => {
+      return r2ImageTransformUrl(template.previewImage, {
+        width: 480,
+        height: 270,
+      });
+    };
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+
+    click(templateButton);
+
+    expect(tabByText("Video")).toBeInTheDocument();
+
+    const firstPreviewVideo = Array.from(
+      document.querySelectorAll("video"),
+    ).find((video) => {
+      return video.getAttribute("src") === firstVideoStyle.previewVideo;
+    });
+    const lastPreviewVideo = Array.from(
+      document.querySelectorAll("video"),
+    ).find((video) => {
+      return video.getAttribute("src") === lastVideoStyle.previewVideo;
+    });
+    if (!firstPreviewVideo || !lastPreviewVideo) {
+      throw new Error("Video template preview video not found");
+    }
+
+    expect(firstPreviewVideo).toHaveAttribute(
+      "poster",
+      posterSrc(firstVideoStyle),
+    );
+    expect(lastPreviewVideo).toHaveAttribute(
+      "poster",
+      posterSrc(lastVideoStyle),
+    );
   });
 
   it("queues a selected template during an active run and clears the picker state", async () => {
