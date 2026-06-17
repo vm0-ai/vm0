@@ -217,14 +217,14 @@ def log_usage_underbilling(
         parts = [
             (
                 f"type={USAGE_UNDERBILLING_LOG_TYPE} "
-                f"reason={_single_token_stderr_value(reason)} "
-                f"underbilling_class={_single_token_stderr_value(underbilling_class)} "
+                f"reason={_single_token_stderr_value(str(reason))} "
+                f"underbilling_class={_single_token_stderr_value(str(underbilling_class))} "
                 f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON}"
             )
         ]
         if rendered_fields := _render_stderr_extra_fields(fields):
             parts.append(rendered_fields)
-        parts.append(_render_stderr_message(message))
+        parts.append(_render_stderr_message(str(message)))
         ctx.log.error(" ".join(parts))
         return
 

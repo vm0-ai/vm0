@@ -1,7 +1,9 @@
 """Tests for usage underbilling log contracts."""
 
+from typing import cast
+
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from usage.underbilling import log_usage_underbilling
+from usage.underbilling import UnderbillingClass, log_usage_underbilling
 
 
 def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
@@ -353,3 +355,20 @@ def test_underbilling_stderr_fallback_escapes_reason_and_message_controls(
     assert "\n" not in message
     assert "\t" not in message
     assert "\x1b" not in message
+
+
+def test_underbilling_stderr_fallback_stringifies_prefix_values(mitm_ctx):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            cast(str, 123),
+            cast(str, None),
+            cast(UnderbillingClass, True),
+            run_id="run-1",
+        )
+
+    message = log.error.call_args.args[0]
+    assert "reason=None" in message
+    assert "underbilling_class=True" in message
+    assert "run_id=run-1" in message
+    assert message.endswith("123")
