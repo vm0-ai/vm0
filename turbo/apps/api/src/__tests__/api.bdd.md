@@ -139,15 +139,15 @@ Then invalid bodies, ambiguous tool entries, invalid provider pinning, missing c
 
 Coverage: `zero-runs-create`, `agent-runs-create`, zero-run admission service tests, built-in admission service tests.
 
-### RUN-02: Run context, secrets, providers, connectors, grants, and skills
+### RUN-02: Run context, secrets, providers, connectors, grants, and workflows
 
-Given provider credentials, connector credentials, custom connectors, secrets, variables, grants, skills, memory, and volumes are configured through APIs
+Given provider credentials, connector credentials, custom connectors, secrets, variables, grants, workflows, memory, and volumes are configured through APIs
 When the user creates a run
 Then GET run context exposes only safe placeholders and non-secret execution metadata.
 Then expired, revoked, missing, ungranted, cross-user, and cross-org credentials are omitted or rejected.
 Then provider selection and default-provider behavior are visible through run context or subsequent run state.
 
-Coverage: `zero-run-context`, `zero-runs-runner`, `zero-skills`, `zero-model-providers`, `zero-me-model-providers-*`, `zero-model-policies`, `zero-connector-data.service`.
+Coverage: `zero-run-context`, `zero-runs-runner`, `zero-workflows`, `zero-model-providers`, `zero-me-model-providers-*`, `zero-model-policies`, `zero-connector-data.service`.
 
 ### RUN-03: Runner dispatch and lifecycle
 
@@ -332,14 +332,14 @@ Then invalid signatures, malformed payloads, replay, missing entities, provider 
 
 Coverage: `webhooks-third-party`, `webhooks-agent-firewall-auth`, `webhooks-agent-health-usage-telemetry`, `webhooks-agent-checkpoints`, `webhooks-agent-complete`, `webhooks-agent-events`, `webhooks-agent-storage`, `webhooks-automation`, automation webhook triggers on `automations`.
 
-### OPS-01: Logs, email, support, skills, feature switches, and health
+### OPS-01: Logs, email, support, workflows, feature switches, and health
 
-Given users and internal actors exercise logs, email, developer support, skills, feature switches, report error, health, and unsubscribe routes
+Given users and internal actors exercise logs, email, developer support, workflows, feature switches, report error, health, and unsubscribe routes
 When they create, list, search, download, unsubscribe, report, or check status
 Then the corresponding GET/list/status responses or external provider mock states expose the user-visible result.
 Then auth, invalid payload, cross-org, provider failure, malformed archive, missing resource, and disabled feature cases return expected responses.
 
-Coverage: `zero-logs-*`, `logs-search`, `zero-email`, `email-unsubscribe`, `zero-developer-support`, `zero-report-error`, `zero-skills`, `zero-feature-switches`, `health`, `health-auth-probe`, `user-export`.
+Coverage: `zero-logs-*`, `logs-search`, `zero-email`, `email-unsubscribe`, `zero-developer-support`, `zero-report-error`, `zero-workflows`, `zero-feature-switches`, `health`, `health-auth-probe`, `user-export`.
 
 ### OPS-02: Platform, compatibility, and instrumentation
 
@@ -607,11 +607,11 @@ coverage gap is acceptable once listed:
 
 - `agent-composes-read.service.ts` no-head 400 arm and instructions safeParse-failure arm: every public write path sets `head_version_id` and contract-validates content in the same request; baseline reached both via DB-seeded rows.
 - `zero-chat-thread.service.ts:405-434` (`resolveAttachFileUrls` incl. `inferMimetype`) and `:460`: every API writer of `chat_messages.attachFiles` persists `attachFileMetadata` in the same insert and the queued auto-send resolver prefers metadata; only pre-migration rows reach the S3-listing resolution. `zero-chat-messages.ts:564-566` (prior-run `User:` unshift): every thread-linked run writer persists a content-bearing user message in the same transaction.
-- `agent-run-storage.service.ts:409, 507-510, 654-655` (missing additional-volume storage at dispatch): `zero_agents.customSkills` referencing a skill whose storage row is absent is not API-constructible — skill create uploads the volume server-side and skill delete clears agent references atomically.
+- `agent-run-storage.service.ts:409, 507-510, 654-655` (missing additional-volume storage at dispatch): workflow attachments referencing a workflow whose storage row is absent are not API-constructible — workflow create uploads the volume server-side and workflow delete clears agent references atomically.
 - `zero-run-queue.service.ts:304-308` and `agent-run-queue-payload.service.ts:46` (NULL `encrypted_params` promotion): every production enqueue encrypts params at insert. `agent-run-create.service.ts:2646-2647` (legacy-TEXT conversation history): the checkpoint webhook persists hash-only history and `conversations.cli_agent_session_history` has no production writer. `agent-run-telemetry.service.ts:94` and `zero-run-detail.service.ts:34` (`content.agent.framework` legacy compose form): the compose content schema strips unknown keys.
 - `zero-compose-data.service.ts:44` `content ?? null` null arm: needs a head pointer without its version row.
 - `agent-run-create.service.ts` vm0-managed provider-key selection/fallback/minimax routing, the post-resolution vm0 credit gate, and vm0 billable context need rows in `vm0_api_keys` plus org-default `model_providers.is_default = true`; neither has a public write API. `zeroAgents.modelProviderId` provider pins likewise have no public writer, and chat/schedule entry points resolve provider types before dispatch. The legacy `zero-runs-create.test.ts` remnant reached these only by DB seeding and was deleted with the arms recorded here.
-- `agent-run-create.service.ts` custom-skill seed-volume override requires direct writes to `zero_agents.customSkills`; public skill create/delete paths create the storage volume or clear references atomically. The normal custom-skill volume surface remains covered through run-create/lifecycle BDD.
+- `agent-run-create.service.ts` workflow seed-volume override requires direct writes to workflow attachment/storage rows; public workflow create/delete paths create the storage volume or clear references atomically. The normal workflow volume surface remains covered through run-create/lifecycle BDD.
 - `agent-run-create.service.ts` nested trigger-agent metadata/callback arms need a zero-token with `agent-run:write` and a DB-seeded parent run; production zero tokens exclude that capability, and API-created parent runs cannot mint it. The `createZeroIntegrationRun$` trigger path remains owned by `test-telegram-dispatch-probe.test.ts`.
 - `agent-run-create.service.ts` stored-connector 500 arms (incomplete connector-owned state and invalid stored auth method) need partial `connectors`/`secrets`/`variables` rows that public connect flows write atomically after validating the auth method.
 - `agent-run-telemetry.service.ts` Postgres `sandbox_telemetry` aggregation needs historical rows in `sandbox_telemetry`; the current telemetry webhook writes to Axiom datasets and has no apps/api writer for that table. Route-level telemetry success/error behavior stays covered by RUN-04 in `run-reads.bdd.test.ts`.

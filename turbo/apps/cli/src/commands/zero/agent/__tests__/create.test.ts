@@ -70,7 +70,7 @@ describe("zero agent create command", () => {
       );
     });
 
-    it("should create agent with custom skills and include them in request body", async () => {
+    it("should create agent without workflow attachments in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
@@ -85,16 +85,11 @@ describe("zero agent create command", () => {
       await createCommand.parseAsync([
         "node",
         "cli",
-        "--skills",
-        "my-skill,other-skill",
         "--display-name",
         "New Agent",
       ]);
 
-      expect(capturedBody?.customSkills).toEqual(["my-skill", "other-skill"]);
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-skill");
-      expect(logCalls).toContain("other-skill");
+      expect(capturedBody?.displayName).toBe("New Agent");
     });
 
     it("should send preset avatar in request body", async () => {

@@ -35,7 +35,6 @@ function createDefaultAgent(): TeamComposeItem {
     description: null,
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "public",
     headVersionId: "version_1",
     updatedAt: "2024-01-01T00:00:00Z",
@@ -60,7 +59,6 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       displayName: agent.displayName,
       sound: agent.sound,
       avatarUrl: agent.avatarUrl,
-      customSkills: agent.customSkills ?? [],
       visibility: agent.visibility,
     });
   });
@@ -153,7 +151,6 @@ function mockAgentDetailStory(): string {
       description: "Finds launch risks",
       sound: "professional",
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
       headVersionId: "version_4",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -248,7 +245,6 @@ describe("zero jobs page", () => {
         description: "Finds and summarizes information",
         sound: null,
         avatarUrl: null,
-        customSkills: [],
         visibility: "public",
         headVersionId: "version_2",
         updatedAt: "2024-01-02T00:00:00Z",
@@ -260,7 +256,6 @@ describe("zero jobs page", () => {
         description: "Writes content based on research",
         sound: null,
         avatarUrl: null,
-        customSkills: [],
         visibility: "private",
         headVersionId: "version_3",
         updatedAt: "2024-01-03T00:00:00Z",
@@ -321,7 +316,6 @@ describe("zero jobs page", () => {
         description: null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        customSkills: [],
         visibility: body.visibility ?? "public",
         headVersionId: "version_created",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -334,7 +328,6 @@ describe("zero jobs page", () => {
         displayName: agent.displayName,
         sound: agent.sound,
         avatarUrl: agent.avatarUrl,
-        customSkills: [],
         visibility: agent.visibility,
       });
     });
@@ -351,7 +344,6 @@ describe("zero jobs page", () => {
           displayName: agent?.displayName ?? null,
           sound: agent?.sound ?? null,
           avatarUrl: agent?.avatarUrl ?? null,
-          customSkills: [],
           visibility: agent?.visibility ?? "public",
         });
       },
@@ -451,7 +443,6 @@ describe("zero jobs page", () => {
         description: "Finds launch risks",
         sound: null,
         avatarUrl: null,
-        customSkills: [],
         visibility: "public",
         headVersionId: "version_5",
         updatedAt: "2026-03-10T00:00:00Z",

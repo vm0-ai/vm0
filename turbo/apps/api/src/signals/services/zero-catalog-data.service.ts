@@ -1,9 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -14,29 +12,6 @@ function stringArray(value: readonly string[] | unknown): readonly string[] {
         return typeof item === "string";
       })
     : [];
-}
-
-export function zeroSkillList(
-  orgId: string,
-): Computed<Promise<readonly ZeroAgentCustomSkill[]>> {
-  return computed(async (get): Promise<readonly ZeroAgentCustomSkill[]> => {
-    const rows = await get(db$)
-      .select({
-        name: zeroSkills.name,
-        displayName: zeroSkills.displayName,
-        description: zeroSkills.description,
-      })
-      .from(zeroSkills)
-      .where(eq(zeroSkills.orgId, orgId));
-
-    return rows.map((row) => {
-      return {
-        name: row.name,
-        displayName: row.displayName,
-        description: row.description,
-      };
-    });
-  });
 }
 
 export function zeroCustomConnectorList(args: {

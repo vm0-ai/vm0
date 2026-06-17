@@ -267,11 +267,17 @@ jobs:
           VM0_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
           VM0_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           VM0_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: production
         run: |
           rm -f apps/desktop/desktop-runtime-config.json
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \

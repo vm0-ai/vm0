@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.431.1](https://github.com/vm0-ai/vm0/compare/web-v12.431.0...web-v12.431.1) (2026-06-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.1
+    * @vm0/core bumped to 8.350.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.86.0
+
+## [12.431.0](https://github.com/vm0-ai/vm0/compare/web-v12.430.0...web-v12.431.0) (2026-06-17)
+
+
+### Features
+
+* rename zero skills to workflows ([#18099](https://github.com/vm0-ai/vm0/issues/18099)) ([c38a8fa](https://github.com/vm0-ai/vm0/commit/c38a8faaf091ea9950afdc344c7fb9701d502576))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.0
+    * @vm0/core bumped to 8.350.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.85.0
+
 ## [12.430.0](https://github.com/vm0-ai/vm0/compare/web-v12.429.1...web-v12.430.0) (2026-06-17)
 
 

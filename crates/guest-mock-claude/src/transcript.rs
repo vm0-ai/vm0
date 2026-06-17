@@ -161,6 +161,19 @@ pub(crate) fn tool_result_event(
     })
 }
 
+pub(crate) fn replayed_user_event(session_id: &str, uuid: Option<&str>, content: &str) -> Value {
+    json!({
+        "type": "user",
+        "session_id": session_id,
+        "uuid": uuid,
+        "message": {
+            "role": "user",
+            "content": content
+        },
+        "parent_tool_use_id": null
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

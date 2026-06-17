@@ -456,7 +456,6 @@ async function collectAgentConfig(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      customSkills: zeroAgents.customSkills,
       composeContent: agentComposeVersions.content,
     })
     .from(agentComposeVersions)
@@ -476,7 +475,7 @@ async function collectAgentConfig(
     displayName: agent.displayName,
     description: agent.description,
     sound: agent.sound,
-    customSkills: agent.customSkills,
+    workflows: [],
     composeContent: agent.composeContent,
   };
 }

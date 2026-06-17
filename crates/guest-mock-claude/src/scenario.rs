@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+const ACTIVE_INPUT_SMOKE_MARKER: &str = "@active-input-smoke:";
 const ECHO_MARKER: &str = "@ECHO@";
 const FAIL_NO_NEWLINE_MARKER: &str = "@fail-no-newline:";
 const FAIL_INVALID_UTF8_MARKER: &str = "@fail-invalid-utf8";
@@ -16,6 +17,8 @@ const HANG_AFTER_RESULT_MARKER: &str = "@hang-after-result";
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum MockScenario<'a> {
+    ActiveInputSmoke { expected_follow_ups: usize },
+    InvalidActiveInputSmokeCount(&'a str),
     EchoJsonl(&'a str),
     FailNoNewline(&'a str),
     FailInvalidUtf8,
@@ -39,6 +42,7 @@ enum ScenarioMatchKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ScenarioKind {
+    ActiveInputSmoke,
     EchoJsonl,
     FailNoNewline,
     FailInvalidUtf8,
@@ -64,6 +68,11 @@ enum ScenarioMatch<'a> {
 }
 
 const SCENARIO_RULES: &[ScenarioRule] = &[
+    ScenarioRule {
+        marker: ACTIVE_INPUT_SMOKE_MARKER,
+        match_kind: ScenarioMatchKind::PrefixPayload,
+        scenario_kind: ScenarioKind::ActiveInputSmoke,
+    },
     ScenarioRule {
         marker: ECHO_MARKER,
         match_kind: ScenarioMatchKind::FirstLinePayload,
@@ -161,6 +170,16 @@ impl ScenarioRule {
 impl ScenarioKind {
     fn to_mock_scenario<'a>(self, scenario_match: ScenarioMatch<'a>) -> Option<MockScenario<'a>> {
         let scenario = match (self, scenario_match) {
+            (Self::ActiveInputSmoke, ScenarioMatch::Payload(payload)) => {
+                match payload.parse::<usize>() {
+                    Ok(expected_follow_ups) if expected_follow_ups > 0 => {
+                        MockScenario::ActiveInputSmoke {
+                            expected_follow_ups,
+                        }
+                    }
+                    _ => MockScenario::InvalidActiveInputSmokeCount(payload),
+                }
+            }
             (Self::EchoJsonl, ScenarioMatch::Payload(payload)) => MockScenario::EchoJsonl(payload),
             (Self::FailNoNewline, ScenarioMatch::Payload(msg)) => MockScenario::FailNoNewline(msg),
             (Self::Fail, ScenarioMatch::Payload(msg)) => MockScenario::Fail(msg),
@@ -250,6 +269,12 @@ mod tests {
     #[test]
     fn classifies_all_scenario_rules() {
         let cases = [
+            (
+                "@active-input-smoke:2",
+                MockScenario::ActiveInputSmoke {
+                    expected_follow_ups: 2,
+                },
+            ),
             (
                 "@ECHO@\n{\"type\":\"result\"}",
                 MockScenario::EchoJsonl("{\"type\":\"result\"}"),
@@ -398,6 +423,14 @@ mod tests {
 
     #[test]
     fn payload_markers_keep_remainder_as_payload() {
+        assert_eq!(
+            MockScenario::from_prompt("@active-input-smoke:not-a-number"),
+            MockScenario::InvalidActiveInputSmokeCount("not-a-number")
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@active-input-smoke:0"),
+            MockScenario::InvalidActiveInputSmokeCount("0")
+        );
         assert_eq!(
             MockScenario::from_prompt("@fail-no-newline:"),
             MockScenario::FailNoNewline("")

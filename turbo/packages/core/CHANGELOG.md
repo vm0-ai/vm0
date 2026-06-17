@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.350.1](https://github.com/vm0-ai/vm0/compare/core-v8.350.0...core-v8.350.1) (2026-06-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.1
+    * @vm0/connectors bumped to 1.86.0
+
+## [8.350.0](https://github.com/vm0-ai/vm0/compare/core-v8.349.0...core-v8.350.0) (2026-06-17)
+
+
+### Features
+
+* add workflow viewer route and switches ([#18107](https://github.com/vm0-ai/vm0/issues/18107)) ([b00013f](https://github.com/vm0-ai/vm0/commit/b00013fb54767bf19868daf05ea6993cb7c457db))
+* rename zero skills to workflows ([#18099](https://github.com/vm0-ai/vm0/issues/18099)) ([c38a8fa](https://github.com/vm0-ai/vm0/commit/c38a8faaf091ea9950afdc344c7fb9701d502576))
+
+
+### Bug Fixes
+
+* remove borders from presentation previews ([#18096](https://github.com/vm0-ai/vm0/issues/18096)) ([8ae9344](https://github.com/vm0-ai/vm0/commit/8ae9344cb1e2a9bdac984f06da9a4b5c5a02adb7))
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.0
+    * @vm0/connectors bumped to 1.85.0
+
 ## [8.349.0](https://github.com/vm0-ai/vm0/compare/core-v8.348.1...core-v8.349.0) (2026-06-17)
 
 

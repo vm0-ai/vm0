@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.1...guest-agent-v0.37.2) (2026-06-17)
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
 ## [0.37.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.0...guest-agent-v0.37.1) (2026-06-17)
 
 

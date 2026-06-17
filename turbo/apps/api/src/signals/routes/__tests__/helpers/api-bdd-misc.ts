@@ -10,10 +10,11 @@ import type {
   UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-  type SkillFileEntry,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowAgentsContract,
+  zeroWorkflowsCollectionContract,
+  zeroWorkflowsDetailContract,
+  type WorkflowFileEntry,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroModelProvidersByTypeContract,
@@ -70,7 +71,7 @@ function authenticate(
   return authHeaders(actor);
 }
 
-function skillFiles(content: string): SkillFileEntry[] {
+function workflowFiles(content: string): WorkflowFileEntry[] {
   return [{ path: "SKILL.md", content }];
 }
 
@@ -282,44 +283,44 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async listSkills(actor: ApiTestUser) {
+    async listWorkflows(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context })(zeroSkillsCollectionContract).list({
+        setupApp({ context })(zeroWorkflowsCollectionContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
       );
     },
 
-    async createSkill(
+    async createWorkflow(
       actor: ApiTestUser,
       name: string,
       content: string,
       statuses: readonly (201 | 400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSkillsCollectionContract).create({
+        setupApp({ context })(zeroWorkflowsCollectionContract).create({
           headers: authenticate(context, actor),
           body: {
             name,
-            displayName: "BDD Skill",
-            description: "Created through public skill API",
-            files: skillFiles(content),
+            displayName: "BDD Workflow",
+            description: "Created through public workflow API",
+            files: workflowFiles(content),
           },
         }),
         statuses,
       );
     },
 
-    async requestCreateInvalidSkill(
+    async requestCreateInvalidWorkflow(
       actor: ApiTestUser,
       statuses: readonly (400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSkillsCollectionContract).create({
+        setupApp({ context })(zeroWorkflowsCollectionContract).create({
           headers: authenticate(context, actor),
           body: {
-            name: "bdd-invalid-skill",
+            name: "bdd-invalid-workflow",
             files: [{ path: "README.md", content: "missing skill file" }],
           },
         }),
@@ -327,13 +328,13 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async readSkill(
+    async readWorkflow(
       actor: ApiTestUser,
       name: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSkillsDetailContract).get({
+        setupApp({ context })(zeroWorkflowsDetailContract).get({
           headers: authenticate(context, actor),
           params: { name },
         }),
@@ -341,31 +342,47 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async updateSkill(
+    async updateWorkflow(
       actor: ApiTestUser,
       name: string,
       content: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSkillsDetailContract).update({
+        setupApp({ context })(zeroWorkflowsDetailContract).update({
           headers: authenticate(context, actor),
           params: { name },
-          body: { files: skillFiles(content) },
+          body: { files: workflowFiles(content) },
         }),
         statuses,
       );
     },
 
-    async deleteSkill(
+    async deleteWorkflow(
       actor: ApiTestUser,
       name: string,
       statuses: readonly (204 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSkillsDetailContract).delete({
+        setupApp({ context })(zeroWorkflowsDetailContract).delete({
           headers: authenticate(context, actor),
           params: { name },
+        }),
+        statuses,
+      );
+    },
+
+    async attachWorkflowToAgent(
+      actor: ApiTestUser,
+      name: string,
+      agentId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroWorkflowAgentsContract).attach({
+          headers: authenticate(context, actor),
+          params: { name },
+          body: { agentId },
         }),
         statuses,
       );

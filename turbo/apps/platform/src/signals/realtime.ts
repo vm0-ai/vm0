@@ -145,59 +145,6 @@ const runWithChannel$ = command(
   },
 );
 
-const runWithChannelMessageHandler$ = command(
-  async (
-    { set },
-    channel: RealtimeChannel,
-    topic: string,
-    onMessage$: Command<void, [unknown, AbortSignal]>,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const done = createDeferredPromise<void>(signal);
-
-    const callback = (message: InboundMessage) => {
-      L.debug("got message payload from topic", topic, message);
-      set(onMessage$, message.data, signal);
-    };
-    let subscribed = false;
-
-    const cleanup = () => {
-      if (subscribed) {
-        subscribed = false;
-        channel.unsubscribe(topic, callback);
-      }
-    };
-
-    signal.addEventListener("abort", cleanup, { once: true });
-
-    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
-    try {
-      await channel.subscribe(topic, callback);
-      signal.throwIfAborted();
-      subscribed = true;
-      L.debug("subscribed to message topic: " + topic);
-      await done.promise;
-    } catch (error) {
-      signal.throwIfAborted();
-      throwIfAbort(error);
-      if (isAblyConnectionClosedError(error)) {
-        L.debug(
-          "Ably connection closed before message subscription completed",
-          {
-            topic,
-          },
-        );
-        return;
-      }
-      throw error;
-    } finally {
-      signal.removeEventListener("abort", cleanup);
-      cleanup();
-    }
-  },
-);
-
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
  * Call once during app bootstrap, after Clerk auth is ready.
@@ -345,64 +292,6 @@ export const setAblyLoop$ = command(
     });
     signal.throwIfAborted();
     await set(runWithChannel$, channel, topic, loopCommand$, signal);
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyMessageHandler$ = command(
-  async (
-    { get, set },
-    topic: string,
-    onMessage$: Command<void, [unknown, AbortSignal]>,
-    signal: AbortSignal,
-  ) => {
-    signal.throwIfAborted();
-
-    let channel = get(internalUserChannel$);
-    if (channel) {
-      await set(
-        runWithChannelMessageHandler$,
-        channel,
-        topic,
-        onMessage$,
-        signal,
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    const channelDeferred = createDeferredPromise<RealtimeChannel>(signal);
-    const pendingSubscription: PendingAblySubscription = {
-      topic,
-      signal,
-      channelDeferred,
-    };
-    const removePendingSubscription = () => {
-      set(pendingAblySubscriptions$, (prev) => {
-        return prev.filter((item) => {
-          return item !== pendingSubscription;
-        });
-      });
-    };
-
-    signal.addEventListener("abort", removePendingSubscription, {
-      once: true,
-    });
-    set(pendingAblySubscriptions$, (prev) => {
-      return [...prev, pendingSubscription];
-    });
-
-    channel = await channelDeferred.promise.finally(() => {
-      signal.removeEventListener("abort", removePendingSubscription);
-    });
-    signal.throwIfAborted();
-    await set(
-      runWithChannelMessageHandler$,
-      channel,
-      topic,
-      onMessage$,
-      signal,
-    );
     signal.throwIfAborted();
   },
 );

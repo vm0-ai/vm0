@@ -97,7 +97,7 @@ import type {
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { TiptapSkillComposer } from "./tiptap-skill-composer.tsx";
+import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -2502,7 +2502,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "rounded-lg p-[3px] transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-1",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -3289,12 +3289,12 @@ function ComposerInputSlot({
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
   const features = useLastResolved(featureSwitch$);
-  const slashSkillCommandsEnabled =
-    features?.[FeatureSwitchKey.ChatSlashSkillCommands] ?? false;
+  const slashWorkflowCommandsEnabled =
+    features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
 
-  if (slashSkillCommandsEnabled) {
+  if (slashWorkflowCommandsEnabled) {
     return (
-      <TiptapSkillComposer
+      <TiptapWorkflowComposer
         input={input}
         onInputChange={onInputChange}
         onDraftChange={onDraftChange}

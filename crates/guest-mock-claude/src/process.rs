@@ -2,28 +2,95 @@ use crate::args::ParsedArgs;
 use crate::scenario::{MockScenario, echo_session_id, parse_echo_jsonl};
 use crate::transcript::{
     JsonlTranscript, assistant_text_event, create_session_history, generate_session_id, init_event,
-    is_valid_session_history_id, result_event, tool_result_event, tool_use_event,
+    is_valid_session_history_id, replayed_user_event, result_event, tool_result_event,
+    tool_use_event,
 };
 use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
+const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
-    let prompt = match prompt_from_input(&parsed) {
-        Ok(prompt) => prompt,
-        Err(message) => {
-            eprintln!("{message}");
-            return ExitCode::from(1);
-        }
-    };
+    if parsed.input_format == "stream-json" {
+        return run_stream_json_input(parsed);
+    }
 
-    match MockScenario::from_prompt(&prompt) {
+    run_prompt_scenario(&parsed.prompt, &parsed.output_format)
+}
+
+#[derive(Debug)]
+struct StreamJsonUserFrame {
+    content: String,
+    uuid: Option<String>,
+}
+
+fn run_stream_json_input(parsed: ParsedArgs) -> ExitCode {
+    let stdin = std::io::stdin();
+    let mut reader = BufReader::new(stdin.lock());
+    let first_frame =
+        match read_next_stream_json_user_frame(&mut reader, StreamJsonFrameKind::First) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => {
+                eprintln!("stream-json stdin did not contain a user message");
+                return ExitCode::from(1);
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                return ExitCode::from(1);
+            }
+        };
+
+    match MockScenario::from_prompt(&first_frame.content) {
+        MockScenario::ActiveInputSmoke {
+            expected_follow_ups,
+        } => run_active_input_smoke_scenario(
+            &parsed.output_format,
+            parsed.replay_user_messages,
+            first_frame,
+            &mut reader,
+            expected_follow_ups,
+        ),
+        MockScenario::InvalidActiveInputSmokeCount(count) => {
+            eprintln!("{}", invalid_active_input_count_message(count));
+            ExitCode::from(1)
+        }
+        scenario => {
+            if let Err(message) = drain_remaining_stream_json_stdin(&mut reader) {
+                eprintln!("{message}");
+                return ExitCode::from(1);
+            }
+            run_scenario(scenario, &first_frame.content, &parsed.output_format)
+        }
+    }
+}
+
+fn run_prompt_scenario(prompt: &str, output_format: &str) -> ExitCode {
+    run_scenario(MockScenario::from_prompt(prompt), prompt, output_format)
+}
+
+fn invalid_active_input_count_message(count: &str) -> String {
+    format!(
+        "invalid @active-input-smoke follow-up count ({} bytes)",
+        count.len()
+    )
+}
+
+fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -> ExitCode {
+    match scenario {
+        MockScenario::ActiveInputSmoke { .. } => {
+            eprintln!("@active-input-smoke requires --input-format stream-json");
+            ExitCode::from(1)
+        }
+        MockScenario::InvalidActiveInputSmokeCount(count) => {
+            eprintln!("{}", invalid_active_input_count_message(count));
+            ExitCode::from(1)
+        }
         MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),
         MockScenario::FailNoNewline(msg) => {
             eprint!("{msg}");
@@ -47,10 +114,10 @@ pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
             ExitCode::from(1)
         }
         MockScenario::StuckTool { deaf, close_stdout } => {
-            run_stuck_tool_scenario(&parsed.output_format, deaf, close_stdout)
+            run_stuck_tool_scenario(output_format, deaf, close_stdout)
         }
         MockScenario::OrphanPipe => {
-            if parsed.output_format == "stream-json" {
+            if output_format == "stream-json" {
                 emit_post_result_pair();
 
                 // Spawn a child after flushing the completed stream. It inherits
@@ -62,10 +129,10 @@ pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
             ExitCode::SUCCESS
         }
         MockScenario::HangAfterResult { deaf } => {
-            run_hang_after_result_scenario(&parsed.output_format, deaf)
+            run_hang_after_result_scenario(output_format, deaf)
         }
         MockScenario::ExitAfterResult => {
-            if parsed.output_format == "stream-json" {
+            if output_format == "stream-json" {
                 emit_post_result_pair();
                 // Exit immediately. Exercises the happy path: guest-agent
                 // either arms post-result reap and observes `child.wait()`
@@ -74,59 +141,165 @@ pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        MockScenario::WriteEnvJson(path) => {
-            run_write_env_json_scenario(&parsed.output_format, path)
-        }
+        MockScenario::WriteEnvJson(path) => run_write_env_json_scenario(output_format, path),
         MockScenario::Shell => {
             let session_id = generate_session_id();
 
-            if parsed.output_format == "stream-json" {
-                run_stream_json_mode(&prompt, &session_id)
+            if output_format == "stream-json" {
+                run_stream_json_mode(prompt, &session_id)
             } else {
-                run_text_mode(&prompt)
+                run_text_mode(prompt)
             }
         }
     }
 }
 
-fn prompt_from_input(parsed: &ParsedArgs) -> Result<String, String> {
-    if parsed.input_format == "stream-json" {
-        read_stream_json_prompt_from_stdin()
-    } else {
-        Ok(parsed.prompt.clone())
+#[derive(Clone, Copy)]
+enum StreamJsonFrameKind {
+    First,
+    FollowUp { index: usize },
+}
+
+fn read_next_stream_json_user_frame(
+    reader: &mut impl BufRead,
+    kind: StreamJsonFrameKind,
+) -> Result<Option<StreamJsonUserFrame>, String> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read stream-json stdin: {e}"))?;
+        if bytes == 0 {
+            return Ok(None);
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        return parse_stream_json_user_frame(trimmed, kind).map(Some);
     }
 }
 
-fn read_stream_json_prompt_from_stdin() -> Result<String, String> {
+fn drain_remaining_stream_json_stdin(reader: &mut impl BufRead) -> Result<(), String> {
     let mut input = String::new();
-    std::io::stdin()
+    reader
         .read_to_string(&mut input)
-        .map_err(|e| format!("read stream-json stdin: {e}"))?;
+        .map(|_| ())
+        .map_err(|e| format!("read stream-json stdin: {e}"))
+}
 
-    let line = input
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .ok_or_else(|| "stream-json stdin did not contain a user message".to_string())?;
-    let event: Value =
-        serde_json::from_str(line).map_err(|e| format!("parse stream-json stdin: {e}"))?;
+fn parse_stream_json_user_frame(
+    line: &str,
+    kind: StreamJsonFrameKind,
+) -> Result<StreamJsonUserFrame, String> {
+    let event: Value = serde_json::from_str(line).map_err(|e| match kind {
+        StreamJsonFrameKind::First => format!("parse stream-json stdin: {e}"),
+        StreamJsonFrameKind::FollowUp { index } => {
+            format!("parse stream-json stdin follow-up message {index}: {e}")
+        }
+    })?;
+
+    let description = match kind {
+        StreamJsonFrameKind::First => "first message".to_string(),
+        StreamJsonFrameKind::FollowUp { index } => format!("follow-up message {index}"),
+    };
 
     if event.get("type").and_then(Value::as_str) != Some("user") {
-        return Err("stream-json stdin first message must have type \"user\"".to_string());
+        return Err(format!(
+            "stream-json stdin {description} must have type \"user\""
+        ));
     }
     if let Some(role) = event.pointer("/message/role").and_then(Value::as_str)
         && role != "user"
     {
-        return Err("stream-json stdin first message role must be \"user\"".to_string());
+        return Err(format!(
+            "stream-json stdin {description} role must be \"user\""
+        ));
     }
 
-    event
+    let content = event
         .pointer("/message/content")
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| {
-            "stream-json stdin first message must contain string message.content".to_string()
-        })
+            format!("stream-json stdin {description} must contain string message.content")
+        })?;
+    let uuid = event
+        .get("uuid")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    Ok(StreamJsonUserFrame { content, uuid })
+}
+
+fn run_active_input_smoke_scenario(
+    output_format: &str,
+    replay_user_messages: bool,
+    initial_frame: StreamJsonUserFrame,
+    stdin: &mut impl BufRead,
+    expected_follow_ups: usize,
+) -> ExitCode {
+    if output_format != "stream-json" {
+        eprintln!("@active-input-smoke requires --output-format stream-json");
+        return ExitCode::from(1);
+    }
+
+    let session_id = generate_session_id();
+    let mut transcript = JsonlTranscript::default();
+
+    transcript.emit_value(init_event(&session_id, &["Bash"]));
+    if replay_user_messages {
+        transcript.emit_value(replayed_user_event(
+            &session_id,
+            initial_frame.uuid.as_deref(),
+            &initial_frame.content,
+        ));
+    }
+    transcript.emit_value(result_event(&session_id, false, ACTIVE_INPUT_READY_RESULT));
+    let _ = std::io::stdout().flush();
+
+    let mut follow_up_contents = Vec::new();
+    for index in 1..=expected_follow_ups {
+        let frame = match read_next_stream_json_user_frame(
+            stdin,
+            StreamJsonFrameKind::FollowUp { index },
+        ) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => {
+                eprintln!(
+                    "active-input stdin closed after {} of {expected_follow_ups} follow-up user messages",
+                    follow_up_contents.len()
+                );
+                return ExitCode::from(1);
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                return ExitCode::from(1);
+            }
+        };
+
+        if replay_user_messages {
+            transcript.emit_value(replayed_user_event(
+                &session_id,
+                frame.uuid.as_deref(),
+                &frame.content,
+            ));
+            let _ = std::io::stdout().flush();
+        }
+        follow_up_contents.push(frame.content);
+    }
+
+    transcript.emit_value(result_event(
+        &session_id,
+        false,
+        &format!("RESULT={}", follow_up_contents.join("+")),
+    ));
+    transcript.write_session_history(&session_id);
+    let _ = std::io::stdout().flush();
+    ExitCode::SUCCESS
 }
 
 fn run_echo_jsonl_mode(payload: &str) -> ExitCode {

@@ -18,7 +18,6 @@ export function agentResponse(row: {
   readonly description: string | null;
   readonly sound: string | null;
   readonly avatarUrl: string | null;
-  readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
   readonly preferPersonalProvider: boolean;
@@ -31,7 +30,6 @@ export function agentResponse(row: {
     description: row.description,
     sound: row.sound,
     avatarUrl: row.avatarUrl,
-    customSkills: [...row.customSkills],
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
@@ -50,7 +48,6 @@ export function defaultAgentResponse(args: {
     description: null,
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
@@ -105,7 +102,6 @@ export function zeroAgentList(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
         preferPersonalProvider: zeroAgents.preferPersonalProvider,
@@ -137,7 +133,6 @@ export function zeroAgentDetail(args: {
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
         preferPersonalProvider: zeroAgents.preferPersonalProvider,
@@ -220,7 +215,6 @@ export function zeroTeam(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        customSkills: zeroAgents.customSkills,
         visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
@@ -238,7 +232,6 @@ export function zeroTeam(
         description: row.description,
         sound: row.sound,
         avatarUrl: row.avatarUrl,
-        customSkills: [...row.customSkills],
         visibility: row.visibility,
         headVersionId: row.headVersionId,
         updatedAt: row.updatedAt.toISOString(),

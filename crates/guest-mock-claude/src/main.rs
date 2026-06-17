@@ -33,6 +33,9 @@
 //!                               emit result, and exit(0)
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
 //!                               lines as JSONL and emit them unchanged.
+//!   @active-input-smoke:<n>   - Stream-json stdin marker. Emit a first result,
+//!                               then read n later user frames from the same
+//!                               stdin stream and emit a deterministic final result.
 
 mod args;
 mod process;

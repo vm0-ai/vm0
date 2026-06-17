@@ -6,7 +6,6 @@ import {
   varchar,
   uniqueIndex,
   index,
-  jsonb,
   boolean,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
@@ -41,10 +40,6 @@ export const zeroAgents = pgTable(
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
     avatarUrl: varchar("avatar_url", { length: 1024 }),
-    customSkills: jsonb("custom_skills")
-      .$type<string[]>()
-      .notNull()
-      .default([]),
     modelProviderId: uuid("model_provider_id").references(
       () => {
         return modelProviders.id;

@@ -783,7 +783,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("runs thread-pinned member-scope providers and mounts codex custom skills", async () => {
+  it("runs thread-pinned member-scope providers and mounts codex workflows", async () => {
     const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const chat = createChatFilesBddApi(context);
@@ -791,11 +791,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const { actor, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
 
-    const skillName = "bdd-codex-kit";
-    await misc.createSkill(
+    const workflowName = "bdd-codex-kit";
+    await misc.createWorkflow(
       actor,
-      skillName,
-      "# BDD codex kit\nUse this skill for codex runs.",
+      workflowName,
+      "# BDD codex kit\nUse this workflow for codex runs.",
       [201],
     );
 
@@ -834,8 +834,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD codex skills agent",
       visibility: "private",
-      customSkills: [skillName],
     });
+    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
     const sent = await chat.requestSendMessage(
       actor,
@@ -872,7 +872,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       claim.storageManifest?.storages.map((storage) => {
         return storage.mountPath;
       }) ?? [];
-    expect(mountPaths).toContain(`/home/user/.codex/skills/${skillName}`);
+    expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
     expect(
       mountPaths.some((mountPath) => {
         return mountPath.startsWith("/home/user/.claude/skills/");
@@ -1571,10 +1571,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
-      "zero skill --help",
-      "Local changes or newly-created skill folders",
+      "zero workflow --help",
+      "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
-      "zero skill create|edit <name> --dir <path>",
+      "zero workflow create|edit <name> --dir <path>",
       "zero developer-support --help",
       "zero maps --help",
     ]) {
@@ -1614,51 +1614,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
-
-  it.each(["slack", "telegram", "email"] as const)(
-    "does not add chat stream context to %s-triggered runs",
-    async (triggerSource) => {
-      const bdd = createBddApi(context);
-      const api = createRunsAutomationsApi(context);
-      const connectors = createConnectorBddApi(context);
-      const actor = bdd.user();
-      bdd.acceptAgentStorageWrites();
-      api.acceptStorageDownloads();
-      api.acceptTelemetryIngest();
-      const runnerGroup = api.configureRunnerGroup();
-      await api.grantProEntitlement(actor);
-      await connectors.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.AssistantTextStreaming]: true,
-      });
-
-      const composeName = `bdd-${triggerSource}-stream-off`;
-      const compose = await api.createCompose(actor, {
-        version: "1",
-        agents: {
-          [composeName]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-          },
-        },
-      });
-
-      const run = await api.createDirectRun(actor, {
-        agentComposeId: compose.composeId,
-        prompt: `${triggerSource} should not stream`,
-        triggerSource,
-      });
-      await api.heartbeatRunner(runnerGroup);
-      const claim = await api.claimRunnerJob(run.runId);
-      expect(claim).not.toHaveProperty("chatStreamChannel");
-      expect(claim).not.toHaveProperty("chatStreamTopic");
-      expect(claim).not.toHaveProperty("chatStreamToken");
-      expect(context.mocks.ably.requestToken).not.toHaveBeenCalled();
-
-      await api.requestCancelRun(actor, run.runId, [200]);
-      const cancelled = await api.readRun(actor, run.runId);
-      expect(cancelled.status).toBe("cancelled");
-    },
-  );
 
   it("promotes queued runs with feature flags and a fresh api start time", async () => {
     const api = createRunsAutomationsApi(context);
@@ -1731,28 +1686,28 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("mounts custom skills for claude-code zero agents", async () => {
+  it("mounts workflows for claude-code zero agents", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const misc = createMiscRoutesApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
 
-    const skillName = "bdd-claude-kit";
-    await misc.createSkill(
+    const workflowName = "bdd-claude-kit";
+    await misc.createWorkflow(
       actor,
-      skillName,
-      "# BDD claude kit\nUse this skill in claude runs.",
+      workflowName,
+      "# BDD claude kit\nUse this workflow in claude runs.",
       [201],
     );
     const agent = await bdd.createAgent(actor, {
-      displayName: "BDD claude skills agent",
+      displayName: "BDD claude workflows agent",
       visibility: "private",
-      customSkills: [skillName],
     });
+    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "use the custom skill",
+      prompt: "use the workflow",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -1762,7 +1717,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       claim.storageManifest?.storages.map((storage) => {
         return storage.mountPath;
       }),
-    ).toContain(`/home/user/.claude/skills/${skillName}`);
+    ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.0...guest-contracts-v0.2.1) (2026-06-17)
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.1.2...guest-contracts-v0.2.0) (2026-06-17)
 
 

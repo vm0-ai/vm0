@@ -5,9 +5,10 @@ import { asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowAgentsContract,
+  zeroWorkflowsCollectionContract,
+  zeroWorkflowsDetailContract,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -2492,52 +2493,56 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     expect(promoted.content).toBe("queued from v1");
     await cancelChatRun(actor, promoted.runId);
 
-    // Custom skills registered through the skills API mount into the claim
-    // as additional volumes. (The storage-missing fallback at dispatch is
-    // not API-constructible: skill create uploads the volume server-side and
-    // skill delete clears agent references in the same transaction.)
-    const skillName = `bdd-skill-${randomUUID().slice(0, 12)}`;
+    // Workflows still mount as SKILL.md-backed volumes in the runtime.
+    const workflowName = `bdd-workflow-${randomUUID().slice(0, 12)}`;
     await accept(
-      setupApp({ context })(zeroSkillsCollectionContract).create({
+      setupApp({ context })(zeroWorkflowsCollectionContract).create({
         headers: sessionHeaders(actor),
         body: {
-          name: skillName,
-          files: [{ path: "SKILL.md", content: "# bdd skill" }],
+          name: workflowName,
+          files: [{ path: "SKILL.md", content: "# bdd workflow" }],
         },
       }),
       [201],
     );
-    await bdd.updateAgent(actor, agentId, { customSkills: [skillName] });
+    await accept(
+      setupApp({ context })(zeroWorkflowAgentsContract).attach({
+        headers: sessionHeaders(actor),
+        params: { name: workflowName },
+        body: { agentId },
+      }),
+      [200],
+    );
 
-    const skillSend = await chat.requestV1Send(
+    const workflowSend = await chat.requestV1Send(
       bearer,
-      { prompt: "use the bdd skill", threadId: thread.id },
+      { prompt: "use the bdd workflow", threadId: thread.id },
       [201],
     );
-    if (skillSend.status !== 201 || skillSend.body.runId === null) {
-      throw new Error("Expected the skill-mounting v1 send to create a run");
+    if (workflowSend.status !== 201 || workflowSend.body.runId === null) {
+      throw new Error("Expected the workflow-mounting v1 send to create a run");
     }
-    const run4Id = skillSend.body.runId;
+    const run4Id = workflowSend.body.runId;
     const claim4 = await claimChatRun(runnerGroup, run4Id);
     expect(claim4.claim.storageManifest?.storages).toContainEqual(
       expect.objectContaining({
-        name: `custom-skill@${skillName}`,
-        mountPath: `/home/user/.claude/skills/${skillName}`,
+        name: `custom-skill@${workflowName}`,
+        mountPath: `/home/user/.claude/skills/${workflowName}`,
       }),
     );
     await cancelChatRun(actor, run4Id);
 
-    // Deleting the skill removes the mount from the next run's claim.
+    // Deleting the workflow removes the mount from the next run's claim.
     await accept(
-      setupApp({ context })(zeroSkillsDetailContract).delete({
+      setupApp({ context })(zeroWorkflowsDetailContract).delete({
         headers: sessionHeaders(actor),
-        params: { name: skillName },
+        params: { name: workflowName },
       }),
       [204],
     );
     const afterDelete = await chat.requestV1Send(
       bearer,
-      { prompt: "after the skill is deleted", threadId: thread.id },
+      { prompt: "after the workflow is deleted", threadId: thread.id },
       [201],
     );
     if (afterDelete.status !== 201 || afterDelete.body.runId === null) {
@@ -2545,7 +2550,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     }
     const claim5 = await claimChatRun(runnerGroup, afterDelete.body.runId);
     expect(JSON.stringify(claim5.claim)).not.toContain(
-      `custom-skill@${skillName}`,
+      `custom-skill@${workflowName}`,
     );
     await cancelChatRun(actor, afterDelete.body.runId);
   }, 180_000);

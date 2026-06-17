@@ -35,12 +35,11 @@ import {
 } from "./helpers/zero-model-providers";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
-  deleteSkillsForFixture$,
+  deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
-  seedSkill$,
-  seedSkillsFixture$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
+  seedWorkflowsFixture$,
+  type WorkflowsFixture,
+} from "./helpers/zero-workflows";
 
 const context = testContext();
 const store = createStore();
@@ -115,8 +114,8 @@ function expectRecord(value: unknown, label: string): Record<string, unknown> {
 }
 
 describe("POST /api/zero/agents", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
+    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
   const trackModelProvider = createFixtureTracker<OrgModelProviderFixture>(
     (fixture) => {
@@ -165,16 +164,7 @@ describe("POST /api/zero/agents", () => {
 
   it("creates agent metadata, compose content, and instructions storage", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedSkill$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "research-notes",
-      },
-      context.signal,
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -188,7 +178,6 @@ describe("POST /api/zero/agents", () => {
           description: "Tracks research context",
           sound: "calm",
           avatarUrl: "preset:2",
-          customSkills: ["research-notes"],
         },
       }),
       [201],
@@ -200,7 +189,6 @@ describe("POST /api/zero/agents", () => {
       description: "Tracks research context",
       sound: "calm",
       avatarUrl: "preset:2",
-      customSkills: ["research-notes"],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -214,7 +202,6 @@ describe("POST /api/zero/agents", () => {
         id: zeroAgents.id,
         name: zeroAgents.name,
         owner: zeroAgents.owner,
-        customSkills: zeroAgents.customSkills,
         visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
@@ -223,7 +210,6 @@ describe("POST /api/zero/agents", () => {
       id: response.body.agentId,
       name: expect.any(String),
       owner: fixture.userId,
-      customSkills: ["research-notes"],
       visibility: "public",
     });
 
@@ -276,55 +262,9 @@ describe("POST /api/zero/agents", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
   });
 
-  it("returns 400 when a requested custom skill does not exist", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { customSkills: ["missing-skill"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "Custom skill 'missing-skill' not found in this organization. Create it with 'zero skill create' first.",
-        code: "VALIDATION_ERROR",
-      },
-    });
-  });
-
-  it("returns 400 when a built-in connector is requested as a custom skill", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { customSkills: ["github"] },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
-        code: "VALIDATION_ERROR",
-      },
-    });
-  });
-
   it("returns 409 when the public agent limit has been reached", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     for (let i = 0; i < 7; i += 1) {
       await store.set(
@@ -374,7 +314,7 @@ describe("POST /api/zero/agents", () => {
 
   it("excludes private agents from the public agent create limit", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -412,7 +352,7 @@ describe("POST /api/zero/agents", () => {
 
   it("allows creating another public agent after one is deleted", async () => {
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -466,7 +406,7 @@ describe("POST /api/zero/agents", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
     await trackModelProvider(seedDefaultAnthropicProvider(fixture.orgId));
     mocks.clerk.session(fixture.userId, fixture.orgId);

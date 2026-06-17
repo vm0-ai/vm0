@@ -709,7 +709,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.AuditLink]: true },
+      switches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
     mockRunOutput("audited email answer");
 
@@ -992,7 +992,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.AuditLink]: true },
+      switches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
     mockRunOutput("audited trigger response");
 

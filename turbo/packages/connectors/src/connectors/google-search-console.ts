@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleSearchConsole = {
   "google-search-console": {
@@ -17,7 +16,6 @@ export const googleSearchConsole = {
       "Connect your Google account to access Search Console performance, indexing, sitemap, and site data",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.GoogleSearchConsoleConnector,
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Search Console access.",

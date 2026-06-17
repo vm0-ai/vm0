@@ -1,6 +1,6 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.14.4",
+  "version": "0.15.0",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
@@ -24,9 +24,12 @@
     "start": "electron-forge start",
     "test": "vitest run",
     "test:native": "node scripts/test-native-helper.js",
+    "upload:sentry": "node scripts/upload-sentry-artifacts.js",
     "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
   },
   "dependencies": {
+    "@sentry/electron": "^7.13.0",
+    "@sentry/react": "^10.50.0",
     "@tabler/icons-react": "^3.36.1",
     "ccstate": "^5.3.0",
     "ccstate-react": "^5.3.0",
@@ -39,6 +42,8 @@
     "@electron-forge/maker-zip": "7.11.2",
     "@electron/notarize": "3.1.1",
     "@electron/osx-sign": "2.4.0",
+    "@sentry/cli": "^2.58.5",
+    "@sentry/vite-plugin": "^4.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "24.3.0",
     "@types/react": "^19",

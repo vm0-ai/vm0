@@ -42,7 +42,6 @@ function prepareDefaultAgent(): void {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -59,7 +58,6 @@ function prepareAgentTeam(): void {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -71,7 +69,6 @@ function prepareAgentTeam(): void {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
       headVersionId: "version_2",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -83,7 +80,6 @@ function prepareAgentTeam(): void {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       visibility: "public",
       headVersionId: "version_3",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -102,7 +98,6 @@ function prepareAgentTeam(): void {
       displayName: displayNameById[params.id] ?? null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -819,7 +814,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not show skills in the sidebar manage navigation", async () => {
+  it("does not show workflows in the sidebar manage navigation", async () => {
     prepareDefaultAgent();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse([]));
@@ -828,7 +823,7 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
     });
 
     const nav = await waitFor(() => {
@@ -836,6 +831,6 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).queryByText("Skills")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

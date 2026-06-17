@@ -80,11 +80,18 @@ jobs:
 
       - name: Build unsigned production macOS artifact
         id: build-prod
+        env:
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: production
         run: |
           rm -f apps/desktop/desktop-runtime-config.json
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \
@@ -173,6 +180,11 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: preview
         run: |
           cleanup_runtime_config() {
             rm -f apps/desktop/desktop-runtime-config.json
@@ -194,6 +206,7 @@ jobs:
           NODE
 
           pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \

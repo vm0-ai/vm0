@@ -45,7 +45,6 @@ function createAgent(id: string, displayName: string): TeamComposeItem {
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
-    customSkills: [],
     visibility: "public",
     headVersionId: "version_2",
     updatedAt: "2024-01-02T00:00:00Z",
@@ -241,7 +240,6 @@ function mockTeamAPIs(): void {
       description: "Finds and summarizes information",
       sound: null,
       avatarUrl: null,
-      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
     });

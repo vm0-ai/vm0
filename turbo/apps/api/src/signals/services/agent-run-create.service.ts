@@ -66,10 +66,8 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
-  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -118,7 +116,6 @@ import { writeDb$, type Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
-  createChatStreamPublishToken,
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
@@ -331,12 +328,6 @@ interface BuiltStoredExecutionContext {
   readonly secretValues: readonly string[];
 }
 
-interface ChatStreamExecutionContext {
-  readonly chatStreamChannel: string;
-  readonly chatStreamTopic: string;
-  readonly chatStreamToken: string;
-}
-
 type ApiErrorResponse<Status extends number, Code extends string> = {
   readonly status: Status;
   readonly body: {
@@ -381,10 +372,10 @@ interface CreateAgentRunArgs {
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
-  // When set, system + custom skill volumes are built and prepended in
+  // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
   readonly injectSkillVolumes?: {
-    readonly customSkills: readonly string[];
+    readonly workflowNames: readonly string[];
   };
   readonly allowedConnectorTypes?: readonly ConnectorType[];
   readonly allowedCustomConnectorIds?: readonly string[];
@@ -510,11 +501,11 @@ function buildSystemSkillVolumes(
   });
 }
 
-function buildCustomSkillVolumes(
-  customSkills: readonly string[],
+function buildWorkflowSkillVolumes(
+  workflowNames: readonly string[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
-  return customSkills
+  return workflowNames
     .filter((name) => {
       return !SEED_SKILLS.includes(name);
     })
@@ -535,7 +526,10 @@ function buildInjectedSkillVolumes(
   }
   return [
     ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
-    ...buildCustomSkillVolumes(args.injectSkillVolumes.customSkills, framework),
+    ...buildWorkflowSkillVolumes(
+      args.injectSkillVolumes.workflowNames,
+      framework,
+    ),
   ];
 }
 
@@ -3137,12 +3131,6 @@ async function buildStoredExecutionContext(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
-  const chatStreamContext = await buildChatStreamExecutionContext({
-    userId: args.userId,
-    chatThreadId: args.chatThreadId,
-    triggerSource: args.body.triggerSource ?? "cli",
-    featureSwitchContext: args.featureSwitchContext,
-  });
 
   return {
     context: {
@@ -3184,34 +3172,9 @@ async function buildStoredExecutionContext(args: {
         permissions,
       }),
       modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
-      ...chatStreamContext,
     },
     secretNames,
     secretValues,
-  };
-}
-
-async function buildChatStreamExecutionContext(args: {
-  readonly userId: string;
-  readonly chatThreadId: string | undefined;
-  readonly triggerSource: string;
-  readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<ChatStreamExecutionContext | undefined> {
-  if (
-    args.triggerSource !== "web" ||
-    !args.chatThreadId ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.AssistantTextStreaming,
-      args.featureSwitchContext,
-    )
-  ) {
-    return undefined;
-  }
-
-  return {
-    chatStreamChannel: `user:${args.userId}`,
-    chatStreamTopic: `chatThreadMessageDelta:${args.chatThreadId}`,
-    chatStreamToken: await createChatStreamPublishToken(args.userId),
   };
 }
 

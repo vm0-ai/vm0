@@ -174,73 +174,85 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
   });
 });
 
-describe("MISC-03: custom skills lifecycle through public API", () => {
+describe("MISC-03: workflows lifecycle through public API", () => {
   it("chains create, list, read, update, delete, and post-delete read", async () => {
     const { api, admin, member } = testActors();
-    const skillName = `bdd-skill-${randomUUID().slice(0, 8)}`;
+    const memberWorkflowName = `bdd-member-workflow-${randomUUID().slice(0, 8)}`;
+    const workflowName = `bdd-workflow-${randomUUID().slice(0, 8)}`;
 
-    const initialSkills = await api.listSkills(admin);
+    const initialWorkflows = await api.listWorkflows(admin);
     expect(
-      initialSkills.body.some((skill) => {
-        return skill.name === skillName;
+      initialWorkflows.body.some((workflow) => {
+        return workflow.name === workflowName;
       }),
     ).toBeFalsy();
 
-    const deniedCreate = await api.createSkill(
+    const memberCreated = await api.createWorkflow(
       member,
-      skillName,
-      "# Denied",
-      [403],
+      memberWorkflowName,
+      "# Member private workflow",
+      [201],
     );
-    expectApiError(deniedCreate.body);
+    expect(memberCreated.body).toMatchObject({
+      name: memberWorkflowName,
+      visibility: "private",
+      ownerUserId: member.userId,
+      canManage: true,
+    });
+    const adminListAfterMemberCreate = await api.listWorkflows(admin);
+    expect(
+      adminListAfterMemberCreate.body.some((workflow) => {
+        return workflow.name === memberWorkflowName;
+      }),
+    ).toBeFalsy();
 
-    const invalidCreate = await api.requestCreateInvalidSkill(admin, [400]);
+    const invalidCreate = await api.requestCreateInvalidWorkflow(admin, [400]);
     expectApiError(invalidCreate.body);
 
-    const created = await api.createSkill(
+    const created = await api.createWorkflow(
       admin,
-      skillName,
-      "# BDD Skill\n\nCreated through API.",
+      workflowName,
+      "# BDD Workflow\n\nCreated through API.",
       [201],
     );
     expect(created.body).toMatchObject({
-      name: skillName,
-      displayName: "BDD Skill",
-      description: "Created through public skill API",
+      name: workflowName,
+      displayName: "BDD Workflow",
+      description: "Created through public workflow API",
     });
 
-    const listed = await api.listSkills(admin);
+    const listed = await api.listWorkflows(admin);
     expect(
-      listed.body.some((skill) => {
-        return skill.name === skillName;
+      listed.body.some((workflow) => {
+        return workflow.name === workflowName;
       }),
     ).toBeTruthy();
 
-    const detail = await api.readSkill(admin, skillName, [200]);
+    const detail = await api.readWorkflow(admin, workflowName, [200]);
     if (detail.status !== 200) {
       throw new Error(
-        `Expected skill detail to be readable, got ${detail.status}`,
+        `Expected workflow detail to be readable, got ${detail.status}`,
       );
     }
     expect(detail.body.fileContents).toStrictEqual([
-      { path: "SKILL.md", content: "# BDD Skill\n\nCreated through API." },
+      { path: "SKILL.md", content: "# BDD Workflow\n\nCreated through API." },
     ]);
 
-    const updated = await api.updateSkill(
+    const updated = await api.updateWorkflow(
       admin,
-      skillName,
-      "# BDD Skill\n\nUpdated through API.",
+      workflowName,
+      "# BDD Workflow\n\nUpdated through API.",
       [200],
     );
     if (updated.status !== 200) {
       throw new Error(
-        `Expected skill update to succeed, got ${updated.status}`,
+        `Expected workflow update to succeed, got ${updated.status}`,
       );
     }
-    expect(updated.body.content).toBe("# BDD Skill\n\nUpdated through API.");
+    expect(updated.body.content).toBe("# BDD Workflow\n\nUpdated through API.");
 
-    await api.deleteSkill(admin, skillName, [204]);
-    const missing = await api.readSkill(admin, skillName, [404]);
+    await api.deleteWorkflow(admin, workflowName, [204]);
+    const missing = await api.readWorkflow(admin, workflowName, [404]);
     expectApiError(missing.body);
   });
 });

@@ -206,6 +206,7 @@ FIREWALL_MODULES = {
     "printful": ("printful_0",),
     "prisma-postgres": ("prisma_postgres_0",),
     "productlane": ("productlane_0",),
+    "profound": ("profound_0",),
     "pushinator": ("pushinator_0",),
     "qdrant": ("qdrant_0",),
     "qiita": ("qiita_0",),

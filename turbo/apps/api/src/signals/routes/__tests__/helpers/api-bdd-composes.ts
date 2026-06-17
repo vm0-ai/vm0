@@ -162,7 +162,7 @@ function octal(value: number, length: number): string {
   return value.toString(8).padStart(length - 1, "0") + "\0";
 }
 
-// Private copy of the single-file tar-gz construction in zero-skills.ts
+// Private copy of the single-file tar-gz construction in zero-workflows.ts
 // (not exported there; ~20 lines). extractFileFromTarGz only needs the
 // filename, size, and payload from a USTAR-compatible header.
 function createTarEntry(filename: string, content: Buffer): Buffer {
@@ -263,7 +263,7 @@ interface ComposeInstructionsDownloadArgs {
  * so keys are matched by storage-name inclusion plus suffix instead of
  * reading mock call state. Non-matching keys resolve `{}` so storage-commit
  * head checks keep passing. Same construction as `mockInstructionsContent`
- * in zero-skills.ts.
+ * in zero-workflows.ts.
  */
 export function mockComposeInstructionsDownloads(
   context: TestContext,

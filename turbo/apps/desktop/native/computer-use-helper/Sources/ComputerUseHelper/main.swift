@@ -3,6 +3,7 @@ import ApplicationServices
 import ComputerUseHelperCore
 import Darwin
 import Foundation
+import Sentry
 
 struct HelperFailure: Error {
     let code: String
@@ -28,6 +29,49 @@ struct ChildSource: Sendable {
 }
 
 let limits = SnapshotLimits()
+
+func nonEmptyEnvironmentValue(_ key: String) -> String? {
+    guard let value = ProcessInfo.processInfo.environment[key] else {
+        return nil
+    }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+func startSentry() {
+    guard let dsn = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_DSN")
+        ?? nonEmptyEnvironmentValue("SENTRY_DSN_DESKTOP")
+    else {
+        return
+    }
+
+    let releaseName = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_RELEASE")
+    let environment =
+        nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_ENVIRONMENT") ?? "production"
+
+    SentrySDK.start { options in
+        options.dsn = dsn
+        options.releaseName = releaseName
+        options.environment = environment
+        options.sendDefaultPii = false
+        options.tracesSampleRate = NSNumber(value: 0)
+        options.enableAutoPerformanceTracing = false
+        options.enableUncaughtNSExceptionReporting = true
+        options.initialScope = { scope in
+            scope.setTag(value: "desktop", key: "app")
+            scope.setTag(value: "computer-use-helper", key: "component")
+            return scope
+        }
+    }
+}
+
+func captureUnexpectedHelperError(_ error: Error, stage: String) {
+    SentrySDK.capture(error: error) { scope in
+        scope.setTag(value: "computer-use-helper", key: "component")
+        scope.setTag(value: stage, key: "helperStage")
+    }
+    SentrySDK.flush(timeout: 2)
+}
 
 let resolvableChildSources = [
     ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
@@ -667,9 +711,9 @@ final class ComputerUseVisualPointerView: NSView {
         path.close()
 
         let bottomShadow = NSShadow()
-        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.48)
-        bottomShadow.shadowBlurRadius = 3.4
-        bottomShadow.shadowOffset = NSSize(width: 0.9, height: -2.1)
+        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.54)
+        bottomShadow.shadowBlurRadius = 6.8
+        bottomShadow.shadowOffset = NSSize(width: 1.8, height: -4.2)
         bottomShadow.set()
 
         NSColor(calibratedRed: 0.34, green: 0.37, blue: 0.40, alpha: 1).setFill()
@@ -687,7 +731,7 @@ final class ComputerUseVisualPointerView: NSView {
 final class ComputerUseVisualPointer: @unchecked Sendable {
     static let shared = ComputerUseVisualPointer()
 
-    private let pointerSize = CGSize(width: 30, height: 30)
+    private let pointerSize = CGSize(width: 34, height: 36)
     private let targetAnchor = CGPoint(x: 8, y: 6)
     private let idleHideDelay: TimeInterval = 60
     private var window: NSPanel?
@@ -826,7 +870,7 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
         }
         let elapsed = Date.timeIntervalSinceReferenceDate - swayStartedAt
         let phase = elapsed * Double.pi * 2 / 3.8
-        pointerView()?.rotationDegrees = CGFloat(sin(phase) * 5)
+        pointerView()?.rotationDegrees = CGFloat(sin(phase) * 10)
         window?.alphaValue = 0.94 + CGFloat((sin(phase - Double.pi / 2) + 1) * 0.025)
     }
 
@@ -4758,6 +4802,7 @@ func responseObject(for request: [String: Any], session: ComputerUseRuntimeSessi
             ],
         ]
     } catch {
+        captureUnexpectedHelperError(error, stage: "request")
         response = [
             "status": "failed",
             "error": [
@@ -4798,6 +4843,7 @@ func runOneShot() {
             ],
         ])
     } catch {
+        captureUnexpectedHelperError(error, stage: "oneshot")
         try? writeJSONObject([
             "status": "failed",
             "error": [
@@ -4832,6 +4878,7 @@ func runStdioSession() {
                     ],
                 ])
             } catch {
+                captureUnexpectedHelperError(error, stage: "stdio")
                 try? writeJSONObject([
                     "status": "failed",
                     "error": [
@@ -4848,6 +4895,8 @@ func runStdioSession() {
 }
 
 func run() {
+    startSentry()
+
     let arguments = Array(CommandLine.arguments.dropFirst())
     if arguments.contains("serve") || arguments.contains("--stdio") {
         runStdioSession()

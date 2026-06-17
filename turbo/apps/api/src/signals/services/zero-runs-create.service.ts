@@ -34,6 +34,7 @@ import {
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
+import { loadWorkflowNamesForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
@@ -67,7 +68,6 @@ interface ZeroAgentRunRecord {
   readonly displayName: string | null;
   readonly description: string | null;
   readonly sound: string | null;
-  readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
   readonly content: ZeroAgentComposeContent;
@@ -257,7 +257,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission. For enable requests, pass `--duration 1h|24h|7d|always`: default to `--duration 1h` for one-off work, use `24h` or `7d` for longer user-approved work, and use `always` only when the user explicitly asks for persistent access.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
-    "- Manage org custom skills with `zero skill --help`. Local changes or newly-created skill folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs. To create or update a durable custom skill, use `zero skill create|edit <name> --dir <path>`.",
+    "- Manage workflows with `zero workflow --help`. Workflow content is backed by a skill directory, so durable workflow uploads must include a root `SKILL.md`. Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs. To create or update a durable workflow, use `zero workflow create|edit <name> --dir <path>`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
@@ -359,7 +359,6 @@ async function loadZeroAgent(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
       content: agentComposeVersions.content,
@@ -650,6 +649,12 @@ export const createZeroIntegrationRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
+    const workflowNames = await loadWorkflowNamesForRun(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      agentId: agent.id,
+    });
+    signal.throwIfAborted();
 
     const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
@@ -685,7 +690,7 @@ export const createZeroIntegrationRun$ = command(
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        injectSkillVolumes: { customSkills: agent.customSkills },
+        injectSkillVolumes: { workflowNames },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,
@@ -746,6 +751,12 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
+    const workflowNames = await loadWorkflowNamesForRun(db, {
+      userId: args.auth.userId,
+      orgId: args.auth.orgId,
+      agentId: agent.id,
+    });
+    signal.throwIfAborted();
     const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
@@ -797,7 +808,7 @@ export const createZeroRun$ = command(
         zeroTokenComputerUseHostId: args.computerUseHostId,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        injectSkillVolumes: { customSkills: agent.customSkills },
+        injectSkillVolumes: { workflowNames },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,

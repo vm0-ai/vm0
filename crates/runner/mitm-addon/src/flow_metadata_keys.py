@@ -7,22 +7,25 @@ When adding a shared metadata key, add its ownership and lifecycle notes here.
 
 Request context
 ---------------
-- ``VM_RUN_ID``: ``str`` copied from registry VM info by ``request()`` and
-  ``tcp_start()``. Read by HTTP, TCP, proxy logging, and usage reporting.
+- ``VM_RUN_ID``: ``str`` copied from registry VM info by HTTP request
+  classification and ``tcp_start()``. Header-phase HTTP probes restore this key
+  unless they intentionally keep the classification for a streaming or local
+  response path. Read by HTTP, TCP, proxy logging, and usage reporting.
 - ``VM_NETWORK_LOG_PATH``: ``str`` copied from registry VM info. Read by HTTP
   and TCP log writers; empty strings skip network-log writes.
 - ``VM_PROXY_LOG_PATH``: ``str`` copied from registry VM info. Read by proxy
   warnings, usage reporting, and auth/streaming diagnostics.
 - ``VM_SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry VM info.
   Read by usage webhook reporters.
-- ``ORIGINAL_URL``: absolute URL written by ``request()`` from trusted
-  authority, or from the authority-validation fallback URL on local denial.
-  Read by response/error logging and connector billing.
+- ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
+  trusted authority, or from the authority-validation fallback URL on local
+  denial. Read by response/error logging and connector billing.
 - ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
   trusted authority or authority-validation fallback URL. Read by network-log
   entry construction.
-- ``CAPTURE_BODY``: ``bool`` copied from registry VM info. Read by
-  ``response()`` to decide whether to add request/response bodies.
+- ``CAPTURE_BODY``: ``bool`` copied from registry VM info by HTTP request
+  classification. Read by ``response()`` to decide whether to add
+  request/response bodies.
 - ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
   handling. Read by body capture to mark oversized request bodies truncated.
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
@@ -35,8 +38,10 @@ Request context
 Timing context
 --------------
 - ``HTTP_REQUEST_START_MONOTONIC``: ``float`` from ``time.monotonic()``,
-  written by ``request()`` after registered-VM lookup. Popped by ``response()``
-  or ``error()`` when computing HTTP latency, and removed on request failures.
+  written when a request first reaches a registered-VM HTTP path, including
+  header-phase streaming and local auth.base rejection paths. Popped by
+  ``response()`` or ``error()`` when computing HTTP latency, and removed on
+  request failures.
 - ``TCP_START_MONOTONIC``: ``float`` from ``time.monotonic()``, written by
   ``tcp_start()``. Read by TCP end/error logging; it is not popped.
 
@@ -65,9 +70,10 @@ Firewall and auth context
   registry failures. It is orthogonal to ``FIREWALL_ACTION``: an ``ALLOW``
   decision can still have an auth or forwarding error.
 - ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector type for a generic
-  connector availability diagnostic. The request hook records this for an
-  inactive built-in connector candidate; network logs expose it only after the
-  response/error hook turns the candidate into an agent-visible diagnostic.
+  connector availability diagnostic. HTTP request classification records this
+  for an inactive built-in connector candidate from the request-header stream
+  path or the request hook; network logs expose it only after the response/error
+  hook turns the candidate into an agent-visible diagnostic.
 - ``CONNECTOR_DIAGNOSTIC_REASON``: optional ``str`` generic diagnostic reason.
   First-version diagnostics use ``not_configured_for_run``.
 - ``CONNECTOR_DIAGNOSTIC_ENV_NAMES``: optional ``list[str]`` env aliases that
@@ -97,6 +103,16 @@ Response streaming
 - ``STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
   ``total_bytes``. Written with ``STREAM_BUFFER`` and read for response size,
   capture truncation, and connector parsing. Removed by stream cleanup.
+
+Request streaming
+-----------------
+- ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
+  ``requestheaders()`` via request streaming setup for stream-safe body
+  capture paths. Read by request body capture. Removed by stream cleanup after
+  terminal hooks.
+- ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
+  ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
+  size and capture truncation. Removed by stream cleanup.
 
 Model-provider usage
 --------------------
@@ -170,5 +186,7 @@ MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
+REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"
+REQUEST_STREAM_BUFFER_STATE: Final = "request_stream_buffer_state"
 X_NDJSON_STATE: Final = "x_ndjson_state"
 X_JSON_STATE: Final = "x_json_state"

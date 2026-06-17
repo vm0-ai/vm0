@@ -23,7 +23,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { seedInstructionsStorage$ } from "./helpers/zero-skills";
+import { seedInstructionsStorage$ } from "./helpers/zero-workflows";
 import {
   deleteTeamCompose$,
   seedTeamCompose$,
@@ -154,7 +154,6 @@ describe("GET /api/zero/agents/:id", () => {
       description: "Test description",
       sound: "friendly",
       avatarUrl: null,
-      customSkills: [],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,

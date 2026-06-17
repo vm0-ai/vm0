@@ -1336,7 +1336,7 @@ export async function resolveEmailAuditLogsUrl(
       ),
     )
     .limit(1);
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
     orgId: opts.orgId,
     userId: opts.userId,
     overrides: row?.switches ?? {},

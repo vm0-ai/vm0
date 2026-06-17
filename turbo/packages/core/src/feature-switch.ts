@@ -155,21 +155,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleMapsConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Maps connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.GoogleAnalyticsConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Analytics connector",
-    enabled: true,
-  },
-  [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
-    maintainer: "linghan@vm0.ai",
-    description: "Enable the Google Search Console connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -210,14 +195,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AuditLink]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show audit log links in integration replies",
-    enabled: false,
-  },
-  [FeatureSwitchKey.SkillsViewer]: {
+  [FeatureSwitchKey.WorkflowsViewer]: {
     maintainer: "lancy@vm0.ai",
-    description: "Show the skills viewer in the Zero sidebar and page UI",
+    description: "Show the workflows viewer in the Zero sidebar and page UI",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -316,8 +296,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show per-run usage chips in the Zero chat message action bar.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
@@ -331,10 +310,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatSlashSkillCommands]: {
+  [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
+      "Enable slash command suggestions for the current agent's workflows in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -342,20 +321,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ConnectorReconnectReasons]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Show explanatory tooltip help for connectors that need reconnect.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AssistantTextStreaming]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Stream assistant text deltas from Claude web chat runs through user-scoped realtime channels before the final assistant message is stored.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

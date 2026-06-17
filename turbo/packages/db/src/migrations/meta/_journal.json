@@ -3270,6 +3270,20 @@
       "when": 1781689890002,
       "tag": "0466_add_computer_use_installation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 467,
+      "version": "7",
+      "when": 1781691954852,
+      "tag": "0467_rename_zero_skills_to_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 468,
+      "version": "7",
+      "when": 1781693654218,
+      "tag": "0468_rename_skill_feature_switches_to_workflows",
+      "breakpoints": true
     }
   ]
 }

@@ -62,7 +62,7 @@ def log_network_entry(log_path: str, entry: dict) -> None:
     _write_jsonl_entry(log_path, log_entry, "network")
 
 
-def _proxy_log_extra_value(key: str, value: object) -> object:
+def sanitize_proxy_log_extra_value(key: str, value: object) -> object:
     if key == "url" and isinstance(value, str):
         return network_log_sanitization.sanitize_url_for_network_log(value)
     return value
@@ -83,7 +83,7 @@ def log_proxy_entry(
     }
     for key, value in extra.items():
         if key not in _PROXY_LOG_RESERVED_FIELDS:
-            entry[key] = _proxy_log_extra_value(key, value)
+            entry[key] = sanitize_proxy_log_extra_value(key, value)
     _write_jsonl_entry(proxy_log_path, entry, "proxy")
 
 

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.467.0](https://github.com/vm0-ai/vm0/compare/app-v0.466.0...app-v0.467.0) (2026-06-17)
+
+
+### Features
+
+* manage workflow agent attachments ([#18112](https://github.com/vm0-ai/vm0/issues/18112)) ([a15f2b9](https://github.com/vm0-ai/vm0/commit/a15f2b987a3a395fce952c71bcbd98e48b40e0b6))
+* rename slash suggestions to workflows ([#18119](https://github.com/vm0-ai/vm0/issues/18119)) ([64b8436](https://github.com/vm0-ai/vm0/commit/64b84366b00db57564b44e9b4e2a9e804c47fbab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.1
+    * @vm0/connectors bumped to 1.86.0
+    * @vm0/core bumped to 8.350.1
+
+## [0.466.0](https://github.com/vm0-ai/vm0/compare/app-v0.465.0...app-v0.466.0) (2026-06-17)
+
+
+### Features
+
+* add workflow viewer route and switches ([#18107](https://github.com/vm0-ai/vm0/issues/18107)) ([b00013f](https://github.com/vm0-ai/vm0/commit/b00013fb54767bf19868daf05ea6993cb7c457db))
+* rename zero skills to workflows ([#18099](https://github.com/vm0-ai/vm0/issues/18099)) ([c38a8fa](https://github.com/vm0-ai/vm0/commit/c38a8faaf091ea9950afdc344c7fb9701d502576))
+
+
+### Bug Fixes
+
+* tighten template picker icon hover box to match connector buttons ([#18110](https://github.com/vm0-ai/vm0/issues/18110)) ([b83506a](https://github.com/vm0-ai/vm0/commit/b83506a6060603669d619ac92a199aea87b82258))
+
+
+### Refactoring
+
+* remove stale feature switches and dead code ([#18090](https://github.com/vm0-ai/vm0/issues/18090)) ([9406838](https://github.com/vm0-ai/vm0/commit/940683865a2256f83b2d92d36cf102e0fb06e131))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.0
+    * @vm0/connectors bumped to 1.85.0
+    * @vm0/core bumped to 8.350.0
+
 ## [0.465.0](https://github.com/vm0-ai/vm0/compare/app-v0.464.1...app-v0.465.0) (2026-06-17)
 
 
