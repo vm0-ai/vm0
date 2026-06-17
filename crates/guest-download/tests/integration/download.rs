@@ -1,10 +1,78 @@
 use crate::support::{
     TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_download, write_manifest,
 };
+use httpmock::Mock;
 use httpmock::prelude::*;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::thread;
+
+const STORAGE_ARCHIVE_PATH: &str = "/storage.tar.gz";
+const ARTIFACT_ARCHIVE_PATH: &str = "/artifact.tar.gz";
+const EXPECTED_RETRY_ATTEMPTS: usize = 3;
+
+fn mock_gzip_archive<'server>(
+    server: &'server MockServer,
+    path: &str,
+    body: &[u8],
+) -> Mock<'server> {
+    server.mock(|when, then| {
+        when.method(GET).path(path);
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(body);
+    })
+}
+
+fn mock_status<'server>(server: &'server MockServer, path: &str, status: u16) -> Mock<'server> {
+    server.mock(|when, then| {
+        when.method(GET).path(path);
+        then.status(status);
+    })
+}
+
+fn write_storage_manifest(
+    dir: &tempfile::TempDir,
+    mount: &Path,
+    archive_url: Option<&str>,
+) -> std::io::Result<std::path::PathBuf> {
+    let mount_path = path_to_str(mount)?;
+    write_manifest(dir, &[(mount_path, archive_url)], None)
+}
+
+fn write_artifact_manifest(
+    dir: &tempfile::TempDir,
+    mount: &Path,
+    archive_url: Option<&str>,
+) -> std::io::Result<std::path::PathBuf> {
+    let mount_path = path_to_str(mount)?;
+    write_manifest(dir, &[], Some((mount_path, archive_url)))
+}
+
+fn run_storage_download(
+    dir: &tempfile::TempDir,
+    mount: &Path,
+    archive_url: Option<&str>,
+) -> std::io::Result<bool> {
+    let manifest = write_storage_manifest(dir, mount, archive_url)?;
+    Ok(run_guest_download(path_to_str(&manifest)?))
+}
+
+fn run_artifact_download(
+    dir: &tempfile::TempDir,
+    mount: &Path,
+    archive_url: Option<&str>,
+) -> std::io::Result<bool> {
+    let manifest = write_artifact_manifest(dir, mount, archive_url)?;
+    Ok(run_guest_download(path_to_str(&manifest)?))
+}
+
+fn path_to_str(path: &Path) -> std::io::Result<&str> {
+    path.to_str().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "path is not valid UTF-8")
+    })
+}
 
 fn start_truncated_then_valid_server(
     archive: Vec<u8>,
@@ -22,7 +90,7 @@ fn start_truncated_then_valid_server(
             if path == "/__unblock" {
                 write_response(&mut stream, &[], 0)?;
                 break;
-            } else if path == "/storage.tar.gz" {
+            } else if path == STORAGE_ARCHIVE_PATH {
                 if storage_requests == 0 {
                     write_response(&mut stream, &partial_archive, archive.len())?;
                 } else {
@@ -83,27 +151,16 @@ fn unblock_server(base_url: &str) -> std::io::Result<()> {
     stream.write_all(b"GET /__unblock HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n")
 }
 
-// ---------------------------------------------------------------------------
-// Test 1: single storage download succeeds
-// ---------------------------------------------------------------------------
 #[test]
 fn single_storage_download() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello world")]).unwrap();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
+    mock_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(result);
     assert_eq!(
@@ -128,22 +185,15 @@ fn http_storage_malicious_entries_are_skipped_while_safe_entries_extract() {
     ])
     .unwrap();
 
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
+    let mock = mock_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
 
     let dir = tempfile::tempdir().unwrap();
     let outside_file = dir.path().join("outside.txt");
     std::fs::write(&outside_file, "outside").unwrap();
 
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(result);
     mock.assert_calls(1);
@@ -157,9 +207,6 @@ fn http_storage_malicious_entries_are_skipped_while_safe_entries_extract() {
     assert!(!mount.join("evil_hardlink").exists());
 }
 
-// ---------------------------------------------------------------------------
-// Test 2: 6 storages downloaded with bounded parallelism
-// ---------------------------------------------------------------------------
 #[test]
 fn six_storages_parallel() {
     let server = MockServer::start();
@@ -174,12 +221,7 @@ fn six_storages_parallel() {
         let tar_gz = create_tar_gz(&[(&filename, content.as_bytes())]).unwrap();
         let path = format!("/storage_{i}.tar.gz");
 
-        let mock = server.mock(|when, then| {
-            when.method(GET).path(path.clone());
-            then.status(200)
-                .header("content-type", "application/gzip")
-                .body(&tar_gz);
-        });
+        let mock = mock_gzip_archive(&server, &path, &tar_gz);
         mocks.push(mock);
 
         let mount = dir.path().join(format!("mount_{i}"));
@@ -207,11 +249,8 @@ fn six_storages_parallel() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Test 2b: parent-child mount paths download successfully
 // Regression test: storages with overlapping paths (e.g. /home/user/.claude and
 // /home/user/.claude/skills/foo) must remain valid when scheduled safely.
-// ---------------------------------------------------------------------------
 #[test]
 fn parent_child_mount_paths_download_successfully() {
     let server = MockServer::start();
@@ -222,30 +261,10 @@ fn parent_child_mount_paths_download_successfully() {
     let child_b_tar = create_tar_gz(&[("skill.json", b"skill b")]).unwrap();
     let child_c_tar = create_tar_gz(&[("skill.json", b"skill c")]).unwrap();
 
-    let m_parent = server.mock(|when, then| {
-        when.method(GET).path("/parent.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&parent_tar);
-    });
-    let m_child_a = server.mock(|when, then| {
-        when.method(GET).path("/child_a.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&child_a_tar);
-    });
-    let m_child_b = server.mock(|when, then| {
-        when.method(GET).path("/child_b.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&child_b_tar);
-    });
-    let m_child_c = server.mock(|when, then| {
-        when.method(GET).path("/child_c.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&child_c_tar);
-    });
+    let m_parent = mock_gzip_archive(&server, "/parent.tar.gz", &parent_tar);
+    let m_child_a = mock_gzip_archive(&server, "/child_a.tar.gz", &child_a_tar);
+    let m_child_b = mock_gzip_archive(&server, "/child_b.tar.gz", &child_b_tar);
+    let m_child_c = mock_gzip_archive(&server, "/child_c.tar.gz", &child_c_tar);
 
     let parent_mount = dir.path().join("claude");
     let child_a_mount = dir.path().join("claude/skills/alpha");
@@ -291,27 +310,16 @@ fn parent_child_mount_paths_download_successfully() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test 3: artifact download succeeds
-// ---------------------------------------------------------------------------
 #[test]
 fn artifact_download_success() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("artifact.txt", b"artifact data")]).unwrap();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/artifact.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
+    mock_gzip_archive(&server, ARTIFACT_ARCHIVE_PATH, &tar_gz);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
-    let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(ARTIFACT_ARCHIVE_PATH);
+    let result = run_artifact_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(result);
     assert_eq!(
@@ -320,114 +328,67 @@ fn artifact_download_success() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test 4: artifact 404 is non-fatal
-// ---------------------------------------------------------------------------
 #[test]
 fn artifact_404_non_fatal() {
     let server = MockServer::start();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/artifact.tar.gz");
-        then.status(404);
-    });
+    mock_status(&server, ARTIFACT_ARCHIVE_PATH, 404);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
-    let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(ARTIFACT_ARCHIVE_PATH);
+    let result = run_artifact_download(&dir, &mount, Some(&url)).unwrap();
     assert!(result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 5: storage 404 is fatal
-// ---------------------------------------------------------------------------
 #[test]
 fn storage_404_fatal() {
     let server = MockServer::start();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(404);
-    });
+    mock_status(&server, STORAGE_ARCHIVE_PATH, 404);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
     assert!(!result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 6: 5xx exhausts all retries
-// ---------------------------------------------------------------------------
 #[test]
 fn server_error_exhausts_retries() {
     let server = MockServer::start();
-
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(500);
-    });
+    let mock = mock_status(&server, STORAGE_ARCHIVE_PATH, 500);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(!result);
-    mock.assert_calls(3);
+    mock.assert_calls(EXPECTED_RETRY_ATTEMPTS);
 }
 
-// ---------------------------------------------------------------------------
-// Test 7: 429 exhausts all retries
-// ---------------------------------------------------------------------------
 #[test]
 fn rate_limit_exhausts_retries() {
     let server = MockServer::start();
-
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(429);
-    });
+    let mock = mock_status(&server, STORAGE_ARCHIVE_PATH, 429);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(!result);
-    mock.assert_calls(3);
+    mock.assert_calls(EXPECTED_RETRY_ATTEMPTS);
 }
 
-// ---------------------------------------------------------------------------
-// Test 8: invalid tar.gz data is non-retriable
-// ---------------------------------------------------------------------------
 #[test]
 fn invalid_tar_gz_non_retriable() {
     let server = MockServer::start();
-
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body("this is not a valid tar.gz");
-    });
+    let mock = mock_gzip_archive(&server, STORAGE_ARCHIVE_PATH, b"this is not a valid tar.gz");
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(!result);
     mock.assert_calls(1);
@@ -440,10 +401,8 @@ fn http_body_read_error_retries_then_succeeds() {
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = format!("{base_url}/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = format!("{base_url}{STORAGE_ARCHIVE_PATH}");
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
     let _ = unblock_server(&base_url);
     let storage_requests = server.join().unwrap().unwrap();
 
@@ -455,9 +414,6 @@ fn http_body_read_error_retries_then_succeeds() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test 9: null/missing URLs result in no downloads (success)
-// ---------------------------------------------------------------------------
 #[test]
 fn null_and_missing_urls_skip_download() {
     let dir = tempfile::tempdir().unwrap();
@@ -478,18 +434,12 @@ fn null_and_missing_urls_skip_download() {
     assert!(result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 10: manifest file not found
-// ---------------------------------------------------------------------------
 #[test]
 fn manifest_file_not_found() {
     let result = run_guest_download("/tmp/nonexistent-manifest-path.json");
     assert!(!result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 11: manifest JSON invalid
-// ---------------------------------------------------------------------------
 #[test]
 fn manifest_json_invalid() {
     let dir = tempfile::tempdir().unwrap();
@@ -500,47 +450,32 @@ fn manifest_json_invalid() {
     assert!(!result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 12: artifact non-404 error (500) is fatal
-// ---------------------------------------------------------------------------
 #[test]
 fn artifact_500_fatal() {
     let server = MockServer::start();
-
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/artifact.tar.gz");
-        then.status(500);
-    });
+    let mock = mock_status(&server, ARTIFACT_ARCHIVE_PATH, 500);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
-    let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
-
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let url = server.url(ARTIFACT_ARCHIVE_PATH);
+    let result = run_artifact_download(&dir, &mount, Some(&url)).unwrap();
 
     assert!(!result);
-    mock.assert_calls(3); // exhausts all retries
+    mock.assert_calls(EXPECTED_RETRY_ATTEMPTS);
 }
 
-// ---------------------------------------------------------------------------
-// Test 13: retry then succeed (5xx on first attempt, 200 on second)
-// ---------------------------------------------------------------------------
 #[test]
 fn retry_then_succeed() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
 
     // Start with a 500 mock
-    let mut fail_mock = server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(500);
-    });
+    let mut fail_mock = mock_status(&server, STORAGE_ARCHIVE_PATH, 500);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
-    let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+    let url = server.url(STORAGE_ARCHIVE_PATH);
+    let manifest = write_storage_manifest(&dir, &mount, Some(&url)).unwrap();
     let manifest_str = manifest.to_str().unwrap().to_string();
 
     // Run in background thread so we can swap the mock during RETRY_DELAY
@@ -557,12 +492,7 @@ fn retry_then_succeed() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     fail_mock.delete();
-    server.mock(|when, then| {
-        when.method(GET).path("/storage.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
+    mock_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
 
     let result = handle.join().unwrap();
     assert!(result);
@@ -572,25 +502,13 @@ fn retry_then_succeed() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test 14: storages partial failure (one succeeds, one fails)
-// ---------------------------------------------------------------------------
 #[test]
 fn storages_partial_failure() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("ok.txt", b"ok")]).unwrap();
 
-    server.mock(|when, then| {
-        when.method(GET).path("/good.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
-
-    server.mock(|when, then| {
-        when.method(GET).path("/bad.tar.gz");
-        then.status(404);
-    });
+    mock_gzip_archive(&server, "/good.tar.gz", &tar_gz);
+    mock_status(&server, "/bad.tar.gz", 404);
 
     let dir = tempfile::tempdir().unwrap();
     let mount_good = dir.path().join("good");
@@ -618,28 +536,16 @@ fn storages_partial_failure() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test 15: artifact with null/missing URL is skipped (no download)
-// ---------------------------------------------------------------------------
 #[test]
 fn artifact_null_url_skipped() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
 
     // archiveUrl is the string "null" — should be treated as missing
-    let manifest =
-        write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null")))).unwrap();
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_artifact_download(&dir, &mount, Some("null")).unwrap();
     assert!(result);
 
     // archiveUrl is absent entirely
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None))).unwrap();
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_artifact_download(&dir, &mount, None).unwrap();
     assert!(result);
 }
-
-// Tests 16–19 (memory download success/404/500/null-url) removed in #10602.
-// Memory no longer has a dedicated manifest slot — it rides in `artifacts[]`
-// and is covered by the artifact tests above. The top-level `memory` field
-// on the manifest is retained for wire compat and is deserialized-and-ignored;
-// that parse path has no dedicated test (#10603 removes the field entirely).
