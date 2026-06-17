@@ -649,12 +649,267 @@ export function extractFirewallTemplateReferences(
  */
 const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
 const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
+const URL_COMPONENT_DELIMITER_PATTERN = /[/?#]/;
+const AUTHORITY_VAR_STRUCTURE_CHARS = new Set(["/", "?", "#", "@", "\\"]);
+const AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = new Set([
+  "/",
+  ":",
+  "?",
+  "#",
+  "@",
+  "\\",
+]);
+const PERCENT_DECODED_BOUNDARY_CHARS = new Set(["/", ":", "?", "#", "@", "\\"]);
+const BASE_URL_VAR_PARAMETER_CHARS = new Set(["{", "}"]);
 
 /**
  * Check if a base URL contains `${{ vars.X }}` template references.
  */
 export function hasBaseUrlVars(base: string): boolean {
   return BASE_URL_VARS_PATTERN.test(base);
+}
+
+function baseUrlVariableError(
+  base: string,
+  serviceName: string,
+  name: string,
+  detail: string,
+): Error {
+  return new Error(
+    errMsg(base, serviceName, `base URL variable "${name}" ${detail}`),
+  );
+}
+
+function validateBaseUrlVariableCommonSyntax({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  if (hasRawWhitespace(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain whitespace",
+    );
+  }
+  if (hasUnsafeUrlCodepoint(value)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain control characters or invalid Unicode",
+    );
+  }
+  for (const char of value) {
+    if (BASE_URL_VAR_PARAMETER_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not contain firewall parameter syntax",
+      );
+    }
+  }
+}
+
+function validateBaseUrlVariablePercentEncoding({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] !== "%") continue;
+    if (
+      i + 2 >= value.length ||
+      !isHexDigit(value[i + 1]!) ||
+      !isHexDigit(value[i + 2]!)
+    ) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "has invalid percent encoding",
+      );
+    }
+
+    let end = i;
+    while (
+      end + 2 < value.length &&
+      value[end] === "%" &&
+      isHexDigit(value[end + 1]!) &&
+      isHexDigit(value[end + 2]!)
+    ) {
+      end += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(value.slice(i, end));
+    } catch {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "has invalid percent encoding",
+      );
+    }
+    for (const char of decoded) {
+      if (
+        PERCENT_DECODED_BOUNDARY_CHARS.has(char) ||
+        WHITESPACE_PATTERN.test(char) ||
+        UNICODE_CONTROL_PATTERN.test(char)
+      ) {
+        throw baseUrlVariableError(
+          base,
+          serviceName,
+          name,
+          "must not contain encoded URL structure",
+        );
+      }
+    }
+    i = end - 1;
+  }
+}
+
+function validateBaseUrlPrefixVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  validateBaseUrl(value, serviceName);
+  const url = new URL(value);
+  if (url.search || url.hash) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain query or fragment before a fixed path suffix",
+    );
+  }
+}
+
+function validateBaseUrlAuthorityVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  for (const char of value) {
+    if (AUTHORITY_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce URL structure",
+      );
+    }
+  }
+  validateBaseUrlVariablePercentEncoding({ base, serviceName, name, value });
+  validateBaseUrl(`https://${value}`, serviceName);
+}
+
+function validateBaseUrlAuthorityFragmentVariable({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): void {
+  for (const char of value) {
+    if (AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS.has(char)) {
+      throw baseUrlVariableError(
+        base,
+        serviceName,
+        name,
+        "must not introduce URL structure",
+      );
+    }
+  }
+  validateBaseUrlVariablePercentEncoding({ base, serviceName, name, value });
+}
+
+function prefixIsInsideAuthority(prefix: string): boolean {
+  const schemeEnd = prefix.indexOf("://");
+  if (schemeEnd === -1) return false;
+  const afterScheme = prefix.slice(schemeEnd + 3);
+  return !URL_COMPONENT_DELIMITER_PATTERN.test(afterScheme);
+}
+
+function suffixAuthorityPrefix(suffix: string): string {
+  const delimiterIndex = suffix.search(URL_COMPONENT_DELIMITER_PATTERN);
+  return delimiterIndex === -1 ? suffix : suffix.slice(0, delimiterIndex);
+}
+
+function validateBaseUrlTemplateVariable({
+  base,
+  serviceName,
+  name,
+  value,
+  prefix,
+  suffix,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly prefix: string;
+  readonly suffix: string;
+}): void {
+  validateBaseUrlVariableCommonSyntax({ base, serviceName, name, value });
+  if (prefix === "" && suffix === "") {
+    return;
+  }
+  if (prefix === "" && suffix.startsWith("/")) {
+    validateBaseUrlPrefixVariable({ base, serviceName, name, value });
+    return;
+  }
+  if (prefix.endsWith("://") && (suffix === "" || suffix.startsWith("/"))) {
+    validateBaseUrlAuthorityVariable({ base, serviceName, name, value });
+    return;
+  }
+  if (prefixIsInsideAuthority(prefix) && suffixAuthorityPrefix(suffix) !== "") {
+    validateBaseUrlAuthorityFragmentVariable({
+      base,
+      serviceName,
+      name,
+      value,
+    });
+    return;
+  }
+  throw baseUrlVariableError(
+    base,
+    serviceName,
+    name,
+    "is used in an unsupported base URL template position",
+  );
 }
 
 function firewallAuthInjectsCredentials(auth: FirewallApi["auth"]): boolean {
@@ -698,18 +953,30 @@ export function resolveFirewallBaseUrlVars(
       ...fw,
       apis: fw.apis.map((api) => {
         if (!hasBaseUrlVars(api.base)) return api;
-        const resolved = api.base.replace(
-          BASE_URL_VARS_PATTERN_G,
-          (_match, name: string) => {
-            const value = vars?.[name];
-            if (!value) {
-              throw new Error(
-                `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
-              );
-            }
-            return value;
-          },
-        );
+        let resolved = "";
+        let lastIndex = 0;
+        for (const match of api.base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+          const fullMatch = match[0];
+          const name = match[1]!;
+          const matchIndex = match.index!;
+          const value = vars?.[name];
+          if (!value) {
+            throw new Error(
+              `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
+            );
+          }
+          validateBaseUrlTemplateVariable({
+            base: api.base,
+            serviceName: fw.name,
+            name,
+            value,
+            prefix: api.base.slice(0, matchIndex),
+            suffix: api.base.slice(matchIndex + fullMatch.length),
+          });
+          resolved += api.base.slice(lastIndex, matchIndex) + value;
+          lastIndex = matchIndex + fullMatch.length;
+        }
+        resolved += api.base.slice(lastIndex);
         validateBaseUrl(resolved, fw.name);
         validateCredentialedBaseUrlTransport(resolved, fw.name, api.auth);
         return { ...api, base: resolved };

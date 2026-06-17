@@ -14,7 +14,9 @@ from mitmproxy import ctx
 import matching
 from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 from firewall_auth_config import auth_config_injects_credentials
+from authority_utils import percent_decode_host
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
+from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 VmContext = tuple[
     dict,
@@ -25,6 +27,11 @@ _RegistryCacheKey = tuple[str, int, int, int, int]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 _BASE_URL_VAR_PATTERN = re.compile(r"\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+_URL_COMPONENT_DELIMITER_PATTERN = re.compile(r"[/?#]")
+_AUTHORITY_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "@", "\\"))
+_AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
+_PERCENT_DECODED_BOUNDARY_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
+_BASE_URL_VAR_PARAMETER_CHARS = frozenset(("{", "}"))
 
 
 class _RegistryFormatError(ValueError):
@@ -149,22 +156,247 @@ def _base_url_vars_for_entry(entry: dict) -> dict[str, str]:
     return {}
 
 
+def _base_url_variable_error(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    detail: str,
+) -> _FirewallEntryResolutionError:
+    return _FirewallEntryResolutionError(
+        f'builtin firewall "{firewall_name}" base URL variable "{name}" {detail}: {base}'
+    )
+
+
+def _validate_base_url_variable_common_syntax(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    if has_raw_whitespace(value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain whitespace",
+        )
+    if has_unsafe_url_codepoint(value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain control characters or invalid Unicode",
+        )
+    if any(char in _BASE_URL_VAR_PARAMETER_CHARS for char in value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain firewall parameter syntax",
+        )
+
+
+def _validate_base_url_variable_percent_encoding(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    decoded = percent_decode_host(value, syntax_chars=_PERCENT_DECODED_BOUNDARY_CHARS)
+    if decoded.invalid_encoding:
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="has invalid percent encoding",
+        )
+    if decoded.decoded_syntax or any(char.isspace() for char in decoded.value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain encoded URL structure",
+        )
+    if has_unsafe_url_codepoint(decoded.value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain encoded control characters or invalid Unicode",
+        )
+
+
+def _validate_base_url_prefix_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    if not matching.firewall_base_config_is_valid(value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must be a valid base URL before a fixed path suffix",
+        )
+    parts = urllib.parse.urlsplit(value)
+    if parts.query or parts.fragment:
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain query or fragment before a fixed path suffix",
+        )
+
+
+def _validate_base_url_authority_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    if any(char in _AUTHORITY_VAR_STRUCTURE_CHARS for char in value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not introduce URL structure",
+        )
+    _validate_base_url_variable_percent_encoding(
+        firewall_name=firewall_name,
+        base=base,
+        name=name,
+        value=value,
+    )
+    if not matching.firewall_base_config_is_valid(f"https://{value}"):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must be a valid URL authority",
+        )
+
+
+def _validate_base_url_authority_fragment_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+) -> None:
+    if any(char in _AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS for char in value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not introduce URL structure",
+        )
+    _validate_base_url_variable_percent_encoding(
+        firewall_name=firewall_name,
+        base=base,
+        name=name,
+        value=value,
+    )
+
+
+def _prefix_is_inside_authority(prefix: str) -> bool:
+    scheme_end = prefix.find("://")
+    if scheme_end == -1:
+        return False
+    after_scheme = prefix[scheme_end + 3 :]
+    return _URL_COMPONENT_DELIMITER_PATTERN.search(after_scheme) is None
+
+
+def _suffix_authority_prefix(suffix: str) -> str:
+    delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
+    if delimiter is None:
+        return suffix
+    return suffix[: delimiter.start()]
+
+
+def _validate_base_url_template_variable(
+    *,
+    firewall_name: str,
+    base: str,
+    name: str,
+    value: str,
+    prefix: str,
+    suffix: str,
+) -> None:
+    _validate_base_url_variable_common_syntax(
+        firewall_name=firewall_name,
+        base=base,
+        name=name,
+        value=value,
+    )
+    if prefix == "" and suffix == "":
+        return
+    if prefix == "" and suffix.startswith("/"):
+        _validate_base_url_prefix_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+        )
+        return
+    if prefix.endswith("://") and (suffix == "" or suffix.startswith("/")):
+        _validate_base_url_authority_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+        )
+        return
+    if _prefix_is_inside_authority(prefix) and _suffix_authority_prefix(suffix) != "":
+        _validate_base_url_authority_fragment_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+        )
+        return
+    raise _base_url_variable_error(
+        firewall_name=firewall_name,
+        base=base,
+        name=name,
+        detail="is used in an unsupported base URL template position",
+    )
+
+
 def _resolve_base_url_template(
     *,
     firewall_name: str,
     base: str,
     vars_map: dict[str, str],
 ) -> str:
-    def replace_var(match: re.Match[str]) -> str:
+    resolved_parts: list[str] = []
+    last_index = 0
+    for match in _BASE_URL_VAR_PATTERN.finditer(base):
         name = match.group(1)
         value = vars_map.get(name)
         if not value:
             raise _FirewallEntryResolutionError(
                 f'builtin firewall "{firewall_name}" base URL requires variable "{name}"'
             )
-        return value
+        _validate_base_url_template_variable(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            value=value,
+            prefix=base[: match.start()],
+            suffix=base[match.end() :],
+        )
+        resolved_parts.append(base[last_index : match.start()])
+        resolved_parts.append(value)
+        last_index = match.end()
 
-    resolved = _BASE_URL_VAR_PATTERN.sub(replace_var, base)
+    resolved_parts.append(base[last_index:])
+    resolved = "".join(resolved_parts)
     if not matching.firewall_base_config_is_valid(resolved):
         raise _FirewallEntryResolutionError(
             f'builtin firewall "{firewall_name}" resolved base URL is invalid'

@@ -1249,6 +1249,63 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const shopifyFirewall = {
+    name: "shopify",
+    apis: [
+      {
+        base: "https://${{ vars.SHOPIFY_SHOP }}.myshopify.com",
+        auth: {
+          headers: {
+            "X-Shopify-Access-Token": "${{ secrets.SHOPIFY_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const snowflakeFirewall = {
+    name: "snowflake",
+    apis: [
+      {
+        base: "https://${{ vars.SNOWFLAKE_ACCOUNT }}.snowflakecomputing.com/api",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.SNOWFLAKE_PAT }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const jiraFirewall = {
+    name: "jira",
+    apis: [
+      {
+        base: "https://${{ vars.JIRA_DOMAIN }}",
+        auth: {
+          headers: {
+            Authorization:
+              "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const n8nFirewall = {
+    name: "n8n",
+    apis: [
+      {
+        base: "${{ vars.N8N_BASE_URL }}/api/v1",
+        auth: {
+          headers: {
+            "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
   const nonCredentialFirewall = {
     name: "diagnostic",
     apis: [
@@ -1264,6 +1321,71 @@ describe("resolveFirewallBaseUrlVars", () => {
       ZENDESK_SUBDOMAIN: "mycompany",
     });
     expect(result[0]!.apis[0]!.base).toBe("https://mycompany.zendesk.com");
+  });
+
+  it("rejects fixed provider suffix variables that escape the authority", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([shopifyFirewall], {
+        SHOPIFY_SHOP: "attacker.example:443/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects fixed provider suffix variables with encoded URL structure", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([shopifyFirewall], {
+        SHOPIFY_SHOP: "attacker.example%3A443%2Fcapture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts multi-label fixed provider suffix values without URL structure", () => {
+    const result = resolveFirewallBaseUrlVars([snowflakeFirewall], {
+      SNOWFLAKE_ACCOUNT: "xy12345.us-east-1.aws",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://xy12345.us-east-1.aws.snowflakecomputing.com/api",
+    );
+  });
+
+  it("rejects fixed provider suffix values that inject path syntax", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([snowflakeFirewall], {
+        SNOWFLAKE_ACCOUNT: "xy12345.us-east-1.aws/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("accepts whole authority template values", () => {
+    const result = resolveFirewallBaseUrlVars([jiraFirewall], {
+      JIRA_DOMAIN: "acme.atlassian.net",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
+  });
+
+  it("rejects whole authority template values with paths", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([jiraFirewall], {
+        JIRA_DOMAIN: "attacker.example/capture",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("rejects base URL variables that introduce firewall parameters", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL: "https://{host}.example.test",
+      });
+    }).toThrow("base URL variable");
+  });
+
+  it("preserves fixed path suffixes for whole base URL prefix templates", () => {
+    const result = resolveFirewallBaseUrlVars([n8nFirewall], {
+      N8N_BASE_URL: "https://n8n.example.test/workflows",
+    });
+    expect(result[0]!.apis[0]!.base).toBe(
+      "https://n8n.example.test/workflows/api/v1",
+    );
   });
 
   it("leaves static base URLs unchanged", () => {
