@@ -11,6 +11,7 @@ use serde_json::Value;
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
 const CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_STREAM_JSON_EVENTS: usize = 32;
 
 struct StreamJsonChild {
     child: Child,
@@ -160,7 +161,7 @@ fn recv_until_result(
     result: &str,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
     let mut events = Vec::new();
-    loop {
+    for _ in 0..MAX_STREAM_JSON_EVENTS {
         let event = recv_event(rx)?;
         let matches_result = event.get("type").and_then(Value::as_str) == Some("result")
             && event.get("result").and_then(Value::as_str) == Some(result);
@@ -169,6 +170,11 @@ fn recv_until_result(
             return Ok(events);
         }
     }
+
+    Err(std::io::Error::other(format!(
+        "mock did not emit result {result:?} within {MAX_STREAM_JSON_EVENTS} events"
+    ))
+    .into())
 }
 
 fn wait_child(
