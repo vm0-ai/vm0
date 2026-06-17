@@ -9,6 +9,14 @@ export interface PresentationTemplateItem {
   readonly templateId: string;
 }
 
+const BOTANE_ORGANIC_PREVIEW_BASE =
+  "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/presentation-template/botane-organic/preview";
+
+const BOTANE_ORGANIC_PREVIEW_IMAGES = Array.from({ length: 15 }, (_, index) => {
+  const slideNumber = String(index + 1).padStart(2, "0");
+  return `${BOTANE_ORGANIC_PREVIEW_BASE}/slide-${slideNumber}.png`;
+});
+
 export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
@@ -1804,5 +1812,18 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       ],
       designSystemId: "design-system:playful-editorial",
       templateId: "template:html-ppt-playful-editorial",
+    },
+    {
+      slug: "botane-organic-deck",
+      title: "Botane organic deck",
+      prompt:
+        "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
+      embedUrl:
+        "https://botane-organic-presentation-preview-715f6d07-e999775d.sites.vm0.io",
+      previewImage:
+        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/presentation-template/botane-organic/preview/slide-01.png",
+      previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
+      designSystemId: "design-system:mauve-dusk",
+      templateId: "template:html-ppt-botane-organic",
     },
   ];

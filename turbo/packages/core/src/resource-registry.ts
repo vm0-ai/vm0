@@ -757,6 +757,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["mobile-app-design"],
   },
   {
+    id: "template:html-ppt-botane-organic",
+    kind: "template",
+    name: "Botane Organic Presentation",
+    description:
+      "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-template/botane-organic",
+    },
+    targets: ["presentation"],
+  },
+  {
     id: "template:html-ppt-graphify-dark-graph",
     kind: "template",
     name: "Graphify Dark Graph",
@@ -2351,6 +2364,18 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Google's Material Design with layered surfaces, dynamic theming, built-in motion, and responsive cross-platform patterns.",
     source: { path: "design-systems/material" },
+  },
+  {
+    id: "design-system:mauve-dusk",
+    kind: "design-system",
+    name: "Mauve Dusk",
+    description:
+      "Soft lavender editorial look with muted mauve accents, Fraunces display type, Work Sans body, and rounded organic motifs.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-design-system/mauve-dusk",
+    },
   },
   {
     id: "design-system:meta",

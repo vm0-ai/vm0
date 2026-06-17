@@ -84,5 +84,18 @@ describe("presentation template items", () => {
     expect(findTemplate(item?.templateId ?? "")?.targets).toContain(
       "presentation",
     );
+
+    const botaneItem = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+      return candidate.slug === "botane-organic-deck";
+    });
+
+    expect(botaneItem).toBeDefined();
+    expect(botaneItem?.designSystemId).toBe("design-system:mauve-dusk");
+    expect(botaneItem?.templateId).toBe("template:html-ppt-botane-organic");
+    expect(botaneItem?.previewImages.length).toBe(15);
+    expect(findDesignSystem(botaneItem?.designSystemId ?? "")).toBeDefined();
+    expect(findTemplate(botaneItem?.templateId ?? "")?.targets).toContain(
+      "presentation",
+    );
   });
 });
