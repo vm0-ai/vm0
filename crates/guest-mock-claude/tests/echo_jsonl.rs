@@ -386,6 +386,40 @@ fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn one_shot_stream_json_drains_trailing_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut child = mock_claude()
+        .env("HOME", home.path())
+        .args([
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--",
+            "printf argv-wrong",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdin = child.stdin.take().ok_or("missing stdin")?;
+    stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
+    stdin.write_all(b"\xff\n")?;
+    drop(stdin);
+
+    let output = child.wait_with_output()?;
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("read stream-json stdin"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(output.stdout.is_empty());
+    Ok(())
+}
+
+#[test]
 fn active_input_stream_reads_followups_after_first_result() -> Result<(), Box<dyn std::error::Error>>
 {
     let home = tempfile::tempdir()?;

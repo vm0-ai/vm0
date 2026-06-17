@@ -60,7 +60,13 @@ fn run_stream_json_input(parsed: ParsedArgs) -> ExitCode {
             eprintln!("invalid @active-input-smoke follow-up count: {count:?}");
             ExitCode::from(1)
         }
-        scenario => run_scenario(scenario, &first_frame.content, &parsed.output_format),
+        scenario => {
+            if let Err(message) = drain_remaining_stream_json_stdin(&mut reader) {
+                eprintln!("{message}");
+                return ExitCode::from(1);
+            }
+            run_scenario(scenario, &first_frame.content, &parsed.output_format)
+        }
     }
 }
 
@@ -168,6 +174,14 @@ fn read_next_stream_json_user_frame(
 
         return parse_stream_json_user_frame(trimmed, kind).map(Some);
     }
+}
+
+fn drain_remaining_stream_json_stdin(reader: &mut impl BufRead) -> Result<(), String> {
+    let mut input = String::new();
+    reader
+        .read_to_string(&mut input)
+        .map(|_| ())
+        .map_err(|e| format!("read stream-json stdin: {e}"))
 }
 
 fn parse_stream_json_user_frame(
