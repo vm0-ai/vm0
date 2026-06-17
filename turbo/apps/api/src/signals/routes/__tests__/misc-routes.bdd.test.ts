@@ -174,10 +174,11 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
   });
 });
 
-describe("MISC-03: custom skills lifecycle through public API", () => {
+describe("MISC-03: workflows lifecycle through public API", () => {
   it("chains create, list, read, update, delete, and post-delete read", async () => {
     const { api, admin, member } = testActors();
-    const skillName = `bdd-skill-${randomUUID().slice(0, 8)}`;
+    const memberWorkflowName = `bdd-member-workflow-${randomUUID().slice(0, 8)}`;
+    const skillName = `bdd-workflow-${randomUUID().slice(0, 8)}`;
 
     const initialSkills = await api.listSkills(admin);
     expect(
@@ -186,13 +187,24 @@ describe("MISC-03: custom skills lifecycle through public API", () => {
       }),
     ).toBeFalsy();
 
-    const deniedCreate = await api.createSkill(
+    const memberCreated = await api.createSkill(
       member,
-      skillName,
-      "# Denied",
-      [403],
+      memberWorkflowName,
+      "# Member private workflow",
+      [201],
     );
-    expectApiError(deniedCreate.body);
+    expect(memberCreated.body).toMatchObject({
+      name: memberWorkflowName,
+      visibility: "private",
+      ownerUserId: member.userId,
+      canManage: true,
+    });
+    const adminListAfterMemberCreate = await api.listSkills(admin);
+    expect(
+      adminListAfterMemberCreate.body.some((workflow) => {
+        return workflow.name === memberWorkflowName;
+      }),
+    ).toBeFalsy();
 
     const invalidCreate = await api.requestCreateInvalidSkill(admin, [400]);
     expectApiError(invalidCreate.body);

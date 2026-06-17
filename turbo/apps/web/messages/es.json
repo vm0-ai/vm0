@@ -2380,7 +2380,7 @@
           },
           {
             "name": "Zero",
-            "text": "**Auditoría de Optimización de Costes - Esta Semana**\n\n🟢 **Ya óptimas** (mantener como están):\n• morning-brief (Sonnet) - agregación multi-fuente, justificado\n• pr-review-merge (Sonnet) - revisión de código bajo demanda, justificado\n\n🟡 **Sobredimensionadas** (seguro degradar):\n| Tarea | Modelo Actual | Recomendado | Ahorro Estimado |\n|-------|---------------|-------------|-----------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Requiere revisión humana**:\n• auto-test-coverage - escribe código real, en el límite. Prueba con Sonnet una semana y compara tasas de aprobación.\n\n**Ahorro mensual estimado: 2.400-3.800$**"
+            "text": "**Auditoría de Optimización de Costes - Esta Semana**\n\n🟢 **Ya óptimas** (mantener como están):\n• morning-brief (Sonnet) - agregación multi-fuente, justificado\n• pr-review-merge (Sonnet) - revisión de código bajo demanda, justificado\n\n🟡 **Sobredimensionadas** (seguro degradar):\n| Tarea | Modelo Actual | Recomendado | Ahorro Estimado |\n|-------|---------------|-------------|-----------------|\n| tech-debt-scan | Opus | GLM-5.2 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.2 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Requiere revisión humana**:\n• auto-test-coverage - escribe código real, en el límite. Prueba con Sonnet una semana y compara tasas de aprobación.\n\n**Ahorro mensual estimado: 2.400-3.800$**"
           }
         ],
         "steps": [
@@ -2401,12 +2401,12 @@
           {
             "title": "Cambia una tarea de bajo riesgo a un modelo más económico",
             "description": "Empieza con la recomendación más segura y verifica que la calidad se mantiene.",
-            "examplePrompt": "@Zero cambia la programación de merge-queue-monitor para usar GLM-5.1 en vez de Sonnet"
+            "examplePrompt": "@Zero cambia la programación de merge-queue-monitor para usar GLM-5.2 en vez de Sonnet"
           },
           {
             "title": "Ejecuta una prueba comparativa",
             "description": "Ejecuta la misma tarea en ambos modelos y compara los resultados antes de comprometerte.",
-            "examplePrompt": "@Zero ejecuta el prompt de tech-debt-scan en Opus y GLM-5.1, luego compara los resultados lado a lado"
+            "examplePrompt": "@Zero ejecuta el prompt de tech-debt-scan en Opus y GLM-5.2, luego compara los resultados lado a lado"
           },
           {
             "title": "Hazlo rutina",
@@ -4343,7 +4343,7 @@
             "body": "El modo rápido a 2,5× de velocidad solía costar tres veces lo que cuesta ahora ($10/$50 por 1M frente al nivel anterior). Para copilotos interactivos, resumidores on-call o cualquier paso donde la latencia de reloj de pared domine la experiencia, el modo rápido de 4.8 ahora es la elección predeterminada en la familia Claude."
           }
         ],
-        "avoidFor": "Evita Opus 4.8 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Kimi K2.6 es mucho más rápido, en codificación agéntica de terminal donde GPT-5.5 sigue liderando Terminal-Bench 2.1 (78,2% vs 74,6% de 4.8), y en pipelines que ingieren entradas no confiables sin sandboxing — la robustez de 4.8 a la inyección de prompts es ligeramente más débil que la de 4.7.",
+        "avoidFor": "Evita Opus 4.8 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Kimi K2.7 Code es mucho más rápido, en codificación agéntica de terminal donde GPT-5.5 sigue liderando Terminal-Bench 2.1 (78,2% vs 74,6% de 4.8), y en pipelines que ingieren entradas no confiables sin sandboxing — la robustez de 4.8 a la inyección de prompts es ligeramente más débil que la de 4.7.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -4351,7 +4351,7 @@
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 (×1) sigue siendo el caballo de batalla predeterminado para la mayoría de bucles de agente. Promueve a Opus 4.8 cuando Sonnet falla visiblemente en razonamiento difícil, recuperación de contexto largo o ediciones de código al primer intento — usualmente como el planificador que delega a subagentes de nivel Sonnet o Kimi K2.6. Con flujos de trabajo dinámicos, Opus 4.8 como orquestador + Sonnet 4.6 como trabajadores es el nuevo patrón recomendado."
+            "body": "Sonnet 4.6 (×1) sigue siendo el caballo de batalla predeterminado para la mayoría de bucles de agente. Promueve a Opus 4.8 cuando Sonnet falla visiblemente en razonamiento difícil, recuperación de contexto largo o ediciones de código al primer intento — usualmente como el planificador que delega a subagentes de nivel Sonnet o Kimi K2.7 Code. Con flujos de trabajo dinámicos, Opus 4.8 como orquestador + Sonnet 4.6 como trabajadores es el nuevo patrón recomendado."
           },
           {
             "vs": "GPT-5.5",
@@ -4533,11 +4533,11 @@
           },
           {
             "title": "Velocidad",
-            "body": "Más lento que Sonnet 4.6 y notablemente más lento que Kimi K2.6. Anthropic publica ~41 tokens/seg en esfuerzo máximo para Opus 4.6, y 4.7 está en un rango similar. Resérvalo para los pasos que realmente necesitan la profundidad de razonamiento adicional y ejecuta niveles más ligeros en paralelo."
+            "body": "Más lento que Sonnet 4.6 y notablemente más lento que Kimi K2.7 Code. Anthropic publica ~41 tokens/seg en esfuerzo máximo para Opus 4.6, y 4.7 está en un rango similar. Resérvalo para los pasos que realmente necesitan la profundidad de razonamiento adicional y ejecuta niveles más ligeros en paralelo."
           },
           {
             "title": "Comportamiento de alucinación",
-            "body": "Opus 4.7 mantiene la postura conservadora de rechazo de Anthropic y tiende a admitir incertidumbre en lugar de confabular, razón por la cual los equipos de producción siguen pagando la prima por razonamiento de alto riesgo a pesar de que alternativas de peso abierto más baratas como Kimi K2.6 y DeepSeek V4 Pro ahora lo igualan en benchmarks."
+            "body": "Opus 4.7 mantiene la postura conservadora de rechazo de Anthropic y tiende a admitir incertidumbre en lugar de confabular, razón por la cual los equipos de producción siguen pagando la prima por razonamiento de alto riesgo a pesar de que alternativas de peso abierto más baratas como Kimi K2.7 Code y DeepSeek V4 Pro ahora lo igualan en benchmarks."
           }
         ],
         "bestForExamples": [
@@ -4551,34 +4551,34 @@
           },
           {
             "title": "El orquestador ejecutando un plan multi-herramienta",
-            "body": "Usa Opus 4.7 como el planificador que divide la solicitud de un cliente en diez pasos, despacha cada paso a un sub-agente de nivel Sonnet o Kimi K2.6, y une los resultados. Ejecutar Opus solo en la capa de planificación (y los niveles más baratos en el resto) cuesta una fracción de ejecutar Opus de principio a fin, conservando la mayor parte de la calidad."
+            "body": "Usa Opus 4.7 como el planificador que divide la solicitud de un cliente en diez pasos, despacha cada paso a un sub-agente de nivel Sonnet o Kimi K2.7 Code, y une los resultados. Ejecutar Opus solo en la capa de planificación (y los niveles más baratos en el resto) cuesta una fracción de ejecutar Opus de principio a fin, conservando la mayor parte de la calidad."
           },
           {
             "title": "Las ediciones de código al primer intento que no desperdician una ejecución de CI",
             "body": "Pide a Opus 4.7 que migre un código base de 50 archivos de un ORM a otro, refactorice un módulo enredado o aplique una corrección de seguridad en todo el repositorio. El parche se aplica limpiamente al primer intento con más frecuencia que cualquier otro modelo de la familia, que es lo que refleja Terminal-Bench 2.0 reportado por el proveedor, y lo que tu factura de CI también reflejará."
           }
         ],
-        "avoidFor": "Evita Opus 4.7 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Kimi K2.6 es mucho más rápido, y en trabajos de clasificación o extracción masiva donde GPT-5.4 Mini es aproximadamente 80× más barato a nivel de proveedor.",
+        "avoidFor": "Evita Opus 4.7 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Kimi K2.7 Code es mucho más rápido, y en trabajos de clasificación o extracción masiva donde GPT-5.4 Mini es aproximadamente 80× más barato a nivel de proveedor.",
         "comparisons": [
           {
+            "vs": "Claude Opus 4.8",
+            "body": "Opus 4.8 es el buque insignia más nuevo con el mismo multiplicador de VM0. Usa 4.8 para agentes nuevos de alto riesgo; conserva 4.7 solo cuando un flujo existente ya fue validado contra él y la estabilidad pesa más que las últimas mejoras de benchmark."
+          },
+          {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 es el caballo de batalla predeterminado en la familia Claude y la opción correcta para la mayoría de agentes. Promueve a Opus 4.7 solo cuando Sonnet falla visiblemente en razonamiento difícil, contexto largo o ediciones de código al primer intento, usualmente como el orquestador que delega hacia abajo a sub-agentes de nivel Sonnet o Kimi K2.6."
+            "body": "Sonnet 4.6 es el caballo de batalla predeterminado en la familia Claude y la opción correcta para la mayoría de agentes. Promueve a Opus 4.7 solo cuando Sonnet falla visiblemente en razonamiento difícil, contexto largo o ediciones de código al primer intento, usualmente como el orquestador que delega hacia abajo a sub-agentes de nivel Sonnet o Kimi K2.7 Code."
           },
           {
             "vs": "Claude Opus 4.6",
             "body": "Misma ventana de contexto (1M tokens), mismo precio de proveedor y la misma arquitectura de pensamiento adaptativo. Opus 4.7 es la generación más reciente con mejoras reportadas por el proveedor en SWE-bench Verified, Terminal-Bench 2.0, ARC AGI 2 y OSWorld. Elige 4.7 para nuevos agentes; mantén 4.6 solo cuando un agente existente haya sido validado contra esa versión y necesites estabilidad de comportamiento."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "Kimi K2.6 de Moonshot lidera varios benchmarks agénticos en la frontera de código abierto (SWE-bench Pro 58,6 reportado por el proveedor versus 53,4 de Opus 4.6). Opus 4.7 mantiene el liderazgo en fiabilidad de enrutamiento de herramientas para agentes de producción en inglés y en perfil de seguridad, razón por la cual la mayoría de equipos empresariales aún lo mantienen como el nivel de alto riesgo."
+            "vs": "Kimi K2.7 Code",
+            "body": "Kimi K2.7 Code de Moonshot lidera varios benchmarks agénticos en la frontera de código abierto (SWE-bench Pro 58,6 reportado por el proveedor versus 53,4 de Opus 4.6). Opus 4.7 mantiene el liderazgo en fiabilidad de enrutamiento de herramientas para agentes de producción en inglés y en perfil de seguridad, razón por la cual la mayoría de equipos empresariales aún lo mantienen como el nivel de alto riesgo."
           },
           {
             "vs": "DeepSeek V4 Pro",
             "body": "DeepSeek V4 Pro va por detrás de Opus en la mayoría de benchmarks de razonamiento pero lo iguala en codificación (SWE-bench Verified reportado por el proveedor dentro de ~0,2 puntos). La división es clara: elige DeepSeek cuando el costo bruto domina, elige Opus 4.7 cuando la fiabilidad, el perfil de seguridad o la precisión de enrutamiento de herramientas importan más que el precio por llamada."
-          },
-          {
-            "vs": "GPT-5.2 / Gemini 3 Pro",
-            "body": "Los materiales del proveedor de Anthropic posicionan a Opus 4.7 por delante de GPT-5.2 en la mayoría de tareas de codificación agéntica (Terminal-Bench, τ2-bench Retail) y a pocos puntos de Gemini 3 Pro en razonamiento abstracto (ARC AGI 2, GPQA Diamond). Los rankings independientes corroboran el orden aproximado pero cambian semanalmente."
           }
         ],
         "verdict": "Opus 4.7 es el nivel de escalación. Usa Sonnet 4.6 por defecto; promueve a Opus solo en los pasos específicos donde Sonnet falla visiblemente.",
@@ -4606,16 +4606,16 @@
         ],
         "alternatives": [
           {
+            "slug": "claude-opus-4-8",
+            "reason": "Buque insignia más nuevo para agentes de alto riesgo"
+          },
+          {
             "slug": "claude-sonnet-4-6",
             "reason": "Predeterminado más barato para la mayoría de bucles de agente"
           },
           {
-            "slug": "kimi-k2-6",
-            "reason": "Mejor recuperación de contexto largo a menor costo"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Razonamiento optimizado en costo si Claude es excesivo"
+            "slug": "kimi-k2-7-code",
+            "reason": "Alternativa de código open-weight que ahorra costos"
           }
         ],
         "routingNotes": "En VM0, Opus 4.7 se enruta directamente a la API Messages de Anthropic y se expone de tres formas: a través del pool de créditos VM0 Managed, a través de una clave API directa de Anthropic, y a través del proveedor OAuth de Claude Code para equipos ya autenticados con Claude Code.",
@@ -4714,7 +4714,7 @@
           },
           {
             "title": "Velocidad",
-            "body": "Más lento que Sonnet 4.6 y Kimi K2.6; comparable a Opus 4.7. Alrededor de 41 tokens/seg en esfuerzo máximo según Artificial Analysis."
+            "body": "Más lento que Sonnet 4.6 y Kimi K2.7 Code; comparable a Opus 4.7. Alrededor de 41 tokens/seg en esfuerzo máximo según Artificial Analysis."
           }
         ],
         "bestForExamples": [
@@ -4738,8 +4738,8 @@
             "body": "Sonnet 4.6 es ×1 y maneja la mayoría de bucles de agente. Recurre a Opus solo cuando Sonnet falla visiblemente. Usualmente para orquestación o ediciones de código difíciles."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "Kimi K2.6 (×0,3) supera ligeramente a Opus 4.6 en SWE-bench Pro (58,6 vs 53,4 reportado por el proveedor) y es mucho más barato. Opus 4.6 mantiene la ventaja del perfil de seguridad y es la opción empresarial occidental predeterminada."
+            "vs": "Kimi K2.7 Code",
+            "body": "Kimi K2.7 Code (×0,3) supera ligeramente a Opus 4.6 en SWE-bench Pro (58,6 vs 53,4 reportado por el proveedor) y es mucho más barato. Opus 4.6 mantiene la ventaja del perfil de seguridad y es la opción empresarial occidental predeterminada."
           }
         ],
         "verdict": "Mantenlo fijado si ya lo has validado; de lo contrario, comienza en Opus 4.7. La migración es un cambio de configuración, no una reescritura.",
@@ -4758,7 +4758,7 @@
           },
           {
             "q": "¿Por qué Opus 4.6 es el predeterminado en el proveedor de clave API de Anthropic?",
-            "a": "Predeterminado histórico de antes del lanzamiento de Opus 4.7. Puedes cambiar cualquier agente a Opus 4.7, Sonnet 4.6 o Kimi K2.6 en Configuración de VM0 → Proveedores de Modelos sin cambiar la clave API."
+            "a": "Predeterminado histórico de antes del lanzamiento de Opus 4.7. Puedes cambiar cualquier agente a Opus 4.7, Sonnet 4.6 o Kimi K2.7 Code en Configuración de VM0 → Proveedores de Modelos sin cambiar la clave API."
           },
           {
             "q": "¿Qué es el pensamiento adaptativo?",
@@ -4768,15 +4768,15 @@
         "alternatives": [
           {
             "slug": "claude-opus-4-7",
-            "reason": "Más nuevo, menor costo de proveedor"
+            "reason": "Más nuevo y con menor costo de proveedor"
           },
           {
             "slug": "claude-sonnet-4-6",
-            "reason": "Línea base Sonnet a mucho menor costo"
+            "reason": "Base Sonnet a costo mucho menor"
           },
           {
-            "slug": "kimi-k2-6",
-            "reason": "Alternativa de peso abierto más barata en benchmarks agénticos"
+            "slug": "kimi-k2-7-code",
+            "reason": "Alternativa open-weight más barata en benchmarks agénticos"
           }
         ],
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y como el modelo predeterminado en los proveedores de clave API de Anthropic y OAuth de Claude Code.",
@@ -4972,9 +4972,9 @@
         "cardIntro": "El predeterminado para la mayoría de agentes VM0. Alta precisión de enrutamiento de herramientas, buen comportamiento en contexto largo y la línea base de crédito. Todos los demás modelos tienen precios relativos a Sonnet 4.6.",
         "metaTitle": "Claude Sonnet 4.6 en VM0: Benchmarks, Precios y Casos de Uso",
         "metaDescription": "Claude Sonnet 4.6 es el modelo predeterminado en VM0. Línea base de crédito ×1, contexto 1M, precios $3/$15, SWE-bench Verified 77%. Las tareas de agente que mejor maneja.",
-        "summary": "Claude Sonnet 4.6 es el caballo de batalla de la familia Claude 4 y el modelo Built-in predeterminado en VM0. Elige la herramienta correcta con los argumentos correctos de manera más fiable que cualquier cosa más barata, se mantiene coherente en conversaciones de cientos de miles de tokens, y la mayoría de agentes de producción — triaje de Slack, revisión de PR en GitHub, soporte al cliente — nunca necesitan ser promovidos más allá de él.\n\nEl precio de lista del proveedor es $3 / $15 por 1M tokens, con entrada cacheada a $0,30 / 1M. Recurre a Opus solo cuando Sonnet falla visiblemente en el razonamiento más difícil, y a Kimi K2.6 o GPT-5.4 Mini cuando el costo unitario domina.",
+        "summary": "Claude Sonnet 4.6 es el caballo de batalla de la familia Claude 4 y el modelo Built-in predeterminado en VM0. Elige la herramienta correcta con los argumentos correctos de manera más fiable que cualquier cosa más barata, se mantiene coherente en conversaciones de cientos de miles de tokens, y la mayoría de agentes de producción — triaje de Slack, revisión de PR en GitHub, soporte al cliente — nunca necesitan ser promovidos más allá de él.\n\nEl precio de lista del proveedor es $3 / $15 por 1M tokens, con entrada cacheada a $0,30 / 1M. Recurre a Opus solo cuando Sonnet falla visiblemente en el razonamiento más difícil, y a Kimi K2.7 Code o GPT-5.4 Mini cuando el costo unitario domina.",
         "releaseDate": "Febrero 2026 (generación Claude 4.6)",
-        "familyPosition": "Nivel medio de la familia Claude 4. El modelo caballo de batalla de Anthropic, situado entre Kimi K2.6 y Opus.",
+        "familyPosition": "Nivel medio de la familia Claude 4. El modelo caballo de batalla de Anthropic, situado entre Kimi K2.7 Code y Opus.",
         "background": [
           "Claude Sonnet 4.6 se sitúa en el medio de la familia Claude 4 de Anthropic. Es el modelo caballo de batalla diseñado para manejar toda la amplitud del trabajo típico de agente: enrutamiento multi-herramienta, ediciones de código, conversaciones de larga duración y tareas de salida estructurada. Sin el sobrecosto de Opus.",
           "En el catálogo Built-in de VM0, el multiplicador de crédito de todos los demás modelos está normalizado contra Sonnet 4.6 (×1). Esto hace que Sonnet sea la opción correcta cuando quieres conversaciones de presupuesto predecibles: \"este agente ejecuta aproximadamente a 2× un paso de Sonnet\" es una frase más útil que cotizaciones absolutas en dólares que cambian cada trimestre.",
@@ -5040,7 +5040,7 @@
           },
           {
             "title": "Velocidad",
-            "body": "Más rápido que Opus y más lento que Kimi K2.6. El equilibrio correcto velocidad/calidad para agentes de producción."
+            "body": "Más rápido que Opus y más lento que Kimi K2.7 Code. El equilibrio correcto velocidad/calidad para agentes de producción."
           },
           {
             "title": "Previsibilidad de costos",
@@ -5065,7 +5065,7 @@
             "body": "Historiales de conversación largos, llamadas frecuentes a herramientas del CRM, el mismo prompt de sistema pesado y esquema de herramientas en cada turno. El caché de prompts de Sonnet convierte ese prefijo fijo en una fracción del costo de entrada después de la primera llamada, lo que mantiene el costo por conversación plano a medida que crece el volumen."
           }
         ],
-        "avoidFor": "Evita Sonnet 4.6 en los pasos de razonamiento más difíciles donde visiblemente pierde instrucciones y deberías escalar a Opus 4.7, en clasificación masiva a alto volumen donde GPT-5.4 Mini es aproximadamente 50× más barato, y en micro-respuestas críticas en latencia donde Kimi K2.6 es significativamente más rápido.",
+        "avoidFor": "Evita Sonnet 4.6 en los pasos de razonamiento más difíciles donde visiblemente pierde instrucciones y deberías escalar a Opus 4.7, en clasificación masiva a alto volumen donde GPT-5.4 Mini es aproximadamente 50× más barato, y en micro-respuestas críticas en latencia donde Kimi K2.7 Code es significativamente más rápido.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -5074,9 +5074,13 @@
           {
             "vs": "DeepSeek V4 Pro",
             "body": "DeepSeek V4 Pro (×0,1) iguala a Sonnet en benchmarks de codificación (SWE-bench Verified reportado por el proveedor) a un costo mucho menor. El compromiso es algo de fiabilidad de enrutamiento de herramientas y un perfil de seguridad menos maduro."
+          },
+          {
+            "vs": "GPT-5.4 Mini",
+            "body": "GPT-5.4 Mini es la opción OpenAI más barata para trabajo masivo. Usa Sonnet cuando la fiabilidad de enrutamiento de herramientas importa más; usa Mini para prefiltrado de alto volumen y pasos simples que no necesitan enrutamiento de nivel Sonnet."
           }
         ],
-        "verdict": "Comienza aquí. Migra hacia arriba a Opus 4.7 o hacia abajo a Kimi K2.6 / DeepSeek V4 Pro una vez que hayas visto el comportamiento real en producción y sepas qué dirección tiene sentido.",
+        "verdict": "Comienza aquí. Migra hacia arriba a Opus 4.7 o hacia abajo a Kimi K2.7 Code / DeepSeek V4 Pro una vez que hayas visto el comportamiento real en producción y sepas qué dirección tiene sentido.",
         "faqs": [
           {
             "q": "¿Por qué Sonnet 4.6 es el modelo predeterminado en VM0 Managed?",
@@ -5092,7 +5096,7 @@
           },
           {
             "q": "¿Cuándo debería dejar de usar Sonnet 4.6?",
-            "a": "Cambia a Opus 4.7 si Sonnet visiblemente pierde el objetivo en bucles de agente largos o falla en ediciones de código difíciles. Cambia a Kimi K2.6 o GPT-5.4 Mini para flujos simples de alto volumen donde el costo domina."
+            "a": "Cambia a Opus 4.7 si Sonnet visiblemente pierde el objetivo en bucles de agente largos o falla en ediciones de código difíciles. Cambia a Kimi K2.7 Code o GPT-5.4 Mini para flujos simples de alto volumen donde el costo domina."
           },
           {
             "q": "¿Es Sonnet 4.6 lo mismo que Sonnet 4.5?",
@@ -5288,133 +5292,137 @@
       },
       "glm-5-2": {
         "name": "GLM-5.2",
-        "pageTitle": "GLM-5.2 on VM0. Z.AI's default long-context model",
-        "tagline": "The current Z.AI default on VM0. Up to a 1M-token context window, Anthropic-compatible routing, and cost-saving x0.4 VM0 Managed pricing.",
-        "cardIntro": "Z.AI's current default on VM0. Long-context text and code agents at x0.4 VM0 Managed pricing.",
-        "metaTitle": "GLM-5.2 on VM0: Pricing, Context & Best Agent Tasks",
-        "metaDescription": "GLM-5.2 on VM0. Z.AI's current default model with up to 1M-token context, x0.4 credit cost, OpenRouter-backed VM0 Managed routing, and direct Z.AI BYOK support.",
-        "summary": "GLM-5.2 is the current GLM default on VM0 for Z.AI API-key users and is also available through VM0 Managed via OpenRouter. It keeps the GLM series' long-context profile while becoming the preferred Z.AI route for new agents.\n\nUse it for large codebases, large document sets, and cost-sensitive long-context planning where Sonnet-class pricing is unnecessary. GLM-5.1 remains available for compatibility, but new Z.AI routes should start on GLM-5.2 unless a workflow has been tuned specifically against 5.1.",
-        "releaseDate": "June 2026",
-        "familyPosition": "Current default model in VM0's Z.AI / GLM route.",
+        "pageTitle": "GLM-5.2 en VM0. El modelo predeterminado de contexto largo de Z.AI",
+        "tagline": "El predeterminado actual de Z.AI en VM0. Hasta 1M tokens de contexto, enrutamiento compatible con Anthropic y precio económico de ×0,4 en VM0 Managed.",
+        "cardIntro": "El predeterminado actual de Z.AI en VM0. Agentes de texto y código de contexto largo a precio ×0,4 en VM0 Managed.",
+        "metaTitle": "GLM-5.2 en VM0: precios, contexto y mejores tareas de agente",
+        "metaDescription": "GLM-5.2 en VM0. Modelo predeterminado actual de Z.AI con hasta 1M tokens de contexto, costo de ×0,4 créditos, enrutamiento VM0 Managed mediante OpenRouter y soporte BYOK directo de Z.AI.",
+        "summary": "GLM-5.2 es el GLM predeterminado actual en VM0 para usuarios con clave API de Z.AI y también está disponible en VM0 Managed mediante OpenRouter. Mantiene el perfil de contexto largo de la serie GLM y se convierte en la ruta Z.AI preferida para nuevos agentes.\n\nÚsalo para grandes bases de código, grandes conjuntos de documentos y planificación de contexto largo sensible al costo donde el precio de clase Sonnet no es necesario. GLM-5.1 sigue disponible por compatibilidad, pero las nuevas rutas Z.AI deberían empezar en GLM-5.2 salvo que un flujo ya esté ajustado específicamente para 5.1.",
+        "releaseDate": "Junio de 2026",
+        "familyPosition": "Modelo predeterminado actual en la ruta Z.AI / GLM de VM0.",
         "background": [
-          "GLM-5.2 extends the GLM 5 family as the current Z.AI default exposed by VM0. It is available through VM0 Managed, where VM0 routes to OpenRouter with the upstream id `z-ai/glm-5.2`, and through direct Z.AI API keys using the canonical `glm-5.2` id.",
-          "The route is Anthropic-compatible, so Claude-style agents can keep the same runtime interface. Existing GLM-5.1 agents do not need to migrate immediately, but new Z.AI-backed agents should prefer GLM-5.2.",
-          "On VM0 Managed it sits at x0.4 credits, matching GLM-5.1's cost tier while taking over the Z.AI default slot."
+          "GLM-5.2 amplía la familia GLM 5 como el predeterminado actual de Z.AI expuesto por VM0. Está disponible mediante VM0 Managed, donde VM0 enruta a OpenRouter con el id upstream `z-ai/glm-5.2`, y mediante claves API directas de Z.AI usando el id canónico `glm-5.2`.",
+          "La ruta es compatible con Anthropic, así que los agentes estilo Claude pueden conservar la misma interfaz de runtime. Los agentes existentes con GLM-5.1 no necesitan migrar de inmediato, pero los agentes nuevos respaldados por Z.AI deberían preferir GLM-5.2.",
+          "En VM0 Managed está en ×0,4 créditos, igualando la capa de costo de GLM-5.1 mientras ocupa el slot predeterminado de Z.AI."
         ],
-        "architecture": "GLM-5.2 is exposed on VM0 through Anthropic-compatible endpoints. VM0 Managed uses OpenRouter's `z-ai/glm-5.2` id; direct Z.AI BYOK uses `glm-5.2`.",
+        "architecture": "GLM-5.2 se expone en VM0 mediante endpoints compatibles con Anthropic. VM0 Managed usa el id `z-ai/glm-5.2` de OpenRouter; Z.AI BYOK directo usa `glm-5.2`.",
         "specs": [
           {
-            "label": "Family",
+            "label": "Familia",
             "value": "GLM-5 series"
           },
           {
-            "label": "Modalities",
-            "value": "Text, code"
+            "label": "Modalidades",
+            "value": "Texto, código"
           },
           {
-            "label": "Languages",
-            "value": "Multilingual"
+            "label": "Idiomas",
+            "value": "Multilingüe"
           },
           {
-            "label": "Context window",
-            "value": "Up to 1M tokens"
+            "label": "Ventana de contexto",
+            "value": "Hasta 1M tokens"
           },
           {
-            "label": "Prompt caching",
-            "value": "Supported"
+            "label": "Caché de prompts",
+            "value": "Soportado"
           },
           {
-            "label": "Available on VM0",
-            "value": "June 2026"
+            "label": "Disponible en VM0",
+            "value": "Junio de 2026"
           }
         ],
-        "benchmarksNote": "Treat GLM-5.2 as the preferred GLM route on VM0. Third-party rankings can move quickly, so VM0 keeps the page focused on routing, cost, and operational fit rather than frozen leaderboard percentages.",
+        "benchmarksNote": "Trata GLM-5.2 como la ruta GLM preferida en VM0. Los rankings de terceros pueden moverse rápido, así que VM0 mantiene esta página centrada en enrutamiento, costo y encaje operativo en lugar de porcentajes congelados de leaderboard.",
         "benchmarks": [
           {
-            "name": "Long-context tasks",
-            "score": "Strong fit",
-            "note": "VM0 routing profile"
+            "name": "Tareas de contexto largo",
+            "score": "Buen encaje",
+            "note": "Perfil de enrutamiento de VM0"
           },
           {
-            "name": "Cost tier",
-            "score": "x0.4 credits",
+            "name": "Capa de costo",
+            "score": "×0,4 créditos",
             "note": "VM0 Managed"
           }
         ],
         "performance": [
           {
-            "title": "Long-context work",
-            "body": "GLM-5.2 is best used when the agent needs a large working set: repositories, documentation folders, design notes, or long research material."
+            "title": "Trabajo de contexto largo",
+            "body": "GLM-5.2 encaja mejor cuando el agente necesita un conjunto de trabajo grande: repositorios, carpetas de documentación, notas de diseño o material de investigación extenso."
           },
           {
-            "title": "Cost control",
-            "body": "At x0.4 credits it is a cost-saving alternative to Sonnet-class routes for workflows where context size and price matter more than maximum English reasoning depth."
+            "title": "Control de costos",
+            "body": "Con ×0,4 créditos es una alternativa económica a rutas de clase Sonnet para flujos donde el tamaño de contexto y el precio importan más que la máxima profundidad de razonamiento en inglés."
           },
           {
-            "title": "Routing",
-            "body": "VM0 Managed routes through OpenRouter using `z-ai/glm-5.2`; direct Z.AI API keys use `glm-5.2`. Both paths keep the Claude-compatible agent interface."
+            "title": "Enrutamiento",
+            "body": "VM0 Managed enruta mediante OpenRouter usando `z-ai/glm-5.2`; las claves API directas de Z.AI usan `glm-5.2`. Ambos caminos conservan la interfaz de agente compatible con Claude."
           }
         ],
         "bestForExamples": [
           {
-            "title": "Whole-repo review on a budget",
-            "body": "Use GLM-5.2 when the agent needs to inspect a large codebase and produce concrete file-level recommendations without paying for a premium reasoning model on every pass."
+            "title": "Revisión de repositorio completo con presupuesto",
+            "body": "Usa GLM-5.2 cuando el agente debe inspeccionar una base de código grande y producir recomendaciones concretas por archivo sin pagar por un modelo de razonamiento premium en cada pasada."
           },
           {
-            "title": "Large document synthesis",
-            "body": "Load policy documents, tickets, transcripts, or internal docs together and ask for cross-document patterns. The long context and x0.4 multiplier keep repeated runs practical."
+            "title": "Síntesis de grandes conjuntos de documentos",
+            "body": "Carga documentos de política, tickets, transcripciones o documentación interna en conjunto y pide patrones entre documentos. El contexto largo y el multiplicador ×0,4 hacen prácticos los runs repetidos."
           },
           {
-            "title": "Z.AI BYOK default route",
-            "body": "Teams using a direct Z.AI API key get GLM-5.2 as the default VM0 model while retaining GLM-5.1 for existing tuned workflows."
+            "title": "Ruta predeterminada para Z.AI BYOK",
+            "body": "Los equipos que usan una clave API directa de Z.AI reciben GLM-5.2 como modelo predeterminado en VM0 y conservan GLM-5.1 para flujos existentes ya ajustados."
           }
         ],
-        "avoidFor": "Skip GLM-5.2 for workflows that depend on vision input, or when maximum English-language reasoning and tool routing quality matter more than context size and cost.",
+        "avoidFor": "Evita GLM-5.2 en flujos que dependen de entrada visual, o cuando la máxima calidad de razonamiento en inglés y enrutamiento de herramientas importa más que el tamaño de contexto y el costo.",
         "comparisons": [
           {
             "vs": "GLM-5.1",
-            "body": "GLM-5.1 remains available for compatibility. GLM-5.2 is the default choice for new Z.AI routes on VM0."
+            "body": "GLM-5.1 sigue disponible por compatibilidad. GLM-5.2 es la opción predeterminada para nuevas rutas Z.AI en VM0."
           },
           {
             "vs": "Kimi K2.7 Code",
-            "body": "Both sit in cost-saving territory. Kimi is the Moonshot default and a strong code-focused alternative; GLM-5.2 is the preferred Z.AI long-context route."
+            "body": "Ambos están en territorio de ahorro de costos. Kimi es el predeterminado de Moonshot y una alternativa fuerte enfocada en código; GLM-5.2 es la ruta Z.AI preferida para contexto largo."
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 remains the stronger default for premium tool-routing quality. GLM-5.2 is cheaper and better suited when context size dominates."
+            "body": "Sonnet 4.6 sigue siendo el predeterminado más fuerte para calidad premium de enrutamiento de herramientas. GLM-5.2 es más barato y encaja mejor cuando domina el tamaño de contexto."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro tiene un multiplicador VM0 más bajo y es la opción de razonamiento más fuerte cuando el costo va primero. Úsalo cuando domina el precio; usa GLM-5.2 cuando importan más el ajuste con Z.AI o el contexto largo."
           }
         ],
-        "verdict": "Pick GLM-5.2 as the default Z.AI route on VM0. Keep GLM-5.1 only for compatibility with workflows already tuned against it.",
+        "verdict": "Elige GLM-5.2 como la ruta Z.AI predeterminada en VM0. Conserva GLM-5.1 solo por compatibilidad con flujos ya ajustados para él.",
         "faqs": [
           {
-            "q": "Is GLM-5.2 available through VM0 Managed?",
-            "a": "Yes. VM0 Managed routes GLM-5.2 through OpenRouter with the upstream id `z-ai/glm-5.2`."
+            "q": "¿GLM-5.2 está disponible mediante VM0 Managed?",
+            "a": "Sí. VM0 Managed enruta GLM-5.2 mediante OpenRouter con el id upstream `z-ai/glm-5.2`."
           },
           {
-            "q": "Is GLM-5.2 the default for direct Z.AI API keys?",
-            "a": "Yes. The Z.AI provider defaults to `glm-5.2` while keeping `glm-5.1` available."
+            "q": "¿GLM-5.2 es el predeterminado para claves API directas de Z.AI?",
+            "a": "Sí. El proveedor Z.AI usa `glm-5.2` por defecto y mantiene `glm-5.1` disponible."
           },
           {
-            "q": "Does GLM-5.2 support image input?",
-            "a": "No. VM0 exposes GLM-5.2 for text and code agents. Use Claude Sonnet 4.6 or Kimi K2.7 Code when vision input is required."
+            "q": "¿GLM-5.2 soporta entrada de imagen?",
+            "a": "No. VM0 expone GLM-5.2 para agentes de texto y código. Usa Claude Sonnet 4.6 o Kimi K2.7 Code cuando se necesite entrada visual."
           }
         ],
         "alternatives": [
           {
             "slug": "glm-5-1",
-            "reason": "Compatibility with existing GLM-5.1 workflows"
+            "reason": "Compatibilidad con flujos existentes de GLM-5.1"
           },
           {
             "slug": "kimi-k2-7-code",
-            "reason": "Moonshot's cost-saving code model"
+            "reason": "Modelo de código Moonshot que ahorra costos"
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Cheaper standard-context alternative"
+            "reason": "Alternativa más barata para contexto estándar"
           }
         ],
-        "routingNotes": "On VM0 Managed, GLM-5.2 routes through OpenRouter with the upstream id `z-ai/glm-5.2`. With a Z.AI API key it talks directly to `api.z.ai` as `glm-5.2`. It is the default model on the Z.AI provider.",
-        "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider, so long-context planning and analysis runs have room to finish."
+        "routingNotes": "En VM0 Managed, GLM-5.2 se enruta mediante OpenRouter con el id upstream `z-ai/glm-5.2`. Con una clave API de Z.AI habla directamente con `api.z.ai` como `glm-5.2`. Es el modelo predeterminado del proveedor Z.AI.",
+        "vm0Notes": "VM0 establece un timeout de API de 50 minutos para el proveedor Z.AI, de modo que las ejecuciones de planificación y análisis de contexto largo tengan margen para terminar."
       },
       "glm-5-1": {
         "name": "GLM-5.1",
@@ -5423,7 +5431,7 @@
         "cardIntro": "El buque insignia de Z.AI. Hasta 1M tokens de ventana de contexto. Potente para agentes de código base completo o base de conocimiento completa a un precio muy por debajo de Sonnet.",
         "metaTitle": "GLM-5.1 en VM0: Contexto 1M, Precios y Mejores Tareas de Agente",
         "metaDescription": "Reseña de GLM-5.1 en VM0. El buque insignia de Z.AI con hasta 1M tokens de contexto, costo de crédito ×0,4. Especificaciones, precios, rendimiento y tareas de agente recomendadas.",
-        "summary": "GLM-5.1 es el especialista en contexto largo del catálogo, con hasta 1M tokens de entrada. Úsalo cuando el prompt es genuinamente enorme: un repositorio completo de una vez, varios cientos de documentos en una sola ejecución de investigación. Los rankings independientes lo sitúan consistentemente en el nivel superior de modelos de peso abierto para trabajo de contexto largo.\n\nEl precio de lista del proveedor es $1,40 / $4,40 por 1M tokens, muy por debajo de la mitad de Sonnet 4.6 a nivel de proveedor, y la API es compatible con Anthropic, por lo que los agentes estilo Claude funcionan sin reescritura. Recurre a Sonnet u Opus cuando la profundidad de razonamiento en inglés importa más que el tamaño del contexto, y a Kimi K2.6 cuando la latencia domina.",
+        "summary": "GLM-5.1 es el especialista en contexto largo del catálogo, con hasta 1M tokens de entrada. Úsalo cuando el prompt es genuinamente enorme: un repositorio completo de una vez, varios cientos de documentos en una sola ejecución de investigación. Los rankings independientes lo sitúan consistentemente en el nivel superior de modelos de peso abierto para trabajo de contexto largo.\n\nEl precio de lista del proveedor es $1,40 / $4,40 por 1M tokens, muy por debajo de la mitad de Sonnet 4.6 a nivel de proveedor, y la API es compatible con Anthropic, por lo que los agentes estilo Claude funcionan sin reescritura. Recurre a Sonnet u Opus cuando la profundidad de razonamiento en inglés importa más que el tamaño del contexto, y a Kimi K2.7 Code cuando la latencia domina.",
         "releaseDate": "Principios de 2026; GA completa en VM0 abril 2026",
         "familyPosition": "El modelo insignia de propósito general de Z.AI / Zhipu AI.",
         "background": [
@@ -5499,10 +5507,10 @@
             "body": "Algunos pasos de agente genuinamente toman de cinco a treinta minutos — investigación profunda, análisis multi-documento, pases largos de planificación. VM0 establece un timeout de API de 50 minutos para el proveedor Z.AI para que esos pasos de pensamiento largos no se corten a mitad del razonamiento, lo que hace de GLM-5.1 la opción segura sobre modelos enrutados a través de proveedores con timeouts predeterminados más cortos."
           }
         ],
-        "avoidFor": "Evita GLM-5.1 en el razonamiento en inglés más difícil donde Sonnet 4.6 u Opus 4.7 aún lideran, y en respuestas de chat críticas en latencia donde Kimi K2.6 es mucho más rápido.",
+        "avoidFor": "Evita GLM-5.1 en el razonamiento en inglés más difícil donde Sonnet 4.6 u Opus 4.7 aún lideran, y en respuestas de chat críticas en latencia donde Kimi K2.7 Code es mucho más rápido.",
         "comparisons": [
           {
-            "vs": "Kimi K2.6",
+            "vs": "Kimi K2.7 Code",
             "body": "Ambos son opciones de contexto largo a costo de crédito similar (×0,4 vs ×0,3). Kimi tiene mejor recuperación de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño bruto de contexto (1M vs 256K). Elige Kimi para transcripciones muy largas; elige GLM-5.1 cuando necesitas meter un código base completo en un solo prompt."
           },
           {
@@ -5530,13 +5538,17 @@
           },
           {
             "q": "¿GLM-5.1 soporta entrada de imágenes?",
-            "a": "GLM-5.1 en VM0 está expuesto para texto y código. Para entrada multimodal (imagen/video), elige Claude Sonnet 4.6 o Kimi K2.6."
+            "a": "GLM-5.1 en VM0 está expuesto para texto y código. Para entrada multimodal (imagen/video), elige Claude Sonnet 4.6 o Kimi K2.7 Code."
           }
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2-6",
-            "reason": "Mejor recuperación de contexto largo"
+            "slug": "glm-5-2",
+            "reason": "Ruta Z.AI predeterminada actual"
+          },
+          {
+            "slug": "kimi-k2-7-code",
+            "reason": "Recuperación de contexto largo más fuerte"
           },
           {
             "slug": "deepseek-v4-pro",
@@ -5556,14 +5568,14 @@
         "tagline": "El miembro optimizado en costo de OpenAI de la familia GPT-5. ×0,3 créditos, visión multimodal, y lo suficientemente rápido para enrutamiento, clasificación y prefiltrado de alto volumen.",
         "cardIntro": "El GPT-5 de OpenAI que ahorra costos. ×0,3 créditos, rápido y multimodal — la opción correcta para trabajo de prefiltrado masivo en el framework Codex.",
         "metaTitle": "GPT-5.4 Mini en VM0: Benchmarks, Precios y Comparación",
-        "metaDescription": "Reseña de GPT-5.4 Mini en VM0. El modelo OpenAI GPT-5 que ahorra costos a precios de proveedor de $0,75/$4,5, ×0,3 créditos, contexto de 400K y visión multimodal. Especificaciones, comportamiento y comparación con Kimi K2.6.",
-        "summary": "GPT-5.4 Mini es el miembro que ahorra costos de la familia GPT-5 de OpenAI — al que recurres cuando el costo unitario importa más que la calidad de razonamiento máxima. Mantiene la ventana de contexto de 400K y las entradas multimodales del resto de la familia pero recorta el cómputo por token, lo que se traduce en menor precio ($0,75 / $4,5 por 1M) y velocidad notablemente mayor.\n\nEn VM0 se sitúa en ×0,3 créditos, el mismo multiplicador que Kimi K2.6, lo que lo convierte en la opción natural del lado OpenAI para clasificación masiva, enrutamiento fan-out, prefiltrado, y cualquier paso de agente donde bajar a un tercio del costo de GPT-5.4 es el factor decisivo.",
+        "metaDescription": "Reseña de GPT-5.4 Mini en VM0. El modelo OpenAI GPT-5 que ahorra costos a precios de proveedor de $0,75/$4,5, ×0,3 créditos, contexto de 400K y visión multimodal. Especificaciones, comportamiento y comparación con Kimi K2.7 Code.",
+        "summary": "GPT-5.4 Mini es el miembro que ahorra costos de la familia GPT-5 de OpenAI — al que recurres cuando el costo unitario importa más que la calidad de razonamiento máxima. Mantiene la ventana de contexto de 400K y las entradas multimodales del resto de la familia pero recorta el cómputo por token, lo que se traduce en menor precio ($0,75 / $4,5 por 1M) y velocidad notablemente mayor.\n\nEn VM0 se sitúa en ×0,3 créditos, el mismo multiplicador que Kimi K2.7 Code, lo que lo convierte en la opción natural del lado OpenAI para clasificación masiva, enrutamiento fan-out, prefiltrado, y cualquier paso de agente donde bajar a un tercio del costo de GPT-5.4 es el factor decisivo.",
         "releaseDate": "Abril 2026",
-        "familyPosition": "Variante que ahorra costos de la familia GPT-5. El par del lado OpenAI de Kimi K2.6.",
+        "familyPosition": "Variante que ahorra costos de la familia GPT-5. El par del lado OpenAI de Kimi K2.7 Code.",
         "background": [
           "GPT-5.4 Mini es el miembro optimizado en costo de la generación GPT-5 de OpenAI, lanzado en abril de 2026 junto con GPT-5.5 y GPT-5.4. OpenAI lo posiciona como el nivel de alto rendimiento — el modelo que mantienes ejecutándose en pasos de clasificación, enrutamiento y prefiltrado donde 5.4 o 5.5 más grandes se desperdiciarían en decisiones rutinarias.",
           "Arquitectónicamente comparte la ventana de contexto de 400K tokens de la familia GPT-5, el parámetro `reasoning_effort`, Prompt Caching, y la superficie Responses API que usa el codex CLI por defecto. El compromiso frente a 5.4 es la profundidad de razonamiento: Mini maneja bien llamadas a herramientas estándar, resúmenes cortos y cargas de salida estructurada, pero empieza a derivar en los planes multi-paso más difíciles donde 5.4 todavía aguanta. El compromiso frente a competidores al mismo precio es el ecosistema — si ya estás en Codex, quedarte dentro de la superficie OpenAI mantiene definiciones de herramientas y esquemas de salida estructurada consistentes.",
-          "En VM0 Mini se sitúa en el multiplicador de ×0,3 créditos, el mismo que Kimi K2.6. DeepSeek V4 Pro se sitúa más bajo en ×0,1. Dentro del nivel que ahorra costos la elección depende principalmente del framework y ajuste de comportamiento en tu carga de trabajo específica."
+          "En VM0 Mini se sitúa en el multiplicador de ×0,3 créditos, el mismo que Kimi K2.7 Code. DeepSeek V4 Pro se sitúa más bajo en ×0,1. Dentro del nivel que ahorra costos la elección depende principalmente del framework y ajuste de comportamiento en tu carga de trabajo específica."
         ],
         "architecture": "GPT-5.4 Mini usa la misma arquitectura que el resto de la familia GPT-5: ventana de contexto de 400K tokens, el parámetro `reasoning_effort` en cuatro niveles, Prompt Caching donde la entrada cacheada se factura a una décima parte de la tarifa de entrada, y la superficie Responses API. Tool-Use, salidas estructuradas y entradas de visión multimodal son soportadas. El modelo es un hermano menor más rápido — menos parámetros por token, más rendimiento por dólar.",
         "specs": [
@@ -5600,7 +5612,7 @@
             "value": "$0,75 entrada / $4,5 salida por 1M"
           }
         ],
-        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de GPT-5 Mini de OpenAI. Las reseñas independientes sitúan a 5.4 Mini en la misma banda que ahorra costos que Kimi K2.6 en la mayoría de benchmarks de agente. Trata los porcentajes absolutos como direccionales.",
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de GPT-5 Mini de OpenAI. Las reseñas independientes sitúan a 5.4 Mini en la misma banda que ahorra costos que Kimi K2.7 Code en la mayoría de benchmarks de agente. Trata los porcentajes absolutos como direccionales.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -5643,7 +5655,7 @@
           },
           {
             "title": "Eficiencia de costo",
-            "body": "×0,3 créditos con visión multimodal incluida. Mini y Kimi K2.6 se sitúan en la misma banda, mientras DeepSeek V4 Pro se sitúa más bajo en ×0,1 — la elección usualmente se reduce al ajuste de framework y comportamiento en tu carga de trabajo específica."
+            "body": "×0,3 créditos con visión multimodal incluida. Mini y Kimi K2.7 Code se sitúan en la misma banda, mientras DeepSeek V4 Pro se sitúa más bajo en ×0,1 — la elección usualmente se reduce al ajuste de framework y comportamiento en tu carga de trabajo específica."
           },
           {
             "title": "Cuándo escalar",
@@ -5669,6 +5681,14 @@
           {
             "vs": "GPT-5.4",
             "body": "Misma familia, diferente posicionamiento. 5.4 Mini (×0,3) gana en costo y velocidad; 5.4 (×1) gana en calidad de razonamiento y precisión de enrutamiento de herramientas en casos difíciles. El patrón estándar es prefiltrar con Mini y escalar los casos residuales a 5.4."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Claude Sonnet 4.6 es el punto de comparación más fiable cuando la calidad de enrutamiento de herramientas importa más que el rendimiento bruto. Mini es más barato y rápido para prefiltrado y pasos simples."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro tiene un multiplicador VM0 más bajo y es la opción de razonamiento más fuerte cuando el costo va primero. Usa DeepSeek cuando dominan precio y profundidad de razonamiento; usa Mini cuando importan más el ajuste con OpenAI y el alto rendimiento."
           }
         ],
         "verdict": "GPT-5.4 Mini es el predeterminado que ahorra costos del lado OpenAI. Prefiltra con Mini, escala a GPT-5.4 para pasos rutinarios, escala a GPT-5.5 solo para el razonamiento más difícil.",
@@ -5682,7 +5702,7 @@
             "a": "Sí. Como el resto de la familia GPT-5 acepta entradas de imagen junto con texto y código."
           },
           {
-            "q": "¿Cuándo debería elegir GPT-5.4 Mini sobre Kimi K2.6?",
+            "q": "¿Cuándo debería elegir GPT-5.4 Mini sobre Kimi K2.7 Code?",
             "a": "Cuando tu agente ya está construido en el framework Codex o necesitas el ecosistema de salidas estructuradas / llamadas a herramientas de OpenAI. Ambos se sitúan en ×0,3 créditos, así que el costo es idéntico y la elección se reduce al framework y comportamiento."
           },
           {
@@ -5701,178 +5721,7 @@
           }
         ],
         "routingNotes": "Enrutado a través del framework Codex en VM0 mediante la Responses API de OpenAI. Disponible en VM0 Managed y mediante clave API directa de OpenAI, OAuth de ChatGPT (Codex), OpenRouter (Codex) y Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini se sitúa en el multiplicador de ×0,3 que ahorra costos junto a Kimi K2.6, por encima del nivel ×0,1 de DeepSeek V4 Pro. Prompt Caching está habilitado por defecto y el alto rendimiento hace de Mini un paso natural de prefiltrado en diseños de agente apilados que escalan a 5.4 o 5.5 solo en los casos difíciles residuales."
-      },
-      "kimi-k2-6": {
-        "name": "Kimi K2.6",
-        "pageTitle": "Kimi K2.6 en VM0. Agentes de contexto largo",
-        "tagline": "El último modelo de peso abierto de Moonshot. Los mejores benchmarks agénticos de su clase en la frontera de código abierto e interfaz compatible con Claude.",
-        "cardIntro": "Lo último de Moonshot. La mejor recuperación de contexto largo en nuestra evaluación interna e interfaz compatible con Claude.",
-        "metaTitle": "Kimi K2.6 en VM0: SWE-bench, Precios y Uso de Contexto Largo",
-        "metaDescription": "Reseña de Kimi K2.6 en VM0. MoE de 1T parámetros de peso abierto de Moonshot. SWE-bench Pro 58,6, costo de crédito ×0,3, contexto 256K. Especificaciones y tareas recomendadas.",
-        "summary": "Kimi K2.6 es el buque insignia de peso abierto de Moonshot y actualmente el modelo agéntico de código abierto más fuerte en varios benchmarks públicos. Mantiene ejecuciones muy largas sin perder el hilo (Moonshot ha documentado sesiones desatendidas de más de 12 horas y más de 4.000 llamadas a herramientas) y acepta entrada de imagen y video de forma nativa. SWE-bench Pro reportado por el proveedor alcanza 58,6 (por encima de Claude Opus 4.6 y GPT-5.4 en ese benchmark), y la tasa de alucinación bajó del ~65% de K2.5 al ~39%.\n\nEl precio de lista del proveedor es $0,60 / $3 por 1M tokens, pesos abiertos bajo licencia MIT Modificada, y la API es compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción importa más que las puntuaciones de benchmark, y a Kimi K2.6 cuando la latencia domina.",
-        "releaseDate": "20 de abril de 2026",
-        "familyPosition": "Cima de la serie Kimi K2 de peso abierto de Moonshot. Sucesor de K2.5 y K2 Thinking.",
-        "background": [
-          "Kimi K2.6 es el modelo agéntico de peso abierto de Moonshot AI lanzado el 20 de abril de 2026. Es un modelo Mixture-of-Experts (MoE) de 1 billón de parámetros con 32B parámetros activos por token. La misma familia de arquitectura que K2.5 y K2 Thinking, con ganancias sustanciales en codificación agéntica y razonamiento de largo horizonte.",
-          "K2.6 causó un gran impacto en los rankings independientes. Las puntuaciones reportadas por el proveedor lo sitúan por delante de GPT-5.4 (xhigh) y Claude Opus 4.6 (esfuerzo máximo) en SWE-bench Pro, con una tasa de alucinación del 39% (bajando del 65% de K2.5). Artificial Analysis lo clasifica #4 en su Índice de Inteligencia. La opción líder de peso abierto.",
-          "En VM0 se expone a través de la clave API de Moonshot como modelo predeterminado, mediante VM0 Managed con el mismo multiplicador ×0,3, y vía OpenRouter. La API es compatible con Anthropic, por lo que los agentes VM0 escritos para Claude funcionan sin cambios de código."
-        ],
-        "architecture": "K2.6 es un modelo Mixture-of-Experts con 1B parámetros totales y 32B activos por token, con una ventana de contexto de 256K tokens y entrada multimodal de imagen y video (salida solo texto). Moonshot lo combina con un runtime Agent Swarm que escala horizontalmente a 300 sub-agentes y 4.000 pasos coordinados, y ha documentado sesiones de codificación de largo horizonte de 12 horas o más. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada.",
-        "specs": [
-          {
-            "label": "Familia",
-            "value": "Serie Kimi K2"
-          },
-          {
-            "label": "Parámetros",
-            "value": "1B total / 32B activos (MoE)"
-          },
-          {
-            "label": "Modalidades",
-            "value": "Imagen, video, texto"
-          },
-          {
-            "label": "Idiomas",
-            "value": "Multilingüe"
-          },
-          {
-            "label": "Ventana de contexto",
-            "value": "256K tokens"
-          },
-          {
-            "label": "Licencia",
-            "value": "MIT Modificada (pesos abiertos)"
-          },
-          {
-            "label": "Disponible en VM0",
-            "value": "Abril 2026"
-          }
-        ],
-        "benchmarksNote": "Puntuaciones reportadas por el proveedor del blog de lanzamiento de K2.6 de Moonshot. Terceros independientes (Artificial Analysis, TokenMix) corroboran el orden relativo. La tasa de alucinación de K2.6 bajó al 39% desde el 65% de K2.5. Una mejora significativa en seguridad/fiabilidad.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Pro",
-            "score": "58,6",
-            "note": "reportado por el proveedor; supera a GPT-5.4, Opus 4.6"
-          },
-          {
-            "name": "SWE-bench Verified",
-            "score": "80,2",
-            "note": "reportado por el proveedor"
-          },
-          {
-            "name": "Terminal-Bench 2.0",
-            "score": "66,7",
-            "note": "framework Terminus-2"
-          },
-          {
-            "name": "LiveCodeBench (v6)",
-            "score": "89,6",
-            "note": "reportado por el proveedor"
-          },
-          {
-            "name": "HLE (con herramientas)",
-            "score": "54,0",
-            "note": "supera a GPT-5.4 y Opus 4.6"
-          },
-          {
-            "name": "BrowseComp (Agent Swarm)",
-            "score": "86,3",
-            "note": "sube desde 78,4 de K2.5"
-          },
-          {
-            "name": "Índice de Inteligencia Artificial Analysis",
-            "score": "54",
-            "note": "#4 general, líder en pesos abiertos"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Recuperación de contexto largo",
-            "body": "La recuperación de contexto largo más fuerte en nuestra evaluación interna en todo el catálogo Built-in. Mantiene la coherencia en transcripciones largas de agente donde Anthropic Sonnet empieza a desviarse."
-          },
-          {
-            "title": "Benchmarks agénticos",
-            "body": "SWE-bench Pro 58,6 reportado por el proveedor es el más alto del catálogo al momento de escribir. Supera a GPT-5.4 y Opus 4.6."
-          },
-          {
-            "title": "Codificación de largo horizonte",
-            "body": "Sesiones autónomas documentadas de más de 12 horas completando más de 4.000 llamadas a herramientas. El modelo realmente mantiene el rendimiento en ejecuciones muy largas."
-          },
-          {
-            "title": "Uso de herramientas",
-            "body": "Fiable en los flujos de herramientas comunes de VM0. La API compatible con Anthropic significa que los esquemas de herramientas diseñados para Claude funcionan directamente."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "La investigación que tiene que leer cada hilo antiguo",
-            "body": "Excava en seis meses de conversaciones de Slack para encontrar por qué un cliente se dio de baja, peina el backlog de tickets de soporte en busca de un patrón de bug recurrente, o une ideas a través de cientos de RFCs. La recuperación de contexto largo de K2.6 se mantiene en transcripciones donde Anthropic Sonnet empieza a olvidar turnos anteriores, que es exactamente lo que necesitan los flujos de trabajo de \"leer todo el montón\"."
-          },
-          {
-            "title": "La refactorización autónoma que se ejecuta durante la noche",
-            "body": "Moonshot ha documentado una refactorización autónoma de 13 horas de un motor de matching de ocho años, con K2.6 manteniendo más de 4.000 llamadas a herramientas sin desviarse de la tarea. Ese es el tipo de ejecución donde la mayoría de los modelos pierden el objetivo alrededor de la segunda hora; la estabilidad de largo horizonte de K2.6 es lo que hace que \"empezar el viernes por la noche, revisar el lunes por la mañana\" realmente funcione."
-          },
-          {
-            "title": "El agente multimodal que maneja capturas de pantalla y clips",
-            "body": "K2.6 acepta tanto entrada de imagen como de video a través de MoonViT, lo cual es inusual fuera de la familia Claude. Útil para agentes de QA basados en capturas de pantalla, pipelines de visión de documentos y cualquier despliegue donde de otro modo tendrías que incorporar un modelo de visión separado solo para leer imágenes."
-          }
-        ],
-        "avoidFor": "Evita K2.6 en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera en fiabilidad de producción, y en flujos legacy fijados donde el multiplicador más bajo de K2.5 ya es suficiente.",
-        "comparisons": [
-          {
-            "vs": "GLM-5.1",
-            "body": "Ambos son opciones de contexto largo. K2.6 gana en recuperación bruta de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño de contexto (1M vs 256K). Predetermina K2.6 para transcripciones largas; recurre a GLM-5.1 solo cuando necesitas más de 256K tokens en un solo prompt."
-          },
-          {
-            "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet (×1) lidera en fiabilidad de enrutamiento multi-herramienta en inglés. K2.6 (×0,3) gana en costo y en benchmarks agénticos (SWE-bench Pro). Combínalos: Sonnet para enrutamiento complejo de herramientas, K2.6 para trabajo de agente sensible al costo."
-          },
-          {
-            "vs": "Kimi K2.5",
-            "body": "K2.6 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.5 (×0,2) es ligeramente más barato. Prefiere K2.6 para trabajo nuevo."
-          }
-        ],
-        "verdict": "El predeterminado de peso abierto para trabajo de agente serio — contexto largo, costo-efectivo. Las brechas restantes frente a Sonnet 4.6 son fiabilidad de enrutamiento de herramientas y soporte empresarial.",
-        "faqs": [
-          {
-            "q": "¿Cuándo se lanzó Kimi K2.6?",
-            "a": "Moonshot AI lanzó Kimi K2.6 el 20 de abril de 2026. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada."
-          },
-          {
-            "q": "¿Cuál es la ventana de contexto?",
-            "a": "256K tokens. K2.6 se diferencia por la calidad de recuperación a ese tamaño, no por el tamaño bruto de la ventana. La recuperación empieza a degradarse pasados ~180K (similar a otros modelos de 256K)."
-          },
-          {
-            "q": "¿Necesito reescribir mi agente para usar Kimi?",
-            "a": "No. Kimi K2.6 expone una API compatible con Anthropic, por lo que los agentes VM0 ajustados para Claude funcionan sin cambios de código."
-          },
-          {
-            "q": "¿Cómo se compara Kimi K2.6 con Claude Opus 4.6?",
-            "a": "En benchmarks agénticos (reportados por el proveedor), K2.6 lidera. SWE-bench Pro 58,6 vs 53,4 de Opus 4.6, HLE con herramientas 54,0 vs 53,0. Opus 4.6 mantiene una ventaja en perfil de seguridad y fiabilidad de enrutamiento de herramientas en inglés en producción."
-          },
-          {
-            "q": "¿K2.6 soporta entrada de imágenes?",
-            "a": "Sí. K2.6 acepta entrada de imagen y video. Salida solo texto. Los agentes multimodales funcionan de forma nativa."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "kimi-k2-5",
-            "reason": "Generación anterior, multiplicador ligeramente más barato"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Ventana de contexto aún más larga (1M tokens)"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Alternativa más barata para trabajo sensible al costo"
-          }
-        ],
-        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Modelo predeterminado en el proveedor Moonshot; también disponible en VM0 Managed y vía OpenRouter.",
-        "vm0Notes": "K2.6 tiene la recuperación de contexto largo más fuerte del catálogo Built-in según nuestra evaluación interna, y a ×0,3 créditos es lo suficientemente barato como para actuar como un sustituto viable de Sonnet para trabajo sensible al costo."
+        "vm0Notes": "GPT-5.4 Mini se sitúa en el multiplicador de ×0,3 que ahorra costos junto a Kimi K2.7 Code, por encima del nivel ×0,1 de DeepSeek V4 Pro. Prompt Caching está habilitado por defecto y el alto rendimiento hace de Mini un paso natural de prefiltrado en diseños de agente apilados que escalan a 5.4 o 5.5 solo en los casos difíciles residuales."
       },
       "kimi-k2-7-code": {
         "name": "Kimi K2.7 Code",
@@ -5993,16 +5842,16 @@
         "avoidFor": "Evita K2.7 en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera en fiabilidad de producción, y en flujos legacy fijados donde el multiplicador más bajo de K2.6 ya es suficiente.",
         "comparisons": [
           {
-            "vs": "GLM-5.1",
-            "body": "Ambos son opciones de contexto largo. K2.7 gana en recuperación bruta de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño de contexto (1M vs 256K). Predetermina K2.7 para transcripciones largas; recurre a GLM-5.1 solo cuando necesitas más de 256K tokens en un solo prompt."
+            "vs": "GLM-5.2",
+            "body": "Ambos son opciones actuales de contexto largo que ahorran costos. K2.7 Code es el predeterminado de Moonshot con mejor ajuste para código multimodal; GLM-5.2 es el predeterminado actual de Z.AI con una ventana de contexto mayor de 1M tokens."
           },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet (×1) lidera en fiabilidad de enrutamiento multi-herramienta en inglés. K2.7 (×0,3) gana en costo y en benchmarks agénticos (SWE-bench Pro). Combínalos: Sonnet para enrutamiento complejo de herramientas, K2.7 para trabajo de agente sensible al costo."
           },
           {
-            "vs": "Kimi K2.6",
-            "body": "K2.7 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.6 (×0,2) es ligeramente más barato. Prefiere K2.7 para trabajo nuevo."
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro es más barato y tiene una ventana de contexto mayor de 1M tokens. Kimi K2.7 Code es la ruta de código nativa de Moonshot más fuerte e incluye entrada de visión. Elige según el ajuste del proveedor y la forma de la carga de trabajo."
           }
         ],
         "verdict": "El predeterminado de peso abierto para trabajo de agente serio — contexto largo, costo-efectivo. Las brechas restantes frente a Sonnet 4.6 son fiabilidad de enrutamiento de herramientas y soporte empresarial.",
@@ -6030,16 +5879,16 @@
         ],
         "alternatives": [
           {
-            "slug": "claude-sonnet-4-6",
-            "reason": "Generación anterior, multiplicador ligeramente más barato"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Ventana de contexto aún más larga (1M tokens)"
+            "slug": "glm-5-2",
+            "reason": "Ruta Z.AI actual para contexto largo"
           },
           {
             "slug": "deepseek-v4-pro",
-            "reason": "Alternativa más barata para trabajo sensible al costo"
+            "reason": "Alternativa de razonamiento más barata para trabajo sensible al costo"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Base más fiable para uso complejo de herramientas"
           }
         ],
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Modelo predeterminado en el proveedor Moonshot; también disponible en VM0 Managed.",
@@ -6052,13 +5901,13 @@
         "cardIntro": "El buque insignia de DeepSeek. Razonamiento potente con un bajo multiplicador de crédito en VM0, API compatible con Claude.",
         "metaTitle": "DeepSeek V4 Pro en VM0: Benchmarks, Precios y Comparación",
         "metaDescription": "Reseña de DeepSeek V4 Pro en VM0. MoE de 1,6T de peso abierto con SWE-bench Verified 80,6%, costo de crédito ×0,1, contexto 1M. Precios, especificaciones y comparación con Claude.",
-        "summary": "DeepSeek V4 Pro es el buque insignia de la generación V4 de DeepSeek — un MoE de 1,6T parámetros de peso abierto bajo licencia MIT. El titular es la relación precio-calidad: SWE-bench Verified reportado por el proveedor es 80,6%, a una fracción de punto de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor de Anthropic. Esto hace que los agentes intensivos en razonamiento — revisión masiva de PR, análisis de documentos por lotes, resúmenes programados — sean asequibles a alto volumen.\n\nEl precio de lista del proveedor es $1,74 / $3,48 por 1M tokens con lecturas de caché a $0,028 / 1M y escrituras de caché gratuitas (único en el catálogo). Contexto de 1M tokens, API compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción es el factor decisivo, y a GPT-5.4 Mini o Kimi K2.6 cuando el trabajo masivo de un solo paso no necesita la profundidad de razonamiento de V4 Pro.",
+        "summary": "DeepSeek V4 Pro es el buque insignia de la generación V4 de DeepSeek — un MoE de 1,6T parámetros de peso abierto bajo licencia MIT. El titular es la relación precio-calidad: SWE-bench Verified reportado por el proveedor es 80,6%, a una fracción de punto de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor de Anthropic. Esto hace que los agentes intensivos en razonamiento — revisión masiva de PR, análisis de documentos por lotes, resúmenes programados — sean asequibles a alto volumen.\n\nEl precio de lista del proveedor es $1,74 / $3,48 por 1M tokens con lecturas de caché a $0,028 / 1M y escrituras de caché gratuitas (único en el catálogo). Contexto de 1M tokens, API compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción es el factor decisivo, y a GPT-5.4 Mini o Kimi K2.7 Code cuando el trabajo masivo de un solo paso no necesita la profundidad de razonamiento de V4 Pro.",
         "releaseDate": "24 de abril de 2026",
         "familyPosition": "Variante de razonamiento de la familia DeepSeek V4, enfocada en máxima calidad de razonamiento.",
         "background": [
           "DeepSeek V4 Pro es el buque insignia de la generación V4 de DeepSeek, lanzado el 24 de abril de 2026 bajo la Licencia MIT. Es un modelo Mixture-of-Experts de peso abierto con 1,6T parámetros totales y 49B activos por token.",
           "V4 Pro soporta una ventana de contexto de 1M tokens, 384K de salida máxima, tres modos de esfuerzo de razonamiento (standard, think, think-max), salida JSON, llamadas a herramientas y completado FIM en modo no-think. El modelo Pro añade una arquitectura de atención híbrida (Compressed Sparse Attention + Heavily Compressed Attention) para una eficiencia de contexto largo drásticamente mejorada. 27% de los FLOPs de inferencia por token y 10% de la caché KV vs DeepSeek V3.2 en contexto de 1M.",
-          "DeepSeek causó sensación durante 2025 al ofrecer razonamiento de nivel Anthropic a una fracción del precio. V4 Pro continúa ese patrón: SWE-bench Verified 80,6% reportado por el proveedor está a 0,2 puntos de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor. En VM0 se expone a través del proveedor de clave API de DeepSeek y en VM0 Managed a ×0,1. Multiplicador más bajo que Kimi K2.6, con un comportamiento de razonamiento sustancialmente más fuerte."
+          "DeepSeek causó sensación durante 2025 al ofrecer razonamiento de nivel Anthropic a una fracción del precio. V4 Pro continúa ese patrón: SWE-bench Verified 80,6% reportado por el proveedor está a 0,2 puntos de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor. En VM0 se expone a través del proveedor de clave API de DeepSeek y en VM0 Managed a ×0,1. Multiplicador más bajo que Kimi K2.7 Code, con un comportamiento de razonamiento sustancialmente más fuerte."
         ],
         "architecture": "V4 Pro es un modelo Mixture-of-Experts con 1,6T parámetros totales y 49B activos por token, con una pila de atención híbrida (Compressed Sparse Attention más Heavily Compressed Attention) que mantiene la inferencia de contexto largo económica. Soporta una ventana de contexto de 1M tokens con 384K de salida máxima, tres modos de esfuerzo de razonamiento (standard, think y think-max), y usa Conexiones Hiper-Restringidas de Variedad para propagación estable de señales. El modelo fue entrenado en más de 32T tokens con el optimizador Muon y se publica bajo la Licencia MIT con pesos abiertos.",
         "specs": [
@@ -6095,7 +5944,7 @@
             "value": "24 de abril de 2026"
           }
         ],
-        "benchmarksNote": "Puntuaciones reportadas por el proveedor del lanzamiento de V4 Pro de DeepSeek. Reseñas independientes (Geeky Gadgets, Code Arena) sitúan a V4 Pro tercero en Code Arena detrás de GLM-5.1 y Kimi K2.6. Las afirmaciones de benchmark más fuertes provienen de los propios materiales de DeepSeek. Trátalas como direccionales, no como verdad absoluta.",
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor del lanzamiento de V4 Pro de DeepSeek. Reseñas independientes (Geeky Gadgets, Code Arena) sitúan a V4 Pro tercero en Code Arena detrás de GLM-5.1 y Kimi K2.7 Code. Las afirmaciones de benchmark más fuertes provienen de los propios materiales de DeepSeek. Trátalas como direccionales, no como verdad absoluta.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -6152,7 +6001,7 @@
           },
           {
             "title": "Velocidad",
-            "body": "Alrededor de 36 tokens/seg en esfuerzo máximo según Artificial Analysis. Más lento que Kimi K2.6, ligeramente más lento que Opus 4.6."
+            "body": "Alrededor de 36 tokens/seg en esfuerzo máximo según Artificial Analysis. Más lento que Kimi K2.7 Code, ligeramente más lento que Opus 4.6."
           }
         ],
         "bestForExamples": [
@@ -6169,18 +6018,22 @@
             "body": "Contexto de 1M tokens con atención híbrida (Compressed Sparse Attention más Heavily Compressed Attention) significa que un código base de tamaño medio cabe en un solo prompt y el costo de inferencia se mantiene manejable a medida que la ventana se llena. Para refactorizaciones entre archivos y revisiones a nivel de arquitectura, aquí es donde obtienes el flujo de trabajo estilo Opus de \"ver todo a la vez\" sin la factura estilo Opus."
           }
         ],
-        "avoidFor": "Evita V4 Pro en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera, y en trabajo masivo de un solo paso donde GPT-5.4 Mini o Kimi K2.6 basta a menor costo.",
+        "avoidFor": "Evita V4 Pro en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera, y en trabajo masivo de un solo paso donde GPT-5.4 Mini o Kimi K2.7 Code basta a menor costo.",
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 (×1) gana en casos límite de enrutamiento de herramientas y razonamiento en inglés. V4 Pro (×0,1) gana en costo y es competitivo en benchmarks de codificación (reportados por el proveedor). Vale la pena hacer pruebas A/B en un agente real antes de comprometerse."
           },
           {
-            "vs": "Kimi K2.6",
+            "vs": "Kimi K2.7 Code",
             "body": "Multiplicador más bajo que Kimi (×0,1 vs ×0,3). Kimi tiene mejor recuperación de contexto largo y un Índice de Inteligencia más alto (54 vs 52); V4 Pro tiene mejor economía de caché (escrituras gratuitas) y una ventana de contexto de 1M vs 256K de Kimi. Elige según qué propiedad importa más."
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 es la ruta Z.AI predeterminada actual en VM0. Es la mejor comparación para nuevos agentes respaldados por Z.AI, mientras GLM-5.1 queda disponible solo por compatibilidad con flujos ya ajustados."
           }
         ],
-        "verdict": "Prefiltra con GPT-5.4 Mini o Kimi K2.6, escala a V4 Pro para razonamiento, escala a Sonnet 4.6 solo cuando V4 Pro se estanca en casos límite de enrutamiento de herramientas.",
+        "verdict": "Prefiltra con GPT-5.4 Mini o Kimi K2.7 Code, escala a V4 Pro para razonamiento, escala a Sonnet 4.6 solo cuando V4 Pro se estanca en casos límite de enrutamiento de herramientas.",
         "faqs": [
           {
             "q": "¿Cuándo se lanzó DeepSeek V4 Pro?",
@@ -6206,40 +6059,40 @@
         "alternatives": [
           {
             "slug": "claude-sonnet-4-6",
-            "reason": "Subir de nivel para enrutamiento difícil de herramientas"
+            "reason": "Sube de nivel para enrutamiento de herramientas difícil"
           },
           {
-            "slug": "kimi-k2-6",
-            "reason": "Mismo precio, mejor recuperación de contexto largo"
+            "slug": "kimi-k2-7-code",
+            "reason": "Predeterminado de Moonshot con mejor ajuste de código multimodal"
           }
         ],
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Disponible en VM0 Managed y el proveedor DeepSeek.",
         "vm0Notes": "DeepSeek factura lecturas de caché pero no escrituras, lo que supone un ahorro real cuando el prompt de sistema es estable. VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek y deshabilita el tráfico no esencial para mantener la capacidad de respuesta de los agentes de larga duración. El resultado es el razonamiento más fuerte de cualquier modelo sub-Sonnet en el catálogo Built-in."
       },
-      "kimi-k2-5": {
-        "name": "Kimi K2.5",
-        "pageTitle": "Kimi K2.5 en VM0. La generación anterior de Moonshot",
-        "tagline": "La generación anterior de Kimi. Más barato que K2.6 pero con uso de herramientas más débil; mantenlo fijado solo si un agente específico fue validado en esta versión.",
-        "cardIntro": "La generación anterior de Kimi. Más barato que K2.6 pero con uso de herramientas más débil; mantenlo fijado solo si un agente específico fue validado en esta versión.",
-        "metaTitle": "Kimi K2.5 en VM0: Especificaciones, Precios y Migración a K2.6",
-        "metaDescription": "Reseña de Kimi K2.5 en VM0. El anterior buque insignia de Moonshot a costo de crédito ×0,2. SWE-bench Pro 50,7, contexto 256K. Cuándo mantener K2.5 en lugar de K2.6.",
-        "summary": "Kimi K2.5 es el anterior buque insignia de Moonshot, el modelo de peso abierto que K2.6 reemplazó en abril de 2026. Sigue siendo capaz — fuerte en resúmenes de contexto largo — pero K2.6 lidera en cada benchmark publicado al mismo precio de proveedor, y la brecha en tasa de alucinación es amplia (K2.5 ~65% en la evaluación de Moonshot versus ~39% de K2.6).\n\nEl precio de lista del proveedor es $0,60 / $3 por 1M tokens, idéntico a K2.6. La propuesta honesta: si construiste sobre K2.5 y funciona, déjalo; si empiezas desde cero, comienza en K2.6.",
-        "releaseDate": "Finales de 2025 (serie Kimi K2)",
-        "familyPosition": "Generación anterior de la serie Kimi K2 de peso abierto de Moonshot. Reemplazada por K2.6.",
+      "minimax-m3": {
+        "name": "MiniMax M3",
+        "pageTitle": "MiniMax M3 en VM0. Modelo oficial de código de MiniMax a ×0,2",
+        "tagline": "Enrutamiento oficial de MiniMax M3 para agentes de código, contexto de 1M y comprensión multimodal nativa.",
+        "cardIntro": "Enrutamiento oficial de MiniMax M3 para agentes de código con contexto de 1M, lecturas de caché de prompt y multiplicador ×0,2 en VM0.",
+        "metaTitle": "MiniMax M3 en VM0: precios, especificaciones y enrutamiento oficial",
+        "metaDescription": "MiniMax M3 en VM0. Modelo oficial de código de MiniMax con contexto de 1M, comprensión multimodal, lecturas de caché de prompt y ×0,2 créditos.",
+        "summary": "MiniMax M3 es el modelo frontier de MiniMax para código y trabajo agéntico, expuesto en VM0 mediante el endpoint oficial de MiniMax compatible con Anthropic. Es la elección correcta dentro de MiniMax cuando un agente necesita mejor codificación, uso de herramientas, razonamiento de contexto largo y comprensión visual nativa que la serie M2 conservada.\n\nVM0 fija el precio de M3 usando la capa estándar no promocional pay-as-you-go de MiniMax para la banda base de contexto: $0.60 / $2.40 por 1M tokens, con lecturas de caché de prompt a $0.12 / 1M y sin facturación separada por escrituras de caché en la tabla de M3. MiniMax M2.1 sigue disponible por compatibilidad de menor costo, mientras M3 es el modelo MiniMax BYOK predeterminado.",
+        "releaseDate": "1 de junio de 2026",
+        "familyPosition": "Modelo de texto oficial MiniMax M3 junto a la serie M2 conservada.",
         "background": [
-          "Kimi K2.5 fue el modelo Kimi insignia de Moonshot antes de K2.6. Fue el primer Kimi ampliamente desplegado en combinar razonamiento de contexto largo con una superficie API compatible con Claude, y sigue siendo un modelo capaz para trabajo de resumen de contexto largo.",
-          "En VM0 tiene el mismo precio de lista de proveedor que K2.6 pero un multiplicador de crédito más bajo (×0,2). El multiplicador más bajo refleja el posicionamiento en lugar del costo bruto por token. K2.6 es el predeterminado recomendado para trabajo nuevo; K2.5 es la fijación legacy.",
-          "K2.5 tiene una puntuación SWE-bench Pro reportada por el proveedor de 50,7 y una tasa de alucinación de ~65%. Ambas significativamente por detrás de K2.6 (58,6 y 39%). En comportamiento, se mantiene estable para agentes de producción fijados."
+          "MiniMax M3 es el nuevo modelo de texto oficial de MiniMax para cargas de código y agentes. MiniMax lo describe como una combinación de capacidad frontier de código, una ventana de contexto de 1M tokens y comprensión multimodal nativa.",
+          "En VM0, M3 se añade al proveedor existente de claves API de MiniMax en lugar de crear una integración nueva. Usa la misma superficie de enrutamiento `api.minimax.io/anthropic` y el mismo secreto `MINIMAX_API_KEY` que M2.",
+          "Las entradas M2 existentes siguen disponibles, mientras M3 es el valor predeterminado del proveedor MiniMax para nuevas selecciones."
         ],
-        "architecture": "K2.5 es un modelo Mixture-of-Experts con 1B parámetros totales y 32B activos por token de la misma familia que K2.6, con una ventana de contexto de 256K tokens y una superficie API compatible con Anthropic. Los pesos abiertos están publicados en Hugging Face.",
+        "architecture": "M3 usa MiniMax Sparse Attention para contexto ultralargo. La API oficial soporta hasta 1M tokens con un mínimo garantizado de 512K, soporte automático de caché de prompts y comprensión multimodal nativa.",
         "specs": [
           {
             "label": "Familia",
-            "value": "Serie Kimi K2"
+            "value": "MiniMax M3"
           },
           {
             "label": "Modalidades",
-            "value": "Imagen, texto, código"
+            "value": "Texto, visión, código"
           },
           {
             "label": "Idiomas",
@@ -6247,227 +6100,100 @@
           },
           {
             "label": "Ventana de contexto",
-            "value": "256K tokens"
+            "value": "1M tokens (mínimo garantizado de 512K)"
           },
           {
-            "label": "Licencia",
-            "value": "MIT Modificada (pesos abiertos)"
+            "label": "Caché de prompts",
+            "value": "Soportado con lecturas automáticas de caché"
           },
           {
             "label": "Disponible en VM0",
-            "value": "Disponible desde el lanzamiento"
+            "value": "1 de junio de 2026"
           }
         ],
-        "benchmarksNote": "Los benchmarks de K2.5 ahora son más útiles como línea base de comparación para K2.6. El modelo más nuevo lidera en cada métrica publicada al mismo costo de proveedor.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Pro",
-            "score": "50,7",
-            "note": "reportado por el proveedor"
-          },
-          {
-            "name": "BrowseComp",
-            "score": "78,4",
-            "note": "reportado por el proveedor"
-          },
-          {
-            "name": "Tasa de alucinación",
-            "score": "~65%",
-            "note": "bajó a 39% en K2.6"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Contexto largo",
-            "body": "Fuerte, forma similar a K2.6 pero con K2.6 teniendo ventaja en benchmarks de recuperación más difíciles."
-          },
-          {
-            "title": "Uso de herramientas",
-            "body": "Sólido en flujos comunes; K2.6 es significativamente mejor en agentes multi-herramienta complejos."
-          },
-          {
-            "title": "Alucinaciones",
-            "body": "Tasa de alucinación reportada por el proveedor de ~65%. Mucho más alta que el 39% de K2.6. Espera más salidas confiadas pero incorrectas."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "El agente legacy que ya funciona",
-            "body": "Tu equipo validó un agente contra K2.5 hace unos meses, los prompts están ajustados, la suite de evaluación pasa, los clientes están contentos. Fijar a K2.5 mantiene ese comportamiento exacto mientras decides si la actualización a K2.6 vale la pena volver a ejecutar la validación. Mismo endpoint de Moonshot, misma interfaz compatible con Anthropic — solo cambian los pesos del modelo cuando cambias."
-          },
-          {
-            "title": "El trabajo de resumen masivo donde la ventaja de K2.6 no se nota",
-            "body": "Transcripciones de cientos de miles de tokens entrando, resúmenes de tres párrafos saliendo. La precisión de enrutamiento de herramientas no es parte de la carga de trabajo, la resistencia a alucinaciones importa menos cuando un humano va a revisar la salida de todos modos, y al mismo precio de proveedor que K2.6 puedes ejecutar K2.5 en estos trabajos sin tocar el pipeline existente."
-          }
-        ],
-        "avoidFor": "No inicies nuevos agentes en K2.5, ya que K2.6 es una actualización gratuita en todos los sentidos significativos excepto el multiplicador. Evítalo en enrutamiento multi-herramienta en inglés donde Sonnet 4.6 lidera, y en tareas donde la alucinación es costosa porque la tasa de K2.5 es materialmente peor que la de K2.6.",
-        "comparisons": [
-          {
-            "vs": "Kimi K2.6",
-            "body": "K2.6 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.5 (×0,2) es ligeramente más barato. Elige K2.5 solo para agentes legacy fijados."
-          },
-          {
-            "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0,1) tiene razonamiento más fuerte. K2.5 (×0,2) gana en tamaño de contexto y se mantiene dentro de la superficie API de Moonshot."
-          }
-        ],
-        "verdict": "Modo mantenimiento. Fíjalo si tienes un agente ya validado en él; de lo contrario, comienza en K2.6.",
-        "faqs": [
-          {
-            "q": "¿Por qué K2.5 tiene un multiplicador más bajo que K2.6 al mismo precio de proveedor?",
-            "a": "Los multiplicadores reflejan el posicionamiento de VM0 de cada modelo en el catálogo, no solo el costo por token. K2.6 es el predeterminado Kimi recomendado a ×0,3; K2.5 está posicionado como legacy a ×0,2."
-          },
-          {
-            "q": "¿Debería migrar de K2.5 a K2.6?",
-            "a": "Sí para trabajo nuevo. Mismo precio de proveedor, mejor uso de herramientas y razonamiento, tasa de alucinación mucho más baja. Migra los agentes fijados solo después de ejecutarlos en tu suite de regresión."
-          },
-          {
-            "q": "¿Cuál es la tasa de alucinación?",
-            "a": "~65% reportada por el proveedor. Significativamente más alta que K2.6 (39%). Si tu agente reporta hechos a usuarios, esto importa; considera K2.6 en su lugar."
-          },
-          {
-            "q": "¿Cuál es la ventana de contexto de K2.5?",
-            "a": "256K tokens. Igual que K2.6."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "kimi-k2-6",
-            "reason": "Kimi más nuevo con mejor uso de herramientas"
-          },
-          {
-            "slug": "glm-5-1",
-            "reason": "Ventana de contexto más grande si la necesitas"
-          },
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Razonamiento más fuerte a multiplicador ligeramente más alto"
-          }
-        ],
-        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Disponible en VM0 Managed, Moonshot, OpenRouter y Vercel AI Gateway.",
-        "vm0Notes": "K2.5 tiene el mismo precio de proveedor por token que K2.6 pero un multiplicador más bajo (×0,2 versus ×0,3) porque el multiplicador refleja el posicionamiento en lugar del costo bruto. El comportamiento en contexto largo es sólido, pero K2.6 es la opción recomendada para cualquier trabajo nuevo en VM0."
-      },
-      "minimax-m3": {
-        "name": "MiniMax M3",
-        "pageTitle": "MiniMax M3 on VM0. Official MiniMax coding model at ×0.2",
-        "tagline": "Official MiniMax M3 routing for coding agents, 1M context, and native multimodal understanding.",
-        "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
-        "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
-        "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
-        "releaseDate": "June 1, 2026",
-        "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
-        "background": [
-          "MiniMax M3 is the new official MiniMax text model for coding and agentic workloads. MiniMax describes it as combining frontier coding capability, a 1M-token context window, and native multimodal understanding.",
-          "On VM0, M3 is added to the existing MiniMax API-key provider instead of creating a new integration. It uses the same `api.minimax.io/anthropic` routing surface and the same `MINIMAX_API_KEY` secret as M2.",
-          "The existing M2 entries stay available, while M3 is the MiniMax provider default for new selections."
-        ],
-        "architecture": "M3 uses MiniMax Sparse Attention for ultra-long context. The official API supports up to 1M tokens with a 512K guaranteed minimum, automatic prompt cache support, and native multimodal understanding.",
-        "specs": [
-          {
-            "label": "Family",
-            "value": "MiniMax M3"
-          },
-          {
-            "label": "Modalities",
-            "value": "Text, vision, code"
-          },
-          {
-            "label": "Languages",
-            "value": "Multilingual"
-          },
-          {
-            "label": "Context window",
-            "value": "1M tokens (512K guaranteed minimum)"
-          },
-          {
-            "label": "Prompt caching",
-            "value": "Supported with automatic cache reads"
-          },
-          {
-            "label": "Available on VM0",
-            "value": "June 1, 2026"
-          }
-        ],
-        "benchmarksNote": "MiniMax positions M3 around coding, agentic tasks, and long-horizon execution. Treat these as vendor-reported signals and validate against your own VM0 agent regression set.",
+        "benchmarksNote": "MiniMax posiciona M3 alrededor de código, tareas agénticas y ejecución de horizonte largo. Trata estos datos como señales reportadas por el proveedor y valídalas contra tu propio conjunto de regresión de agentes en VM0.",
         "benchmarks": [
           {
             "name": "PostTrainBench Live",
-            "score": "Rank #3",
-            "note": "vendor reported"
+            "score": "Puesto #3",
+            "note": "reportado por el proveedor"
           },
           {
             "name": "BrowseComp",
             "score": "83.5",
-            "note": "vendor reported"
+            "note": "reportado por el proveedor"
           }
         ],
         "performance": [
           {
-            "title": "Coding agents",
-            "body": "The best MiniMax option for coding assistants, long tool chains, and multi-step repository work."
+            "title": "Agentes de código",
+            "body": "La mejor opción de MiniMax para asistentes de código, cadenas largas de herramientas y trabajo de repositorio en varios pasos."
           },
           {
-            "title": "Long context",
-            "body": "A 1M context window lets agents keep large documents, code, logs, and previous work in scope without switching model families."
+            "title": "Contexto largo",
+            "body": "Una ventana de contexto de 1M permite mantener documentos grandes, código, logs y trabajo previo dentro del alcance sin cambiar de familia de modelos."
           },
           {
             "title": "Multimodal",
-            "body": "Native vision understanding makes M3 a better fit than M2 when screenshots, diagrams, or visual artifacts are part of the workflow."
+            "body": "La comprensión visual nativa hace que M3 encaje mejor que M2 cuando el flujo incluye capturas de pantalla, diagramas o artefactos visuales."
           }
         ],
         "bestForExamples": [
           {
-            "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
+            "title": "El agente de código que debe quedarse en MiniMax",
+            "body": "Ediciones de repositorio, debugging y flujos agénticos de código donde tu despliegue ya usa claves MiniMax pero necesita un modelo de código más fuerte que M2.1."
           },
           {
-            "title": "The long-context review run",
-            "body": "Large pull requests, logs, notebooks, or design documents that should stay in one model context while the agent reasons and edits."
+            "title": "La revisión de contexto largo",
+            "body": "Pull requests grandes, logs, notebooks o documentos de diseño que deberían mantenerse en un solo contexto de modelo mientras el agente razona y edita."
           },
           {
-            "title": "The multimodal investigation",
-            "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
+            "title": "La investigación multimodal",
+            "body": "Flujos que mezclan texto con capturas de pantalla o diagramas. M3 está marcado en VM0 como capaz de recibir imágenes, mientras las entradas M2 siguen siendo solo texto/código."
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "Evita M3 cuando necesitas el costo MiniMax absolutamente más bajo y M2.1 solo texto ya es suficiente, o cuando necesitas enrutamiento por OpenRouter/Vercel porque esta entrada de VM0 usa intencionalmente solo la ruta oficial de MiniMax.",
         "comparisons": [
           {
-            "vs": "Kimi K2.6",
-            "body": "Both target coding and agentic work at low cost. Kimi has broader existing gateway support on VM0, while M3 uses the official MiniMax route and gives MiniMax users the newer model."
+            "vs": "Kimi K2.7 Code",
+            "body": "Ambos apuntan a trabajo de código y agentes a bajo costo. Kimi tiene soporte de gateway existente más amplio en VM0, mientras M3 usa la ruta oficial de MiniMax y da a los usuarios de MiniMax el modelo más nuevo."
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 remains the baseline for reliability on complex English tool-use. M3 is much cheaper and attractive for MiniMax-native coding agents, but should be validated on critical workflows."
+            "body": "Sonnet 4.6 sigue siendo la base de fiabilidad para uso complejo de herramientas en inglés. M3 es mucho más barato y atractivo para agentes de código nativos de MiniMax, pero debe validarse en flujos críticos."
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 es la ruta Z.AI predeterminada actual en VM0. Es la mejor comparación para nuevos agentes respaldados por Z.AI, mientras GLM-5.1 queda disponible solo por compatibilidad con flujos ya ajustados."
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
+        "verdict": "Usa MiniMax M3 cuando quieres el modelo oficial de código de MiniMax con contexto largo y soporte visual. Conserva M2.1 cuando importan más el costo y la compatibilidad.",
         "faqs": [
           {
-            "q": "Is MiniMax M2.1 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "¿MiniMax M2.1 sigue disponible?",
+            "a": "Sí. VM0 conserva MiniMax M2.1 en el proveedor directo de MiniMax. M3 es ahora el modelo MiniMax BYOK predeterminado."
           },
           {
-            "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
-            "a": "No. This entry intentionally uses only the official MiniMax Anthropic-compatible endpoint."
+            "q": "¿VM0 enruta MiniMax M3 mediante OpenRouter o Vercel?",
+            "a": "No. Esta entrada usa intencionalmente solo el endpoint oficial de MiniMax compatible con Anthropic."
           },
           {
-            "q": "Which M3 pricing tier does VM0 show?",
-            "a": "The VM0 model page and usage seed use MiniMax's non-promotional standard base tier. MiniMax also documents a higher standard tier for input above 512K tokens."
+            "q": "¿Qué capa de precios de M3 muestra VM0?",
+            "a": "La página de modelo de VM0 y el seed de uso emplean la capa base estándar no promocional de MiniMax. MiniMax también documenta una capa estándar superior para entradas por encima de 512K tokens."
           }
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2-6",
-            "reason": "Low-cost coding model with existing gateway coverage"
+            "slug": "kimi-k2-7-code",
+            "reason": "Modelo de código de bajo costo con cobertura de gateway existente más amplia"
           },
           {
             "slug": "claude-sonnet-4-6",
-            "reason": "Higher-reliability baseline for complex tool use"
+            "reason": "Base más fiable para uso complejo de herramientas"
           }
         ],
-        "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
+        "routingNotes": "Enrutado mediante el endpoint oficial de MiniMax compatible con Anthropic en `api.minimax.io`. Disponible solo en VM0 Managed y proveedores con clave API de MiniMax.",
+        "vm0Notes": "VM0 mapea `MiniMax-M3` al pool existente de claves de proveedor MiniMax para el enrutamiento Built-in. El proveedor directo MiniMax usa M3 como modelo predeterminado y mantiene M2.1 seleccionable."
       },
       "gpt-image-2": {
         "name": "GPT Image 2",
@@ -6918,12 +6644,12 @@
         ],
         "alternatives": [
           {
-            "slug": "flux-pro-1-1-ultra",
-            "reason": "Calidad premium de toma hero"
-          },
-          {
             "slug": "gpt-image-1",
             "reason": "Ilustración estilizada más fuerte"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "Calidad premium para hero shots"
           }
         ],
         "routingNotes": "Enrutado al endpoint de texto a imagen SeedDream V4 de ByteDance y facturado por imagen generada.",

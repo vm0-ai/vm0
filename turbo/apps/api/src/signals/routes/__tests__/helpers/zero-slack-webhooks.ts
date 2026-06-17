@@ -92,7 +92,6 @@ async function seedRunnableAgent(args: {
     name,
     displayName: name,
     visibility: args.visibility ?? "public",
-    customSkills: [],
   });
 
   return compose.id;

@@ -41,6 +41,7 @@ import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
+import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
@@ -115,7 +116,7 @@ import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
-import { zeroSkillsRoutes } from "./routes/zero-skills";
+import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
@@ -303,7 +304,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...zeroSecretsRoutes,
-  ...zeroSkillsRoutes,
+  ...zeroWorkflowsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,
   ...zeroSlackConnectRoutes,
@@ -331,6 +332,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsPrepareRoutes,
+  ...registryResourceDownloadRoutes,
   ...storagesCommitRoutes,
   ...storagesDownloadRoutes,
   ...storagesListRoutes,

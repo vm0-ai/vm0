@@ -11,6 +11,8 @@ import type {
 } from "./computer-use-accessibility";
 import type { ComputerUsePermissionState } from "./computer-use-types";
 
+const INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";
+
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
@@ -57,6 +59,7 @@ function createRuntime(
     });
   const runtime = new ComputerUseHostRuntime({
     platformUrl: new URL("https://app.vm0.ai"),
+    installationId: INSTALLATION_ID,
     hostName: "lancy-macbook-pro.local",
     appVersion: "1.2.3",
     sessionFetch,
@@ -121,6 +124,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(url).toBe("https://api.vm0.ai/api/zero/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
+      installationId: INSTALLATION_ID,
       hostName: "lancy-macbook-pro.local",
       appVersion: "1.2.3",
       permissions: {
@@ -166,6 +170,9 @@ describe("ComputerUseHostRuntime", () => {
     const headers = new Headers(heartbeatCall[1]?.headers);
     expect(headers.get("authorization")).toBe("Bearer token-1");
     expect(headers.get("cookie")).toBeNull();
+    expect(JSON.parse(String(heartbeatCall[1]?.body))).toMatchObject({
+      installationId: INSTALLATION_ID,
+    });
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
       "https://api.vm0.ai/api/zero/computer-use/hosts/start",
     );

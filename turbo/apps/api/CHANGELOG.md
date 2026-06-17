@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.150.0](https://github.com/vm0-ai/vm0/compare/api-v1.149.1...api-v1.150.0) (2026-06-17)
+
+
+### Features
+
+* pull presentation resources from private r2 archives ([#18036](https://github.com/vm0-ai/vm0/issues/18036)) ([542cbfe](https://github.com/vm0-ai/vm0/commit/542cbfe151f42c06bde02d8dcbf3c35d2bc7b41a))
+
+
+### Bug Fixes
+
+* keep desktop computer-use host stable across restarts ([#18097](https://github.com/vm0-ai/vm0/issues/18097)) ([48c3d73](https://github.com/vm0-ai/vm0/commit/48c3d735708424d7e4e0cc062cac6178c72813f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.99.0
+    * @vm0/connectors bumped to 1.84.1
+    * @vm0/core bumped to 8.349.0
+    * @vm0/db bumped to 1.54.2
+
 ## [1.149.1](https://github.com/vm0-ai/vm0/compare/api-v1.149.0...api-v1.149.1) (2026-06-17)
 
 

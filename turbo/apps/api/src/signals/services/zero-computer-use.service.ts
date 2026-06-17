@@ -1,7 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import {
   isExpiredScreenshotPointer,
   isStoredScreenshotPointer,
@@ -133,6 +143,10 @@ function hashSecret(value: string): string {
 
 function generateOpaqueToken(prefix: string): string {
   return `${prefix}_${randomBytes(32).toString("base64url")}`;
+}
+
+function invalidatedHostTokenHash(): string {
+  return hashSecret(generateOpaqueToken("vm0_computer_use_host_stopped"));
 }
 
 function normalizeHostName(hostName: string): string {
@@ -712,6 +726,7 @@ export const startComputerUseHost$ = command(
     params: {
       readonly orgId: string;
       readonly userId: string;
+      readonly installationId?: string;
       readonly hostName: string;
       readonly appVersion: string;
       readonly osVersion: string;
@@ -727,25 +742,56 @@ export const startComputerUseHost$ = command(
     const hostToken = generateOpaqueToken("vm0_computer_use_host");
     const now = nowDate();
     const result = await db.transaction(async (tx) => {
-      const [host] = await tx
-        .insert(computerUseHosts)
-        .values({
-          orgId: params.orgId,
-          userId: params.userId,
-          displayName: normalizeHostName(params.hostName),
-          tokenHash: hashSecret(hostToken),
-          appVersion: normalizeVersion(params.appVersion),
-          osVersion: normalizeOsVersion(params.osVersion),
-          supportedCapabilities: normalizeCapabilities(
-            params.supportedCapabilities,
-          ),
-          permissions: params.permissions,
-          status: "online",
-          lastSeenAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({ id: computerUseHosts.id });
+      const displayName = normalizeHostName(params.hostName);
+      const tokenHash = hashSecret(hostToken);
+      const appVersion = normalizeVersion(params.appVersion);
+      const osVersion = normalizeOsVersion(params.osVersion);
+      const supportedCapabilities = normalizeCapabilities(
+        params.supportedCapabilities,
+      );
+      const values = {
+        orgId: params.orgId,
+        userId: params.userId,
+        installationId: params.installationId ?? null,
+        displayName,
+        tokenHash,
+        appVersion,
+        osVersion,
+        supportedCapabilities,
+        permissions: params.permissions,
+        status: "online",
+        lastSeenAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const [host] = params.installationId
+        ? await tx
+            .insert(computerUseHosts)
+            .values(values)
+            .onConflictDoUpdate({
+              target: [
+                computerUseHosts.orgId,
+                computerUseHosts.userId,
+                computerUseHosts.installationId,
+              ],
+              targetWhere: sql`installation_id IS NOT NULL AND revoked_at IS NULL`,
+              set: {
+                displayName,
+                tokenHash,
+                appVersion,
+                osVersion,
+                supportedCapabilities,
+                permissions: params.permissions,
+                status: "online",
+                lastSeenAt: now,
+                updatedAt: now,
+              },
+            })
+            .returning({ id: computerUseHosts.id })
+        : await tx
+            .insert(computerUseHosts)
+            .values(values)
+            .returning({ id: computerUseHosts.id });
       signal.throwIfAborted();
 
       if (!host) {
@@ -855,15 +901,26 @@ export const stopComputerUseHost$ = command(
         };
       }
 
-      await tx
-        .update(computerUseHosts)
-        .set({ status: "offline", revokedAt: now, updatedAt: now })
-        .where(eq(computerUseHosts.id, host.id));
-      await clearComputerUseHostThreadBindings({
-        tx,
-        userId: host.userId,
-        hostId: host.id,
-      });
+      if (host.installationId) {
+        await tx
+          .update(computerUseHosts)
+          .set({
+            status: "offline",
+            tokenHash: invalidatedHostTokenHash(),
+            updatedAt: now,
+          })
+          .where(eq(computerUseHosts.id, host.id));
+      } else {
+        await tx
+          .update(computerUseHosts)
+          .set({ status: "offline", revokedAt: now, updatedAt: now })
+          .where(eq(computerUseHosts.id, host.id));
+        await clearComputerUseHostThreadBindings({
+          tx,
+          userId: host.userId,
+          hostId: host.id,
+        });
+      }
       signal.throwIfAborted();
       return {
         result: { status: "stopped" as const, hostId: host.id },

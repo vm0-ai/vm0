@@ -70,7 +70,7 @@ describe("zero agent edit command", () => {
       expect(logCalls).toContain("updated");
     });
 
-    it("should update custom skills and include them in request body", async () => {
+    it("should update agent metadata without workflow attachments in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
@@ -89,11 +89,12 @@ describe("zero agent edit command", () => {
         "node",
         "cli",
         "my-agent",
-        "--skills",
-        "my-skill, other-skill",
+        "--description",
+        "Updated role",
       ]);
 
-      expect(capturedBody?.customSkills).toEqual(["my-skill", "other-skill"]);
+      expect(capturedBody?.description).toBe("Updated role");
+      expect(capturedBody).not.toHaveProperty("customSkills");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });

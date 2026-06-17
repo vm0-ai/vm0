@@ -2330,6 +2330,44 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expectApiError(revokedHost.body);
     expect(revokedHost.body.error.message).toBe("Computer-use host not found");
 
+    // Installation-backed hosts stop as temporary offline devices, so thread
+    // bindings survive and reconnect to the same host id on the next start.
+    const installationId = randomUUID();
+    const installed = await cu.startComputerUseHost(actor, { installationId });
+    const installedPinned = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "pin the durable host before stopping it",
+        computerUseHostId: installed.hostId,
+      },
+      [201],
+    );
+    if (installedPinned.status !== 201) {
+      throw new Error("Expected the installed-host pin send to be accepted");
+    }
+    await cu.stopComputerUseHost(installed.hostToken);
+    await expect(
+      readThreadComputerUseHostId(installedPinned.body.threadId),
+    ).resolves.toBe(installed.hostId);
+    const stoppedInstalledHost = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: installedPinned.body.threadId,
+        prompt: "use a stopped durable host",
+        computerUseHostId: installed.hostId,
+      },
+      [201],
+    );
+    expect(stoppedInstalledHost.body).toMatchObject({
+      threadId: installedPinned.body.threadId,
+    });
+    const reconnected = await cu.startComputerUseHost(actor, {
+      installationId,
+    });
+    expect(reconnected.hostId).toBe(installed.hostId);
+
     // A deleted sticky host is cleared on the next send without the field.
     // (The actor has no credits, so sends stop at admission — host selection
     // and sticky-host updates still happen first.)

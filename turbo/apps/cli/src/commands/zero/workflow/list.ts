@@ -1,55 +1,61 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listSkills } from "../../../lib/api";
+import { listWorkflows } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List custom skills in the organization")
+  .description("List visible workflows in the organization")
   .addHelpText(
     "after",
     `
 Examples:
-  zero skill list`,
+  zero workflow list`,
   )
   .action(
     withErrorHandler(async () => {
-      const skills = await listSkills();
+      const workflows = await listWorkflows();
 
-      if (skills.length === 0) {
-        console.log(chalk.dim("No custom skills found"));
+      if (workflows.length === 0) {
+        console.log(chalk.dim("No workflows found"));
         console.log(
-          chalk.dim("  Create one with: zero skill create <name> --dir <path>"),
+          chalk.dim(
+            "  Create one with: zero workflow create <name> --dir <path>",
+          ),
         );
         return;
       }
 
       const nameWidth = Math.max(
         4,
-        ...skills.map((s) => {
+        ...workflows.map((s) => {
           return s.name.length;
         }),
       );
       const displayWidth = Math.max(
         12,
-        ...skills.map((s) => {
+        ...workflows.map((s) => {
           return (s.displayName ?? "").length;
         }),
       );
 
       const header = [
         "NAME".padEnd(nameWidth),
+        "VISIBILITY".padEnd(10),
+        "AGENTS".padEnd(6),
         "DISPLAY NAME".padEnd(displayWidth),
         "DESCRIPTION",
       ].join("  ");
       console.log(chalk.dim(header));
 
-      for (const skill of skills) {
+      for (const workflow of workflows) {
         const row = [
-          skill.name.padEnd(nameWidth),
-          (skill.displayName ?? "-").padEnd(displayWidth),
-          skill.description ?? "-",
+          workflow.name.padEnd(nameWidth),
+          workflow.visibility.padEnd(10),
+          String(workflow.attachedAgentCount).padEnd(6),
+          (workflow.displayName ?? "-").padEnd(displayWidth),
+          workflow.description ?? "-",
         ].join("  ");
         console.log(row);
       }

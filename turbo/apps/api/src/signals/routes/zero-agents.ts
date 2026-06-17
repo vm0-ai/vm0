@@ -18,7 +18,6 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroSkills } from "@vm0/db/schema/zero-skill";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -59,7 +58,6 @@ interface AgentUpdateBody {
   readonly description?: string;
   readonly sound?: string;
   readonly avatarUrl?: string | null;
-  readonly customSkills?: readonly string[];
   readonly visibility?: ZeroAgentVisibility;
 }
 
@@ -71,7 +69,6 @@ interface ExistingAgentVisibility {
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
   readonly id: string;
   readonly name: string;
-  readonly customSkills: readonly string[] | null;
 }
 
 interface AgentMember {
@@ -134,56 +131,11 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
     ...(body.description !== undefined && { description: body.description }),
     ...(body.sound !== undefined && { sound: body.sound }),
     ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl }),
-    ...(body.customSkills !== undefined && {
-      customSkills: [...body.customSkills],
-    }),
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
     ...(body.visibility !== undefined && { visibility: body.visibility }),
   };
-}
-
-async function validateCustomSkills(
-  writeDb: Db,
-  orgId: string,
-  customSkills: readonly string[],
-) {
-  if (customSkills.length === 0) {
-    return null;
-  }
-
-  for (const name of customSkills) {
-    if (connectorTypeSchema.safeParse(name).success) {
-      return validationError(
-        `'${name}' is a built-in connector, not a custom skill. Enable it via connectors instead.`,
-      );
-    }
-  }
-
-  const existing = await writeDb
-    .select({ name: zeroSkills.name })
-    .from(zeroSkills)
-    .where(
-      and(
-        eq(zeroSkills.orgId, orgId),
-        inArray(zeroSkills.name, [...customSkills]),
-      ),
-    );
-  const existingNames = new Set(
-    existing.map((skill) => {
-      return skill.name;
-    }),
-  );
-  const missing = customSkills.find((name) => {
-    return !existingNames.has(name);
-  });
-
-  return missing
-    ? validationError(
-        `Custom skill '${missing}' not found in this organization. Create it with 'zero skill create' first.`,
-      )
-    : null;
 }
 
 async function findAgentForUpdate(
@@ -195,7 +147,6 @@ async function findAgentForUpdate(
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
-      customSkills: zeroAgents.customSkills,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
     })
@@ -308,26 +259,6 @@ function validateAgentVisibilityUpdate(args: {
   });
 }
 
-async function validateCustomSkillsForUpdate(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly requestedCustomSkills: readonly string[] | undefined;
-  readonly customSkills: readonly string[];
-  readonly signal: AbortSignal;
-}) {
-  if (args.requestedCustomSkills === undefined) {
-    return null;
-  }
-
-  const error = await validateCustomSkills(
-    args.writeDb,
-    args.orgId,
-    args.customSkills,
-  );
-  args.signal.throwIfAborted();
-  return error;
-}
-
 function upsertZeroAgentAfterCompose(
   writeDb: Db,
   args: {
@@ -336,7 +267,6 @@ function upsertZeroAgentAfterCompose(
     readonly name: string;
     readonly owner: string;
     readonly body: AgentUpdateBody;
-    readonly customSkills: readonly string[];
     readonly visibility: ZeroAgentVisibility;
   },
 ) {
@@ -351,7 +281,6 @@ function upsertZeroAgentAfterCompose(
       description: args.body.description ?? null,
       sound: args.body.sound ?? null,
       avatarUrl: args.body.avatarUrl ?? null,
-      customSkills: [...args.customSkills],
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
@@ -376,7 +305,6 @@ async function readAgentForResponse(
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       avatarUrl: zeroAgents.avatarUrl,
-      customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
       preferPersonalProvider: zeroAgents.preferPersonalProvider,
@@ -399,18 +327,7 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const writeDb = set(writeDb$);
-  const customSkills = body.data.customSkills ?? [];
   const visibility = body.data.visibility ?? "public";
-
-  const customSkillsError = await validateCustomSkills(
-    writeDb,
-    auth.orgId,
-    customSkills,
-  );
-  signal.throwIfAborted();
-  if (customSkillsError) {
-    return customSkillsError;
-  }
 
   const limitError =
     visibility === "public"
@@ -438,7 +355,6 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     description: body.data.description ?? null,
     sound: body.data.sound ?? null,
     avatarUrl: body.data.avatarUrl ?? null,
-    customSkills: [...customSkills],
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
@@ -653,18 +569,6 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return visibilityError;
   }
 
-  const customSkills = body.data.customSkills ?? existing.customSkills ?? [];
-  const customSkillsError = await validateCustomSkillsForUpdate({
-    writeDb,
-    orgId: auth.orgId,
-    requestedCustomSkills: body.data.customSkills,
-    customSkills,
-    signal,
-  });
-  if (customSkillsError) {
-    return customSkillsError;
-  }
-
   const result = await set(
     serverSideZeroAgentCompose$,
     {
@@ -683,7 +587,6 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     name: result.composeName,
     owner: auth.userId,
     body: body.data,
-    customSkills,
     visibility: nextVisibility,
   });
   signal.throwIfAborted();

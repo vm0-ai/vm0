@@ -22,7 +22,6 @@ interface SeedComposeRow {
   readonly ownerId?: string;
   readonly visibility?: "public" | "private";
   readonly withZeroAgent?: boolean;
-  readonly customSkills?: readonly string[];
 }
 
 interface SeedTeamComposeValues {
@@ -67,7 +66,6 @@ export const seedTeamCompose$ = command(
           sound: row.sound ?? null,
           avatarUrl: row.avatarUrl ?? null,
           visibility: row.visibility ?? "public",
-          customSkills: row.customSkills ? [...row.customSkills] : [],
         });
         signal.throwIfAborted();
       }

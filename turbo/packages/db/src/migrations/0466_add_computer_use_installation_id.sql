@@ -1,0 +1,2 @@
+ALTER TABLE "computer_use_hosts" ADD COLUMN "installation_id" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_computer_use_hosts_active_installation" ON "computer_use_hosts" USING btree ("org_id","user_id","installation_id") WHERE installation_id IS NOT NULL AND revoked_at IS NULL;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.3...desktop-v0.14.4) (2026-06-17)
+
+
+### Bug Fixes
+
+* keep desktop computer-use host stable across restarts ([#18097](https://github.com/vm0-ai/vm0/issues/18097)) ([48c3d73](https://github.com/vm0-ai/vm0/commit/48c3d735708424d7e4e0cc062cac6178c72813f2))
+
 ## [0.14.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.2...desktop-v0.14.3) (2026-06-17)
 
 

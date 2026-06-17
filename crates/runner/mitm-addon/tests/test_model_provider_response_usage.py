@@ -108,6 +108,14 @@ def _truncated_gzip_prefix(payload: bytes) -> bytes:
     return gzip.compress(payload)[:10]
 
 
+def _truncated_gzip_trailer(payload: bytes) -> bytes:
+    return gzip.compress(payload)[:-1]
+
+
+def _truncated_deflate_trailer(payload: bytes) -> bytes:
+    return zlib.compress(payload)[:-1]
+
+
 def _empty_gzip_member_before_garbage(_payload: bytes) -> bytes:
     return gzip.compress(b"") + b"garbage"
 
@@ -118,6 +126,10 @@ def _empty_deflate_stream_before_garbage(_payload: bytes) -> bytes:
 
 def _truncated_brotli_prefix(payload: bytes) -> bytes:
     return brotli.compress(payload)[:2]
+
+
+def _truncated_brotli_trailer(payload: bytes) -> bytes:
+    return brotli.compress(payload)[:-1]
 
 
 def _truncated_zstd_prefix(payload: bytes) -> bytes:
@@ -177,6 +189,18 @@ JSON_COMPRESSION_FAILURE_CASES = (
         expected_error="incomplete compressed body",
     ),
     JsonCompressionFailureCase(
+        id="truncated-gzip-trailer",
+        make_body=_truncated_gzip_trailer,
+        content_encoding="gzip",
+        expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="truncated-deflate-trailer",
+        make_body=_truncated_deflate_trailer,
+        content_encoding="deflate",
+        expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
         id="empty-gzip-member-before-garbage",
         make_body=_empty_gzip_member_before_garbage,
         content_encoding="gzip",
@@ -191,6 +215,12 @@ JSON_COMPRESSION_FAILURE_CASES = (
     JsonCompressionFailureCase(
         id="truncated-brotli-prefix",
         make_body=_truncated_brotli_prefix,
+        content_encoding="br",
+        expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="truncated-brotli-trailer",
+        make_body=_truncated_brotli_trailer,
         content_encoding="br",
         expected_error="incomplete compressed body",
     ),
@@ -949,6 +979,51 @@ class TestModelProviderResponseUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
+    def test_full_pipeline_truncated_compressed_model_json_does_not_report_usage(
+        self, tmp_path, real_flow, encoding_case, provider_case
+    ):
+        """Incremental JSON usage must reject compressed streams missing a trailer."""
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = _standard_success_payload(provider_case)
+        if encoding_case == "gzip":
+            compressed = gzip.compress(payload)[:-1]
+        else:
+            compressed = zlib.compress(payload)[:-1]
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {"content-type": "application/json", "content-encoding": encoding_case}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
+        usage_warnings = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert len(usage_warnings) == 1
+        assert usage_warnings[0]["error"] == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     def test_full_pipeline_concatenated_zlib_model_json_reports_usage(

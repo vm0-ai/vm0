@@ -89,6 +89,15 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
+function formatCandidateSource(
+  source: ResourceCandidateSlice["sources"][number],
+): string {
+  if ("repo" in source) {
+    return `- \`${source.repo}@${source.ref}\``;
+  }
+  return `- ${source.description}`;
+}
+
 export function createHtmlArtifactAuthoringPacket(
   options: HtmlArtifactAuthoringOptions,
 ): HtmlArtifactAuthoringPacket {
@@ -167,9 +176,7 @@ export function createHtmlArtifactAuthoringPacket(
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
     "Sources:",
-    ...candidateSlice.sources.map((src) => {
-      return `- \`${src.repo}@${src.ref}\``;
-    }),
+    ...candidateSlice.sources.map(formatCandidateSource),
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),
@@ -178,6 +185,7 @@ export function createHtmlArtifactAuthoringPacket(
     "## Stage 2: Resolve Selected Resources",
     "- For every selected resource, fetch or read the referenced source before authoring.",
     "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
+    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

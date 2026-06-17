@@ -622,11 +622,13 @@ describe("computer use desktop runtime", () => {
   it("serializes the Desktop host runtime body", () => {
     expect(
       buildComputerUseRuntimeBody({
+        installationId: "00000000-0000-4000-8000-000000000001",
         hostName: "lancy-macbook-pro.local",
         appVersion: "0.1.0",
         permissions: { accessibility: true, screenRecording: false },
       }),
     ).toMatchObject({
+      installationId: "00000000-0000-4000-8000-000000000001",
       hostName: "lancy-macbook-pro.local",
       appVersion: "0.1.0",
       permissions: { accessibility: true, screenRecording: false },

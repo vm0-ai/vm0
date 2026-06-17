@@ -16,8 +16,11 @@ import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroSkills } from "@vm0/db/schema/zero-skill";
-import { and, eq } from "drizzle-orm";
+import {
+  zeroWorkflowAgents,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { TestContext } from "../../../../__tests__/test-helpers";
 import { writeDb$ } from "../../../external/db";
@@ -58,7 +61,9 @@ export const deleteSkillsForFixture$ = command(
     // Storage cascade deletes storage_versions via FK.
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     signal.throwIfAborted();
-    await db.delete(zeroSkills).where(eq(zeroSkills.orgId, fixture.orgId));
+    await db
+      .delete(zeroWorkflows)
+      .where(eq(zeroWorkflows.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.delete(agentRuns).where(eq(agentRuns.orgId, fixture.orgId));
     signal.throwIfAborted();
@@ -94,9 +99,11 @@ export const seedSkill$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db.insert(zeroSkills).values({
+    await db.insert(zeroWorkflows).values({
       orgId: args.orgId,
       name: args.name,
+      visibility: "public",
+      ownerUserId: args.userId,
       displayName: args.displayName ?? null,
       description: args.description ?? null,
       createdBy: args.userId,
@@ -226,10 +233,6 @@ function createTarGz(
   );
 }
 
-function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
-  return createTarGz([{ filename, content }]);
-}
-
 function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -355,44 +358,6 @@ export const seedInstructionsStorage$ = command(
   },
 );
 
-interface InstructionsContentMockArgs {
-  readonly s3Key: string;
-  readonly filename: string;
-  readonly content: string;
-  readonly manifestPath?: string;
-}
-
-export function mockInstructionsContent(
-  context: TestContext,
-  args: InstructionsContentMockArgs,
-): void {
-  const contentBuffer = Buffer.from(args.content, "utf8");
-  const path = args.manifestPath ?? args.filename;
-  const archive = createSingleFileTarGz(path, contentBuffer);
-
-  const manifest = {
-    version: "test-version",
-    createdAt: new Date(0).toISOString(),
-    files: [
-      { path, hash: "test-hash-instructions", size: contentBuffer.length },
-    ],
-    totalSize: contentBuffer.length,
-    fileCount: 1,
-  };
-  const manifestBuffer = Buffer.from(JSON.stringify(manifest), "utf8");
-
-  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
-    const key = commandKey(cmd);
-    if (key === `${args.s3Key}/manifest.json`) {
-      return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
-    }
-    if (key === `${args.s3Key}/archive.tar.gz`) {
-      return Promise.resolve({ Body: asyncIterableOf(archive) });
-    }
-    return Promise.resolve({});
-  });
-}
-
 function createAgentComposeContent(
   name: string,
   framework: AgentFramework,
@@ -476,7 +441,6 @@ export const seedAgentForInstructions$ = command(
           description: args.description ?? null,
           sound: args.sound ?? null,
           avatarUrl: args.avatarUrl ?? null,
-          customSkills: args.customSkills ? [...args.customSkills] : [],
           modelProviderId: args.modelProviderId ?? null,
           selectedModel: args.selectedModel ?? null,
           preferPersonalProvider: args.preferPersonalProvider ?? false,
@@ -484,6 +448,53 @@ export const seedAgentForInstructions$ = command(
         })
         .onConflictDoNothing();
       signal.throwIfAborted();
+
+      if (args.customSkills && args.customSkills.length > 0) {
+        const workflowNames = [...new Set(args.customSkills)];
+        await db
+          .insert(zeroWorkflows)
+          .values(
+            workflowNames.map((workflowName) => {
+              return {
+                orgId: args.orgId,
+                name: workflowName,
+                visibility: "public" as const,
+                ownerUserId: args.userId,
+                displayName: null,
+                description: null,
+                createdBy: args.userId,
+              };
+            }),
+          )
+          .onConflictDoNothing();
+        signal.throwIfAborted();
+
+        const workflows = await db
+          .select({ id: zeroWorkflows.id, name: zeroWorkflows.name })
+          .from(zeroWorkflows)
+          .where(
+            and(
+              eq(zeroWorkflows.orgId, args.orgId),
+              inArray(zeroWorkflows.name, workflowNames),
+            ),
+          );
+        signal.throwIfAborted();
+
+        await db
+          .insert(zeroWorkflowAgents)
+          .values(
+            workflows.map((workflow) => {
+              return {
+                orgId: args.orgId,
+                workflowId: workflow.id,
+                agentId,
+                createdBy: args.userId,
+              };
+            }),
+          )
+          .onConflictDoNothing();
+        signal.throwIfAborted();
+      }
     }
 
     return { agentId, name };

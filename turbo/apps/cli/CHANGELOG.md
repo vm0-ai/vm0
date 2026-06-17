@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.195.0](https://github.com/vm0-ai/vm0/compare/cli-v9.194.6...cli-v9.195.0) (2026-06-17)
+
+
+### Features
+
+* pull presentation resources from private r2 archives ([#18036](https://github.com/vm0-ai/vm0/issues/18036)) ([542cbfe](https://github.com/vm0-ai/vm0/commit/542cbfe151f42c06bde02d8dcbf3c35d2bc7b41a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.99.0
+    * @vm0/connectors bumped to 1.84.1
+    * @vm0/core bumped to 8.349.0
+
 ## [9.194.6](https://github.com/vm0-ai/vm0/compare/cli-v9.194.5...cli-v9.194.6) (2026-06-17)
 
 

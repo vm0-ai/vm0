@@ -18,7 +18,7 @@ import { zeroTelegramCommand } from "./commands/zero/telegram";
 import { zeroPhoneCommand } from "./commands/zero/phone";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
-import { zeroSkillCommand } from "./commands/zero/skill";
+import { zeroWorkflowCommand } from "./commands/zero/workflow";
 import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
@@ -31,6 +31,7 @@ import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import { zeroVideoCommand } from "./commands/zero/video";
+import { zeroResourceCommand } from "./commands/zero/resource";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -48,7 +49,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   string | readonly string[] | null
 > = {
   agent: "agent:read",
-  skill: "agent:read",
+  workflow: "agent:read",
   connector: "connector:read",
   // "schedule" is deliberately absent: the rename stub stays out of
   // token-scoped (agent) help but remains invokable and visible to humans.
@@ -59,6 +60,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
+  resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
   telegram: ["telegram:read", "telegram:write"],
@@ -93,8 +95,9 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroVariableCommand,
   zeroLogsCommand,
   zeroSearchCommand,
+  zeroResourceCommand,
   zeroWhoamiCommand,
-  zeroSkillCommand,
+  zeroWorkflowCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
   generateCommand,
@@ -148,7 +151,7 @@ export function buildZeroHelpText(
     "  List models?          zero model ls",
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
-    "  Manage custom skills?  zero skill --help",
+    "  Manage workflows?     zero workflow --help",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',

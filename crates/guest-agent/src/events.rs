@@ -19,6 +19,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
 const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
+const CODEX_MODEL_CAPACITY_MESSAGE: &str =
+    "selected model is at capacity. please try a different model.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -115,6 +117,12 @@ pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
 }
 
+pub fn is_codex_model_capacity_message(message: &str) -> bool {
+    message
+        .to_ascii_lowercase()
+        .contains(CODEX_MODEL_CAPACITY_MESSAGE)
+}
+
 fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
     match event.get("type").and_then(Value::as_str)? {
         "error" => {
@@ -203,6 +211,12 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
         && has_exact_codex_oauth_connector(error)
     {
         return Some(FailureReason::ReconnectRequired);
+    }
+    if codex_error_message(Some(error))
+        .as_deref()
+        .is_some_and(is_codex_model_capacity_message)
+    {
+        return Some(FailureReason::ProviderOverloaded);
     }
     None
 }
@@ -780,6 +794,23 @@ mod tests {
     }
 
     #[test]
+    fn codex_error_event_model_capacity_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "message": "Selected model is at capacity. Please try a different model."
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Selected model is at capacity. Please try a different model.".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
     fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
         let event = serde_json::json!({
             "type": "error",
@@ -895,6 +926,39 @@ mod tests {
                 failure_reason: None,
             })
         );
+    }
+
+    #[test]
+    fn codex_turn_failed_model_capacity_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "Selected model is at capacity. Please try a different model."
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Selected model is at capacity. Please try a different model.".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_model_capacity_matcher_accepts_wrapped_case_insensitive_message() {
+        assert!(is_codex_model_capacity_message(
+            "Codex failed: SELECTED MODEL IS AT CAPACITY. PLEASE TRY A DIFFERENT MODEL."
+        ));
+    }
+
+    #[test]
+    fn codex_model_capacity_matcher_ignores_generic_overload_text() {
+        assert!(!is_codex_model_capacity_message(
+            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment."
+        ));
     }
 
     #[test]

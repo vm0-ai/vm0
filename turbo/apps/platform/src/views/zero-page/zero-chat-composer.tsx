@@ -119,6 +119,7 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import templatePickerIcon from "./assets/empty-templates.svg";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -1439,7 +1440,7 @@ function PptCard({
       )}
     >
       <TemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -1451,9 +1452,6 @@ function PptCard({
               <TooltipContent side="bottom">{item.title}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {formatPresentationTemplateKind(item.templateId)}
-          </p>
         </div>
         <div className="flex shrink-0 items-center">
           <button
@@ -2504,7 +2502,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+                "rounded-lg p-[3px] transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-1",
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -2516,7 +2514,12 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <IconTemplate size={18} stroke={1.5} />
+              <img
+                src={templatePickerIcon}
+                alt=""
+                role="presentation"
+                className="h-[32px] w-[32px] object-contain"
+              />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
@@ -2902,9 +2905,9 @@ function ConnectorsPopoverButton({
               <div className="flex flex-col max-h-72 overflow-y-auto">
                 {visibleConnectors.map((item) => {
                   return (
-                    <div
+                    <label
                       key={item.type}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         <ConnectorIcon type={item.type} size={16} />
@@ -2921,7 +2924,7 @@ function ConnectorsPopoverButton({
                         ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
                       />
-                    </div>
+                    </label>
                   );
                 })}
               </div>

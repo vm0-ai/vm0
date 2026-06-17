@@ -1,5 +1,5 @@
 /**
- * Tests for zero skill delete command
+ * Tests for zero workflow delete command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../../mocks/server";
 import { deleteCommand } from "../delete";
 import chalk from "chalk";
 
-describe("zero skill delete command", () => {
+describe("zero workflow delete command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -37,23 +37,33 @@ describe("zero skill delete command", () => {
   describe("successful delete", () => {
     it("should delete with --yes flag without prompting", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills/my-skill", () => {
+        http.get("http://localhost:3000/api/zero/workflows/my-workflow", () => {
           return HttpResponse.json({
-            name: "my-skill",
-            displayName: "My Skill",
+            name: "my-workflow",
+            displayName: "My Workflow",
             description: null,
-            content: "# Skill",
+            visibility: "private",
+            ownerUserId: "user-123",
+            attachedAgentCount: 0,
+            attachedAgents: [],
+            canManage: true,
+            content: "# Workflow",
+            files: [],
+            fileContents: [],
           });
         }),
-        http.delete("http://localhost:3000/api/zero/skills/my-skill", () => {
-          return new HttpResponse(null, { status: 204 });
-        }),
+        http.delete(
+          "http://localhost:3000/api/zero/workflows/my-workflow",
+          () => {
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
       );
 
-      await deleteCommand.parseAsync(["node", "cli", "my-skill", "--yes"]);
+      await deleteCommand.parseAsync(["node", "cli", "my-workflow", "--yes"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-skill");
+      expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("deleted");
     });
   });
@@ -61,9 +71,9 @@ describe("zero skill delete command", () => {
   describe("error handling", () => {
     it("should handle not found error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills/missing", () => {
+        http.get("http://localhost:3000/api/zero/workflows/missing", () => {
           return HttpResponse.json(
-            { error: { message: "Skill not found", code: "NOT_FOUND" } },
+            { error: { message: "Workflow not found", code: "NOT_FOUND" } },
             { status: 404 },
           );
         }),
@@ -78,18 +88,25 @@ describe("zero skill delete command", () => {
 
     it("should require --yes in non-interactive mode", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/skills/my-skill", () => {
+        http.get("http://localhost:3000/api/zero/workflows/my-workflow", () => {
           return HttpResponse.json({
-            name: "my-skill",
+            name: "my-workflow",
             displayName: null,
             description: null,
-            content: "# Skill",
+            visibility: "private",
+            ownerUserId: "user-123",
+            attachedAgentCount: 0,
+            attachedAgents: [],
+            canManage: true,
+            content: "# Workflow",
+            files: [],
+            fileContents: [],
           });
         }),
       );
 
       await expect(async () => {
-        await deleteCommand.parseAsync(["node", "cli", "my-skill"]);
+        await deleteCommand.parseAsync(["node", "cli", "my-workflow"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(

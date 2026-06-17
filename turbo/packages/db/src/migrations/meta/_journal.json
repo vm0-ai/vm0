@@ -3263,6 +3263,20 @@
       "when": 1781673121926,
       "tag": "0465_add_glm_5_2_model_support",
       "breakpoints": true
+    },
+    {
+      "idx": 466,
+      "version": "7",
+      "when": 1781689890002,
+      "tag": "0466_add_computer_use_installation_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 467,
+      "version": "7",
+      "when": 1781691954852,
+      "tag": "0467_rename_zero_skills_to_workflows",
+      "breakpoints": true
     }
   ]
 }

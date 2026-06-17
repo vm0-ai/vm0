@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.39](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.38...sandbox-fc-v0.37.39) (2026-06-17)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** tune balloon park settle policy ([#18053](https://github.com/vm0-ai/vm0/issues/18053)) ([3be3bc8](https://github.com/vm0-ai/vm0/commit/3be3bc8679a10af62e52908ed117ba360433985d))
+
 ## [0.37.38](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.37...sandbox-fc-v0.37.38) (2026-06-17)
 
 ## [0.37.37](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.36...sandbox-fc-v0.37.37) (2026-06-17)

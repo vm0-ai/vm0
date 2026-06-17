@@ -1564,17 +1564,31 @@ const REALTIME_TOKEN_NEXT_NEGATIVE_PATHS = [
   "/api/zero/realtime",
   "/api/zero/realtimes/token",
 ] as const;
-const ZERO_SKILLS_REWRITE_SOURCE = "/api/zero/skills";
-const ZERO_SKILLS_PATH = "/api/zero/skills";
-const ZERO_SKILLS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/skills/extra/path",
+const ZERO_WORKFLOWS_REWRITE_SOURCE = "/api/zero/workflows";
+const ZERO_WORKFLOWS_PATH = "/api/zero/workflows";
+const ZERO_WORKFLOWS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/workflows/extra/path",
   "/api/zero/skill",
 ] as const;
-const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
-const ZERO_SKILLS_BY_NAME_PATH = "/api/zero/skills/my-skill";
-const ZERO_SKILLS_BY_NAME_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/skills/my-skill/extra",
-  "/api/zero/skill/my-skill",
+const ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE = "/api/zero/workflows/:name";
+const ZERO_WORKFLOWS_BY_NAME_PATH = "/api/zero/workflows/my-workflow";
+const ZERO_WORKFLOWS_BY_NAME_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/workflows/my-workflow/extra",
+  "/api/zero/skill/my-workflow",
+] as const;
+const ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE = "/api/zero/workflows/:name/agents";
+const ZERO_WORKFLOW_AGENTS_PATH = "/api/zero/workflows/my-workflow/agents";
+const ZERO_WORKFLOW_AGENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/workflows/my-workflow/agents/extra",
+  "/api/zero/workflows/my-workflow",
+] as const;
+const ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE =
+  "/api/zero/workflows/:name/agents/:agentId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const ZERO_WORKFLOW_AGENT_BY_ID_PATH =
+  "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001";
+const ZERO_WORKFLOW_AGENT_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/workflows/my-workflow/agents/not-a-uuid",
+  "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001/extra",
 ] as const;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
@@ -1831,7 +1845,9 @@ describe("Model page redirects", () => {
     const modelSlugs = new Set(MODEL_SLUGS);
     const expectedRedirects = [
       ["kimi-k2.6", "kimi-k2-7-code"],
+      ["kimi-k2-6", "kimi-k2-7-code"],
       ["kimi-k2.5", "kimi-k2-7-code"],
+      ["kimi-k2-5", "kimi-k2-7-code"],
       ["glm-5.2", "glm-5-2"],
       ["glm-5.1", "glm-5-1"],
       ["claude-haiku-4-5", "claude-sonnet-4-6"],
@@ -2589,12 +2605,22 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/runs/:id/telemetry/agent",
         },
         {
-          source: ZERO_SKILLS_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/skills",
+          source: ZERO_WORKFLOWS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/workflows",
         },
         {
-          source: ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/skills/:name",
+          source: ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/workflows/:name/agents/:agentId",
+        },
+        {
+          source: ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/workflows/:name/agents",
+        },
+        {
+          source: ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/workflows/:name",
         },
         {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
@@ -7283,50 +7309,102 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the exact zero skills collection rewrite", async () => {
+  it("should match only the exact zero workflows collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_SKILLS_REWRITE_SOURCE;
+      return entry.source === ZERO_WORKFLOWS_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_SKILLS_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/skills",
+      source: ZERO_WORKFLOWS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/workflows",
     });
 
-    const matcher = getPathMatch(ZERO_SKILLS_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_WORKFLOWS_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_SKILLS_PATH)).toStrictEqual({});
-    for (const pathname of ZERO_SKILLS_NEXT_NEGATIVE_PATHS) {
+    expect(matcher(ZERO_WORKFLOWS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_WORKFLOWS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
 
-  it("should match only the single-segment zero skills by-name rewrite", async () => {
+  it("should match only the single-segment zero workflows by-name rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_SKILLS_BY_NAME_REWRITE_SOURCE;
+      return entry.source === ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/skills/:name",
+      source: ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/workflows/:name",
     });
 
-    const matcher = getPathMatch(ZERO_SKILLS_BY_NAME_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_SKILLS_BY_NAME_PATH)).toStrictEqual({
-      name: "my-skill",
+    expect(matcher(ZERO_WORKFLOWS_BY_NAME_PATH)).toStrictEqual({
+      name: "my-workflow",
     });
-    for (const pathname of ZERO_SKILLS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_WORKFLOWS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the zero workflow agents collection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/workflows/:name/agents",
+    });
+
+    const matcher = getPathMatch(ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_WORKFLOW_AGENTS_PATH)).toStrictEqual({
+      name: "my-workflow",
+    });
+    for (const pathname of ZERO_WORKFLOW_AGENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the zero workflow agent by-id rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/workflows/:name/agents/:agentId",
+    });
+
+    const matcher = getPathMatch(ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_WORKFLOW_AGENT_BY_ID_PATH)).toStrictEqual({
+      name: "my-workflow",
+      agentId: "00000000-0000-0000-0000-000000000001",
+    });
+    for (const pathname of ZERO_WORKFLOW_AGENT_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

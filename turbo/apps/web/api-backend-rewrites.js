@@ -94,8 +94,14 @@ const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
   "/api/automations/webhooks/:token";
 const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
   /^\/api\/automations\/webhooks\/[^/]+$/;
-const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
-const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
+const ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE = "/api/zero/workflows/:name";
+const ZERO_WORKFLOWS_BY_NAME_PATH_RE = /^\/api\/zero\/workflows\/[^/]+$/;
+const ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE = "/api/zero/workflows/:name/agents";
+const ZERO_WORKFLOW_AGENTS_PATH_RE = /^\/api\/zero\/workflows\/[^/]+\/agents$/;
+const ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE = `/api/zero/workflows/:name/agents/:agentId(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_WORKFLOW_AGENT_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/workflows/[^/]+/agents/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
@@ -636,6 +642,7 @@ export const API_BACKEND_REWRITES = [
     ZERO_LOGS_BY_ID_PATH_RE,
   ],
   ["/api/zero/logs/search", "/api/zero/logs/search"],
+  ["/api/registry/resources/download", "/api/registry/resources/download"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],
@@ -1214,11 +1221,21 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
   ["/api/zero/memory/dev-refresh", "/api/zero/memory/dev-refresh"],
-  ["/api/zero/skills", "/api/zero/skills"],
+  ["/api/zero/workflows", "/api/zero/workflows"],
   [
-    ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
-    "/api/zero/skills/:name",
-    ZERO_SKILLS_BY_NAME_PATH_RE,
+    ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
+    "/api/zero/workflows/:name/agents/:agentId",
+    ZERO_WORKFLOW_AGENT_BY_ID_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
+    "/api/zero/workflows/:name/agents",
+    ZERO_WORKFLOW_AGENTS_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/workflows/:name",
+    ZERO_WORKFLOWS_BY_NAME_PATH_RE,
   ],
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/model-policies", "/api/zero/model-policies"],

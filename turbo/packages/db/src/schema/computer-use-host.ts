@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -22,6 +23,7 @@ export const computerUseHosts = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    installationId: uuid("installation_id"),
     displayName: text("display_name").notNull(),
     tokenHash: text("token_hash").notNull(),
     appVersion: text("app_version").notNull(),
@@ -43,6 +45,9 @@ export const computerUseHosts = pgTable(
   (table) => {
     return [
       uniqueIndex("idx_computer_use_hosts_token_hash").on(table.tokenHash),
+      uniqueIndex("idx_computer_use_hosts_active_installation")
+        .on(table.orgId, table.userId, table.installationId)
+        .where(sql`installation_id IS NOT NULL AND revoked_at IS NULL`),
       index("idx_computer_use_hosts_org_user").on(table.orgId, table.userId),
       index("idx_computer_use_hosts_last_seen").on(table.lastSeenAt),
     ];

@@ -27,8 +27,8 @@ import type {
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroWorkflowsCollectionContract as zeroSkillsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
@@ -539,6 +539,23 @@ function placeCaretAfterText(root: HTMLElement, text: string): void {
   throw new Error(`${text} text node not found`);
 }
 
+function workflowSummary(
+  name: string,
+  displayName: string | null,
+  description: string | null,
+) {
+  return {
+    name,
+    displayName,
+    description,
+    visibility: "public" as const,
+    ownerUserId: "user-1",
+    attachedAgentCount: 0,
+    attachedAgents: [],
+    canManage: true,
+  };
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -550,21 +567,17 @@ describe("chat composer models", () => {
     mockAgent({ customSkills: ["sales-research", "support-escalation"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        {
-          name: "sales-research",
-          displayName: "Sales Research",
-          description: "Find account context before outreach",
-        },
-        {
-          name: "support-escalation",
-          displayName: "Support Escalation",
-          description: "Summarize customer issues for handoff",
-        },
-        {
-          name: "deep-dive",
-          displayName: "Deep Dive",
-          description: "Seeded org skill",
-        },
+        workflowSummary(
+          "sales-research",
+          "Sales Research",
+          "Find account context before outreach",
+        ),
+        workflowSummary(
+          "support-escalation",
+          "Support Escalation",
+          "Summarize customer issues for handoff",
+        ),
+        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
       ]);
     });
 
@@ -615,11 +628,7 @@ describe("chat composer models", () => {
     mockAgent({ customSkills: [] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        {
-          name: "deep-dive",
-          displayName: "Deep Dive",
-          description: "Seeded org skill",
-        },
+        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
       ]);
     });
 
@@ -645,11 +654,7 @@ describe("chat composer models", () => {
     mockAgent({ customSkills: [] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        {
-          name: "deep-dive",
-          displayName: "Deep Dive",
-          description: "Seeded org skill",
-        },
+        workflowSummary("deep-dive", "Deep Dive", "Seeded org skill"),
       ]);
     });
 
@@ -681,11 +686,7 @@ describe("chat composer models", () => {
     mockAgent({ customSkills: ["sales-research"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
-        {
-          name: "sales-research",
-          displayName: "Sales Research",
-          description: null,
-        },
+        workflowSummary("sales-research", "Sales Research", null),
       ]);
     });
 
@@ -719,11 +720,7 @@ describe("chat composer models", () => {
       return respond(
         200,
         customSkills.map((name) => {
-          return {
-            name,
-            displayName: null,
-            description: null,
-          };
+          return workflowSummary(name, null, null);
         }),
       );
     });
@@ -1347,7 +1344,7 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Remove GitHub"));
+    await user.click(screen.getByText("GitHub"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();

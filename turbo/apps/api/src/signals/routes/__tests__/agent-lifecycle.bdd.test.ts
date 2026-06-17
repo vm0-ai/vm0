@@ -55,7 +55,6 @@ describe("AGENT-01: zero agent lifecycle through public API", () => {
       sound: "focus",
       avatarUrl: "preset:3",
       visibility: "public",
-      customSkills: [],
     });
     expect(replaced).toMatchObject({
       agentId: created.agentId,

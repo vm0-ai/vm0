@@ -158,9 +158,14 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "Selected template: template:html-ppt-playful-launch (Playful Launch Presentation)",
     );
-    expect(stdout).toContain("vm0-ai/vm0-skills@main");
+    expect(stdout).toContain(
+      "zero resource pull <resource-id> --dir ./generated/resources",
+    );
     expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
     expect(stdout).toContain('"path": "presentation-template/aplocoto"');
+    expect(stdout).toContain('"archive"');
+    expect(stdout).toContain('"type": "tar.gz"');
+    expect(stdout).toContain('"sha256"');
     expect(stdout).toContain('"id": "design-system:playful-editorial"');
     expect(stdout).toContain(
       '"path": "presentation-design-system/playful-editorial"',

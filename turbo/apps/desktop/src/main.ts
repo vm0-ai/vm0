@@ -48,6 +48,7 @@ import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
@@ -250,6 +251,10 @@ function trayIconDisabledPath(): string {
   return path.join(__dirname, "..", "assets", "tray-iconDisabled.png");
 }
 
+function trayIconRunningPath(): string {
+  return path.join(__dirname, "..", "assets", "tray-iconRunning.png");
+}
+
 function desktopPreferencesPath(): string {
   return path.join(app.getPath("userData"), "desktop-preferences.json");
 }
@@ -355,8 +360,12 @@ async function startComputerUseRuntime(
   const desktopSession = session.fromPartition(config.sessionPartition);
   computerUseBlockedHostState = null;
   if (!computerUseRuntime) {
+    const installationId = readOrCreateComputerUseInstallationId(
+      desktopPreferencesPath(),
+    );
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
+      installationId,
       hostName: readSystemHostName(config.identity.displayName),
       appVersion: app.getVersion(),
       sessionFetch: createDesktopComputerUseSessionFetch({
@@ -510,6 +519,7 @@ function installTray(): void {
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
+    runningIconPath: trayIconRunningPath(),
     getComputerUseState: getComputerUseBridgeState,
     getAuthState: () => getAuthSession().getAuthState(),
     showMainWindow: async () => {

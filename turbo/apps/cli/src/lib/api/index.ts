@@ -35,6 +35,9 @@ export {
   listStorages,
 } from "./domains/storages";
 
+// Domain modules - Registry Resources
+export { getRegistryResourceDownload } from "./domains/registry-resources";
+
 // Domain modules - Zero User Preferences
 export {
   getZeroUserPreferences,
@@ -111,14 +114,17 @@ export {
   listZeroUserPermissionGrants,
 } from "./domains/zero-agents";
 
-// Domain modules - Zero Skills (org-level)
+// Domain modules - Zero Workflows
 export {
-  listSkills,
-  createSkill,
-  getSkill,
-  updateSkill,
-  deleteSkill,
-} from "./domains/zero-skills";
+  listWorkflows,
+  createWorkflow,
+  getWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  attachWorkflowToAgent,
+  detachWorkflowFromAgent,
+  setWorkflowAgents,
+} from "./domains/zero-workflows";
 
 // Domain modules - Zero Connectors
 export {

@@ -1786,6 +1786,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/storages/commits")).toBe(false);
   });
 
+  it("matches the registry resource download rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/registry/resources/download"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/registry/resources/download/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/registry/resources")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/registry/resources/downloads"),
+    ).toBe(false);
+  });
+
   it("matches the storages download rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/storages/download")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/storages/download/extra")).toBe(
@@ -2578,24 +2591,48 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/map/geocode")).toBe(false);
   });
 
-  it("matches the zero skills collection rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/skills")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/skills/extra/path")).toBe(
+  it("matches the zero workflows collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/workflows")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/workflows/extra/path")).toBe(
       false,
     );
     expect(matchesApiBackendRewritePath("/api/zero/skill")).toBe(false);
   });
 
-  it("matches the zero skills by-name rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/skills/my-skill")).toBe(
-      true,
-    );
+  it("matches the zero workflows by-name rewrite path exactly", () => {
     expect(
-      matchesApiBackendRewritePath("/api/zero/skills/my-skill/extra"),
+      matchesApiBackendRewritePath("/api/zero/workflows/my-workflow"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/workflows/my-workflow/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/skill/my-skill")).toBe(
+    expect(matchesApiBackendRewritePath("/api/zero/skill/my-workflow")).toBe(
       false,
     );
+  });
+
+  it("matches the zero workflow agents rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/workflows/my-workflow/agents"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflows/my-workflow/agents/extra",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the zero workflow agent by-id rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflows/my-workflow/agents/not-a-uuid",
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero runs collection rewrite path exactly", () => {

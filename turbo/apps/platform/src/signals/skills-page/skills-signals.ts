@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroSkillsCollectionContract,
-  zeroSkillsDetailContract,
-  type ZeroAgentCustomSkill,
-  type ZeroAgentSkillDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  zeroWorkflowsCollectionContract as zeroSkillsCollectionContract,
+  zeroWorkflowsDetailContract as zeroSkillsDetailContract,
+  type ZeroWorkflowDetailResponse as ZeroAgentSkillDetailResponse,
+  type ZeroWorkflowSummary as ZeroAgentCustomSkill,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 
 import { accept } from "../../lib/accept.ts";
