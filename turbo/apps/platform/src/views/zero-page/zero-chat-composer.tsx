@@ -119,6 +119,7 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import templatePickerIcon from "./assets/empty-templates.svg";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -2504,7 +2505,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+                "rounded-lg p-[3px] transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-1",
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -2516,7 +2517,12 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <IconTemplate size={18} stroke={1.5} />
+              <img
+                src={templatePickerIcon}
+                alt=""
+                role="presentation"
+                className="h-[32px] w-[32px] object-contain"
+              />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
