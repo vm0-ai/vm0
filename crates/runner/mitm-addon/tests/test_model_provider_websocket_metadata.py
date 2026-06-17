@@ -8,6 +8,7 @@ import pytest
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
+import mitm_addon
 from tests.model_provider_websocket_helpers import (
     _capture_deferred_websocket_trims,
     _feed_websocket_server_message,
@@ -38,6 +39,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
     def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         _feed_websocket_server_message(
             flow,
@@ -84,6 +86,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
     def test_model_websocket_positive_frame_updates_prior_zero_usage(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         _feed_websocket_server_message(
             flow,
@@ -121,6 +124,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
     def test_model_websocket_partial_frame_preserves_existing_categories(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         _feed_websocket_server_message(
             flow,
@@ -163,6 +167,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
     def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         _feed_websocket_server_text_message(
             flow,
@@ -187,6 +192,7 @@ class TestModelProviderWebSocketUsageMetadata:
 
     def test_model_websocket_malformed_frame_preserves_prior_usage(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
@@ -207,6 +213,7 @@ class TestModelProviderWebSocketUsageMetadata:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
 
         _feed_websocket_server_message(
@@ -237,6 +244,7 @@ class TestModelProviderWebSocketUsageMetadata:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = "invalid"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
 

@@ -9,6 +9,7 @@ from mitmproxy import http, websocket
 from wsproto.frame_protocol import Opcode
 
 import mitm_addon
+import response_streaming
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
@@ -99,12 +100,18 @@ def _set_websocket_message(
     _append_websocket_message(flow, from_client=from_client, content=content)
 
 
+def _assert_model_websocket_usage_started(flow: http.HTTPFlow) -> None:
+    assert response_streaming.is_model_websocket_usage_enabled(flow)
+
+
 def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
+    _assert_model_websocket_usage_started(flow)
     _set_websocket_message(flow, from_client=False, content=content)
     mitm_addon.websocket_message(flow)
 
 
 def _feed_websocket_server_text_message(flow: http.HTTPFlow, content: str) -> None:
+    _assert_model_websocket_usage_started(flow)
     _set_websocket_message(flow, from_client=False, content=content.encode())
     assert flow.websocket is not None
     object.__setattr__(flow.websocket.messages[-1], "content", content)

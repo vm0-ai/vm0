@@ -7,7 +7,6 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
-import mitm_addon
 from tests.flow_helpers import header_map
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
@@ -69,7 +68,6 @@ def make_openai_responses_websocket_flow(
         status_code=101,
         headers=http.Headers(upgrade="websocket"),
     )
-    mitm_addon.responseheaders(flow)
     return flow
 
 
@@ -94,7 +92,6 @@ def make_model_provider_sse_flow(
         status_code=200,
         headers=header_map({"content-type": "text/event-stream"}),
     )
-    mitm_addon.responseheaders(flow)
     return flow
 
 
