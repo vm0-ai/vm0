@@ -124,6 +124,7 @@ class TestModelProviderWebSocketUsage:
     def test_full_pipeline_model_websocket_reports_usage(self, tmp_path, real_flow):
         """Codex Responses WebSocket frames should bill like SSE events."""
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         assert flow.metadata["model_websocket_usage_enabled"] is True
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
@@ -161,6 +162,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -190,6 +192,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -219,6 +222,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -258,6 +262,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -300,6 +305,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -341,6 +347,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -540,6 +547,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
@@ -587,6 +595,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_model_websocket_ignores_client_messages(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         _set_websocket_message(
             flow,
             from_client=True,
@@ -615,6 +624,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         old_client = _append_websocket_message(flow, from_client=True, content=b"client-old")
         old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
         latest_server = _append_websocket_message(
@@ -650,6 +660,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
         latest_client = _append_websocket_message(
             flow,
@@ -676,6 +687,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         first_server = _append_websocket_message(
             flow,
             from_client=False,
@@ -734,6 +746,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         _append_websocket_message(
             flow,
             from_client=False,
@@ -762,6 +775,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.error = Error("connection reset by peer")
         _append_websocket_message(
             flow,

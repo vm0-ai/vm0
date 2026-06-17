@@ -100,6 +100,7 @@ class TestModelProviderSseUsage:
     def test_full_pipeline_model_sse_finalizes_trailing_event(self, tmp_path, real_flow):
         """response() must flush a trailing SSE usage event before reporting."""
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
@@ -119,6 +120,7 @@ class TestModelProviderSseUsage:
 
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.incomplete\n"
             b'data: {"response":{"id":"resp_incomplete","model":"gpt-5.5",'
@@ -145,6 +147,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
@@ -168,6 +171,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
@@ -190,6 +194,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
 
         webhook = self._run_response(flow)
@@ -211,6 +216,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"id":"msg_1",'
@@ -233,6 +239,7 @@ class TestModelProviderSseUsage:
 
     def test_full_pipeline_openai_sse_logs_truncated_terminal_event(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
@@ -249,6 +256,7 @@ class TestModelProviderSseUsage:
 
     def test_full_pipeline_openai_sse_logs_truncated_late_event_name(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
             b"event: response.completed\n\n"
@@ -273,6 +281,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude'
         )
@@ -296,6 +305,7 @@ class TestModelProviderSseUsage:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: content_block_delta\n"
             b'data: {"type":"content_block_delta","delta":{"text":"hello'
@@ -308,6 +318,7 @@ class TestModelProviderSseUsage:
 
     def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
@@ -321,6 +332,7 @@ class TestModelProviderSseUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.in_progress\n"
             b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
@@ -335,6 +347,7 @@ class TestModelProviderSseUsage:
         self, tmp_path, real_flow
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
