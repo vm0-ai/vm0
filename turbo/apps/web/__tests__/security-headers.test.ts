@@ -540,42 +540,6 @@ const AGENTPHONE_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/agentphone",
   "/api/agentphone/messages",
 ] as const;
-const INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE = "/api/internal/callbacks/agent";
-const INTERNAL_CALLBACKS_AGENT_PATH = "/api/internal/callbacks/agent";
-const INTERNAL_CALLBACKS_AGENT_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/agent/extra",
-  "/api/internal/callbacks",
-] as const;
-const INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE = "/api/internal/callbacks/chat";
-const INTERNAL_CALLBACKS_CHAT_PATH = "/api/internal/callbacks/chat";
-const INTERNAL_CALLBACKS_CHAT_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/chat/extra",
-  "/api/internal/callbacks",
-] as const;
-const INTERNAL_CALLBACKS_GITHUB_ISSUES_REWRITE_SOURCE =
-  "/api/internal/callbacks/github/issues";
-const INTERNAL_CALLBACKS_GITHUB_ISSUES_PATH =
-  "/api/internal/callbacks/github/issues";
-const INTERNAL_CALLBACKS_GITHUB_ISSUES_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/github/issues/extra",
-  "/api/internal/callbacks/github",
-  "/api/internal/callbacks",
-] as const;
-const INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE =
-  "/api/internal/callbacks/slack/org";
-const INTERNAL_CALLBACKS_SLACK_ORG_PATH = "/api/internal/callbacks/slack/org";
-const INTERNAL_CALLBACKS_SLACK_ORG_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/slack/org/extra",
-  "/api/internal/callbacks/slack",
-  "/api/internal/callbacks",
-] as const;
-const INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE =
-  "/api/internal/callbacks/telegram";
-const INTERNAL_CALLBACKS_TELEGRAM_PATH = "/api/internal/callbacks/telegram";
-const INTERNAL_CALLBACKS_TELEGRAM_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/telegram/extra",
-  "/api/internal/callbacks",
-] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -2350,34 +2314,6 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agentphone/webhook",
         },
         {
-          source: INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/internal/callbacks/agent",
-        },
-        {
-          source: INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/internal/callbacks/chat",
-        },
-        {
-          source: INTERNAL_CALLBACKS_GITHUB_ISSUES_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/internal/callbacks/github/issues",
-        },
-        {
-          source: INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/internal/callbacks/slack/org",
-        },
-        {
-          source: INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/internal/callbacks/telegram",
-        },
-        {
-          source: "/api/internal/callbacks/agentphone",
-          destination:
-            "https://api.example.test/api/internal/callbacks/agentphone",
-        },
-        {
           source: "/api/internal/event-consumers/agentphone-typing",
           destination:
             "https://api.example.test/api/internal/event-consumers/agentphone-typing",
@@ -3935,125 +3871,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENTPHONE_WEBHOOK_PATH)).toStrictEqual({});
     for (const pathname of AGENTPHONE_WEBHOOK_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal agent callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/internal/callbacks/agent",
-    });
-
-    const matcher = getPathMatch(INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(INTERNAL_CALLBACKS_AGENT_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_AGENT_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal chat callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/internal/callbacks/chat",
-    });
-
-    const matcher = getPathMatch(INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(INTERNAL_CALLBACKS_CHAT_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_CHAT_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal GitHub issues callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_GITHUB_ISSUES_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_GITHUB_ISSUES_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/internal/callbacks/github/issues",
-    });
-
-    const matcher = getPathMatch(
-      INTERNAL_CALLBACKS_GITHUB_ISSUES_REWRITE_SOURCE,
-      {
-        removeUnnamedParams: true,
-        strict: true,
-      },
-    );
-
-    expect(matcher(INTERNAL_CALLBACKS_GITHUB_ISSUES_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_GITHUB_ISSUES_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal Slack org callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/internal/callbacks/slack/org",
-    });
-
-    const matcher = getPathMatch(INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(INTERNAL_CALLBACKS_SLACK_ORG_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_SLACK_ORG_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal Telegram callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/internal/callbacks/telegram",
-    });
-
-    const matcher = getPathMatch(INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(INTERNAL_CALLBACKS_TELEGRAM_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_TELEGRAM_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

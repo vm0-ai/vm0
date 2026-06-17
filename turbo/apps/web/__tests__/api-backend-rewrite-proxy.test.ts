@@ -588,71 +588,30 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
-  it("matches the internal agent callback rewrite path exactly", () => {
+  it("rejects stale internal callback rewrite paths", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks/agent")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/agent/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("matches the internal chat callback rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks/chat")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/chat/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("matches the internal GitHub issues callback rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/github/issues"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/internal/callbacks/github/issues/extra",
-      ),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks/github")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("rejects the retired schedule callback rewrite paths", () => {
-    // The schedule completion-callback routes were retired with the
-    // zero_agent_schedules drop (#16847); the trigger callbacks replaced them.
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks/chat")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/github/issues"),
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/schedule/cron"),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/schedule/loop"),
     ).toBe(false);
-  });
-
-  it("matches the internal Slack org callback rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/slack/org"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/slack/org/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks/slack")).toBe(
-      false,
-    );
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("matches the internal Telegram callback rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/telegram"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/telegram/extra"),
+      matchesApiBackendRewritePath("/api/internal/callbacks/agentphone"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
