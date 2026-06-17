@@ -161,7 +161,7 @@ fn validate_bootstrap_environment_for_guest(
     entries.sort_by_key(|(key, _)| *key);
 
     for (key, value) in entries {
-        if !guest_contracts::env::is_valid_user_env_key(key) {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(format!(
                 "bootstrap environment contains invalid env key {:?}",
                 guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
