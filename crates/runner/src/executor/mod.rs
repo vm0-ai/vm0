@@ -35,7 +35,8 @@ mod telemetry;
 pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
 
 use agent_run::ProcessCancelTimeouts;
-use env::{validate_execution_context_before_sandbox, validate_resume_session_id};
+use env::validate_execution_context_before_sandbox;
+pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
     workspace_image_promotable,
@@ -461,20 +462,61 @@ pub async fn execute_job_reuse(
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let idle_parts = idle_sandbox.into_parts();
+    let idle_session_id = idle_parts.session_id;
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
     let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
     if let Err(error) = validate_resume_session_id(&context) {
+        let workspace_image = match config.workspace_cache.as_ref() {
+            Some(_) => workspace_promotion.map(|promotion| {
+                promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
+                    run_id,
+                    sandbox_id,
+                    profile_name: &params.profile_name,
+                    session_id: Some(idle_session_id.as_str()),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                    workspace_drive_available: true,
+                })
+            }),
+            None => {
+                if let Some(promotion) = workspace_promotion
+                    && let Err(error) = promotion
+                        .invalidate_current("reused sandbox ran without workspace image cache")
+                        .await
+                {
+                    let failure = ExecutionFailure::from_error(format!(
+                        "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
+                    ));
+                    return (
+                        ExecuteOutcome {
+                            failure: Some(failure),
+                            sandbox: Some(sandbox),
+                            source_ip,
+                            network_log_session: None,
+                            workspace_image: None,
+                            workspace_promotable: false,
+                            guest_session_id: None,
+                        },
+                        telemetry,
+                    );
+                }
+                None
+            }
+        };
+        let workspace_promotable = workspace_image
+            .as_ref()
+            .is_some_and(|image| image.can_attempt_promotion(Some(idle_session_id.as_str())));
         return (
             ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(error)),
                 sandbox: Some(sandbox),
                 source_ip,
                 network_log_session: None,
-                workspace_image: None,
-                workspace_promotable: false,
+                workspace_image,
+                workspace_promotable,
                 guest_session_id: None,
             },
             telemetry,

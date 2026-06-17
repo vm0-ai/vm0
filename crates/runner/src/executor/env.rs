@@ -103,7 +103,7 @@ pub(super) fn validate_execution_context_before_sandbox(
     Ok(())
 }
 
-pub(super) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(), String> {
+pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(), String> {
     let Some(session) = &context.resume_session else {
         return Ok(());
     };
