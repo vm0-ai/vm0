@@ -102,6 +102,46 @@ async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
 }
 
 #[tokio::test]
+async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = SessionWorkspaceCache::new(RunnerPaths::new(dir.path().join("runner")));
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache);
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "bad-session").await;
+    let raw_session_id = "../bad-session";
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: "{}".into(),
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (reuse_outcome, _telemetry) =
+        execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+    assert_eq!(reuse_outcome.exit_code(), 1);
+    let error = reuse_outcome.error().unwrap();
+    assert!(error.contains("invalid session_id"));
+    assert!(!error.contains(raw_session_id));
+    assert!(reuse_outcome.sandbox.is_some());
+    assert!(reuse_outcome.network_log_session.is_none());
+    assert!(reuse_outcome.workspace_image.is_none());
+    assert!(!reuse_outcome.workspace_promotable);
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "reused sandbox must not start a process after resume session validation failure"
+    );
+}
+
+#[tokio::test]
 async fn execute_job_reuse_appends_stream_limit_marker() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

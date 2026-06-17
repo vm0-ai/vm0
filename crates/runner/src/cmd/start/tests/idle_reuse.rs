@@ -740,6 +740,50 @@ async fn job_without_session_reports_no_session_id() {
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn invalid_resume_session_does_not_reuse_idle_vm() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let invalid_session_id = "../invalid-session";
+    seed_idle_pool(
+        &idle_pool,
+        &budget,
+        invalid_session_id,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, invalid_session_id)),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::NoSessionId),
+    );
+    let error = completion.error.as_deref().expect("error should be set");
+    assert!(error.contains("invalid session_id"));
+    assert!(!error.contains(invalid_session_id));
+    wait_idle_pool_sessions(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
+
+    shutdown(&env, run_handle).await;
+}
+
 // -----------------------------------------------------------------------
 // Test 14: Profile mismatch destroys stale and creates new
 // -----------------------------------------------------------------------

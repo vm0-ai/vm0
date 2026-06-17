@@ -87,7 +87,10 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         sessions = state.held_session_states.len(),
         "heartbeat"
     );
-    debug!(held_session_states = ?state.held_session_states);
+    debug!(
+        sessions = state.held_session_states.len(),
+        "heartbeat held session states"
+    );
     hb.provider
         .set_held_session_states(state.held_session_states.clone())
         .await;
@@ -198,12 +201,15 @@ mod tests {
         IdlePoolConfig, ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
     };
     use crate::paths::RunnerPaths;
+    use crate::provider::mock::MockJobProvider;
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
     };
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
         let mut m = BTreeMap::new();
@@ -275,6 +281,31 @@ mod tests {
         drop(lease);
     }
 
+    async fn capture_heartbeat_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
     #[test]
     fn heartbeat_running_count_no_idle() {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
@@ -298,6 +329,55 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn send_heartbeat_logs_held_session_count_without_raw_session_state() {
+        let session_id = "sess-sensitive-heartbeat-17975";
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 1,
+        })));
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        seed_workspace_cache_state(&cache, &paths, session_id, "2026-06-01T00:00:00.000Z").await;
+        let profiles = test_profiles();
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let active_sessions = super::super::active_sessions::new_active_sessions();
+        let (provider, provider_handle) =
+            MockJobProvider::new(tokio_util::sync::CancellationToken::new());
+        let hb = HeartbeatContext::new(HeartbeatContextInit {
+            idle_pool: &idle_pool,
+            runner_id: "runner-1",
+            name: "test-runner",
+            group: "vm0/test",
+            profiles: &profiles,
+            budget: &budget,
+            provider: provider.as_ref(),
+            workspace_cache: Some(cache),
+            active_sessions: &active_sessions,
+        });
+
+        let ((), events) = capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running)).await;
+
+        let debug_event = captured_event(&events, "heartbeat held session states");
+        assert_eq!(
+            debug_event.fields.get("sessions").map(String::as_str),
+            Some("1")
+        );
+        for event in &events {
+            for (field, value) in &event.fields {
+                assert!(
+                    !value.contains(session_id),
+                    "captured field {field} leaked raw session id {session_id:?}: {event:#?}"
+                );
+            }
+        }
+        let updates = provider_handle.held_session_state_updates();
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0][0].session_id, session_id);
     }
 
     #[tokio::test]

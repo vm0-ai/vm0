@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
-use super::session_restore::canonical_codex_thread_id;
+use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
 use super::storage::format_guest_exec_failure;
 use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
@@ -121,6 +121,7 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
 ) -> Result<(), String> {
+    validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
     validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
@@ -176,6 +177,24 @@ fn validate_bootstrap_environment_for_guest(
     }
 
     Ok(())
+}
+
+pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(), String> {
+    let Some(session) = &context.resume_session else {
+        return Ok(());
+    };
+    match effective_cli_framework(&context.cli_agent_type) {
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(&session.session_id)
+            .map(|_| ())
+            .ok_or_else(|| "invalid codex session_id".to_string()),
+        EffectiveCliFramework::ClaudeCode => {
+            if is_valid_session_id(&session.session_id) {
+                Ok(())
+            } else {
+                Err("invalid session_id".to_string())
+            }
+        }
+    }
 }
 
 pub(super) fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(), String> {
@@ -405,15 +424,13 @@ pub(super) fn build_env_json_with_host_env(
 
     // Resume session ID
     if let Some(session) = &context.resume_session {
-        let session_id = if effective_cli_framework(&context.cli_agent_type)
-            == EffectiveCliFramework::Codex
-        {
-            canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
-                RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
-            })?
-        } else {
-            session.session_id.clone()
-        };
+        let session_id =
+            if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::Codex {
+                canonical_codex_thread_id(&session.session_id)
+                    .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?
+            } else {
+                session.session_id.clone()
+            };
         env.insert(
             guest_contracts::env::RESUME_SESSION_ID_ENV.into(),
             session_id,

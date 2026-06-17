@@ -432,7 +432,11 @@ pub(super) fn spawn_job(
     } = request;
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
-    let session_id = context.session_id().map(String::from);
+    let session_id = if executor::validate_resume_session_id(&context).is_ok() {
+        context.session_id().map(String::from)
+    } else {
+        None
+    };
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let active_lease = job_profile.budget_lease;

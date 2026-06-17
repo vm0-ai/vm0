@@ -149,6 +149,146 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let raw_session_id = "sess-sensitive-first-run-17975";
+    overrides.push_wait_process_exit(ProcessExit::new(1, 0, Vec::new(), Vec::new()));
+    overrides.push_read_file_result(Ok(Some(raw_session_id.as_bytes().to_vec())));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    ))
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(outcome.guest_session_id.as_deref(), Some(raw_session_id));
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let event = captured_event(&events, "read guest session ID for parking");
+    assert_eq!(
+        event.fields.get("session_fingerprint").map(String::as_str),
+        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
+    assert!(
+        !event.fields.contains_key("session_id"),
+        "guest session read diagnostic must not include raw session_id field: {event:#?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn execute_prepared_sandbox_run_canonicalizes_codex_guest_session_id_for_parking() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let raw_session_id = "019E9154C30470F0ADDE36EFB1BE1701";
+    let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    overrides.push_wait_process_exit(ProcessExit::new(1, 0, Vec::new(), Vec::new()));
+    overrides.push_read_file_result(Ok(Some(raw_session_id.as_bytes().to_vec())));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    ))
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(
+        outcome.guest_session_id.as_deref(),
+        Some(canonical_session_id)
+    );
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let event = captured_event(&events, "read guest session ID for parking");
+    assert_eq!(
+        event.fields.get("session_fingerprint").map(String::as_str),
+        Some(crate::paths::diagnostic_session_fingerprint(canonical_session_id).as_str())
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_guest_session_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let raw_session_id = "codex-safe-but-not-uuid";
+    overrides.push_wait_process_exit(ProcessExit::new(1, 0, Vec::new(), Vec::new()));
+    overrides.push_read_file_result(Ok(Some(raw_session_id.as_bytes().to_vec())));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    ))
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.guest_session_id.is_none());
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let event = captured_event(&events, "ignoring invalid guest session ID for framework");
+    assert_eq!(
+        event.fields.get("framework").map(String::as_str),
+        Some("codex")
+    );
+    assert_eq!(
+        event.fields.get("session_fingerprint").map(String::as_str),
+        Some(crate::paths::diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
+}
+
 #[tokio::test]
 async fn execute_inner_aborts_drain_task_on_wait_process_error() {
     // Simulate wait_process timeout: stdout channel stays open (sender held
@@ -203,6 +343,42 @@ async fn execute_inner_aborts_drain_task_on_wait_process_error() {
         "network log session must be returned on post-start execution failure"
     );
     assert_proxy_registry_empty(dir.path()).await;
+}
+
+async fn capture_async_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: std::future::Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
+fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+    events
+        .iter()
+        .find(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+}
+
+fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
+    for event in events {
+        for (field, value) in &event.fields {
+            assert!(
+                !value.contains(raw),
+                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
+            );
+        }
+    }
 }
 
 #[tokio::test]

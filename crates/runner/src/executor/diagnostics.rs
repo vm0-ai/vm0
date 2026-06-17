@@ -11,6 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
 
 use super::env::is_runner_owned_env_key;
+use super::session_restore::is_valid_session_id;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
     AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,
@@ -19,7 +20,7 @@ use super::{
     STDOUT_STREAM_OVERFLOW_MARKER, SandboxReuseResult, guest_runtime_path,
 };
 use crate::ids::RunId;
-use crate::paths::LogPaths;
+use crate::paths::{LogPaths, diagnostic_session_fingerprint};
 use crate::types::ExecutionContext;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -446,7 +447,18 @@ pub(super) async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) 
     match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
         Ok(Some(bytes)) if !bytes.is_empty() => {
             let id = String::from_utf8_lossy(&bytes).trim().to_string();
-            Some(id).filter(|s| !s.is_empty())
+            if id.is_empty() {
+                return None;
+            }
+            if !is_valid_session_id(&id) {
+                warn!(
+                    run_id = %run_id,
+                    session_fingerprint = %diagnostic_session_fingerprint(&id),
+                    "ignoring invalid guest session ID"
+                );
+                return None;
+            }
+            Some(id)
         }
         _ => None,
     }

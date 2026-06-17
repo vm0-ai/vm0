@@ -13,7 +13,8 @@ use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
     read_guest_session_id,
 };
-use super::env::normalized_cli_agent_type;
+use super::env::{EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type};
+use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
@@ -21,6 +22,7 @@ use super::{
 };
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
+use crate::paths::diagnostic_session_fingerprint;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
@@ -517,9 +519,15 @@ pub(super) async fn execute_prepared_sandbox_run(
 
     // Read CLI-generated session ID for first-run parking.
     let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
-        let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
+        let id = read_guest_session_id(sandbox.as_ref(), context.run_id)
+            .await
+            .and_then(|id| normalize_guest_session_id_for_parking(context, id));
         if let Some(ref sid) = id {
-            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
+            info!(
+                run_id = %context.run_id,
+                session_fingerprint = %diagnostic_session_fingerprint(sid),
+                "read guest session ID for parking"
+            );
         }
         id
     } else {
@@ -534,6 +542,36 @@ pub(super) async fn execute_prepared_sandbox_run(
         workspace_image: None,
         workspace_promotable: false,
         guest_session_id,
+    }
+}
+
+fn normalize_guest_session_id_for_parking(
+    context: &ExecutionContext,
+    session_id: String,
+) -> Option<String> {
+    match effective_cli_framework(&context.cli_agent_type) {
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(&session_id).or_else(|| {
+            warn!(
+                run_id = %context.run_id,
+                framework = "codex",
+                session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                "ignoring invalid guest session ID for framework"
+            );
+            None
+        }),
+        EffectiveCliFramework::ClaudeCode => {
+            if is_valid_session_id(&session_id) {
+                Some(session_id)
+            } else {
+                warn!(
+                    run_id = %context.run_id,
+                    framework = "claude-code",
+                    session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+                    "ignoring invalid guest session ID for framework"
+                );
+                None
+            }
+        }
     }
 }
 

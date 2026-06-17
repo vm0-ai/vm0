@@ -455,6 +455,63 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
     );
 }
 
+#[tokio::test]
+async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidden() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let session_id = "sess-cache-reuse-invalid-resume";
+    let (idle_sandbox, _current_image, overrides) =
+        reusable_idle_sandbox_with_workspace_promotion(&cache, &runner_paths, &params, session_id)
+            .await;
+
+    let raw_session_id = "../invalid-resume";
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (reuse_outcome, _telemetry) =
+        execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+    assert_eq!(reuse_outcome.exit_code(), 1);
+    let error = reuse_outcome.error().unwrap();
+    assert!(error.contains("invalid session_id"));
+    assert!(!error.contains(raw_session_id));
+    assert!(reuse_outcome.sandbox.is_some());
+    assert!(reuse_outcome.workspace_promotable);
+    assert!(reuse_outcome.workspace_image.is_some());
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "reused sandbox must not start a process after resume session validation failure"
+    );
+
+    let checkout = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            run_id: RunId::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: &params.profile_name,
+            session_id: Some(session_id),
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(
+        checkout.result(),
+        WorkspaceCacheCheckoutResult::LockBusy,
+        "invalid resume sessions must not release the hidden cache baseline before finalization can promote or invalidate the live workspace"
+    );
+}
+
 async fn reusable_idle_sandbox_with_workspace_promotion(
     cache: &SessionWorkspaceCache,
     runner_paths: &RunnerPaths,

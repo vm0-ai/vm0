@@ -1,12 +1,20 @@
 //! CLI session restore helpers for guest agent frameworks.
 
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox, SandboxError};
 use tracing::{info, warn};
 
 use super::storage::format_guest_exec_failure;
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
+const SESSION_PATH_SENTINEL: &str = "\u{0}\u{1}";
+const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
+const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
+const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
+const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
+const MAX_SESSION_ID_LEN: usize = 128;
 
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
@@ -17,10 +25,7 @@ pub(super) async fn restore_session(
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
     // skip branch is ever upgraded to a write.
     if !is_valid_session_id(&session.session_id) {
-        return Err(RunnerError::Internal(format!(
-            "invalid session_id: {}",
-            session.session_id
-        )));
+        return Err(RunnerError::Internal("invalid session_id".into()));
     }
 
     match context.cli_agent_type.as_str() {
@@ -49,10 +54,20 @@ pub(super) async fn restore_claude_session(
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    sandbox
-        .write_file(&session_path, session.session_history.as_bytes())
-        .await?;
-    info!(run_id = %context.run_id, path = %session_path, "restored claude session history");
+    write_session_history_file(
+        sandbox,
+        &session_path,
+        &[&session.session_id],
+        &session.session_history,
+    )
+    .await?;
+    info!(
+        run_id = %context.run_id,
+        framework = "claude-code",
+        session_fingerprint = %diagnostic_session_fingerprint(&session.session_id),
+        bytes_in = session.session_history.len(),
+        "restored session history"
+    );
     Ok(())
 }
 
@@ -134,24 +149,28 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let session_id = canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
-        RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
-    })?;
+    let session_id = canonical_codex_thread_id(&session.session_id)
+        .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
 
     let session_path =
         codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
 
     cleanup_existing_codex_session_files(sandbox, context, &session_id, &session_path).await?;
 
-    sandbox
-        .write_file(&session_path, session.session_history.as_bytes())
-        .await?;
+    write_session_history_file(
+        sandbox,
+        &session_path,
+        &[&session_id, &session.session_id],
+        &session.session_history,
+    )
+    .await?;
 
     info!(
         run_id = %context.run_id,
-        path = %session_path,
+        framework = "codex",
+        session_fingerprint = %diagnostic_session_fingerprint(&session_id),
         bytes_in = session.session_history.len(),
-        "restored codex session history",
+        "restored session history",
     );
     Ok(())
 }
@@ -231,22 +250,148 @@ fi"#;
         })
         .await?;
     if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format_guest_exec_failure(
-            "codex session cleanup",
-            &result,
+        return Err(RunnerError::Internal(redact_session_restore_diagnostic(
+            format_guest_exec_failure("codex session cleanup", &result),
+            &[session_id],
+            session_path,
         )));
     }
     info!(
         run_id = %context.run_id,
-        session_id = %session_id,
+        session_fingerprint = %diagnostic_session_fingerprint(session_id),
         "cleaned up existing codex session files before restore",
     );
     Ok(())
 }
 
-/// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
+async fn write_session_history_file(
+    sandbox: &dyn Sandbox,
+    session_path: &str,
+    session_ids: &[&str],
+    session_history: &str,
+) -> RunnerResult<()> {
+    sandbox
+        .write_file(session_path, session_history.as_bytes())
+        .await
+        .map_err(|error| redact_session_restore_sandbox_error(error, session_ids, session_path))
+}
+
+fn redact_session_restore_sandbox_error(
+    error: SandboxError,
+    session_ids: &[&str],
+    session_path: &str,
+) -> RunnerError {
+    RunnerError::Sandbox(match error {
+        SandboxError::BackendUnavailable { message } => SandboxError::BackendUnavailable {
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::Configuration { message } => SandboxError::Configuration {
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::Initialization { phase, message } => SandboxError::Initialization {
+            phase,
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::Start { message } => SandboxError::Start {
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::InvalidState {
+            context,
+            state,
+            message,
+        } => SandboxError::InvalidState {
+            context,
+            state: redact_session_restore_diagnostic(state, session_ids, session_path),
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::Operation {
+            operation,
+            reason,
+            message,
+        } => SandboxError::Operation {
+            operation,
+            reason,
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::IdleTransition {
+            transition,
+            message,
+        } => SandboxError::IdleTransition {
+            transition,
+            message: redact_session_restore_diagnostic(message, session_ids, session_path),
+        },
+        SandboxError::Io(error) => SandboxError::Io(std::io::Error::new(
+            error.kind(),
+            redact_session_restore_diagnostic(error.to_string(), session_ids, session_path),
+        )),
+    })
+}
+
+fn redact_session_restore_diagnostic(
+    message: String,
+    session_ids: &[&str],
+    session_path: &str,
+) -> String {
+    let mut redacted = message.replace(session_path, SESSION_PATH_SENTINEL);
+    for session_id in session_ids {
+        for sensitive in session_redaction_variants(session_id) {
+            redacted = redact_session_id_variant(redacted, &sensitive);
+        }
+    }
+    redacted
+        .replace(SESSION_PATH_SENTINEL, REDACTED_SESSION_PATH)
+        .replace(SESSION_ID_SENTINEL, REDACTED_SESSION_ID)
+}
+
+fn redact_session_id_variant(message: String, sensitive: &str) -> String {
+    if sensitive.len() >= SUBSTRING_SESSION_ID_REDACTION_MIN_LEN {
+        return message.replace(sensitive, SESSION_ID_SENTINEL);
+    }
+
+    let mut redacted = String::with_capacity(message.len());
+    let mut last = 0;
+    for (start, _) in message.match_indices(sensitive) {
+        let end = start + sensitive.len();
+        let previous = message[..start].chars().next_back();
+        let next = message[end..].chars().next();
+        if is_session_token_boundary(previous) && is_session_token_boundary(next) {
+            redacted.push_str(&message[last..start]);
+            redacted.push_str(SESSION_ID_SENTINEL);
+            last = end;
+        }
+    }
+    if last == 0 {
+        message
+    } else {
+        redacted.push_str(&message[last..]);
+        redacted
+    }
+}
+
+fn is_session_token_boundary(ch: Option<char>) -> bool {
+    !ch.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn session_redaction_variants(session_id: &str) -> Vec<String> {
+    let no_dashes = session_id.replace('-', "");
+    [
+        session_id.to_string(),
+        session_id.to_ascii_lowercase(),
+        session_id.to_ascii_uppercase(),
+        no_dashes.clone(),
+        no_dashes.to_ascii_lowercase(),
+        no_dashes.to_ascii_uppercase(),
+    ]
+    .into_iter()
+    .filter(|variant| !variant.is_empty())
+    .collect()
+}
+
+/// Returns true if the session ID is short enough for guest filenames and
+/// contains only safe characters (alphanumeric, dash, underscore).
 pub(super) fn is_valid_session_id(id: &str) -> bool {
     !id.is_empty()
+        && id.len() <= MAX_SESSION_ID_LEN
         && id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')

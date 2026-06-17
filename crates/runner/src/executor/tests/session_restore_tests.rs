@@ -1,8 +1,10 @@
-use sandbox::ExecResult;
+use sandbox::{ExecResult, SandboxError, SandboxInvalidStateContext, SandboxOperation};
 use sandbox_mock::MockSandbox;
+use tracing_subscriber::prelude::*;
 
 use super::super::session_restore::{is_valid_session_id, restore_session};
-use super::support::{minimal_context, sandbox_write_file_error};
+use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
+use crate::paths::diagnostic_session_fingerprint;
 use crate::types::ResumeSession;
 
 #[test]
@@ -18,6 +20,12 @@ fn session_id_validation_rejects_path_traversal() {
     for id in invalid_ids {
         assert!(!is_valid_session_id(id), "expected rejection for: {id:?}");
     }
+
+    let overlong_id = "a".repeat(129);
+    assert!(
+        !is_valid_session_id(&overlong_id),
+        "expected overlong session id rejection"
+    );
 }
 
 #[test]
@@ -49,12 +57,48 @@ async fn restore_session_writes_history() {
 async fn restore_session_rejects_invalid_session_id() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
+    let raw_session_id = "../../etc/passwd";
     let session = ResumeSession {
-        session_id: "../../etc/passwd".into(),
+        session_id: raw_session_id.into(),
         session_history: "data".into(),
     };
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
-    assert!(err.to_string().contains("invalid session_id"));
+    let message = err.to_string();
+    assert!(message.contains("invalid session_id"));
+    assert!(
+        !message.contains(raw_session_id),
+        "invalid-session error must not echo raw session id: {message}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let raw_session_id = "sess-sensitive-restore-17975";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+
+    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session)).await;
+
+    result.unwrap();
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let event = captured_event(&events, "restored session history");
+    assert_eq!(
+        event.fields.get("framework").map(String::as_str),
+        Some("claude-code")
+    );
+    assert_eq!(
+        event.fields.get("session_fingerprint").map(String::as_str),
+        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
+    assert!(
+        !event.fields.contains_key("path"),
+        "restore diagnostic must not include a path embedding the session id: {event:#?}"
+    );
 }
 
 #[tokio::test]
@@ -131,6 +175,50 @@ async fn restore_session_writes_codex_session() {
         writes[0].path
     );
     assert_eq!(writes[0].content, session.session_history.as_bytes());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let raw_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: "{}\n".into(),
+    };
+
+    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session)).await;
+
+    result.unwrap();
+    assert_captured_events_do_not_contain(&events, raw_session_id);
+    let restore_event = captured_event(&events, "restored session history");
+    assert_eq!(
+        restore_event.fields.get("framework").map(String::as_str),
+        Some("codex")
+    );
+    assert_eq!(
+        restore_event
+            .fields
+            .get("session_fingerprint")
+            .map(String::as_str),
+        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
+    assert!(
+        !restore_event.fields.contains_key("path"),
+        "restore diagnostic must not include a path embedding the session id: {restore_event:#?}"
+    );
+    let cleanup_event = captured_event(
+        &events,
+        "cleaned up existing codex session files before restore",
+    );
+    assert_eq!(
+        cleanup_event
+            .fields
+            .get("session_fingerprint")
+            .map(String::as_str),
+        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
+    );
 }
 
 #[tokio::test]
@@ -222,9 +310,11 @@ async fn restore_session_rejects_short_codex_session_id_without_cleanup() {
 
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
+    let message = err.to_string();
+    assert!(message.contains("invalid codex session_id"), "got: {err}");
     assert!(
-        err.to_string().contains("invalid codex session_id"),
-        "got: {err}"
+        !message.contains("abc"),
+        "invalid codex error must not echo raw session id: {message}"
     );
     assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
@@ -254,6 +344,312 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
     );
     assert!(message.contains("cleanup failed"), "got: {message}");
     assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_cleanup_failure_output() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_id_no_dashes = session_id.replace('-', "");
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        format!("stdout includes {session_id_no_dashes}").into_bytes(),
+        format!("find: {session_path}: Permission denied").into_bytes(),
+    )));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("codex session cleanup failed"));
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "cleanup failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(&session_id_no_dashes),
+        "cleanup failure must not echo no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "cleanup failure must not echo raw session path: {message}"
+    );
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn restore_session_redacts_claude_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "sess-sensitive-write-17975";
+    let session_path =
+        "/home/user/.claude/projects/-home-user-workspace/sess-sensitive-write-17975.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "write failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_id_no_dashes = session_id.replace('-', "");
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to rename temp file to {session_path}: thread {session_id_no_dashes}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "write failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(&session_id_no_dashes),
+        "write failure must not echo no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let raw_session_id = "019E9154C30470F0ADDE36EFB1BE1701";
+    let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": canonical_session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write original thread {raw_session_id} at {session_path}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(raw_session_id),
+        "write failure must not echo raw no-dash session id: {message}"
+    );
+    assert!(
+        !message.contains(canonical_session_id),
+        "write failure must not echo canonical session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let raw_session_id = "019e9154C30470f0ADDE36efB1be1701";
+    let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session = ResumeSession {
+        session_id: raw_session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": canonical_session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write original thread {raw_session_id} with canonical {canonical_session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(raw_session_id),
+        "write failure must not echo mixed-case raw session id: {message}"
+    );
+    assert!(
+        !message.contains(canonical_session_id),
+        "write failure must not echo canonical session id: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redacts_write_file_invalid_state() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "sess-invalid-state-17975";
+    let session_path =
+        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-state-17975.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(SandboxError::InvalidState {
+        context: SandboxInvalidStateContext::Operation(SandboxOperation::WriteFile),
+        state: format!("blocked for {session_path}"),
+        message: format!("cannot write session {session_id}"),
+    }));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(
+        !message.contains(session_id),
+        "invalid-state failure must not echo raw session id: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "invalid-state failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redaction_does_not_rewrite_markers() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "session";
+    let session_path = "/home/user/.claude/projects/-home-user-workspace/session.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
+        "redaction markers should stay readable: {message}"
+    );
+    assert!(
+        !message.contains("[redacted-[redacted-session-id]"),
+        "redaction markers must not be recursively rewritten: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
+}
+
+#[tokio::test]
+async fn restore_session_redaction_preserves_words_for_short_ids() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let session_id = "a";
+    let session_path = "/home/user/.claude/projects/-home-user-workspace/a.jsonl";
+    let session = ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    };
+    sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
+        "failed to write {session_path} for {session_id}"
+    ))));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("failed to write [redacted-session-path] for [redacted-session-id]"),
+        "short session id redaction should preserve surrounding words: {message}"
+    );
+    assert!(
+        !message.contains("f[redacted-session-id]iled"),
+        "short session id redaction must not rewrite ordinary words: {message}"
+    );
+    assert!(
+        !message.contains(session_path),
+        "write failure must not echo raw session path: {message}"
+    );
 }
 
 #[tokio::test]
@@ -304,4 +700,40 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(exec_calls[0].cmd.contains(".jsonl.vm0tmp-*"));
     assert!(exec_calls[0].cmd.contains("id_no_dashes"));
     assert!(exec_calls[0].cmd.contains("-delete"));
+}
+
+async fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: std::future::Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
+fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+    events
+        .iter()
+        .find(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+}
+
+fn assert_captured_events_do_not_contain(events: &[CapturedEvent], raw: &str) {
+    for event in events {
+        for (field, value) in &event.fields {
+            assert!(
+                !value.contains(raw),
+                "captured field {field} leaked raw session id {raw:?}: {event:#?}"
+            );
+        }
+    }
 }

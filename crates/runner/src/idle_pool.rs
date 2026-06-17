@@ -486,6 +486,7 @@ pub struct ReusableIdleSandbox {
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
+    pub session_id: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
     pub workspace_promotion: Option<WorkspaceImagePromotionContext>,
@@ -503,7 +504,7 @@ impl ReusableIdleSandbox {
             workspace_promotion,
         } = self;
         let IdleSandboxMetadata {
-            session_id: _,
+            session_id,
             sandbox_id: _,
             profile_name: _,
             device_rate_limits: _,
@@ -514,6 +515,7 @@ impl ReusableIdleSandbox {
 
         ReusableIdleSandboxParts {
             sandbox,
+            session_id,
             source_ip,
             storage_fingerprints,
             workspace_promotion,
@@ -1206,6 +1208,7 @@ mod tests {
         let sandbox = *sandbox;
         assert_eq!(sandbox.sandbox_id(), sandbox_id);
         let reused_parts = sandbox.into_parts();
+        assert_eq!(reused_parts.session_id, session_id);
         assert_eq!(reused_parts.source_ip, source_ip);
         assert_eq!(
             reused_parts.storage_fingerprints.storages,
