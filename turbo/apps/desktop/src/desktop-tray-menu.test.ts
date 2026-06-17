@@ -493,10 +493,14 @@ describe("desktop tray menu", () => {
 
     expect(findItem(menu, "Recent Commands").enabled).toBe(false);
     expect(commandItems).toHaveLength(5);
-    expect(commandItems[0]?.label).toContain("command-0 - App 0");
+    expect(commandItems[0]?.label).toMatch(
+      /^\d{2}:\d{2} - App 0 - command-0 - Succeeded$/,
+    );
     expect(commandItems[0]?.label).toMatch(/ - Succeeded$/);
     expect(commandItems[1]?.label).toMatch(/ - Running$/);
-    expect(commandItems[4]?.label).toContain("command-4 - App 4");
+    expect(commandItems[4]?.label).toMatch(
+      /^\d{2}:\d{2} - App 4 - command-4 - Succeeded$/,
+    );
     expect(commandItems[4]?.label).toMatch(/ - Succeeded$/);
     expect(
       commandItems.some((item) => {

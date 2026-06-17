@@ -296,10 +296,10 @@ function truncateMenuLabel(value: string): string {
 function formatRecentCommandLabel(
   entry: ComputerUseLocalCommandLogEntry,
 ): string {
-  const target = entry.app ? ` - ${entry.app}` : "";
+  const target = entry.app ? `${entry.app} - ` : "";
   const timestamp = formatTrayTime(entry.completedAt ?? entry.startedAt);
   return truncateMenuLabel(
-    `${entry.kind}${target} - ${timestamp} - ${COMMAND_STATUS_LABELS[entry.status]}`,
+    `${timestamp} - ${target}${entry.kind} - ${COMMAND_STATUS_LABELS[entry.status]}`,
   );
 }
 
