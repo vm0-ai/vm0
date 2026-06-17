@@ -324,7 +324,7 @@ export async function resolveAgentPhoneAuditLogsUrl(args: {
 }): Promise<string | undefined> {
   const overrides = await args.getFeatureOverrides(args.orgId, args.userId);
   args.signal.throwIfAborted();
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
     userId: args.userId,
     orgId: args.orgId,
     overrides,

@@ -225,9 +225,6 @@ export const storedExecutionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
-  chatStreamChannel: z.string().optional(),
-  chatStreamTopic: z.string().optional(),
-  chatStreamToken: z.string().optional(),
 });
 
 /**
@@ -294,9 +291,6 @@ export const executionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
-  chatStreamChannel: z.string().optional(),
-  chatStreamTopic: z.string().optional(),
-  chatStreamToken: z.string().optional(),
 });
 
 /**

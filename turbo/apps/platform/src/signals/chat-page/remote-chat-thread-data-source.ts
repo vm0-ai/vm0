@@ -10,7 +10,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$, setAblyMessageHandler$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import {
@@ -297,12 +297,6 @@ const subscribeRealtime$ = command(
         setAblyLoop$,
         `chatThreadMessageCreated:${threadId}`,
         handlers.onMessageCreated$,
-        signal,
-      ),
-      set(
-        setAblyMessageHandler$,
-        `chatThreadMessageDelta:${threadId}`,
-        handlers.onMessageDelta$,
         signal,
       ),
       set(

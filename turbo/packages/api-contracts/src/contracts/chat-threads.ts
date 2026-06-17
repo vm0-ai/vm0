@@ -261,16 +261,6 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
   }),
 ]);
 
-export const chatStreamDeltaPayloadSchema = z
-  .object({
-    messageId: z.string().uuid(),
-    runId: z.string().uuid(),
-    runEventId: z.string().min(1),
-    threadId: z.string().uuid(),
-    text: z.string(),
-  })
-  .strict();
-
 const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -979,9 +969,6 @@ export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
->;
-export type ChatStreamDeltaPayload = z.infer<
-  typeof chatStreamDeltaPayloadSchema
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;

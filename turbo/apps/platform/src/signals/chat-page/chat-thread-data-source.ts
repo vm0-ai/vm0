@@ -9,7 +9,6 @@ import type { ChatThread } from "../agent-chat.ts";
 
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
-  onMessageDelta$: Command<void, [unknown, AbortSignal]>;
   onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }

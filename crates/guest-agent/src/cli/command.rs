@@ -47,7 +47,6 @@ struct ClaudeArgsConfig<'a> {
     disallowed_tools: &'a str,
     tools: &'a str,
     settings: &'a str,
-    include_partial_messages: bool,
 }
 
 fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
@@ -82,10 +81,6 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         args.push(config.settings.to_string());
     }
 
-    if config.include_partial_messages {
-        args.push("--include-partial-messages".to_string());
-    }
-
     args
 }
 
@@ -96,7 +91,6 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
         disallowed_tools: env::disallowed_tools(),
         tools: env::tools(),
         settings: env::settings(),
-        include_partial_messages: env::chat_stream_config().is_some(),
     });
 
     let bin = if use_mock {
@@ -253,22 +247,6 @@ mod tests {
             disallowed_tools,
             tools,
             settings,
-            include_partial_messages: false,
-        })
-    }
-
-    fn build_claude_args_with_partial_messages_for_test(
-        include_partial_messages: bool,
-    ) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
-        disable_system_log();
-        build_claude_args(ClaudeArgsConfig {
-            resume_id: "",
-            append_system_prompt: "",
-            disallowed_tools: "",
-            tools: "",
-            settings: "",
-            include_partial_messages,
         })
     }
 
@@ -320,21 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn build_claude_args_includes_partial_messages_when_enabled() {
-        let args = build_claude_args_with_partial_messages_for_test(true);
-        assert!(args.contains(&"--include-partial-messages".to_string()));
-        assert_claude_prompt_is_not_positional(&args, "test");
-    }
-
-    #[test]
-    fn build_claude_args_omits_partial_messages_when_disabled() {
-        let args = build_claude_args_with_partial_messages_for_test(false);
-
-        assert!(!args.contains(&"--include-partial-messages".to_string()));
-        assert_claude_prompt_is_not_positional(&args, "test");
-    }
-
-    #[test]
     fn build_claude_args_resume_log_omits_resume_id() {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         let tmp = tempfile::tempdir().unwrap();
@@ -347,7 +310,6 @@ mod tests {
             disallowed_tools: "",
             tools: "",
             settings: "",
-            include_partial_messages: false,
         });
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();

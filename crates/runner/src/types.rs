@@ -112,12 +112,6 @@ pub struct ExecutionContext {
     pub billable_firewalls: Vec<String>,
     #[serde(default)]
     pub model_usage_provider: Option<String>,
-    #[serde(default)]
-    pub chat_stream_channel: Option<String>,
-    #[serde(default)]
-    pub chat_stream_topic: Option<String>,
-    #[serde(default)]
-    pub chat_stream_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -501,10 +495,7 @@ mod tests {
             "experimentalProfile": "browser",
             "featureFlags": {"computerUse": true, "audioOutput": false},
             "billableFirewalls": ["model-provider:vm0"],
-            "modelUsageProvider": "claude-sonnet-4-6",
-            "chatStreamChannel": "user:user_123",
-            "chatStreamTopic": "chatThreadMessageDelta:22222222-2222-4222-8222-222222222222",
-            "chatStreamToken": "stream-token"
+            "modelUsageProvider": "claude-sonnet-4-6"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
@@ -541,12 +532,6 @@ mod tests {
             ctx.model_usage_provider.as_deref(),
             Some("claude-sonnet-4-6")
         );
-        assert_eq!(ctx.chat_stream_channel.as_deref(), Some("user:user_123"));
-        assert_eq!(
-            ctx.chat_stream_topic.as_deref(),
-            Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222")
-        );
-        assert_eq!(ctx.chat_stream_token.as_deref(), Some("stream-token"));
     }
 
     #[test]

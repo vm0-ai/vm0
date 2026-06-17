@@ -1149,7 +1149,7 @@ export function createBddIntegrationApi(context: TestContext) {
       await accept(
         setupApp({ context })(zeroFeatureSwitchesContract).update({
           headers: authenticate(context, routeMocks, actor),
-          body: { switches: { [FeatureSwitchKey.AuditLink]: true } },
+          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
       );
