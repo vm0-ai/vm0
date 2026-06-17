@@ -14,16 +14,11 @@ USAGE_UNDERBILLING_LOG_TYPE = "usage_underbilling"
 USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
 _UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
 _SECRET_FIELD_MARKERS = (
-    "access_key",
     "accesskey",
-    "api_key",
-    "api-key",
     "apikey",
     "authorization",
     "credential",
     "password",
-    "private_key",
-    "private-key",
     "privatekey",
     "secret",
     "token",
@@ -34,7 +29,10 @@ _TRUNCATION_SUFFIX = "..."
 
 
 def _stderr_field_is_secret_like(key: str, value: object) -> bool:
-    return isinstance(value, str) and any(marker in key.lower() for marker in _SECRET_FIELD_MARKERS)
+    if value is None or isinstance(value, bool | int | float):
+        return False
+    normalized_key = "".join(ch for ch in key.lower() if ch.isalnum())
+    return any(marker in normalized_key for marker in _SECRET_FIELD_MARKERS)
 
 
 def _truncate_stderr_text(value: str, max_chars: int) -> str:
