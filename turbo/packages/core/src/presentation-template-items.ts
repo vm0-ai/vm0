@@ -1810,6 +1810,24 @@ const PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/968f9b6a-3ac9-4933-9902-df630f41e5b2/slide-15.png",
 ] as const satisfies readonly [string, ...string[]];
 
+const BUSINESS_DATA_CDN_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a918a437-969d-4c2b-99b6-873b87ff010c/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ae2de1d-9375-4ac9-8790-a89dd8c005aa/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c748158b-2762-45e4-af7b-1518990c3d99/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bf8ec9a-87bc-4cb6-ac4d-0632025e05f0/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59d39d34-823a-49a3-bb68-60b52609ea31/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56cf6793-4e43-4d41-98d3-69fe56587794/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14071bf1-4f38-4777-a86c-ed4b9e215162/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b592f0fa-5989-4c31-95da-f7b2c12e232f/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2c94257-3cfd-41f6-bf80-fe0ae52b7c1e/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19aa9c33-08e6-48ea-ad5d-00101e91987e/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d867953f-d22d-44c9-952b-546832f3d3cc/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4fc1a75-d67d-436d-871e-59247b181f47/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9de2074d-c006-4de1-89de-f300a2edf8d7/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d4b209c-72ae-4567-a74b-d7b94bcbe048/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f19a05ae-bf5d-4662-bcf0-42edd46cf03e/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
 export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
@@ -1836,5 +1854,17 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
       designSystemId: "design-system:mauve-dusk",
       templateId: "template:html-ppt-botane-organic",
+    },
+    {
+      slug: "business-data-presentation",
+      title: "Business data presentation",
+      prompt:
+        "/gen presentation with design system `berry-pop` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3ff9478-a282-4946-9b1b-431c4cdb1788/example.html",
+      previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
+      previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
+      designSystemId: "design-system:berry-pop",
+      templateId: "template:html-ppt-business-data",
     },
   ];

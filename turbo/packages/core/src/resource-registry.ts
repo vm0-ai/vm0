@@ -53,10 +53,8 @@ export interface RegistryEntry {
   readonly targets?: readonly GenerationTarget[];
 }
 
-export interface VideoTemplateRegistryEntry extends Omit<
-  RegistryEntry,
-  "kind" | "source"
-> {
+export interface VideoTemplateRegistryEntry
+  extends Omit<RegistryEntry, "kind" | "source"> {
   readonly kind: "video-template";
   readonly source: ResourceSourceRef & {
     readonly repo: string;
@@ -895,6 +893,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       repo: VM0_SKILLS_REPO,
       ref: VM0_SKILLS_REF,
       path: "presentation-template/aplocoto",
+    },
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-business-data",
+    kind: "template",
+    name: "Business Data Presentation",
+    description:
+      "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-template/business-data",
     },
     targets: ["presentation"],
   },
@@ -2651,6 +2662,18 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       repo: VM0_SKILLS_REPO,
       ref: VM0_SKILLS_REF,
       path: "presentation-design-system/playful-editorial",
+    },
+  },
+  {
+    id: "design-system:berry-pop",
+    kind: "design-system",
+    name: "Berry Pop",
+    description:
+      "Magenta/plum data-deck look with Space Grotesk display, Lexend body, soft corners, plus marks, stat blocks, photo squares, bars, and rings.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "presentation-design-system/berry-pop",
     },
   },
   {
