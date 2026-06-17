@@ -39,12 +39,12 @@ pub(crate) fn ensure_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
 fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
     host_file::ensure_dir(
         group_dir,
-        DirMode::TrustedParent,
+        DirMode::SharedTrustedParent,
         "local queue group directory",
     )
 }
 
-pub(crate) fn ensure_queue_dir(path: &Path, context: &str) -> io::Result<()> {
+fn ensure_queue_dir(path: &Path, context: &str) -> io::Result<()> {
     host_file::ensure_dir(path, DirMode::Private, context)
 }
 
@@ -119,6 +119,17 @@ mod tests {
 
         assert_eq!(mode(&group_dir), 0o755);
         assert_eq!(mode(&job_dir), 0o700);
+    }
+
+    #[test]
+    fn ensure_profile_jobs_dir_creates_missing_group_dir_as_shared_trusted() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("groups").join("org").join("group");
+
+        let job_dir = ensure_profile_jobs_dir(&group_dir, crate::profile::DEFAULT_PROFILE).unwrap();
+
+        assert_eq!(mode(&group_dir), host_file::SHARED_TRUSTED_DIR_MODE);
+        assert_eq!(mode(&job_dir), host_file::PRIVATE_DIR_MODE);
     }
 
     #[test]

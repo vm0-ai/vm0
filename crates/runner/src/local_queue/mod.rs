@@ -7,8 +7,7 @@ mod types;
 
 pub(crate) use fs::{
     create_private_marker, ensure_cancels_dir, ensure_claims_dir, ensure_profile_jobs_dir,
-    ensure_queue_dir, ensure_results_dir, open_private_new_file, write_private_file,
-    write_private_marker,
+    ensure_results_dir, open_private_new_file, write_private_file, write_private_marker,
 };
 pub(crate) use paths::{
     cancel_path, cancels_dir, claim_path, claims_dir, job_path, jobs_dir, profile_jobs_dir,

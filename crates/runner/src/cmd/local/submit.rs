@@ -610,6 +610,22 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_marker_write_creates_missing_group_dir_as_shared_trusted() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("groups").join("org").join("group");
+        let job_id = RunId::new_v4();
+        let result_path = local_queue::result_path(&group_dir, job_id);
+
+        let marker =
+            write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
+
+        assert_eq!(std::fs::read(&result_path).unwrap(), marker.bytes);
+        assert_eq!(mode(&group_dir), crate::host_file::SHARED_TRUSTED_DIR_MODE);
+        assert_eq!(mode(&local_queue::results_dir(&group_dir)), 0o700);
+        assert_eq!(mode(&result_path), 0o600);
+    }
+
+    #[test]
     fn abandoned_marker_write_cleans_tmp_when_publish_fails() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();

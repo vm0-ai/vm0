@@ -13,6 +13,7 @@ use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
 
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 pub(crate) const PRIVATE_FILE_MODE: u32 = 0o600;
+pub(crate) const SHARED_TRUSTED_DIR_MODE: u32 = 0o755;
 
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
@@ -22,6 +23,8 @@ const STICKY_BIT: u32 = 0o1000;
 pub(crate) enum DirMode {
     Private,
     TrustedParent,
+    /// Create missing directories as shared/trusted, but only validate existing ones.
+    SharedTrustedParent,
 }
 
 struct DirWalk<'a> {
@@ -189,15 +192,7 @@ fn open_dir_components(
     }
 
     if !saw_normal_component {
-        secure_dir_component(
-            &current,
-            &current_path,
-            path,
-            mode,
-            context,
-            expected_uid,
-            true,
-        )?;
+        secure_dir_component(&current, &current_path, &walk, true, false)?;
     }
 
     Ok(current)
@@ -247,11 +242,9 @@ fn open_dir_component(
             secure_dir_component(
                 &fd,
                 &component_path(parent_path, name),
-                walk.full_path,
-                walk.mode,
-                walk.context,
-                walk.expected_uid,
+                walk,
                 is_final,
+                false,
             )?;
             Ok(fd)
         }
@@ -275,8 +268,13 @@ fn create_and_open_dir_component(
     walk: &DirWalk<'_>,
     is_final: bool,
 ) -> io::Result<OwnedFd> {
-    match mkdirat(parent, name, Mode::from_bits_truncate(PRIVATE_DIR_MODE)) {
-        Ok(()) | Err(nix::errno::Errno::EEXIST) => {}
+    let created = match mkdirat(
+        parent,
+        name,
+        Mode::from_bits_truncate(create_dir_mode(walk.mode)),
+    ) {
+        Ok(()) => true,
+        Err(nix::errno::Errno::EEXIST) => false,
         Err(e) => {
             return Err(io::Error::other(format!(
                 "create {} component {} for {}: {e}",
@@ -285,20 +283,25 @@ fn create_and_open_dir_component(
                 walk.full_path.display()
             )));
         }
-    }
+    };
 
     let fd = openat(parent, name, dir_open_flags(), Mode::empty())
         .map_err(|e| dir_component_error("open", name, walk.full_path, walk.context, e))?;
     secure_dir_component(
         &fd,
         &component_path(parent_path, name),
-        walk.full_path,
-        walk.mode,
-        walk.context,
-        walk.expected_uid,
+        walk,
         is_final,
+        created,
     )?;
     Ok(fd)
+}
+
+fn create_dir_mode(mode: DirMode) -> u32 {
+    match mode {
+        DirMode::Private | DirMode::TrustedParent => PRIVATE_DIR_MODE,
+        DirMode::SharedTrustedParent => SHARED_TRUSTED_DIR_MODE,
+    }
 }
 
 fn ensure_parent_not_replaceable(
@@ -335,54 +338,96 @@ fn ensure_parent_not_replaceable(
 fn secure_dir_component(
     fd: &(impl AsFd + AsRawFd),
     component_path: &Path,
-    full_path: &Path,
-    mode: DirMode,
-    context: &str,
-    expected_uid: u32,
+    walk: &DirWalk<'_>,
     is_final: bool,
+    created: bool,
 ) -> io::Result<()> {
     let stat = fstat(fd).map_err(|e| {
         io::Error::other(format!(
-            "stat {context} component {} for {}: {e}",
+            "stat {} component {} for {}: {e}",
+            walk.context,
             component_path.display(),
-            full_path.display()
+            walk.full_path.display()
         ))
     })?;
     let fd_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
     if fd_type != SFlag::S_IFDIR {
         return Err(permission_denied(format!(
             "{} is not a directory",
-            full_path.display()
+            walk.full_path.display()
         )));
     }
 
-    match mode {
+    match walk.mode {
         DirMode::Private if is_final => {
-            if stat.st_uid != expected_uid {
+            if stat.st_uid != walk.expected_uid {
                 return Err(permission_denied(format!(
-                    "{context} {} is owned by uid {}, but runner euid is {expected_uid}",
+                    "{} {} is owned by uid {}, but runner euid is {}",
+                    walk.context,
                     component_path.display(),
-                    stat.st_uid
+                    stat.st_uid,
+                    walk.expected_uid
                 )));
             }
-            chmod_private_dir_fd(fd, component_path, context)?;
+            chmod_dir_fd(fd, component_path, PRIVATE_DIR_MODE, walk.context)?;
         }
         DirMode::TrustedParent if is_final => {
-            validate_trusted_component_owner(stat.st_uid, expected_uid, context, component_path)?;
+            validate_trusted_component_owner(
+                stat.st_uid,
+                walk.expected_uid,
+                walk.context,
+                component_path,
+            )?;
             let component_mode = (stat.st_mode as u32) & 0o7777;
             if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
                 return Err(permission_denied(format!(
-                    "{context} {} is group/other writable",
+                    "{} {} is group/other writable",
+                    walk.context,
+                    component_path.display()
+                )));
+            }
+        }
+        DirMode::SharedTrustedParent => {
+            validate_trusted_component_owner(
+                stat.st_uid,
+                walk.expected_uid,
+                walk.context,
+                component_path,
+            )?;
+            if created && stat.st_uid == walk.expected_uid {
+                chmod_dir_fd(fd, component_path, SHARED_TRUSTED_DIR_MODE, walk.context)?;
+            }
+            let component_mode = (stat.st_mode as u32) & 0o7777;
+            if is_final {
+                if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
+                    return Err(permission_denied(format!(
+                        "{} {} is group/other writable",
+                        walk.context,
+                        component_path.display()
+                    )));
+                }
+            } else if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0
+                && component_mode & STICKY_BIT == 0
+            {
+                return Err(permission_denied(format!(
+                    "{} component {} is group/other writable without the sticky bit",
+                    walk.context,
                     component_path.display()
                 )));
             }
         }
         _ => {
-            validate_trusted_component_owner(stat.st_uid, expected_uid, context, component_path)?;
+            validate_trusted_component_owner(
+                stat.st_uid,
+                walk.expected_uid,
+                walk.context,
+                component_path,
+            )?;
             let component_mode = (stat.st_mode as u32) & 0o7777;
             if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0 && component_mode & STICKY_BIT == 0 {
                 return Err(permission_denied(format!(
-                    "{context} component {} is group/other writable without the sticky bit",
+                    "{} component {} is group/other writable without the sticky bit",
+                    walk.context,
                     component_path.display()
                 )));
             }
@@ -444,17 +489,17 @@ fn chmod_private_file_fd<Fd: AsRawFd>(file: &Fd, path: &Path, context: &str) -> 
 }
 
 #[cfg(target_os = "linux")]
-fn chmod_private_dir_fd<Fd: AsRawFd>(fd: &Fd, path: &Path, context: &str) -> io::Result<()> {
+fn chmod_dir_fd<Fd: AsRawFd>(fd: &Fd, path: &Path, mode: u32, context: &str) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let fd_path = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
-    std::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE))
+    std::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(mode))
         .map_err(|e| wrap_io(e, format!("chmod {context} {}", path.display())))
 }
 
 #[cfg(not(target_os = "linux"))]
-fn chmod_private_dir_fd<Fd: AsFd>(fd: &Fd, path: &Path, context: &str) -> io::Result<()> {
-    nix::sys::stat::fchmod(fd, Mode::from_bits_truncate(PRIVATE_DIR_MODE))
+fn chmod_dir_fd<Fd: AsFd>(fd: &Fd, path: &Path, mode: u32, context: &str) -> io::Result<()> {
+    nix::sys::stat::fchmod(fd, Mode::from_bits_truncate(mode))
         .map_err(|e| io::Error::other(format!("chmod {context} {}: {e}", path.display())))
 }
 
@@ -504,9 +549,13 @@ fn wrap_io(error: io::Error, context: String) -> io::Error {
 #[cfg(test)]
 mod tests {
     use std::io;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     use super::*;
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
 
     #[test]
     fn ensure_dir_rejects_private_intermediate_symlink_without_touching_target() {
@@ -576,6 +625,47 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         assert!(!base.join("missing").exists());
         assert!(!base.join("leaf").exists());
+    }
+
+    #[test]
+    fn ensure_dir_creates_shared_trusted_parent_as_shared() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("base").join("child");
+
+        ensure_dir(&path, DirMode::SharedTrustedParent, "test directory").unwrap();
+
+        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_keeps_existing_shared_trusted_parent_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE)).unwrap();
+
+        ensure_dir(&path, DirMode::SharedTrustedParent, "test directory").unwrap();
+
+        assert_eq!(mode(&path), PRIVATE_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_rejects_shared_trusted_parent_intermediate_symlink_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let error = ensure_dir(
+            &link.join("child"),
+            DirMode::SharedTrustedParent,
+            "test directory",
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!target.join("child").exists());
     }
 
     #[test]
