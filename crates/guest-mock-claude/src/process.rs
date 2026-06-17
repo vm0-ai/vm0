@@ -57,7 +57,7 @@ fn run_stream_json_input(parsed: ParsedArgs) -> ExitCode {
             expected_follow_ups,
         ),
         MockScenario::InvalidActiveInputSmokeCount(count) => {
-            eprintln!("invalid @active-input-smoke follow-up count: {count:?}");
+            eprintln!("{}", invalid_active_input_count_message(count));
             ExitCode::from(1)
         }
         scenario => {
@@ -74,6 +74,13 @@ fn run_prompt_scenario(prompt: &str, output_format: &str) -> ExitCode {
     run_scenario(MockScenario::from_prompt(prompt), prompt, output_format)
 }
 
+fn invalid_active_input_count_message(count: &str) -> String {
+    format!(
+        "invalid @active-input-smoke follow-up count ({} bytes)",
+        count.len()
+    )
+}
+
 fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -> ExitCode {
     match scenario {
         MockScenario::ActiveInputSmoke { .. } => {
@@ -81,7 +88,7 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
             ExitCode::from(1)
         }
         MockScenario::InvalidActiveInputSmokeCount(count) => {
-            eprintln!("invalid @active-input-smoke follow-up count: {count:?}");
+            eprintln!("{}", invalid_active_input_count_message(count));
             ExitCode::from(1)
         }
         MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),

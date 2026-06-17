@@ -610,6 +610,9 @@ fn active_input_invalid_large_count_drains_stderr() -> Result<(), Box<dyn std::e
         "unexpected stderr prefix: {}",
         stderr.chars().take(120).collect::<String>()
     );
+    assert!(stderr.contains("(131072 bytes)"));
+    assert!(!stderr.contains(&invalid_count));
+    assert!(stderr.len() < 128);
     Ok(())
 }
 
