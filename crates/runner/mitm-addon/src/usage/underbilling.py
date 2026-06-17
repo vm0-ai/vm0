@@ -13,7 +13,9 @@ UnderbillingClass = Literal["confirmed", "risk"]
 
 USAGE_UNDERBILLING_LOG_TYPE = "usage_underbilling"
 USAGE_UNDERBILLING_COMPONENT_MITM_ADDON = "mitm_addon"
-_UNDERBILLING_PROTECTED_FIELDS = frozenset(("type", "reason", "underbilling_class", "component"))
+_UNDERBILLING_PROTECTED_FIELDS = frozenset(
+    ("type", "reason", "underbilling_class", "component", "timestamp", "level", "message")
+)
 _SECRET_FIELD_WORDS = frozenset(
     (
         "authorization",

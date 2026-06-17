@@ -17,6 +17,9 @@ def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
         component="wrong_component",
         underbilling_class="confirmed",
         run_id="run-1",
+        level="debug",
+        message="wrong_message",
+        timestamp="wrong_timestamp",
     )
 
     [entry] = read_jsonl_entries_after_flush(proxy_log_path)
@@ -25,6 +28,9 @@ def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
     assert entry["underbilling_class"] == "risk"
     assert entry["component"] == "mitm_addon"
     assert entry["run_id"] == "run-1"
+    assert entry["level"] == "error"
+    assert entry["message"] == "Usage underbilling signal"
+    assert entry["timestamp"] != "wrong_timestamp"
 
 
 def test_underbilling_log_without_proxy_path_uses_stderr(mitm_ctx):
@@ -66,6 +72,9 @@ def test_underbilling_stderr_fallback_preserves_context(mitm_ctx):
             missing_sandbox_token=True,
             missing_api_url=False,
             dropped_webhook_batch_count=2,
+            level="debug",
+            message="wrong_message",
+            timestamp="wrong_timestamp",
         )
 
     log.error.assert_called_once()
@@ -83,6 +92,9 @@ def test_underbilling_stderr_fallback_preserves_context(mitm_ctx):
     assert "type=usage_event" not in message
     assert "wrong_reason" not in message
     assert "wrong_component" not in message
+    assert "level=debug" not in message
+    assert "message=wrong_message" not in message
+    assert "timestamp=wrong_timestamp" not in message
     assert message.endswith("Cannot report usage event")
 
 
