@@ -2502,7 +2502,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "rounded-lg p-[3px] transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-1",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
