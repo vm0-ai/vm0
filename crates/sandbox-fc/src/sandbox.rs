@@ -2869,15 +2869,16 @@ fn idle_transition_error(
 // network pool, NBD COW device, firecracker child process, etc.).
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
-const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
+const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
 /// Accept small residual differences between requested and reported balloon size.
 /// This fixed tolerance is calibrated for the current 4 GiB production profile,
-/// where observed post-settle deficits were tens of MiB. If much smaller
-/// production profiles are introduced, revisit whether this should scale with
-/// `target_mib` so tiny balloon targets are not fully swallowed by tolerance.
-const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
+/// where observed post-settle deficits are commonly in the low hundreds of MiB
+/// when the guest reports little available memory. If much smaller production
+/// profiles are introduced, revisit whether this should scale with `target_mib`
+/// so tiny balloon targets are not fully swallowed by tolerance.
+const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 256;
 const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
 const BYTES_PER_MIB: i64 = 1024 * 1024;
 
@@ -6887,7 +6888,7 @@ mod tests {
 
         assert!(!has_captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway"
+            "balloon inflate incomplete after 5s, pausing anyway"
         ));
         let event = captured_event(
             &events,
@@ -6912,7 +6913,7 @@ mod tests {
         let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
             std::collections::VecDeque::new(),
             std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-                target_mib, 1300,
+                target_mib, 1250,
             ))]),
         )
         .await;
@@ -6923,17 +6924,17 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
-        assert_event_field(event, "actual", "Some(1300)");
+        assert_event_field(event, "actual", "Some(1250)");
         assert_event_field(event, "target", "1536");
-        assert_event_field(event, "deficit_mib", "Some(236)");
+        assert_event_field(event, "deficit_mib", "Some(286)");
         assert_event_field(event, "requested_target_mib", "1536");
         assert_event_field(event, "target_observed", "true");
         assert_event_field(event, "observed_target_mib", "Some(1536)");
-        assert_event_field(event, "first_actual_mib", "Some(1300)");
-        assert_event_field(event, "max_actual_mib", "Some(1300)");
+        assert_event_field(event, "first_actual_mib", "Some(1250)");
+        assert_event_field(event, "max_actual_mib", "Some(1250)");
         assert_event_field(event, "actual_delta_mib", "Some(0)");
         assert_event_field(event, "reason", "actual_stalled");
     }
@@ -6960,7 +6961,7 @@ mod tests {
         let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
             std::collections::VecDeque::new(),
             std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-                1024, 1300,
+                1024, 1200,
             ))]),
         )
         .await;
@@ -6971,7 +6972,7 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "target_observed", "false");
@@ -6996,7 +6997,7 @@ mod tests {
 
         let event = captured_event(
             &events,
-            "balloon inflate incomplete after 10s, pausing anyway",
+            "balloon inflate incomplete after 5s, pausing anyway",
         );
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "actual", "Some(900)");
@@ -7862,9 +7863,10 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn park_pauses_when_balloon_is_within_settle_tolerance() {
-        // Production samples have shown 4 GiB VMs reaching 3545-3555 MiB
-        // against a 3584 MiB target. That is close enough to park without
-        // waiting for the full 10s timeout and emitting a WARN.
+        // Production samples have shown 4 GiB VMs often settling with a
+        // low-hundreds MiB residual while the guest reports little available
+        // memory. That is close enough to park without waiting for the full
+        // timeout and emitting a WARN.
         let balloon_actual = Arc::new(AtomicU32::new(3545));
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
@@ -7943,7 +7945,7 @@ mod tests {
         // Balloon never reaches target — wait_for_balloon must time out
         // and proceed to pause anyway. With `start_paused = true`, tokio
         // auto-advances simulated time when all tasks await timers, so
-        // the 10s timeout completes instantly in wall-clock time.
+        // the timeout completes instantly in wall-clock time.
         let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
