@@ -121,9 +121,9 @@ const BATCH_PRESENTATION_PICKER_ITEMS = [
   },
   {
     slug: "playful-pop-deck",
-    designSystemId: "design-system:pop-art",
+    designSystemId: "design-system:playful-pop",
     templateId: "template:html-ppt-playful-pop",
-    designSourcePath: "presentation-design-system/pop-art",
+    designSourcePath: "presentation-design-system/playful-pop",
     templateSourcePath: "presentation-template/playful-pop",
   },
 ] as const;
@@ -255,7 +255,7 @@ describe("presentation template items", () => {
       throw new Error("missing business-data-presentation picker item");
     }
 
-    expect(item.designSystemId).toBe("design-system:berry-pop");
+    expect(item.designSystemId).toBe("design-system:business-data");
     expect(item.templateId).toBe("template:html-ppt-business-data");
     expect(item.previewImages.length).toBe(15);
     expect(item.embedUrl).toMatch(
@@ -266,7 +266,7 @@ describe("presentation template items", () => {
     expect(findTemplate(item.templateId)?.targets).toContain("presentation");
     expectR2ArchiveSource(
       item.designSystemId,
-      "presentation-design-system/berry-pop",
+      "presentation-design-system/business-data",
     );
     expectR2ArchiveSource(
       item.templateId,
@@ -310,7 +310,7 @@ describe("presentation template items", () => {
     if (!botaneItem) {
       throw new Error("Botane picker item is missing");
     }
-    expect(botaneItem.designSystemId).toBe("design-system:mauve-dusk");
+    expect(botaneItem.designSystemId).toBe("design-system:botane-organic");
     expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
     expect(botaneItem.previewImages.length).toBe(15);
     expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
@@ -322,7 +322,7 @@ describe("presentation template items", () => {
     );
     expectR2ArchiveSource(
       botaneItem.designSystemId,
-      "presentation-design-system/mauve-dusk",
+      "presentation-design-system/botane-organic",
     );
     expectR2ArchiveSource(
       botaneItem.templateId,

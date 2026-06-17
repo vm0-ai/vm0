@@ -2136,25 +2136,25 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "botane-organic-deck",
       title: "Botane organic deck",
       prompt:
-        "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
+        "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
       previewImage:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c289e69-1d4d-4128-a013-80b1317b6a8c/slide-01.png",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
-      designSystemId: "design-system:mauve-dusk",
+      designSystemId: "design-system:botane-organic",
       templateId: "template:html-ppt-botane-organic",
     },
     {
       slug: "business-data-presentation",
       title: "Business data presentation",
       prompt:
-        "/gen presentation with design system `berry-pop` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
+        "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3ff9478-a282-4946-9b1b-431c4cdb1788/example.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
-      designSystemId: "design-system:berry-pop",
+      designSystemId: "design-system:business-data",
       templateId: "template:html-ppt-business-data",
     },
     {
@@ -2252,13 +2252,13 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "playful-pop-deck",
       title: "Playful pop deck",
       prompt:
-        "/gen presentation with design system `pop-art` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
+        "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30030f16-caf2-4bd4-bec9-b07b08d67a0b/example.html",
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
-      designSystemId: "design-system:pop-art",
+      designSystemId: "design-system:playful-pop",
       templateId: "template:html-ppt-playful-pop",
     },
   ];

@@ -7,6 +7,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import * as tar from "tar";
 import {
+  findColorSystem,
   findDesignSystem,
   findImageStyle,
   findTemplate,
@@ -31,6 +32,7 @@ function candidateIds(id: string): readonly string[] {
   return [
     `template:${id}`,
     `design-system:${id}`,
+    `color-system:${id}`,
     `image-style:${id}`,
     `video-template:${id}`,
   ];
@@ -41,6 +43,7 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     const entry =
       findTemplate(candidate) ??
       findDesignSystem(candidate) ??
+      findColorSystem(candidate) ??
       findImageStyle(candidate) ??
       findVideoTemplate(candidate);
     if (entry) {
