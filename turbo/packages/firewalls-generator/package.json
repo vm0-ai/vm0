@@ -189,6 +189,7 @@
     "generate:printful": "tsx src/index.ts printful",
     "generate:productlane": "tsx src/index.ts productlane",
     "generate:prisma-postgres": "tsx src/index.ts prisma-postgres",
+    "generate:profound": "tsx src/index.ts profound",
     "generate:pushinator": "tsx src/index.ts pushinator",
     "generate:qdrant": "tsx src/index.ts qdrant",
     "generate:qiita": "tsx src/index.ts qiita",

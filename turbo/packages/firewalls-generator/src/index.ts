@@ -177,6 +177,7 @@ import { generate as generatePorkbun } from "./porkbun";
 import { generate as generatePrintful } from "./printful";
 import { generate as generateProductlane } from "./productlane";
 import { generate as generatePrismaPostgres } from "./prisma-postgres";
+import { generate as generateProfound } from "./profound";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
@@ -421,6 +422,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   porkbun: generatePorkbun,
   printful: generatePrintful,
   "prisma-postgres": generatePrismaPostgres,
+  profound: generateProfound,
   productlane: generateProductlane,
   pushinator: generatePushinator,
   qdrant: generateQdrant,
