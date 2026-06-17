@@ -2296,7 +2296,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await runs.grantProEntitlement(actor);
     await integrations.configureSlackRunModelPolicies(actor);
     await bdd.readOnboardingStatus(actor);
-    await integrations.enableAuditLinkSwitch(actor);
+    await integrations.enableZeroDebugSwitch(actor);
     const slackUser1 = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUser1,

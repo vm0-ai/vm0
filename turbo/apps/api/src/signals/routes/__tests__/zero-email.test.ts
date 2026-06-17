@@ -700,7 +700,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     });
   });
 
-  it("includes the audit log link when the AuditLink switch is enabled", async () => {
+  it("includes the audit log link when ZeroDebug is enabled", async () => {
     const fx = await fixture();
     const { callbackId, runId, thread } = await seedReplyCallback({
       fixture: fx,
@@ -709,7 +709,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.AuditLink]: true },
+      switches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
     mockRunOutput("audited email answer");
 
@@ -981,7 +981,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     });
   });
 
-  it("includes the audit log link when the AuditLink switch is enabled", async () => {
+  it("includes the audit log link when ZeroDebug is enabled", async () => {
     const fx = await fixture();
     const agentSessionId = await seedAgentSession(fx);
     const { callbackId, runId, replyToken } = await seedTriggerCallback({
@@ -992,7 +992,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.AuditLink]: true },
+      switches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
     mockRunOutput("audited trigger response");
 

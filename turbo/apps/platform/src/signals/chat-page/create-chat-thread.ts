@@ -33,13 +33,11 @@ import {
 } from "./optimistic-chat-messages.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
-  chatStreamDeltaPayloadSchema,
   chatMessagesContract,
   chatThreadArtifactsContract,
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
-  type ChatMessageUsagePayload,
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -81,12 +79,6 @@ import {
 } from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
-import {
-  applyStreamingDelta$,
-  clearStreamingDraftsForThread$,
-  createStreamingDraftsForThread,
-  reconcileStreamingDrafts$,
-} from "./streaming-drafts.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -533,7 +525,6 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  threadUsage$: Computed<Promise<ChatMessageUsagePayload | undefined>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
@@ -1116,7 +1107,6 @@ function createAppendServerMessages(
       return changed ? Array.from(byId.values()) : prev;
     });
     set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
-    set(reconcileStreamingDrafts$, { threadId, messages: msgs });
   });
 }
 
@@ -1168,7 +1158,6 @@ function createRawMessagesComputed({
   historyMessages$,
   serverMessages$,
   optimisticMessages$,
-  streamingDrafts$,
 }: {
   initialPage$: Computed<
     Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
@@ -1176,7 +1165,6 @@ function createRawMessagesComputed({
   historyMessages$: State<PagedChatMessage[]>;
   serverMessages$: State<PagedChatMessage[]>;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
-  streamingDrafts$: Computed<PagedChatMessage[]>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
     const initial = await get(initialPage$);
@@ -1190,15 +1178,11 @@ function createRawMessagesComputed({
     const optimistic = get(optimisticMessages$).filter((entry) => {
       return !serverIds.has(entry.message.id);
     });
-    const streamingDrafts = get(streamingDrafts$);
     const raw: ChatMessageProjectionEntry[] = [
       ...server.map((message) => {
         return { message };
       }),
       ...optimistic,
-      ...streamingDrafts.map((message) => {
-        return { message };
-      }),
     ];
     return raw;
   });
@@ -1315,10 +1299,6 @@ function createFetchNextPageCommand({
         threadId,
         messages: initial.messages,
       });
-      set(reconcileStreamingDrafts$, {
-        threadId,
-        messages: initial.messages,
-      });
       set(reportedCompletedRunIds$, (prev) => {
         const ids = completedRunIdsFromMessages(initial.messages);
         if (ids.length === 0) {
@@ -1375,128 +1355,6 @@ function createFetchNextPageCommand({
   });
 }
 
-function usageSettlementSortValue(
-  usage: ChatMessageUsagePayload,
-  createdAt: string,
-): number {
-  const timestamp = Date.parse(usage.settledAt ?? createdAt);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function aggregateThreadUsage(
-  messages: readonly PagedChatMessage[],
-): ChatMessageUsagePayload | undefined {
-  const latestByRunId = new Map<
-    string,
-    {
-      readonly usage: ChatMessageUsagePayload;
-      readonly sortValue: number;
-      readonly index: number;
-    }
-  >();
-
-  for (const [index, message] of messages.entries()) {
-    if (!isUsageMessage(message) || message.runId === undefined) {
-      continue;
-    }
-    const sortValue = usageSettlementSortValue(
-      message.usage,
-      message.createdAt,
-    );
-    const existing = latestByRunId.get(message.runId);
-    if (
-      existing === undefined ||
-      sortValue > existing.sortValue ||
-      (sortValue === existing.sortValue && index > existing.index)
-    ) {
-      latestByRunId.set(message.runId, {
-        usage: message.usage,
-        sortValue,
-        index,
-      });
-    }
-  }
-
-  if (latestByRunId.size === 0) {
-    return undefined;
-  }
-
-  let totalCredits = 0;
-  let latestSettledAt = "";
-  let latestSettledAtSortValue = Number.NEGATIVE_INFINITY;
-  const breakdownByKind = new Map<
-    string,
-    {
-      kind: string;
-      credits: number;
-      providers: Map<string, number>;
-    }
-  >();
-
-  for (const { usage } of latestByRunId.values()) {
-    totalCredits += usage.totalCredits;
-    const settledAtSortValue = usageSettlementSortValue(usage, usage.settledAt);
-    if (
-      latestSettledAt === "" ||
-      settledAtSortValue > latestSettledAtSortValue
-    ) {
-      latestSettledAt = usage.settledAt;
-      latestSettledAtSortValue = settledAtSortValue;
-    }
-    for (const kindBreakdown of usage.breakdown) {
-      let aggregate = breakdownByKind.get(kindBreakdown.kind);
-      if (aggregate === undefined) {
-        aggregate = {
-          kind: kindBreakdown.kind,
-          credits: 0,
-          providers: new Map<string, number>(),
-        };
-        breakdownByKind.set(kindBreakdown.kind, aggregate);
-      }
-      aggregate.credits += kindBreakdown.credits;
-      for (const providerBreakdown of kindBreakdown.providers) {
-        aggregate.providers.set(
-          providerBreakdown.provider,
-          (aggregate.providers.get(providerBreakdown.provider) ?? 0) +
-            providerBreakdown.credits,
-        );
-      }
-    }
-  }
-
-  return {
-    version: 1,
-    totalCredits,
-    settledAt: latestSettledAt,
-    breakdown: Array.from(breakdownByKind.values()).map((aggregate) => {
-      return {
-        kind: aggregate.kind,
-        credits: aggregate.credits,
-        providers: Array.from(aggregate.providers.entries()).map(
-          ([provider, credits]) => {
-            return { provider, credits };
-          },
-        ),
-      };
-    }),
-  };
-}
-
-function createThreadUsageComputed({
-  allMessages$,
-  hasOlderHistory$,
-}: {
-  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
-  hasOlderHistory$: Computed<Promise<boolean>>;
-}): Computed<Promise<ChatMessageUsagePayload | undefined>> {
-  return computed(async (get): Promise<ChatMessageUsagePayload | undefined> => {
-    if (await get(hasOlderHistory$)) {
-      return undefined;
-    }
-    return aggregateThreadUsage(await get(allMessages$));
-  });
-}
-
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1516,7 +1374,6 @@ function createPagedMessages(
     knownServerMessageIds$,
   );
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
-  const streamingDrafts$ = createStreamingDraftsForThread(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -1529,7 +1386,6 @@ function createPagedMessages(
     historyMessages$,
     serverMessages$,
     optimisticMessages$,
-    streamingDrafts$,
   });
   const allMessages$ = createAllMessagesComputed(rawMessages$);
   const latestRunStatus$ = createLatestRunStatus(allMessages$, rawMessages$);
@@ -1580,11 +1436,6 @@ function createPagedMessages(
     return initial.hasHistoryBefore;
   });
 
-  const threadUsage$ = createThreadUsageComputed({
-    allMessages$,
-    hasOlderHistory$,
-  });
-
   const backfillHistoryBoundary$ = createBackfillHistoryBoundaryCommand({
     threadId,
     initialPage$,
@@ -1631,7 +1482,6 @@ function createPagedMessages(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
-    threadUsage$,
     rawMessages$,
     knownServerMessageIds$,
     hasOlderHistory$,
@@ -1831,7 +1681,6 @@ interface RunTrackingDeps {
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
@@ -1885,32 +1734,6 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
-function createMessageDeltaHandler({
-  threadId,
-  knownServerMessageIds$,
-  autoScroll$,
-}: {
-  threadId: string;
-  knownServerMessageIds$: KnownServerMessageIds$;
-  autoScroll$: Command<void, []>;
-}) {
-  return command(({ get, set }, data: unknown, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const payload = chatStreamDeltaPayloadSchema.parse(data);
-    const knownServerMessageIds = get(knownServerMessageIds$);
-    if (knownServerMessageIds.has(payload.messageId)) {
-      return;
-    }
-    set(applyStreamingDelta$, { threadId, payload });
-    animationFrame(
-      () => {
-        set(autoScroll$);
-      },
-      { signal },
-    );
-  });
-}
-
 function createRunTracking({
   threadId,
   reloadThread$,
@@ -1918,7 +1741,6 @@ function createRunTracking({
   allMessages$,
   latestChatMessageId$,
   rawMessages$,
-  knownServerMessageIds$,
   initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
@@ -1961,14 +1783,6 @@ function createRunTracking({
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-    set(clearStreamingDraftsForThread$, threadId);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(clearStreamingDraftsForThread$, threadId);
-      },
-      { once: true },
-    );
 
     // Catch up any messages that arrived since the initial page was loaded.
     // Cache hits and active runs still need a catch-up fetch. A fresh remote
@@ -2019,12 +1833,6 @@ function createRunTracking({
       return false;
     });
 
-    const onMessageDelta$ = createMessageDeltaHandler({
-      threadId,
-      knownServerMessageIds$,
-      autoScroll$,
-    });
-
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     await Promise.all([
       set(backfillHistoryBoundary$, signal),
@@ -2036,7 +1844,6 @@ function createRunTracking({
           threadId,
           handlers: {
             onMessageCreated$,
-            onMessageDelta$,
             onRunChanged$,
             onAutomationsChanged$,
           },
@@ -2628,9 +2435,7 @@ export function createChatThreadSignals(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
-    threadUsage$,
     rawMessages$,
-    knownServerMessageIds$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -2653,7 +2458,6 @@ export function createChatThreadSignals(
     allMessages$,
     latestChatMessageId$,
     rawMessages$,
-    knownServerMessageIds$,
     initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,
@@ -2714,7 +2518,6 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,
     groupedChatMessages$,
-    threadUsage$,
     hasOlderHistory$,
     latestRunStatus$,
     allFinished$: runTracking.allFinished$,

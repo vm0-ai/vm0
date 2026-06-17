@@ -2551,14 +2551,9 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Google Search Console OAuth only when its switch is enabled", () => {
+  it("exposes Google Search Console OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-search-console", {}),
-    ).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("google-search-console", {
-        [FeatureSwitchKey.GoogleSearchConsoleConnector]: true,
-      }),
     ).toStrictEqual(["oauth"]);
   });
 
@@ -2576,15 +2571,10 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Google Maps OAuth only when its switch is enabled", () => {
+  it("exposes Google Maps OAuth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
-      [],
+      ["oauth"],
     );
-    expect(
-      getAvailableConnectorAuthMethodIds("google-maps", {
-        [FeatureSwitchKey.GoogleMapsConnector]: true,
-      }),
-    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Google Analytics OAuth without a feature switch", () => {

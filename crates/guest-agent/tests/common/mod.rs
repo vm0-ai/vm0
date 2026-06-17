@@ -51,8 +51,6 @@ pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
 
-pub const CHAT_STREAM_THREAD_ID: &str = "22222222-2222-4222-8222-222222222222";
-pub const CHAT_STREAM_SESSION_ID: &str = "mock-stream-session";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedRequest {
@@ -496,57 +494,6 @@ pub unsafe fn setup_env(
         // (`$HOME/.claude/projects/.../<session>.jsonl`) stays inside
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
-        std::env::set_var("HOME", workdir);
-    }
-    std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
-    ensure_canonical_workspace_for_test()?;
-    std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
-    Ok(())
-}
-
-/// Configure the process environment for one chat-streaming integration test.
-/// See `setup_env` for the LazyLock and cwd caveats.
-///
-/// SAFETY: callers run one scenario per test binary, before any
-/// `guest_agent::env::*` accessor can read the process env.
-pub unsafe fn setup_chat_stream_env(
-    mock_path: &Path,
-    workdir: &Path,
-    run_id: &str,
-    prompt: &str,
-    api_url: &str,
-    stream_enabled: bool,
-    secret_values: Option<&str>,
-) -> Result<(), String> {
-    unsafe {
-        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
-        std::env::set_var("USE_MOCK_CLAUDE", "true");
-        std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");
-        std::env::set_var("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1");
-        std::env::set_var("VM0_RUN_ID", run_id);
-        std::env::set_var("VM0_PROMPT", prompt);
-        std::env::set_var("VM0_API_URL", api_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
-        std::env::remove_var("VM0_CHAT_STREAM_CHANNEL");
-        std::env::remove_var("VM0_CHAT_STREAM_TOPIC");
-        std::env::remove_var("VM0_CHAT_STREAM_TOKEN");
-        std::env::remove_var("VM0_CHAT_STREAM_ABLY_BASE");
-        std::env::remove_var("VM0_SECRET_VALUES");
-        if stream_enabled {
-            std::env::set_var("VM0_CHAT_STREAM_CHANNEL", "user:user_123");
-            std::env::set_var(
-                "VM0_CHAT_STREAM_TOPIC",
-                format!("chatThreadMessageDelta:{CHAT_STREAM_THREAD_ID}"),
-            );
-            std::env::set_var("VM0_CHAT_STREAM_TOKEN", "stream-token");
-            std::env::set_var("VM0_CHAT_STREAM_ABLY_BASE", api_url);
-        }
-        if let Some(secret_values) = secret_values {
-            std::env::set_var("VM0_SECRET_VALUES", secret_values);
-        }
         std::env::set_var("HOME", workdir);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;

@@ -344,12 +344,12 @@ function completedOutput(text = "**Done** with `code`"): void {
   ]);
 }
 
-async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
+async function enableZeroDebug(fixture: TelegramFixture): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(userFeatureSwitches).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    switches: { [FeatureSwitchKey.AuditLink]: true },
+    switches: { [FeatureSwitchKey.ZeroDebug]: true },
   });
 }
 
@@ -539,7 +539,7 @@ describe("handleTelegramInternalCallback$", () => {
   it("includes audit links and agent reply footer text when configured", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
-    await enableAuditLink(fixture);
+    await enableZeroDebug(fixture);
     await db
       .update(zeroRuns)
       .set({ selectedModel: "claude-opus-4-7" })

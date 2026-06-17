@@ -1294,7 +1294,7 @@ const postPreDispatchErrorReply$ = command(
     const overrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.vm0UserId),
     );
-    const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
       userId: args.vm0UserId,
       orgId: args.orgId,
       overrides,

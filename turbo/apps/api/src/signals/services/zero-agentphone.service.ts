@@ -1794,7 +1794,7 @@ function resolveAgentPhoneRunFailureAuditLogsUrl(args: {
     const overrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
-    const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
       userId: args.userId,
       orgId: args.orgId,
       overrides,

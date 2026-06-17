@@ -1145,11 +1145,11 @@ export function createBddIntegrationApi(context: TestContext) {
       ]);
     },
 
-    async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
+    async enableZeroDebugSwitch(actor: ApiTestUser): Promise<void> {
       await accept(
         setupApp({ context })(zeroFeatureSwitchesContract).update({
           headers: authenticate(context, routeMocks, actor),
-          body: { switches: { [FeatureSwitchKey.AuditLink]: true } },
+          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
       );

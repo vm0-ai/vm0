@@ -1620,16 +1620,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     async (triggerSource) => {
       const bdd = createBddApi(context);
       const api = createRunsAutomationsApi(context);
-      const connectors = createConnectorBddApi(context);
       const actor = bdd.user();
       bdd.acceptAgentStorageWrites();
       api.acceptStorageDownloads();
       api.acceptTelemetryIngest();
       const runnerGroup = api.configureRunnerGroup();
       await api.grantProEntitlement(actor);
-      await connectors.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.AssistantTextStreaming]: true,
-      });
 
       const composeName = `bdd-${triggerSource}-stream-off`;
       const compose = await api.createCompose(actor, {

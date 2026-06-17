@@ -444,7 +444,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.GoogleMapsConnector]: true },
     });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "maps");
