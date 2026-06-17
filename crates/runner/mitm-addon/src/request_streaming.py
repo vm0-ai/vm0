@@ -17,7 +17,7 @@ class CapturedRequestStreamBody(NamedTuple):
 
 def configure_request_stream(flow: http.HTTPFlow) -> None:
     """Enable capped request body capture without modifying forwarded chunks."""
-    if flow.request.stream:
+    if callable(flow.request.stream):
         return
 
     buf = bytearray()

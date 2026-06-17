@@ -168,6 +168,36 @@ def test_capture_enabled_body_over_stream_limit_installs_request_stream(
     assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
 
 
+def test_capture_enabled_replaces_boolean_stream_with_capture_callback(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+        request_headers=headers(
+            ("Host", "example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.request.stream = True
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    callback = _request_stream(flow)
+    assert callback(b"partial request") == b"partial request"
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] == bytearray(b"partial request")
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE]["total_bytes"] == len(
+        b"partial request"
+    )
+
+
 async def test_request_releases_cached_classification_after_stream_setup(
     tmp_path, real_flow, mitm_ctx
 ):
