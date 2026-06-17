@@ -161,6 +161,13 @@ JSON_PART = r"""{
           ]
         },
         {
+          "description": "Read metadata of projects.",
+          "name": "project_metadata:read",
+          "rules": [
+            "GET /v1/projects/{project_id}/meta"
+          ]
+        },
+        {
           "description": "List projects and files in projects.",
           "name": "projects:read",
           "rules": [

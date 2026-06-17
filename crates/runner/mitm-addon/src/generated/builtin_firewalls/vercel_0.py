@@ -172,19 +172,11 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "connect:read",
-          "rules": [
-            "GET /v1/connect/networks",
-            "GET /v1/connect/networks/{networkId}"
-          ]
-        },
-        {
           "name": "connect:write",
           "rules": [
-            "POST /v1/connect/networks",
-            "PATCH /v1/connect/networks/{networkId}",
-            "DELETE /v1/connect/networks/{networkId}",
-            "PATCH /v1/projects/{idOrName}/shared-connect-links"
+            "POST /v1/connect/authorize/{connector}",
+            "POST /v1/connect/connectors",
+            "POST /v1/connect/token/{connector}"
           ]
         },
         {
@@ -192,8 +184,8 @@ JSON_PART = r"""{
           "rules": [
             "GET /v13/deployments/{idOrUrl}",
             "GET /v3/deployments/{idOrUrl}/events",
-            "GET /v6/deployments",
             "GET /v6/deployments/{id}/files",
+            "GET /v7/deployments",
             "GET /v8/deployments/{id}/files/{fileId}"
           ]
         },
@@ -250,9 +242,11 @@ JSON_PART = r"""{
         {
           "name": "domains:read",
           "rules": [
+            "GET /v1/domains/{domain}/project-domains",
             "GET /v5/domains",
             "GET /v5/domains/{domain}",
-            "GET /v6/domains/{domain}/config"
+            "GET /v6/domains/{domain}/config",
+            "GET /v9/domains/{domain}/verification"
           ]
         },
         {
@@ -260,7 +254,8 @@ JSON_PART = r"""{
           "rules": [
             "PATCH /v3/domains/{domain}",
             "DELETE /v6/domains/{domain}",
-            "POST /v7/domains"
+            "POST /v7/domains",
+            "POST /v9/domains/{domain}/claim"
           ]
         },
         {
@@ -348,7 +343,9 @@ JSON_PART = r"""{
             "GET /v1/projects/{projectIdOrName}/feature-flags/segments/{segmentIdOrSlug}",
             "GET /v1/projects/{projectIdOrName}/feature-flags/settings",
             "GET /v1/teams/{teamId}/feature-flags/flags",
-            "GET /v1/teams/{teamId}/feature-flags/settings"
+            "GET /v1/teams/{teamId}/feature-flags/settings",
+            "GET /v2/projects/{projectIdOrName}/feature-flags/flags",
+            "GET /v2/teams/{teamId}/feature-flags/flags"
           ]
         },
         {
@@ -457,6 +454,22 @@ JSON_PART = r"""{
           ]
         },
         {
+          "name": "networking:read",
+          "rules": [
+            "GET /v1/connect/networks",
+            "GET /v1/connect/networks/{networkId}"
+          ]
+        },
+        {
+          "name": "networking:write",
+          "rules": [
+            "POST /v1/connect/networks",
+            "PATCH /v1/connect/networks/{networkId}",
+            "DELETE /v1/connect/networks/{networkId}",
+            "PATCH /v1/projects/{idOrName}/shared-connect-links"
+          ]
+        },
+        {
           "name": "project-routes:read",
           "rules": [
             "GET /v1/projects/{projectId}/routes",
@@ -504,6 +517,7 @@ JSON_PART = r"""{
           "rules": [
             "PUT /projects/transfer-request/{code}",
             "POST /projects/{idOrName}/transfer-request",
+            "POST /v1/projects/{idOrName}/avatar",
             "POST /v1/projects/{idOrName}/domains/{domain}/move",
             "DELETE /v1/projects/{idOrName}/env",
             "PATCH /v1/projects/{idOrName}/protection-bypass",
@@ -542,9 +556,10 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "sandboxes-v2-beta:read",
+          "name": "sandboxes:read",
           "rules": [
             "GET /v2/sandboxes",
+            "GET /v2/sandboxes/drives",
             "GET /v2/sandboxes/sessions",
             "GET /v2/sandboxes/sessions/{sessionId}",
             "GET /v2/sandboxes/sessions/{sessionId}/cmd",
@@ -556,9 +571,11 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "sandboxes-v2-beta:write",
+          "name": "sandboxes:write",
           "rules": [
             "POST /v2/sandboxes",
+            "POST /v2/sandboxes/drives/{name}",
+            "DELETE /v2/sandboxes/drives/{name}",
             "POST /v2/sandboxes/sessions/{sessionId}/cmd",
             "POST /v2/sandboxes/sessions/{sessionId}/cmd/{cmdId}/kill",
             "POST /v2/sandboxes/sessions/{sessionId}/extend-timeout",
@@ -571,34 +588,6 @@ JSON_PART = r"""{
             "DELETE /v2/sandboxes/snapshots/{snapshotId}",
             "PATCH /v2/sandboxes/{name}",
             "DELETE /v2/sandboxes/{name}"
-          ]
-        },
-        {
-          "name": "sandboxes:read",
-          "rules": [
-            "GET /v1/sandboxes",
-            "GET /v1/sandboxes/snapshots",
-            "GET /v1/sandboxes/snapshots/{snapshotId}",
-            "GET /v1/sandboxes/{sandboxId}",
-            "GET /v1/sandboxes/{sandboxId}/cmd",
-            "GET /v1/sandboxes/{sandboxId}/cmd/{cmdId}",
-            "GET /v1/sandboxes/{sandboxId}/cmd/{cmdId}/logs"
-          ]
-        },
-        {
-          "name": "sandboxes:write",
-          "rules": [
-            "POST /v1/sandboxes",
-            "DELETE /v1/sandboxes/snapshots/{snapshotId}",
-            "POST /v1/sandboxes/{sandboxId}/cmd",
-            "POST /v1/sandboxes/{sandboxId}/extend-timeout",
-            "POST /v1/sandboxes/{sandboxId}/fs/mkdir",
-            "POST /v1/sandboxes/{sandboxId}/fs/read",
-            "POST /v1/sandboxes/{sandboxId}/fs/write",
-            "POST /v1/sandboxes/{sandboxId}/network-policy",
-            "POST /v1/sandboxes/{sandboxId}/snapshot",
-            "POST /v1/sandboxes/{sandboxId}/stop",
-            "POST /v1/sandboxes/{sandboxId}/{cmdId}/kill"
           ]
         },
         {

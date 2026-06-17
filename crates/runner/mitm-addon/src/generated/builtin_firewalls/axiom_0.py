@@ -85,7 +85,8 @@ JSON_PART = r"""{
         {
           "name": "dashboards|update",
           "rules": [
-            "PUT /v2/dashboards/uid/{uid}"
+            "PUT /v2/dashboards/uid/{uid}",
+            "PATCH /v2/dashboards/uid/{uid}/charts/{chartId}"
           ]
         },
         {

@@ -14,10 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.notion.com",
       "permissions": [
         {
-          "description": "Create comments",
+          "description": "Create, update, and delete comments",
           "name": "insert_comments",
           "rules": [
-            "POST /v1/comments"
+            "POST /v1/comments",
+            "PATCH /v1/comments/{comment_id}",
+            "DELETE /v1/comments/{comment_id}"
           ]
         },
         {
@@ -47,6 +49,7 @@ JSON_PART = r"""{
           "description": "Read pages, databases, blocks, data sources, and files",
           "name": "read_content",
           "rules": [
+            "POST /v1/blocks/meeting_notes/query",
             "GET /v1/blocks/{block_id}",
             "GET /v1/blocks/{block_id}/children",
             "GET /v1/custom_emojis",

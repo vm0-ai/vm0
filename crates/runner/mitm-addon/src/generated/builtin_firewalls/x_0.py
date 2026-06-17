@@ -17,12 +17,10 @@ JSON_PART = r"""{
           "description": "App-only endpoints (no user context required)",
           "name": "app-only",
           "rules": [
-            "POST /2/account_activity/replay/webhooks/{webhook_id}/subscriptions/all",
             "GET /2/account_activity/subscriptions/count",
             "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all/list",
             "DELETE /2/account_activity/webhooks/{webhook_id}/subscriptions/{user_id}/all",
             "GET /2/activity/stream",
-            "GET /2/activity/subscriptions",
             "DELETE /2/activity/subscriptions",
             "PUT /2/activity/subscriptions/{subscription_id}",
             "DELETE /2/activity/subscriptions/{subscription_id}",
@@ -96,6 +94,7 @@ JSON_PART = r"""{
             "POST /2/activity/subscriptions",
             "GET /2/chat/conversations",
             "GET /2/chat/conversations/{id}",
+            "GET /2/chat/conversations/{id}/events",
             "GET /2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}",
             "GET /2/dm_conversations/with/{participant_id}/dm_events",
             "GET /2/dm_conversations/{id}/dm_events",
@@ -252,6 +251,7 @@ JSON_PART = r"""{
           "description": "View all Posts you can see, including those from protected accounts.",
           "name": "tweet.read",
           "rules": [
+            "GET /2/activity/subscriptions",
             "GET /2/insights/28hr",
             "GET /2/insights/historical",
             "GET /2/media",
@@ -272,6 +272,8 @@ JSON_PART = r"""{
           "description": "Post and repost on your behalf.",
           "name": "tweet.write",
           "rules": [
+            "POST /2/articles/draft",
+            "POST /2/articles/{article_id}/publish",
             "POST /2/evaluate_note",
             "POST /2/notes",
             "DELETE /2/notes/{id}",

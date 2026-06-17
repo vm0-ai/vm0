@@ -21,6 +21,13 @@ JSON_PART = r"""{
           ]
         },
         {
+          "name": "admin-portal-link-tokens:write",
+          "rules": [
+            "POST /v1/admin_portal_link_tokens",
+            "POST /v1/admin_portal_link_tokens/{adminPortalLinkTokenID}/revoke"
+          ]
+        },
+        {
           "name": "agent-tasks:write",
           "rules": [
             "POST /v1/agents/tasks",
@@ -133,7 +140,10 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/email_addresses",
             "PATCH /v1/email_addresses/{email_address_id}",
-            "DELETE /v1/email_addresses/{email_address_id}"
+            "DELETE /v1/email_addresses/{email_address_id}",
+            "POST /v1/email_addresses/{email_address_id}/attempt_verification",
+            "POST /v1/email_addresses/{email_address_id}/prepare_verification",
+            "PUT /v1/users/{user_id}/email_address"
           ]
         },
         {
@@ -156,7 +166,8 @@ JSON_PART = r"""{
           "name": "enterprise-connections:read",
           "rules": [
             "GET /v1/enterprise_connections",
-            "GET /v1/enterprise_connections/{enterprise_connection_id}"
+            "GET /v1/enterprise_connections/{enterprise_connection_id}",
+            "GET /v1/enterprise_connections/{enterprise_connection_id}/test_runs"
           ]
         },
         {
@@ -164,7 +175,8 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/enterprise_connections",
             "PATCH /v1/enterprise_connections/{enterprise_connection_id}",
-            "DELETE /v1/enterprise_connections/{enterprise_connection_id}"
+            "DELETE /v1/enterprise_connections/{enterprise_connection_id}",
+            "POST /v1/enterprise_connections/{enterprise_connection_id}/test_runs"
           ]
         },
         {
@@ -297,7 +309,8 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/organizations/{organization_id}/domains",
             "PATCH /v1/organizations/{organization_id}/domains/{domain_id}",
-            "DELETE /v1/organizations/{organization_id}/domains/{domain_id}"
+            "DELETE /v1/organizations/{organization_id}/domains/{domain_id}",
+            "POST /v1/organizations/{organization_id}/domains/{domain_id}/verify_ownership"
           ]
         },
         {
@@ -383,6 +396,7 @@ JSON_PART = r"""{
             "POST /v1/organizations/{organization_id}/billing/credits",
             "PUT /v1/organizations/{organization_id}/logo",
             "DELETE /v1/organizations/{organization_id}/logo",
+            "PUT /v1/organizations/{organization_id}/metadata",
             "PATCH /v1/organizations/{organization_id}/metadata"
           ]
         },
@@ -397,7 +411,10 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/phone_numbers",
             "PATCH /v1/phone_numbers/{phone_number_id}",
-            "DELETE /v1/phone_numbers/{phone_number_id}"
+            "DELETE /v1/phone_numbers/{phone_number_id}",
+            "POST /v1/phone_numbers/{phone_number_id}/attempt_verification",
+            "POST /v1/phone_numbers/{phone_number_id}/prepare_verification",
+            "PUT /v1/users/{user_id}/phone_number"
           ]
         },
         {
@@ -520,6 +537,7 @@ JSON_PART = r"""{
             "POST /v1/users/{user_id}/billing/credits",
             "DELETE /v1/users/{user_id}/external_accounts/{external_account_id}",
             "POST /v1/users/{user_id}/lock",
+            "PUT /v1/users/{user_id}/metadata",
             "PATCH /v1/users/{user_id}/metadata",
             "DELETE /v1/users/{user_id}/mfa",
             "DELETE /v1/users/{user_id}/passkeys/{passkey_identification_id}",

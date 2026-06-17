@@ -8,7 +8,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
         }
       },
       "base": "https://youtube.googleapis.com/youtube",
@@ -267,7 +267,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
         }
       },
       "base": "https://youtube.googleapis.com/upload/youtube",
@@ -326,7 +326,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.YOUTUBE_TOKEN }}"
         }
       },
       "base": "https://youtube.googleapis.com/resumable/upload/youtube",

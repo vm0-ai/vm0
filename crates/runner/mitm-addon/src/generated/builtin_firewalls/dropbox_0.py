@@ -25,6 +25,7 @@ JSON_PART = r"""{
         {
           "name": "account_info.write",
           "rules": [
+            "POST /2/account/delete_profile_photo",
             "POST /2/account/set_profile_photo"
           ]
         },
@@ -66,7 +67,11 @@ JSON_PART = r"""{
           "rules": [
             "POST /2/files/get_file_lock_batch",
             "POST /2/files/get_temporary_link",
-            "POST /2/paper/docs/download"
+            "POST /2/paper/docs/download",
+            "POST /2/riviera/get_markdown_async",
+            "POST /2/riviera/get_markdown_async/check",
+            "POST /2/riviera/get_transcript_async",
+            "POST /2/riviera/get_transcript_async/check"
           ]
         },
         {
@@ -125,12 +130,11 @@ JSON_PART = r"""{
             "POST /2/files/list_folder/continue",
             "POST /2/files/list_folder/get_latest_cursor",
             "POST /2/files/list_revisions",
-            "POST /2/files/properties/template/get",
-            "POST /2/files/properties/template/list",
             "POST /2/files/search",
             "POST /2/files/search/continue:2",
             "POST /2/files/search:2",
             "POST /2/files/tags/get",
+            "POST /2/paper/docs/get_metadata",
             "POST /2/paper/docs/list",
             "POST /2/paper/docs/list/continue"
           ]
@@ -147,7 +151,6 @@ JSON_PART = r"""{
             "POST /2/file_properties/templates/update_for_user",
             "POST /2/files/properties/add",
             "POST /2/files/properties/overwrite",
-            "POST /2/files/properties/remove",
             "POST /2/files/properties/update",
             "POST /2/files/tags/add",
             "POST /2/files/tags/remove"
@@ -169,9 +172,7 @@ JSON_PART = r"""{
             "POST /2/file_properties/templates/remove_for_team",
             "POST /2/file_properties/templates/update_for_team",
             "POST /2/team/properties/template/add",
-            "POST /2/team/properties/template/get",
-            "POST /2/team/properties/template/list",
-            "POST /2/team/properties/template/update"
+            "POST /2/team/properties/template/get"
           ]
         },
         {
@@ -230,6 +231,7 @@ JSON_PART = r"""{
             "POST /2/team/members/add/job_status/get",
             "POST /2/team/members/add/job_status/get:2",
             "POST /2/team/members/add:2",
+            "POST /2/team/members/delete_former_member_files",
             "POST /2/team/members/delete_profile_photo",
             "POST /2/team/members/delete_profile_photo:2",
             "POST /2/team/members/move_former_member_files",
@@ -252,6 +254,12 @@ JSON_PART = r"""{
           "name": "openid",
           "rules": [
             "POST /2/openid/userinfo"
+          ]
+        },
+        {
+          "name": "private:sharing.write",
+          "rules": [
+            "POST /2/sharing/relinquish_access"
           ]
         },
         {
@@ -332,6 +340,7 @@ JSON_PART = r"""{
             "POST /2/sharing/unshare_file",
             "POST /2/sharing/unshare_folder",
             "POST /2/sharing/update_file_member",
+            "POST /2/sharing/update_file_policy",
             "POST /2/sharing/update_folder_member",
             "POST /2/sharing/update_folder_policy"
           ]
@@ -353,6 +362,7 @@ JSON_PART = r"""{
             "POST /2/team/team_folder/create",
             "POST /2/team/team_folder/permanently_delete",
             "POST /2/team/team_folder/rename",
+            "POST /2/team/team_folder/restore",
             "POST /2/team/team_folder/update_sync_settings"
           ]
         },
@@ -407,6 +417,12 @@ JSON_PART = r"""{
       "base": "https://content.dropboxapi.com",
       "permissions": [
         {
+          "name": "account_info.read",
+          "rules": [
+            "POST /2/account/get_photo"
+          ]
+        },
+        {
           "name": "files.content.read",
           "rules": [
             "POST /2/files/download",
@@ -425,6 +441,7 @@ JSON_PART = r"""{
             "POST /2/files/upload",
             "POST /2/files/upload_session/append",
             "POST /2/files/upload_session/append:2",
+            "POST /2/files/upload_session/append_batch",
             "POST /2/files/upload_session/finish",
             "POST /2/files/upload_session/start"
           ]

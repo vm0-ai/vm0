@@ -7,11 +7,38 @@ JSON_PART = r"""{
   "apis": [
     {
       "auth": {
-        "query": {
-          "key": "${{ secrets.GOOGLE_MAPS_TOKEN }}"
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
         }
       },
       "base": "https://maps.googleapis.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
+        }
+      },
+      "base": "https://geocode.googleapis.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
+        }
+      },
+      "base": "https://places.googleapis.com",
+      "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
+        }
+      },
+      "base": "https://routes.googleapis.com",
       "permissions": []
     }
   ],

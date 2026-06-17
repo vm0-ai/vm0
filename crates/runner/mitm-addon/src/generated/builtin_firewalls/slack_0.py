@@ -253,6 +253,37 @@ JSON_PART = r"""{
           ]
         },
         {
+          "description": "Read app configuration info via App Manifest APIs",
+          "name": "app_configurations:read",
+          "rules": [
+            "POST /apps.manifest.export",
+            "POST /functions.distributions.permissions.list"
+          ]
+        },
+        {
+          "description": "Write app configuration info and create apps via App Manifest APIs",
+          "name": "app_configurations:write",
+          "rules": [
+            "POST /apps.icon.set",
+            "POST /apps.manifest.create",
+            "POST /apps.manifest.delete",
+            "POST /apps.manifest.update",
+            "POST /apps.manifest.validate",
+            "POST /functions.distributions.permissions.add",
+            "POST /functions.distributions.permissions.remove",
+            "POST /functions.distributions.permissions.set"
+          ]
+        },
+        {
+          "description": "Manage Slack app collaborators",
+          "name": "apps",
+          "rules": [
+            "POST /developer.apps.owners.add",
+            "POST /developer.apps.owners.list",
+            "POST /developer.apps.owners.remove"
+          ]
+        },
+        {
           "description": "Act as an AI Assistant app",
           "name": "assistant:write",
           "rules": [
@@ -440,7 +471,7 @@ JSON_PART = r"""{
           "name": "conversations.connect:write",
           "rules": [
             "POST /conversations.acceptSharedInvite",
-            "GET /conversations.inviteShared"
+            "POST /conversations.inviteShared"
           ]
         },
         {
@@ -478,7 +509,7 @@ JSON_PART = r"""{
           "rules": [
             "POST /dnd.endDnd",
             "POST /dnd.endSnooze",
-            "GET /dnd.setSnooze"
+            "POST /dnd.setSnooze"
           ]
         },
         {
@@ -600,7 +631,6 @@ JSON_PART = r"""{
             "POST /conversations.close",
             "POST /conversations.create",
             "POST /conversations.invite",
-            "POST /conversations.kick",
             "POST /conversations.leave",
             "POST /conversations.mark",
             "POST /conversations.open",
@@ -675,7 +705,6 @@ JSON_PART = r"""{
             "POST /conversations.close",
             "POST /conversations.create",
             "POST /conversations.invite",
-            "POST /conversations.kick",
             "POST /conversations.leave",
             "POST /conversations.mark",
             "POST /conversations.open",
@@ -776,7 +805,6 @@ JSON_PART = r"""{
           "description": "Search a workspace's content",
           "name": "search:read",
           "rules": [
-            "POST /assistant.search.info",
             "GET /search.all",
             "GET /search.files",
             "GET /search.messages"
@@ -957,24 +985,17 @@ JSON_PART = r"""{
             "POST /apps.auth.external.get",
             "POST /apps.connections.open",
             "POST /apps.event.authorizations.list",
-            "POST /apps.manifest.create",
-            "POST /apps.manifest.delete",
-            "POST /apps.manifest.export",
-            "POST /apps.manifest.update",
-            "POST /apps.manifest.validate",
             "POST /apps.uninstall",
             "GET /auth.revoke",
             "POST /auth.teams.list",
             "POST /auth.test",
+            "POST /blocks.validate",
             "GET /chat.getPermalink",
             "POST /chat.scheduledMessages.list",
             "POST /dialog.open",
+            "POST /entity.presentDetails",
             "POST /functions.completeError",
             "POST /functions.completeSuccess",
-            "POST /functions.distributions.permissions.add",
-            "POST /functions.distributions.permissions.list",
-            "POST /functions.distributions.permissions.remove",
-            "POST /functions.distributions.permissions.set",
             "POST /functions.workflows.steps.list",
             "POST /functions.workflows.steps.responses.export",
             "POST /oauth.access",
