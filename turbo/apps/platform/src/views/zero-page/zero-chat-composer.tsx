@@ -998,12 +998,15 @@ interface PresentationTemplateThemeOption {
   readonly displayFont: string;
   readonly bodyFont: string;
   readonly colors: readonly [
-    string,
-    string,
-    string,
-    string,
-    string,
-    readonly [string, string, string, string, ...string[]],
+    bg: string,
+    surface: string,
+    ink: string,
+    inkSoft: string,
+    accent: string,
+    support1: string,
+    support2: string,
+    support3: string,
+    placeholder: string,
   ];
 }
 
@@ -1022,8 +1025,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#F7F7FA",
         "#1A1726",
         "#5C5870",
+        "#7257E6",
+        "#AEE63E",
+        "#FF6B4A",
+        "#3FA9F5",
         "#ECECF2",
-        ["#5B5FEF", "#2F80ED", "#20B486", "#F2C94C"],
       ],
     },
     {
@@ -1039,8 +1045,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#221C14",
         "#5E564A",
+        "#FF7A1A",
+        "#E5388E",
+        "#F5B73E",
+        "#1FB6A6",
         "#EFEADF",
-        ["#E85D3F", "#C6417B", "#D9A441", "#3BA99C", "#4F63D7"],
       ],
     },
     {
@@ -1056,8 +1065,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#1B1A22",
         "#F4F2FA",
         "#A09CB0",
+        "#3D7BFF",
+        "#FF3D9A",
+        "#C6FF4A",
+        "#FF7A1A",
         "#26242E",
-        ["#5B7CFA", "#D94C8A", "#9BE15D", "#F28C28"],
       ],
     },
     {
@@ -1073,8 +1085,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#262626",
         "#5A5A5A",
+        "#F19B3A",
+        "#8DACE5",
+        "#DDB8D9",
+        "#516049",
         "#ECECEC",
-        ["#F19B3A", "#8DACE5", "#DDB8D9", "#516049"],
       ],
     },
     {
@@ -1090,8 +1105,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#1A1A1A",
         "#4A4A4A",
+        "#E63327",
+        "#2C5BD6",
+        "#F2B705",
+        "#1A1A1A",
         "#E2DDD0",
-        ["#E63327", "#2C5BD6", "#F2B705", "#1A1A1A"],
       ],
     },
     {
@@ -1107,8 +1125,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#1F2933",
         "#5B6B7B",
+        "#3E8EDE",
+        "#7BC6C9",
+        "#B8C4D0",
+        "#1F2933",
         "#E8EDF1",
-        ["#3E8EDE", "#7BC6C9", "#B8C4D0", "#1F2933"],
       ],
     },
     {
@@ -1124,8 +1145,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#1E2B22",
         "#4F5C52",
+        "#5B7553",
+        "#C97B4A",
+        "#E4DFD0",
+        "#1E2B22",
         "#E6E8E1",
-        ["#5B7553", "#C97B4A", "#E4DFD0", "#1E2B22"],
       ],
     },
     {
@@ -1141,8 +1165,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#3A2A26",
         "#6E5B55",
+        "#FF6F5E",
+        "#FFB199",
+        "#2BB3A3",
+        "#3A2A26",
         "#F0E7E2",
-        ["#FF6F5E", "#FFB199", "#2BB3A3", "#3A2A26"],
       ],
     },
     {
@@ -1158,8 +1185,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#F6F8FB",
         "#16243B",
         "#5A6678",
+        "#2F5BD0",
+        "#6E8BB8",
+        "#F0A03A",
+        "#16243B",
         "#E9EDF3",
-        ["#2F5BD0", "#6E8BB8", "#F0A03A", "#16243B"],
       ],
     },
     {
@@ -1175,8 +1205,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#3B2A20",
         "#6B5546",
+        "#C36A3F",
+        "#D9A441",
+        "#7A7A52",
+        "#EAD9C6",
         "#ECE0D2",
-        ["#C36A3F", "#D9A441", "#7A7A52", "#EAD9C6"],
       ],
     },
     {
@@ -1192,8 +1225,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#2E1A2C",
         "#6A5566",
+        "#D63A8E",
+        "#8E5BD0",
+        "#F4B8D4",
+        "#2E1A2C",
         "#F0E6EC",
-        ["#D63A8E", "#8E5BD0", "#F4B8D4", "#2E1A2C"],
       ],
     },
     {
@@ -1209,8 +1245,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#232318",
         "#5C5C4E",
+        "#FF8A1E",
+        "#FFD23E",
+        "#8FB339",
+        "#4FA3A3",
         "#EDEDE3",
-        ["#FF8A1E", "#FFD23E", "#8FB339", "#4FA3A3"],
       ],
     },
     {
@@ -1226,8 +1265,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#2B2533",
         "#635B70",
+        "#9C7BB8",
+        "#8AA0C9",
+        "#E0B6C9",
+        "#2B2533",
         "#ECE7F0",
-        ["#9C7BB8", "#8AA0C9", "#E0B6C9", "#2B2533"],
       ],
     },
     {
@@ -1243,8 +1285,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FAFAFA",
         "#0A0A0A",
         "#6B6B6B",
+        "#E5392E",
+        "#0A0A0A",
+        "#BFBFBF",
+        "#0A0A0A",
         "#EEEEEE",
-        ["#E5392E", "#0A0A0A", "#BFBFBF", "#0A0A0A"],
       ],
     },
     {
@@ -1260,8 +1305,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#3A1F22",
         "#6E4A4C",
+        "#F26B3A",
+        "#E0457B",
+        "#F2A93B",
+        "#3A1F22",
         "#F0E2DA",
-        ["#F26B3A", "#E0457B", "#F2A93B", "#3A1F22"],
       ],
     },
     {
@@ -1277,8 +1325,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#FFFFFF",
         "#1B2A26",
         "#56655F",
+        "#16B981",
+        "#4FA3E0",
+        "#9AE6C8",
+        "#3A4A45",
         "#E6F0EB",
-        ["#16B981", "#4FA3E0", "#9AE6C8", "#3A4A45"],
       ],
     },
     {
@@ -1294,8 +1345,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#1C1E22",
         "#F2F2F0",
         "#A0A3A8",
+        "#C6FF4A",
+        "#6B7280",
+        "#3A3D44",
+        "#C6FF4A",
         "#2A2C31",
-        ["#C6FF4A", "#6B7280", "#3A3D44", "#C6FF4A"],
       ],
     },
     {
@@ -1311,8 +1365,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#143840",
         "#EAF6F4",
         "#9DB8B8",
+        "#38C7B4",
+        "#5A93A8",
+        "#1F4A52",
+        "#38C7B4",
         "#1B454E",
-        ["#38C7B4", "#5A93A8", "#1F4A52", "#38C7B4"],
       ],
     },
     {
@@ -1328,8 +1385,11 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
         "#211E16",
         "#F3EEE2",
         "#ADA48E",
+        "#C9A24B",
+        "#8A6E3A",
+        "#3A352A",
+        "#C9A24B",
         "#2A271E",
-        ["#C9A24B", "#8A6E3A", "#3A352A", "#C9A24B"],
       ],
     },
   ];
@@ -1354,7 +1414,7 @@ function presentationTemplateThemePreviewSwatches(
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
   const background = theme.colors[0];
-  const accents = theme.colors[5];
+  const accents = theme.colors.slice(4, 8);
   return [
     { id: "background", color: background },
     ...accents.slice(0, 3).map((accent, accentIndex) => {
@@ -1368,7 +1428,7 @@ function presentationTemplateThemeAccentSwatches(
 ): readonly { readonly color: string; readonly id: string }[] {
   return [
     { id: "base", color: theme.colors[0] },
-    { id: "accent", color: theme.colors[5][0] },
+    { id: "accent", color: theme.colors[4] },
   ];
 }
 
@@ -1446,7 +1506,8 @@ function safePreviewGround(accent: string): readonly [string, string] {
 function presentationTemplateThemeCss(
   theme: PresentationTemplateThemeOption,
 ): string {
-  const [bg, surface, ink, soft, ph, accents] = theme.colors;
+  const [bg, surface, ink, soft, accent, s1, s2, s3, ph] = theme.colors;
+  const accents = [accent, s1, s2, s3] as const;
   const accentVariables = accents
     .map((accent, index) => {
       const [ground, text] = safePreviewGround(accent);
@@ -1460,16 +1521,19 @@ function presentationTemplateThemeCss(
       --ink:${ink};
       --soft:${soft};
       --ph:${ph};
-      --accent:${accents[0]};
-      --s1:${accents[1]};
-      --s2:${accents[2]};
-      --s3:${accents[3]};
-      --oa:${previewTextColorOn(accents[0])};
-      --o1:${previewTextColorOn(accents[1])};
-      --o2:${previewTextColorOn(accents[2])};
-      --o3:${previewTextColorOn(accents[3])};
-      --ka:${contrastRatio(accents[0], bg) >= 4.5 ? accents[0] : ink};
-      --kad:${contrastRatio(accents[0], ink) >= 4.5 ? accents[0] : bg};
+      --accent:${accent};
+      --s1:${s1};
+      --s2:${s2};
+      --s3:${s3};
+      --oa:${previewTextColorOn(accent)};
+      --o1:${previewTextColorOn(s1)};
+      --o2:${previewTextColorOn(s2)};
+      --o3:${previewTextColorOn(s3)};
+      --ka:${contrastRatio(accent, bg) >= 4.5 ? accent : ink};
+      --kad:${contrastRatio(accent, ink) >= 4.5 ? accent : bg};
+      --k1:${contrastRatio(s1, bg) >= 4.5 ? s1 : ink};
+      --k2:${contrastRatio(s2, bg) >= 4.5 ? s2 : ink};
+      --k3:${contrastRatio(s3, bg) >= 4.5 ? s3 : ink};
       --fd:'${theme.displayFont}';
       --fb:'${theme.bodyFont}';
       ${accentVariables}
@@ -1639,6 +1703,9 @@ function TemplatePreview({
       : null;
   const defaultHtmlPreview = defaultHtmlPreviews[item.embedUrl] ?? null;
   const visibleHtmlPreview = activeHtmlPreview ?? defaultHtmlPreview;
+  const defaultTheme = findPresentationTemplateTheme(
+    defaultPresentationTemplateThemeId(item),
+  );
   const fallbackSlideCount = Math.max(item.previewImages.length, 1);
   const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
 
@@ -1654,6 +1721,7 @@ function TemplatePreview({
         index: 0,
         item,
         previousFrameUrl: null,
+        theme: defaultTheme,
       });
       if (previewState !== null) {
         setDefaultHtmlPreview(item.embedUrl, previewState);
@@ -1724,6 +1792,7 @@ function TemplatePreview({
         index: activeIndex,
         item,
         previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+        theme: defaultTheme,
       });
       setHtmlPreview(previewState);
       return;
@@ -1787,6 +1856,7 @@ function TemplatePreview({
               index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+              theme: defaultTheme,
             }),
           );
         }
@@ -1828,6 +1898,7 @@ function TemplatePreview({
             index: nextIndex,
             item,
             previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+            theme: defaultTheme,
           }),
         );
         return;

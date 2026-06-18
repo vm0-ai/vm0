@@ -1546,6 +1546,8 @@ describe("chat composer templates", () => {
         ).toHaveAttribute("src", "blob:template-preview-1");
       });
       await expect(blobHtml[0]).resolves.toContain("Slide one");
+      await expect(blobHtml[0]).resolves.toContain("--accent:#FF7A1A");
+      await expect(blobHtml[0]).resolves.toContain("--s2:#F5B73E");
 
       fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
 
