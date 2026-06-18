@@ -5497,7 +5497,7 @@ function UserMessageAttachments({
   }
 
   return (
-    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+    <div className="mb-2 flex max-w-[85%] flex-wrap justify-end gap-2">
       {attachments.map((a) => {
         if (a.isImage) {
           return (
@@ -5811,8 +5811,12 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-            {bodyBlocks.length > 0 && (
+          <UserMessageAttachments
+            attachments={allAttachments}
+            onImageClick={openLightbox}
+          />
+          {bodyBlocks.length > 0 && (
+            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
               <div className="px-4 py-3">
                 <BodyContentBlocks
                   blocks={bodyBlocks}
@@ -5821,12 +5825,8 @@ function PagedUserMessage({
                   markdownMediaPreview={false}
                 />
               </div>
-            )}
-            <UserMessageAttachments
-              attachments={allAttachments}
-              onImageClick={openLightbox}
-            />
-          </div>
+            </div>
+          )}
           <UserMessageActions
             canCopy={canCopy}
             copied={copied}
