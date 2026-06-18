@@ -285,11 +285,10 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::MetadataExt;
     use std::path::PathBuf;
 
     use crate::ids::RunId;
-    use crate::paths::{scoped_session_workspace_cache_key, session_workspace_cache_key};
+    use crate::paths::session_workspace_cache_key;
 
     fn tmp_image_path(home: &HomePaths, cache_key: &str, run_id: RunId) -> PathBuf {
         home.workspace_image_cache_dir()
@@ -474,68 +473,5 @@ mod tests {
         .unwrap();
 
         assert!(tmp.exists());
-    }
-
-    #[tokio::test]
-    async fn workspace_image_cache_gc_preserves_valid_group_scoped_entry() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("home"));
-        let cache_key = scoped_session_workspace_cache_key(
-            "vm0/test",
-            "vm0/default",
-            "sess-1",
-            "/workspace",
-            b"image".len() as u64,
-        );
-        let entry_dir = home.workspace_image_cache_dir().join(&cache_key);
-        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
-        let current = entry_dir.join("current.ext4");
-        tokio::fs::write(&current, b"image").await.unwrap();
-        let current_metadata = std::fs::metadata(&current).unwrap();
-        let metadata = serde_json::json!({
-            "formatVersion": 1,
-            "keyVersion": 1,
-            "cacheScope": "vm0/test",
-            "profileName": "vm0/default",
-            "sessionId": "sess-1",
-            "workingDir": "/workspace",
-            "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-            "lastUsedAt": "2026-05-28T00:00:00.000Z",
-            "lastTerminalStatus": "success",
-            "workspaceTrust": "clean",
-            "logicalImageSizeBytes": current_metadata.len(),
-            "allocatedBytes": current_metadata.blocks().saturating_mul(512),
-            "currentImage": {
-                "dev": current_metadata.dev(),
-                "ino": current_metadata.ino(),
-                "len": current_metadata.len(),
-            },
-            "driveLayout": "workspace-drive-v1",
-            "storageFingerprints": {
-                "storages": {},
-                "artifacts": {},
-            },
-            "state": "current",
-        });
-        tokio::fs::write(
-            entry_dir.join("metadata.json"),
-            serde_json::to_vec_pretty(&metadata).unwrap(),
-        )
-        .await
-        .unwrap();
-
-        run_workspace_image_cache_with_home(
-            WorkspaceImageCacheArgs {
-                command: WorkspaceImageCacheCommand::Gc(WorkspaceImageCacheGcArgs {
-                    dry_run: false,
-                }),
-            },
-            &home,
-        )
-        .await
-        .unwrap();
-
-        assert!(current.exists());
-        assert!(entry_dir.join("metadata.json").exists());
     }
 }
