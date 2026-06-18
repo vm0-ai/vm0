@@ -330,13 +330,9 @@ impl ActiveInputProducer {
 
     async fn stop(self) {
         self.stop.cancel();
-        for mut task in self.tasks {
-            match tokio::time::timeout(Duration::from_secs(1), &mut task).await {
-                Ok(_) => {}
-                Err(_) => {
-                    task.abort();
-                    let _ = task.await;
-                }
+        for task in self.tasks {
+            if let Err(error) = task.await {
+                eprintln!("warn: local active input producer task failed: {error}");
             }
         }
     }
