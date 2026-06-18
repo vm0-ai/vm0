@@ -99,16 +99,21 @@ enum TargetOutcome {
     SkippedHeadFailed {
         reason: String,
     },
+    SkippedInvalidDownload {
+        reason: String,
+    },
 }
 
 enum DownloadBody {
     Complete(Bytes),
+    Empty,
     OverSize { observed_size: u64 },
 }
 
 enum CachedArchive {
     Hit(Bytes),
     Missing,
+    Empty,
     OverSize { observed_size: u64 },
 }
 
@@ -282,6 +287,9 @@ async fn process_one(
             return Ok(TargetOutcome::Hit);
         }
         CachedArchive::Missing => {}
+        CachedArchive::Empty => {
+            evict_empty_cache(target, &cache_dir).await?;
+        }
         CachedArchive::OverSize { observed_size } => {
             evict_oversized_cache(target, &cache_dir, observed_size).await?;
         }
@@ -332,6 +340,16 @@ async fn process_one(
     let t = Instant::now();
     let bytes = match download_tarball(http, &target.archive_url, CACHE_MAX_SIZE).await? {
         DownloadBody::Complete(bytes) => bytes,
+        DownloadBody::Empty => {
+            warn!(
+                name = %target.name,
+                version = %target.version,
+                "storage_cache: full download returned empty archive, passthrough"
+            );
+            return Ok(TargetOutcome::SkippedInvalidDownload {
+                reason: "empty-download".to_string(),
+            });
+        }
         DownloadBody::OverSize { observed_size } => {
             warn!(
                 name = %target.name,
@@ -361,12 +379,14 @@ async fn process_one(
 
 async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult<CachedArchive> {
     match fs::metadata(archive_path).await {
+        Ok(metadata) if metadata.len() == 0 => Ok(CachedArchive::Empty),
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
             match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
                     touch_mtime(cache_dir);
                     Ok(CachedArchive::Hit(bytes))
                 }
+                DownloadBody::Empty => Ok(CachedArchive::Empty),
                 DownloadBody::OverSize { observed_size } => {
                     Ok(CachedArchive::OverSize { observed_size })
                 }
@@ -392,6 +412,7 @@ enum SizeProbe {
 #[derive(Debug, PartialEq, Eq)]
 enum SizeProbeUnknown {
     MissingSizeHeader,
+    InvalidSizeHeader,
     MissingContentRange,
     UnknownSize,
     InvalidContentRange,
@@ -401,6 +422,7 @@ impl SizeProbeUnknown {
     fn as_str(&self) -> &'static str {
         match self {
             Self::MissingSizeHeader => "missing-size-header",
+            Self::InvalidSizeHeader => "invalid-size-header",
             Self::MissingContentRange => "missing-content-range",
             Self::UnknownSize => "unknown-size",
             Self::InvalidContentRange => "invalid-content-range",
@@ -457,9 +479,11 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
             .and_then(parse_ascii_decimal_u64);
         // Drop the response after headers instead of buffering an ignored
         // Range response into memory.
-        return Ok(total
-            .map(SizeProbe::Known)
-            .unwrap_or(SizeProbe::Unknown(SizeProbeUnknown::MissingSizeHeader)));
+        return Ok(match total {
+            Some(0) => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
+            Some(total) => SizeProbe::Known(total),
+            None => SizeProbe::Unknown(SizeProbeUnknown::MissingSizeHeader),
+        });
     }
     // 4xx / 5xx / 416 / anything else — treat as probe failure.
     let err = resp
@@ -563,6 +587,10 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
         }
     }
 
+    if bytes.is_empty() {
+        return Ok(DownloadBody::Empty);
+    }
+
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
 }
 
@@ -593,6 +621,10 @@ async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<Downloa
         {
             return Ok(DownloadBody::OverSize { observed_size });
         }
+    }
+
+    if bytes.is_empty() {
+        return Ok(DownloadBody::Empty);
     }
 
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
@@ -634,6 +666,23 @@ async fn evict_oversized_cache(
     {
         return Err(RunnerError::Internal(format!(
             "remove oversized cache {}: {e}",
+            cache_dir.display()
+        )));
+    }
+    Ok(())
+}
+
+async fn evict_empty_cache(target: &CacheTarget, cache_dir: &Path) -> RunnerResult<()> {
+    warn!(
+        name = %target.name,
+        version = %target.version,
+        "storage_cache: cached archive is empty, evicting"
+    );
+    if let Err(e) = fs::remove_dir_all(cache_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(RunnerError::Internal(format!(
+            "remove empty cache {}: {e}",
             cache_dir.display()
         )));
     }
@@ -762,6 +811,14 @@ fn apply_outcome(
         TargetOutcome::SkippedHeadFailed { reason } => {
             telemetry.record(
                 "storage_cache_skipped_head_failed",
+                Duration::ZERO,
+                true,
+                Some(reason.as_str()),
+            );
+        }
+        TargetOutcome::SkippedInvalidDownload { reason } => {
+            telemetry.record(
+                "storage_cache_skipped_invalid_download",
                 Duration::ZERO,
                 true,
                 Some(reason.as_str()),
@@ -1057,6 +1114,21 @@ mod tests {
         );
     }
 
+    fn assert_storage_cache_skipped_invalid_download(
+        ops: &[(String, bool, Option<String>)],
+        expected: &str,
+    ) {
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_invalid_download")
+            .and_then(|(_, _, error)| error.as_deref());
+        assert_eq!(
+            reason,
+            Some(expected),
+            "expected storage_cache_skipped_invalid_download reason {expected:?} in {ops:?}"
+        );
+    }
+
     #[tokio::test]
     async fn hit_path_reads_from_disk_and_rewrites_url() {
         let temp = tempfile::tempdir().unwrap();
@@ -1261,6 +1333,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bytes 0-0/1")
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(Vec::<u8>::new());
+            })
+            .await;
+
+        let original = server.url("/empty-body.tar.gz");
+        let name = "empty-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "empty-download");
+    }
+
+    #[tokio::test]
     async fn cached_true_entry_is_not_touched() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -1426,6 +1551,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_disk_hit_is_evicted_and_revalidated() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let name = "empty-hit";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), b"").unwrap();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-revalidated.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-revalidated.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/empty-revalidated.tar.gz");
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
+            "expected revalidation miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
+            "empty cache file must not be treated as a hit: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn artifacts_are_cached_too() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -1563,6 +1750,56 @@ mod tests {
             !matches!(result, Ok(SizeProbe::Known(_))),
             "malformed Content-Length must not become a known size: {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn probe_200_zero_content_length_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/zero-length.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(200).header("content-length", "0");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/zero-length.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(tarball_bytes());
+            })
+            .await;
+
+        let original = server.url("/zero-length.tar.gz");
+        let name = "zero-length";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_reason(&ops, "invalid-size-header");
     }
 
     #[tokio::test]
@@ -1738,6 +1975,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("content-length over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
@@ -1761,6 +1999,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("stream over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
@@ -1780,6 +2019,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("cached file over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
