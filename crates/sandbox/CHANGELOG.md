@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.7](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.6...sandbox-v0.19.7) (2026-06-18)
+
+
+### Refactoring
+
+* carry sandbox exec termination state ([#18252](https://github.com/vm0-ai/vm0/issues/18252)) ([85f17cb](https://github.com/vm0-ai/vm0/commit/85f17cb86af25411fabf798f4c2e061a2c04b9c6))
+
 ## [0.19.6](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.5...sandbox-v0.19.6) (2026-06-17)
 
 

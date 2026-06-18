@@ -6,7 +6,8 @@ use crate::ca;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-use super::{CUSTOMIZE_SCRIPT, ROOTFS_DNS_NAMESERVER, TEMPLATE_BUILD_SCRIPT};
+use super::ROOTFS_DNS_NAMESERVER;
+use super::scripts::{CUSTOMIZE_SCRIPT, TEMPLATE_BUILD_SCRIPT};
 
 /// Bump to invalidate all shared template images in R2.
 ///

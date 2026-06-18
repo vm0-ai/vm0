@@ -20,6 +20,10 @@ const L = logger("ChatIdbCache");
 const MESSAGE_PAGE_SIZE = 50;
 
 type Stores = ReturnType<typeof createIdbMessageStores>;
+type ListMessagesAfterResult = {
+  messages: PagedChatMessage[];
+  reachedEnd: boolean;
+};
 
 interface CachedMessageReadStore {
   readBefore(
@@ -219,6 +223,64 @@ function createListMessagesAfter(
     },
   );
 }
+
+export const warmLatestChatThreadMessages$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+
+    if (!userId || !orgId) {
+      L.debug("warmLatest:noAuth", { threadId });
+      return;
+    }
+
+    const stores = createIdbMessageStores(userId, orgId);
+    const latest = await stores.readStore.readLatest(threadId, 1, signal);
+    signal.throwIfAborted();
+
+    const remote = createRemoteChatThreadDataSource(threadId);
+    const listMessagesAfter$ = createListMessagesAfter(remote, (uid, oid) => {
+      if (uid === userId && oid === orgId) {
+        return stores;
+      }
+      return createIdbMessageStores(uid, oid);
+    });
+
+    let sinceId = latest[0]?.id;
+    let pages = 0;
+    while (!signal.aborted) {
+      const result: ListMessagesAfterResult = await set(
+        listMessagesAfter$,
+        { threadId, sinceId },
+        signal,
+      );
+      signal.throwIfAborted();
+      pages += 1;
+
+      L.debug("warmLatest:page", {
+        threadId,
+        sinceId: sinceId ?? null,
+        count: result.messages.length,
+        reachedEnd: result.reachedEnd,
+        pages,
+      });
+
+      if (result.messages.length > 0) {
+        const nextSinceId = result.messages[result.messages.length - 1]!.id;
+        if (nextSinceId === sinceId) {
+          break;
+        }
+        sinceId = nextSinceId;
+      }
+
+      if (result.reachedEnd) {
+        break;
+      }
+    }
+  },
+);
 
 function createSubscribeRealtime(remote: ChatThreadDataSource) {
   return command(

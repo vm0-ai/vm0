@@ -67,6 +67,7 @@ import { bflFirewall } from "./bfl.generated";
 import { bitrefillFirewall } from "./bitrefill.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { blandFirewall } from "./bland.generated";
+import { boxFirewall } from "./box.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brexFirewall } from "./brex.generated";
 import { brevoFirewall } from "./brevo.generated";
@@ -193,6 +194,7 @@ import { mercuryFirewall } from "./mercury.generated";
 import { meshyFirewall } from "./meshy.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
+import { microsoft365Firewall } from "./microsoft-365.generated";
 import { mossFirewall } from "./moss.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
@@ -232,6 +234,7 @@ import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { profoundFirewall } from "./profound.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qdrantFirewall } from "./qdrant.generated";
+import { quickbooksFirewall } from "./quickbooks.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { railwayFirewall } from "./railway.generated";
 import { railwayProjectFirewall } from "./railway-project.generated";
@@ -365,6 +368,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   bitrefill: bitrefillFirewall,
   bitrix: bitrixFirewall,
   bland: blandFirewall,
+  box: boxFirewall,
   "brave-search": braveSearchFirewall,
   brex: brexFirewall,
   brevo: brevoFirewall,
@@ -476,6 +480,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   meshy: meshyFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
+  "microsoft-365": microsoft365Firewall,
   moss: mossFirewall,
   minimax: minimaxFirewall,
   miro: miroFirewall,
@@ -512,6 +517,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qdrant: qdrantFirewall,
+  quickbooks: quickbooksFirewall,
   qiita: qiitaFirewall,
   railway: railwayFirewall,
   "railway-project": railwayProjectFirewall,

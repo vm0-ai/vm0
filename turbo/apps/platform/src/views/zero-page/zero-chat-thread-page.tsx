@@ -2529,20 +2529,14 @@ function ChatThreadMessagesMain({
   activeGroups,
   sessionError,
   skeletonVisible,
-  hasOlderHistory,
-  loadingHistory,
   messagesLoading,
-  onLoadHistory,
 }: {
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
   activeGroups: GroupedChatMessageGroup[];
   sessionError: string | null;
   skeletonVisible: boolean;
-  hasOlderHistory: boolean;
-  loadingHistory: boolean;
   messagesLoading: boolean;
-  onLoadHistory: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   const showEmptyState =
     !sessionError &&
@@ -2561,18 +2555,6 @@ function ChatThreadMessagesMain({
         className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
         style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
       >
-        {!sessionError && !skeletonVisible && hasOlderHistory && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              disabled={loadingHistory}
-              onClick={onLoadHistory}
-              className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Load history
-            </button>
-          </div>
-        )}
         {sessionError && (
           <div className="flex-1 flex items-center justify-center py-16">
             <div className="flex items-center gap-2 text-destructive">
@@ -3057,10 +3039,6 @@ function useChatThreadKeyDownFactory() {
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
-  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
-  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
-    thread.loadHistory$,
-  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
@@ -3068,14 +3046,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const loadingHistory = loadHistoryLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
-  const onLoadHistory = onDomEventFn(() => {
-    return loadHistory(pageSignal);
-  });
   const githubPrTrackingOpen = useGithubPrTrackingOpen(
     thread,
     threadDataLoadable,
@@ -3103,10 +3076,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 activeGroups={activeGroups}
                 sessionError={sessionError}
                 skeletonVisible={skeletonVisible}
-                hasOlderHistory={hasOlderHistory}
-                loadingHistory={loadingHistory}
                 messagesLoading={messagesLoading}
-                onLoadHistory={onLoadHistory}
               />
             </div>
             <ChatThreadSkeletonOverlay

@@ -49,6 +49,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
+  [FeatureSwitchKey.BoxConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Box file storage connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Canva design connector",
@@ -79,6 +84,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
+  [FeatureSwitchKey.Microsoft365Connector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Microsoft 365 connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",
@@ -87,6 +97,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.QuickBooksConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the QuickBooks accounting connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
@@ -132,7 +147,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Stripe payment connector integration",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AwsConnector]: {
     maintainer: "ethan@vm0.ai",

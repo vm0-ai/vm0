@@ -31,6 +31,7 @@ import { generate as generateBfl } from "./bfl";
 import { generate as generateBitrefill } from "./bitrefill";
 import { generate as generateBitrix } from "./bitrix";
 import { generate as generateBland } from "./bland";
+import { generate as generateBox } from "./box";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrex } from "./brex";
 import { generate as generateBrevo } from "./brevo";
@@ -140,6 +141,7 @@ import { generate as generateMercury } from "./mercury";
 import { generate as generateMeshy } from "./meshy";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
+import { generate as generateMicrosoft365 } from "./microsoft-365";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
@@ -182,6 +184,7 @@ import { generate as generateProfound } from "./profound";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
+import { generate as generateQuickBooks } from "./quickbooks";
 import { generate as generateRailway } from "./railway";
 import { generate as generateRailwayProject } from "./railway-project";
 import { generate as generateReddit } from "./reddit";
@@ -287,6 +290,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   bitrefill: generateBitrefill,
   bitrix: generateBitrix,
   bland: generateBland,
+  box: generateBox,
   "brave-search": generateBraveSearch,
   brex: generateBrex,
   brevo: generateBrevo,
@@ -392,6 +396,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   meshy: generateMeshy,
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
+  "microsoft-365": generateMicrosoft365,
   minimax: generateMinimax,
   miro: generateMiro,
   mixpanel: generateMixpanel,
@@ -431,6 +436,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pushinator: generatePushinator,
   qdrant: generateQdrant,
   qiita: generateQiita,
+  quickbooks: generateQuickBooks,
   railway: generateRailway,
   "railway-project": generateRailwayProject,
   reddit: generateReddit,

@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./error-boundary.tsx";
 import { Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
 import { subscribeThreadListChanged$ } from "../signals/chat-thread-list-reload.ts";
+import { subscribeBackgroundChatThreadRunFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import { IN_VITEST } from "../env.ts";
@@ -17,6 +18,10 @@ export const setupRouter = (
 ) => {
   const signal = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
+  detach(
+    store.set(subscribeBackgroundChatThreadRunFinished$, signal),
+    Reason.Daemon,
+  );
   render(
     <StrictMode>
       <StoreProvider value={store}>

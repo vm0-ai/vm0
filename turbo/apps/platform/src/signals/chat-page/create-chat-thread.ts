@@ -85,6 +85,11 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 const L = logger("ChatThread");
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
+const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
+
+export interface LoadHistoryResult {
+  hasMore: boolean;
+}
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
@@ -529,7 +534,7 @@ export interface ChatThreadSignals {
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  loadHistory$: Command<Promise<void>, [AbortSignal]>;
+  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
@@ -1114,40 +1119,6 @@ function createInitialPage(dataSource: ChatThreadDataSource) {
   return dataSource.initialPage$;
 }
 
-function createBackfillHistoryBoundaryCommand({
-  threadId,
-  initialPage$,
-  loadedHistoryHasMore$,
-  dataSource,
-}: {
-  threadId: string;
-  initialPage$: Computed<Promise<InitialPage>>;
-  loadedHistoryHasMore$: State<boolean | null>;
-  dataSource: ChatThreadDataSource;
-}) {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const initial = await get(initialPage$);
-    signal.throwIfAborted();
-    if (!initial.needsHistoryBackfill) {
-      return;
-    }
-
-    const beforeId = initial.messages[0]?.id;
-    if (!beforeId) {
-      set(loadedHistoryHasMore$, false);
-      return;
-    }
-
-    const result = await set(
-      dataSource.listMessagesBefore$,
-      { threadId, beforeId },
-      signal,
-    );
-    signal.throwIfAborted();
-    set(loadedHistoryHasMore$, result.messages.length > 0 || result.hasMore);
-  });
-}
-
 interface ChatMessageProjectionEntry {
   message: PagedChatMessage;
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
@@ -1433,14 +1404,7 @@ function createPagedMessages(
       return loadedHistoryHasMore;
     }
     const initial = await get(initialPage$);
-    return initial.hasHistoryBefore;
-  });
-
-  const backfillHistoryBoundary$ = createBackfillHistoryBoundaryCommand({
-    threadId,
-    initialPage$,
-    loadedHistoryHasMore$,
-    dataSource,
+    return initial.hasHistoryBefore || initial.needsHistoryBackfill === true;
   });
 
   const fetchNextPage$ = createFetchNextPageCommand({
@@ -1486,7 +1450,6 @@ function createPagedMessages(
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
-    backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$,
   };
@@ -1508,44 +1471,49 @@ function createLoadHistoryCommand({
   loadedHistoryHasMore$: State<boolean | null>;
   knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
-}): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const thread = await get(threadData$);
-    signal.throwIfAborted();
-    if (!thread) {
-      set(loadedHistoryHasMore$, false);
-      return;
-    }
-
-    const beforeId = await get(earliestChatMessageId$);
-    signal.throwIfAborted();
-    if (!beforeId) {
-      set(loadedHistoryHasMore$, false);
-      return;
-    }
-
-    const result = await set(
-      dataSource.listMessagesBefore$,
-      { threadId, beforeId },
-      signal,
-    );
-    signal.throwIfAborted();
-    set(reconcileOptimisticChatMessages$, {
-      threadId,
-      messages: result.messages,
-    });
-    set(knownServerMessageIds$, (prev) => {
-      return addKnownServerMessageIds(prev, result.messages);
-    });
-
-    set(historyMessages$, (prev) => {
-      if (result.messages.length === 0) {
-        return prev;
+}): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        set(loadedHistoryHasMore$, false);
+        return { hasMore: false };
       }
-      return [...result.messages, ...prev];
-    });
-    set(loadedHistoryHasMore$, result.hasMore);
-  });
+
+      const beforeId = await get(earliestChatMessageId$);
+      signal.throwIfAborted();
+      if (!beforeId) {
+        set(loadedHistoryHasMore$, false);
+        return { hasMore: false };
+      }
+
+      const result = await set(
+        dataSource.listMessagesBefore$,
+        { threadId, beforeId },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(reconcileOptimisticChatMessages$, {
+        threadId,
+        messages: result.messages,
+      });
+      set(knownServerMessageIds$, (prev) => {
+        return addKnownServerMessageIds(prev, result.messages);
+      });
+
+      set(historyMessages$, (prev) => {
+        if (result.messages.length === 0) {
+          return prev;
+        }
+        return [...result.messages, ...prev];
+      });
+      set(loadedHistoryHasMore$, result.hasMore);
+      return {
+        hasMore: result.hasMore,
+      };
+    },
+  );
 }
 
 function createArtifacts(
@@ -1661,11 +1629,50 @@ function createLatestRunStatus(
 
 function createLoadHistoryWithPrependScroll(
   recordScrollHeightForPrepend$: Command<void, []>,
-  loadPagedHistory$: Command<Promise<void>, [AbortSignal]>,
+  loadPagedHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
 ) {
-  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
-    set(recordScrollHeightForPrepend$);
-    await set(loadPagedHistory$, signal);
+  return command(
+    async ({ set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
+      set(recordScrollHeightForPrepend$);
+      return await set(loadPagedHistory$, signal);
+    },
+  );
+}
+
+function createSilentBackfillHistoryCommand({
+  groupedChatMessages$,
+  hasOlderHistory$,
+  loadHistory$,
+}: {
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hasOlderHistory$: Computed<Promise<boolean>>;
+  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
+}) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    let initialMessagesResolved = false;
+
+    await setLoop(
+      async (sig) => {
+        if (!initialMessagesResolved) {
+          await get(groupedChatMessages$);
+          sig.throwIfAborted();
+          initialMessagesResolved = true;
+          return false;
+        }
+
+        const hasOlderHistory = await get(hasOlderHistory$);
+        sig.throwIfAborted();
+        if (!hasOlderHistory) {
+          return true;
+        }
+
+        const result = await set(loadHistory$, sig);
+        sig.throwIfAborted();
+        return !result.hasMore;
+      },
+      SILENT_HISTORY_BACKFILL_INTERVAL_MS,
+      signal,
+    );
   });
 }
 
@@ -1682,7 +1689,7 @@ interface RunTrackingDeps {
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
+  silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadDataSource;
@@ -1742,7 +1749,7 @@ function createRunTracking({
   rawMessages$,
   initialPage$,
   fetchNextPage$,
-  backfillHistoryBoundary$,
+  silentBackfillHistory$,
   refreshLatestMessages$,
   autoScroll$,
   dataSource,
@@ -1834,7 +1841,7 @@ function createRunTracking({
 
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     await Promise.all([
-      set(backfillHistoryBoundary$, signal),
+      set(silentBackfillHistory$, signal),
       set(markThreadReadIfNeeded$, signal),
       set(subscribeComputerUseHostsChanged$, signal),
       set(
@@ -2438,7 +2445,6 @@ export function createChatThreadSignals(
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
-    backfillHistoryBoundary$,
     refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
   } = createPagedMessages(threadId, threadData$, dataSource);
@@ -2447,6 +2453,11 @@ export function createChatThreadSignals(
     recordScrollHeightForPrepend$,
     loadPagedHistory$,
   );
+  const silentBackfillHistory$ = createSilentBackfillHistoryCommand({
+    groupedChatMessages$,
+    hasOlderHistory$,
+    loadHistory$,
+  });
 
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
@@ -2459,7 +2470,7 @@ export function createChatThreadSignals(
     rawMessages$,
     initialPage$,
     fetchNextPage$,
-    backfillHistoryBoundary$,
+    silentBackfillHistory$,
     refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,

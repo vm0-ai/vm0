@@ -109,6 +109,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import bland_0
 
         return (bland_0.JSON_PART,)
+    if name == "box":
+        from . import box_0
+
+        return (box_0.JSON_PART,)
     if name == "brave-search":
         from . import brave_search_0
 
@@ -603,6 +607,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import metabase_0
 
         return (metabase_0.JSON_PART,)
+    if name == "microsoft-365":
+        from . import microsoft_365_0
+
+        return (microsoft_365_0.JSON_PART,)
     if name == "minimax":
         from . import minimax_0
 
@@ -815,6 +823,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import qiita_0
 
         return (qiita_0.JSON_PART,)
+    if name == "quickbooks":
+        from . import quickbooks_0
+
+        return (quickbooks_0.JSON_PART,)
     if name == "railway":
         from . import railway_0
 

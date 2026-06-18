@@ -4,7 +4,11 @@ import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/real
 import { afterEach, describe, expect, it } from "vitest";
 
 import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
-import { setupRealtime$, setAblyLoop$ } from "../realtime.ts";
+import {
+  setupRealtime$,
+  setAblyLoop$,
+  setAblyPayloadLoop$,
+} from "../realtime.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -137,6 +141,37 @@ describe("realtime signals", () => {
     context.mocks.ably.triggerReconnect();
     await waitFor(() => {
       expect(runs).toBe(2);
+    });
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("passes Ably payloads to payload loops", async () => {
+    mockSignedInUser();
+    const topic = "test:payload";
+    const subscriber = new AbortController();
+    const payloads: unknown[] = [];
+    const loop$ = command((_ctx, payload: unknown, _signal: AbortSignal) => {
+      payloads.push(payload);
+      return false;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      topic,
+      loop$,
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic, { threadId: "thread-1" });
+
+    await waitFor(() => {
+      expect(payloads).toStrictEqual([{ threadId: "thread-1" }]);
     });
 
     subscriber.abort(abortError("test done"));

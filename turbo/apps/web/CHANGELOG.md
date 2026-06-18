@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.432.3](https://github.com/vm0-ai/vm0/compare/web-v12.432.2...web-v12.432.3) (2026-06-18)
+
+
+### Refactoring
+
+* remove paid onboarding redirect switch ([#18253](https://github.com/vm0-ai/vm0/issues/18253)) ([1cb8858](https://github.com/vm0-ai/vm0/commit/1cb88584d30a882541de87e535ebfdf99056097f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/core bumped to 8.355.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.92.0
+
 ## [12.432.2](https://github.com/vm0-ai/vm0/compare/web-v12.432.1...web-v12.432.2) (2026-06-18)
 
 

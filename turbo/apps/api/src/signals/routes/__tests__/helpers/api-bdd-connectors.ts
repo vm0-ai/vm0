@@ -83,11 +83,6 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
-const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
-export const STRIPE_CLI_BROWSER_URL =
-  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
-export const STRIPE_CLI_TEST_SECRET = "rk_test_api123";
-const STRIPE_CLI_LIVE_SECRET = "rk_live_api456";
 const TEST_OAUTH_USERINFO_URL =
   "http://localhost:3000/api/test/oauth-provider/userinfo";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -698,68 +693,6 @@ export function mockDeferredTestOAuthTokenEndpoint(): DeferredTestOAuthTokenEndp
       return callCount;
     },
   };
-}
-
-interface StripeCliDashboardProviderOptions {
-  readonly pollToken?: string;
-  readonly oversizePollUrl?: boolean;
-}
-
-interface StripeCliDashboardProviderRecorder {
-  readonly startBodies: URLSearchParams[];
-  readonly pollUrls: string[];
-}
-
-export function mockStripeCliDashboardProvider(
-  options: StripeCliDashboardProviderOptions = {},
-): StripeCliDashboardProviderRecorder {
-  const recorded: StripeCliDashboardProviderRecorder = {
-    startBodies: [],
-    pollUrls: [],
-  };
-
-  server.use(
-    http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
-      recorded.startBodies.push(new URLSearchParams(await request.text()));
-      const pollToken = options.oversizePollUrl
-        ? "x".repeat(4200)
-        : (options.pollToken ?? "test-complete");
-      return HttpResponse.json({
-        browser_url: STRIPE_CLI_BROWSER_URL,
-        poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=${pollToken}`,
-        verification_code: "STRIPE-CLI",
-      });
-    }),
-    http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
-      recorded.pollUrls.push(request.url);
-      const pollToken = new URL(request.url).searchParams.get("poll_token");
-      if (pollToken === "pending") {
-        return HttpResponse.json({
-          redeemed: false,
-          account_id: null,
-          account_display_name: null,
-          testmode_key_secret: null,
-          testmode_key_publishable: null,
-          livemode_key_secret: null,
-          livemode_key_publishable: null,
-        });
-      }
-      if (pollToken === "malformed") {
-        return HttpResponse.text(
-          `not json ${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET}`,
-        );
-      }
-      return HttpResponse.json({
-        redeemed: true,
-        account_id: "acct_test",
-        account_display_name: "Test Stripe Account",
-        testmode_key_secret: STRIPE_CLI_TEST_SECRET,
-        livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
-      });
-    }),
-  );
-
-  return recorded;
 }
 
 interface Base44OAuthProviderRecorder {

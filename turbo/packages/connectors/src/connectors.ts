@@ -83,6 +83,7 @@ import { bfl } from "./connectors/bfl";
 import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
 import { bland } from "./connectors/bland";
+import { box } from "./connectors/box";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
 import { brevo } from "./connectors/brevo";
@@ -188,6 +189,7 @@ import { mercury } from "./connectors/mercury";
 import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
+import { microsoft365 } from "./connectors/microsoft-365";
 import { tiktokAds } from "./connectors/tiktok-ads";
 import { minimax } from "./connectors/minimax";
 import { minio } from "./connectors/minio";
@@ -230,6 +232,7 @@ import { profound } from "./connectors/profound";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
+import { quickbooks } from "./connectors/quickbooks";
 import { qiita } from "./connectors/qiita";
 import { railway } from "./connectors/railway";
 import { railwayProject } from "./connectors/railway-project";
@@ -1115,6 +1118,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...bitrefill,
   ...bitrix,
   ...bland,
+  ...box,
   ...braveSearch,
   ...brex,
   ...brevo,
@@ -1220,6 +1224,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...meshy,
   ...metaAds,
   ...metabase,
+  ...microsoft365,
   ...tiktokAds,
   ...minimax,
   ...minio,
@@ -1262,6 +1267,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...productlane,
   ...pushinator,
   ...qdrant,
+  ...quickbooks,
   ...qiita,
   ...railway,
   ...railwayProject,
