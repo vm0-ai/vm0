@@ -142,10 +142,8 @@ impl SubmitQueueEntry {
             .remove_job_files_if_present(self.job_id);
         let has_claim =
             local_queue::marker_file_exists(&self.claim, "local claim marker").unwrap_or(true);
-        if !has_claim {
-            self.cleanup_active_inputs();
-        }
         if jobs_removed && !has_claim {
+            self.cleanup_active_inputs();
             let _ = remove_file_if_exists(&self.claim);
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
@@ -719,6 +717,9 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
     let outcome = plan.wait_for_result().await;
     if let Some(producer) = producer {
         producer.stop().await;
+    }
+    if matches!(outcome, Err(_) | Ok(SubmitOutcome::Cancelled)) {
+        plan.queue.cleanup_abandoned(None);
     }
     match outcome? {
         SubmitOutcome::Completed(buf) => plan.finish_completed(&buf),
@@ -1864,6 +1865,35 @@ mod tests {
             .unwrap();
 
         queue.cleanup_abandoned(Some(&marker));
+
+        assert!(!local_queue::run_inputs_dir(group_dir, job_id).exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_late_unclaimed_active_inputs_after_job_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "late".to_string(),
+            })
+            .unwrap();
+
+        queue.cleanup_abandoned(None);
 
         assert!(!local_queue::run_inputs_dir(group_dir, job_id).exists());
         assert!(!queue.result.exists());
