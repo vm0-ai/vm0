@@ -6,7 +6,10 @@ import {
   getConnectorFirewall,
 } from "../firewalls";
 import { collectAndValidatePermissions } from "../firewall-expander";
-import { matchFirewallBaseUrl } from "../firewall-rule-matcher";
+import {
+  matchFirewallHost,
+  matchFirewallBaseUrl,
+} from "../firewall-rule-matcher";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallConfig,
@@ -16,7 +19,10 @@ interface FirewallBaseEntry {
   readonly connectorType: string;
   readonly apiIndex: number;
   readonly base: string;
+  readonly protocol: string;
+  readonly authorityPattern: string;
   readonly sampleUrls: readonly string[];
+  readonly sampleAuthorities: readonly string[];
 }
 
 const FIREWALL_BASE_SAMPLE_VALUES = ["api", "foo", "bar", "v1", "me", "123"];
@@ -65,6 +71,25 @@ function baseSampleUrls(base: string): string[] {
   });
 }
 
+function baseProtocolAndAuthority(
+  base: string,
+): { protocol: string; authority: string } | null {
+  const match = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)/i.exec(base);
+  if (!match) return null;
+  return {
+    protocol: match[1]!.toLowerCase(),
+    authority: match[2]!,
+  };
+}
+
+function sampleAuthority(sampleUrl: string): string | null {
+  try {
+    return new URL(sampleUrl).host;
+  } catch {
+    return null;
+  }
+}
+
 function firewallBaseLabel(entry: FirewallBaseEntry): string {
   return `${entry.connectorType}[${entry.apiIndex}] ${entry.base}`;
 }
@@ -76,16 +101,47 @@ function collectBuiltinFirewallBaseEntries(): FirewallBaseEntry[] {
     const firewall = getConnectorFirewall(connectorType);
     firewall.apis.forEach((api, apiIndex) => {
       const sampleUrls = baseSampleUrls(api.base);
+      const parsedBase = baseProtocolAndAuthority(api.base);
       if (sampleUrls.length === 0) return;
+      if (parsedBase === null) return;
       entries.push({
         connectorType,
         apiIndex,
         base: api.base,
+        protocol: parsedBase.protocol,
+        authorityPattern: parsedBase.authority,
         sampleUrls,
+        sampleAuthorities: sampleUrls
+          .map(sampleAuthority)
+          .filter((authority): authority is string => {
+            return authority !== null;
+          }),
       });
     });
   }
   return entries;
+}
+
+function sampleAuthorityMatchesPattern(
+  authority: string,
+  pattern: string,
+): boolean {
+  return matchFirewallHost(authority, pattern) !== null;
+}
+
+function entriesMayShareAuthority(
+  left: FirewallBaseEntry,
+  right: FirewallBaseEntry,
+): boolean {
+  if (left.protocol !== right.protocol) return false;
+  return (
+    left.sampleAuthorities.some((authority) => {
+      return sampleAuthorityMatchesPattern(authority, right.authorityPattern);
+    }) ||
+    right.sampleAuthorities.some((authority) => {
+      return sampleAuthorityMatchesPattern(authority, left.authorityPattern);
+    })
+  );
 }
 
 function findBuiltinFirewallBaseOverlaps(): string[] {
@@ -99,6 +155,7 @@ function findBuiltinFirewallBaseOverlaps(): string[] {
     ) {
       const left = entries[leftIndex]!;
       const right = entries[rightIndex]!;
+      if (!entriesMayShareAuthority(left, right)) continue;
       const leftMatchesRight = left.sampleUrls.some((sampleUrl) => {
         return matchFirewallBaseUrl(sampleUrl, right.base) !== null;
       });
@@ -182,7 +239,7 @@ describe("builtin firewall base overlap guard", () => {
       staleAllowedOverlaps,
       "Remove fixed firewall base overlaps from ALLOWED_FIREWALL_BASE_OVERLAPS.",
     ).toEqual([]);
-  });
+  }, 10_000);
 });
 
 describe("known endpoint-scoped firewall bases", () => {

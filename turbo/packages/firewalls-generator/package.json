@@ -196,6 +196,7 @@
     "generate:reap": "tsx src/index.ts reap",
     "generate:recraft": "tsx src/index.ts recraft",
     "generate:reddit": "tsx src/index.ts reddit",
+    "generate:render": "tsx src/index.ts render",
     "generate:replicate": "tsx src/index.ts replicate",
     "generate:reportei": "tsx src/index.ts reportei",
     "generate:resend": "tsx src/index.ts resend",

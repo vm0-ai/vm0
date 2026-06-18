@@ -207,6 +207,7 @@ import { reap } from "./connectors/reap";
 import { reddit } from "./connectors/reddit";
 import { reducto } from "./connectors/reducto";
 import { recraft } from "./connectors/recraft";
+import { render } from "./connectors/render";
 import { replicate } from "./connectors/replicate";
 import { reportei } from "./connectors/reportei";
 import { resend } from "./connectors/resend";
@@ -1196,6 +1197,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...reddit,
   ...reducto,
   ...recraft,
+  ...render,
   ...replicate,
   ...reportei,
   ...resend,

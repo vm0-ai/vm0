@@ -214,6 +214,7 @@ const CONNECTOR_ICON_COLORFUL = {
   recraft: true,
   reddit: true,
   reducto: true,
+  render: true,
   rentcast: true,
   reportei: true,
   revenuecat: true,

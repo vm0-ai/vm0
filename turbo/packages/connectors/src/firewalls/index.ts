@@ -239,6 +239,7 @@ import { redditFirewall } from "./reddit.generated";
 import { reapFirewall } from "./reap.generated";
 import { reductoFirewall } from "./reducto.generated";
 import { recraftFirewall } from "./recraft.generated";
+import { renderFirewall } from "./render.generated";
 import { reporteiFirewall } from "./reportei.generated";
 import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
@@ -511,6 +512,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   reddit: redditFirewall,
   reap: reapFirewall,
   recraft: recraftFirewall,
+  render: renderFirewall,
   reportei: reporteiFirewall,
   replicate: replicateFirewall,
   resend: resendFirewall,
