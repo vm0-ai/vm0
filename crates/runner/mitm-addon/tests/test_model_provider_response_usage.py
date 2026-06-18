@@ -907,8 +907,12 @@ class TestModelProviderResponseUsage:
 
         mitm_addon.responseheaders(flow)
 
+        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+
         assert "model_json_usage_finish" not in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Non-billable model-provider fallback must not emit usage warnings."""
