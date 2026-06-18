@@ -31,6 +31,7 @@ import { generate as generateBfl } from "./bfl";
 import { generate as generateBitrefill } from "./bitrefill";
 import { generate as generateBitrix } from "./bitrix";
 import { generate as generateBland } from "./bland";
+import { generate as generateBox } from "./box";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrex } from "./brex";
 import { generate as generateBrevo } from "./brevo";
@@ -288,6 +289,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   bitrefill: generateBitrefill,
   bitrix: generateBitrix,
   bland: generateBland,
+  box: generateBox,
   "brave-search": generateBraveSearch,
   brex: generateBrex,
   brevo: generateBrevo,

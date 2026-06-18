@@ -85,6 +85,7 @@ const CONNECTOR_ICON_COLORFUL = {
   bitrefill: true,
   bitrix: true,
   bland: true,
+  box: true,
   bloom: true,
   "brave-search": true,
   "bright-data": true,

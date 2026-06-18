@@ -49,6 +49,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
+  [FeatureSwitchKey.BoxConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Box file storage connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Canva design connector",

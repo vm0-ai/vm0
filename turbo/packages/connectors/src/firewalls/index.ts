@@ -67,6 +67,7 @@ import { bflFirewall } from "./bfl.generated";
 import { bitrefillFirewall } from "./bitrefill.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { blandFirewall } from "./bland.generated";
+import { boxFirewall } from "./box.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brexFirewall } from "./brex.generated";
 import { brevoFirewall } from "./brevo.generated";
@@ -366,6 +367,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   bitrefill: bitrefillFirewall,
   bitrix: bitrixFirewall,
   bland: blandFirewall,
+  box: boxFirewall,
   "brave-search": braveSearchFirewall,
   brex: brexFirewall,
   brevo: brevoFirewall,

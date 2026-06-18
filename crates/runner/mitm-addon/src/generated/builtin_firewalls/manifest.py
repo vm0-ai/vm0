@@ -30,6 +30,7 @@ FIREWALL_MODULES = {
     "bitrefill": ("bitrefill_0",),
     "bitrix": ("bitrix_0",),
     "bland": ("bland_0",),
+    "box": ("box_0",),
     "brave-search": ("brave_search_0",),
     "brevo": ("brevo_0",),
     "brex": ("brex_0",),

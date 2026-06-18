@@ -83,6 +83,7 @@ import { bfl } from "./connectors/bfl";
 import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
 import { bland } from "./connectors/bland";
+import { box } from "./connectors/box";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
 import { brevo } from "./connectors/brevo";
@@ -1116,6 +1117,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...bitrefill,
   ...bitrix,
   ...bland,
+  ...box,
   ...braveSearch,
   ...brex,
   ...brevo,

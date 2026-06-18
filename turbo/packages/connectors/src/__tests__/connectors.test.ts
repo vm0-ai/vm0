@@ -193,6 +193,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   ahrefs: "https://app.ahrefs.com/api/auth",
   airtable: "https://airtable.com/oauth2/v1/authorize",
   asana: "https://app.asana.com/-/oauth_authorize",
+  box: "https://account.box.com/api/oauth2/authorize",
   canva: "https://www.canva.com/api/oauth/authorize",
   close: "https://app.close.com/oauth2/authorize/",
   cloudflare: "https://dash.cloudflare.com/oauth2/auth",
@@ -2072,6 +2073,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
         [FeatureSwitchKey.BentomlConnector]: true,
       }),
     ).toStrictEqual(["api-token"]);
+  });
+
+  it("exposes Box OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("box", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("box", {
+        [FeatureSwitchKey.BoxConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Meta Ads OAuth only when its switch is enabled", () => {
