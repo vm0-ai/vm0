@@ -85,6 +85,46 @@ async fn read_file_returns_content_and_missing() {
 }
 
 #[tokio::test]
+async fn read_file_dispatches_concurrent_results_by_seq() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let first_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/first.txt", 1024, 5000).await })
+    };
+    let first = expect_exec_start(&mut guest).await;
+
+    let second_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/second.txt", 1024, 5000).await })
+    };
+    let second = expect_exec_start(&mut guest).await;
+
+    send_exec_result(
+        &mut guest,
+        second.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"second\n",
+        b"",
+    )
+    .await;
+    send_exec_result(
+        &mut guest,
+        first.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"first\n",
+        b"",
+    )
+    .await;
+
+    let first_content = first_task.await.unwrap().unwrap();
+    let second_content = second_task.await.unwrap().unwrap();
+    assert_eq!(first_content.as_deref(), Some(&b"first\n"[..]));
+    assert_eq!(second_content.as_deref(), Some(&b"second\n"[..]));
+}
+
+#[tokio::test]
 async fn read_file_errors_on_truncated_stdout() {
     let (host, mut guest) = setup_host_and_guest().await;
     let read_task = tokio::spawn(async move { host.read_file("/tmp/large.txt", 5, 5000).await });
