@@ -15,8 +15,11 @@ async fn read_file_terminal_error(
     diagnostic: &'static str,
 ) -> io::Error {
     let (host, mut guest) = setup_host_and_guest().await;
-    let read_task =
-        tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await });
+    let host = Arc::new(host);
+    let read_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await })
+    };
 
     let start = expect_exec_start(&mut guest).await;
     let payload = vsock_proto::encode_exec_result(
@@ -35,7 +38,9 @@ async fn read_file_terminal_error(
     .unwrap();
     send_raw_exec_result(&mut guest, start.seq(), payload).await;
 
-    read_task.await.unwrap().unwrap_err()
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(operation_count(&host), 0);
+    err
 }
 
 #[tokio::test]
@@ -122,6 +127,7 @@ async fn read_file_dispatches_concurrent_results_by_seq() {
     let second_content = second_task.await.unwrap().unwrap();
     assert_eq!(first_content.as_deref(), Some(&b"first\n"[..]));
     assert_eq!(second_content.as_deref(), Some(&b"second\n"[..]));
+    assert_eq!(operation_count(&host), 0);
 }
 
 #[tokio::test]
