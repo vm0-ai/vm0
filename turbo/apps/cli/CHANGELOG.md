@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.197.4](https://github.com/vm0-ai/vm0/compare/cli-v9.197.3...cli-v9.197.4) (2026-06-18)
+
+
+### Bug Fixes
+
+* respect requested presentation slide counts ([#18189](https://github.com/vm0-ai/vm0/issues/18189)) ([3b4d532](https://github.com/vm0-ai/vm0/commit/3b4d532f1981422951e963c34e564ce6e058a95f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.102.0
+    * @vm0/connectors bumped to 1.89.0
+    * @vm0/core bumped to 8.353.0
+
 ## [9.197.3](https://github.com/vm0-ai/vm0/compare/cli-v9.197.2...cli-v9.197.3) (2026-06-18)
 
 

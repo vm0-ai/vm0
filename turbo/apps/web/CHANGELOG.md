@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.432.0](https://github.com/vm0-ai/vm0/compare/web-v12.431.5...web-v12.432.0) (2026-06-18)
+
+
+### Features
+
+* add agent chat draft persistence ([#18181](https://github.com/vm0-ai/vm0/issues/18181)) ([98ac2e3](https://github.com/vm0-ai/vm0/commit/98ac2e36e56725ca8b620d30782057973d2d03da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.0
+    * @vm0/core bumped to 8.353.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.89.0
+
 ## [12.431.5](https://github.com/vm0-ai/vm0/compare/web-v12.431.4...web-v12.431.5) (2026-06-18)
 
 

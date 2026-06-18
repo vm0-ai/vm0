@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.41](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.40...nbd-cow-v0.4.41) (2026-06-18)
+
+
+### Refactoring
+
+* **nbd-cow:** split cow bitmap internals ([#18190](https://github.com/vm0-ai/vm0/issues/18190)) ([9361d16](https://github.com/vm0-ai/vm0/commit/9361d16c5b8869c2521cd214d472ca845c8ab74f))
+
 ## [0.4.40](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.39...nbd-cow-v0.4.40) (2026-06-16)
 
 
