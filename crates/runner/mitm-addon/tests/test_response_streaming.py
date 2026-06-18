@@ -528,6 +528,30 @@ class TestXJsonFinalize:
         assert "parse_error" not in state
 
 
+class TestResponseHeadersModelJsonParser:
+    """Tests for model-provider JSON parser setup in responseheaders()."""
+
+    def test_brotli_model_json_skips_incremental_parser(self, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+
+        assert callable(response_stream(flow))
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
+        assert any(
+            "Streaming decompression skipped (br)" in call.args[0]
+            for call in log.debug.call_args_list
+        )
+
+
 class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
 
