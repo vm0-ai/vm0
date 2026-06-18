@@ -8,8 +8,8 @@ use serde_json::json;
 
 #[tokio::test]
 async fn recovery_checkpoint_uploads_valid_session_history() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
@@ -57,15 +57,12 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
-    prepare_mock.delete_async().await;
-    upload_mock.delete_async().await;
-    checkpoint_mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
@@ -102,14 +99,12 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
     );
     prepare_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
-    prepare_mock.delete_async().await;
-    checkpoint_mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn recovery_checkpoint_skips_when_session_id_is_missing() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let _files_guard = SessionCheckpointFilesGuard::new();
 
@@ -132,14 +127,12 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
     );
     prepare_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
-    prepare_mock.delete_async().await;
-    checkpoint_mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let _files_guard = SessionCheckpointFilesGuard::new();
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "missing-history")
@@ -164,6 +157,4 @@ async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
     );
     prepare_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
-    prepare_mock.delete_async().await;
-    checkpoint_mock.delete_async().await;
 }

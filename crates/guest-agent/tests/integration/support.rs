@@ -1,7 +1,7 @@
 use httpmock::prelude::*;
 use serde_json::Value;
 use std::sync::{
-    Arc, LazyLock, Mutex,
+    Arc, LazyLock, Mutex, MutexGuard,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
@@ -38,6 +38,38 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
 
 /// Serialize all tests - they share one mock server and process-wide env vars.
 pub(crate) static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+pub(crate) struct SharedApiMock {
+    _guard: MutexGuard<'static, ()>,
+    server: &'static MockServer,
+}
+
+impl SharedApiMock {
+    pub(crate) async fn new() -> Self {
+        let guard = match TEST_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let server = &*MOCK_SERVER;
+        server.reset_async().await;
+        Self {
+            _guard: guard,
+            server,
+        }
+    }
+
+    pub(crate) fn server(&self) -> &MockServer {
+        self.server
+    }
+
+    pub(crate) fn url(&self, path: &str) -> String {
+        assert!(
+            path.starts_with('/'),
+            "shared API mock path must be absolute"
+        );
+        format!("{}{}", self.server.base_url(), path)
+    }
+}
 
 macro_rules! http_client {
     () => {

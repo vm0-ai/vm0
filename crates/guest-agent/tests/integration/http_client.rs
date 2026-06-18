@@ -10,8 +10,8 @@ use std::time::Duration;
 
 #[tokio::test]
 async fn post_json_success_json_response() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/success");
@@ -20,7 +20,7 @@ async fn post_json_success_json_response() {
             .json_body(json!({"status": "ok"}));
     });
 
-    let url = format!("{}/test/success", server.base_url());
+    let url = api.url("/test/success");
     let result = http_client!()
         .post_json(&url, &json!({"key": "val"}), 1)
         .await;
@@ -28,14 +28,13 @@ async fn post_json_success_json_response() {
     mock.assert_calls_async(1).await;
     let val = result.unwrap().unwrap();
     assert_eq!(val["status"], "ok");
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn for_current_env_uses_enabled_client_when_api_token_is_set()
 -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -44,22 +43,21 @@ async fn for_current_env_uses_enabled_client_when_api_token_is_set()
         then.status(200).json_body(json!({"status": "ok"}));
     });
 
-    let url = format!("{}/test/for-current-env", server.base_url());
+    let url = api.url("/test/for-current-env");
     let result = guest_agent::http::HttpClient::for_current_env()?
         .post_json(&url, &json!({}), 1)
         .await?;
 
     mock.assert_calls_async(1).await;
     assert_eq!(result.unwrap()["status"], "ok");
-    mock.delete_async().await;
     Ok(())
 }
 
 #[tokio::test]
 async fn for_current_env_uses_env_api_url_for_webhook_routes()
 -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -82,34 +80,32 @@ async fn for_current_env_uses_env_api_url_for_webhook_routes()
     .await?;
 
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
     Ok(())
 }
 
 #[tokio::test]
 async fn post_json_success_empty_response() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/empty");
         then.status(200);
     });
 
-    let url = format!("{}/test/empty", server.base_url());
+    let url = api.url("/test/empty");
     let result = http_client!()
         .post_json(&url, &json!({"key": "val"}), 1)
         .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.unwrap().is_none());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn post_json_retry_then_succeed() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/retry-succeed");
@@ -119,31 +115,29 @@ async fn post_json_retry_then_succeed() {
         ));
     });
 
-    let url = format!("{}/test/retry-succeed", server.base_url());
+    let url = api.url("/test/retry-succeed");
     let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     let val = result.unwrap().unwrap();
     assert_eq!(val["recovered"], true);
     mock.assert_calls_async(3).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn post_json_retry_exhausted() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/exhaust");
         then.status(500);
     });
 
-    let url = format!("{}/test/exhaust", server.base_url());
+    let url = api.url("/test/exhaust");
     let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -152,40 +146,38 @@ async fn post_json_retry_exhausted() {
 
 #[tokio::test]
 async fn post_json_4xx_returns_immediately_no_retry() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/post-400");
         then.status(400);
     });
 
-    let url = format!("{}/test/post-400", server.base_url());
+    let url = api.url("/test/post-400");
     let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     // Should fail immediately — only 1 call, no retries.
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn post_json_429_retries() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/post-429");
         then.status(429);
     });
 
-    let url = format!("{}/test/post-429", server.base_url());
+    let url = api.url("/test/post-429");
     let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     // 429 is retriable — should exhaust all retries.
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -194,8 +186,8 @@ async fn post_json_429_retries() {
 
 #[tokio::test]
 async fn post_json_sends_bearer_token() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -204,18 +196,17 @@ async fn post_json_sends_bearer_token() {
         then.status(200);
     });
 
-    let url = format!("{}/test/auth", server.base_url());
+    let url = api.url("/test/auth");
     let result = http_client!().post_json(&url, &json!({}), 1).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn post_json_sends_vercel_bypass_header() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -224,12 +215,11 @@ async fn post_json_sends_vercel_bypass_header() {
         then.status(200);
     });
 
-    let url = format!("{}/test/bypass", server.base_url());
+    let url = api.url("/test/bypass");
     let result = http_client!().post_json(&url, &json!({}), 1).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -262,8 +252,8 @@ async fn post_json_uses_explicit_api_config_without_env_api_url() {
 #[tokio::test]
 async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
 -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let env_server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let env_server = api.server();
     let explicit_server = MockServer::start();
 
     let env_mock = env_server.mock(|when, then| {
@@ -297,7 +287,6 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
     explicit_mock.assert_calls_async(1).await;
     env_mock.assert_calls_async(0).await;
     explicit_mock.delete_async().await;
-    env_mock.delete_async().await;
     Ok(())
 }
 
@@ -307,8 +296,8 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
 
 #[tokio::test]
 async fn post_json_malformed_json_response() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/test/malformed");
@@ -317,10 +306,9 @@ async fn post_json_malformed_json_response() {
             .body("not valid json {{{");
     });
 
-    let url = format!("{}/test/malformed", server.base_url());
+    let url = api.url("/test/malformed");
     let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }

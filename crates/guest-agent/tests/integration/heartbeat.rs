@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
 async fn heartbeat_first_success() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let observer = MockCallObserver::default();
     let observer_for_mock = observer.clone();
 
@@ -46,8 +46,8 @@ async fn heartbeat_first_success() {
 
 #[tokio::test]
 async fn heartbeat_first_failure_fatal() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
@@ -64,8 +64,8 @@ async fn heartbeat_first_failure_fatal() {
 
 #[tokio::test]
 async fn heartbeat_consecutive_failures_fatal() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let observer = MockCallObserver::default();
     let observer_for_mock = observer.clone();
 
@@ -116,8 +116,8 @@ async fn heartbeat_consecutive_failures_fatal() {
 
 #[tokio::test]
 async fn heartbeat_recovery_resets_counter() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let observer = MockCallObserver::default();
     let observer_for_mock = observer.clone();
 
