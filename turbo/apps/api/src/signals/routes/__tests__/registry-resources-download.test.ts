@@ -135,6 +135,26 @@ const PRIVATE_ARCHIVE_FIXTURES = [
       "f54ec75c03c6f1a4722cc84429c521fe7758e15402de22f8cf842b6c715db524",
   },
   {
+    id: "design-system:nocturne",
+    versionId:
+      "2344d4eeb97b8706148f6fabe7e73973a98a9d9929be31f7a4e531a3136bbb2b",
+  },
+  {
+    id: "template:html-ppt-nocturne",
+    versionId:
+      "975042cc63adf2ec5a6c7888a541807571579959e7da6af7681038c4352c4d7f",
+  },
+  {
+    id: "design-system:neo-brutalism",
+    versionId:
+      "929a4c72074e3fce2b64b16c5f53507707225dc71e5909d86b5f9a1bc43c2da0",
+  },
+  {
+    id: "template:html-ppt-neo-brutalism",
+    versionId:
+      "14216859630a1ba018c7e4c85b26452e450b10a187ac44d13b1e0d0b6407977f",
+  },
+  {
     id: "color-system:bauhaus-primary",
     versionId:
       "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",

@@ -172,6 +172,14 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
   templatePlayfulPop:
     "9bf259f8278c89e411a6903b36d5033a1135bc8952f841fa6ebd3dfafb300ccc",
+  designSystemNocturne:
+    "bc82f6665394cc99039fe34523e5c6095a9bbf5a2a3a81dee128540a43812dec",
+  templateNocturne:
+    "d0f745f6e18396d5680d931e36080b8015a1c7f09c7e397a2db3c30dea87fdcb",
+  designSystemNeoBrutalism:
+    "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
+  templateNeoBrutalism:
+    "ed406e0c1a0d27220aefb72edee3eb50c0204f3f39b9ef31f77307ef75c89678",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
@@ -1128,6 +1136,30 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-template/playful-pop",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePlayfulPop,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-nocturne",
+    kind: "template",
+    name: "Nocturne Presentation",
+    description:
+      "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
+    source: privateR2ArchiveSource(
+      "presentation-template/nocturne",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNocturne,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-neo-brutalism",
+    kind: "template",
+    name: "Neo Brutalism Presentation",
+    description:
+      "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
+    source: privateR2ArchiveSource(
+      "presentation-template/neo-brutalism",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNeoBrutalism,
     ),
     targets: ["presentation"],
   },
@@ -2981,6 +3013,28 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-design-system/playful-pop",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
+    ),
+  },
+  {
+    id: "design-system:nocturne",
+    kind: "design-system",
+    name: "Nocturne",
+    description:
+      "Dark-stage data keynote look with Midnight Mono palette, Space Grotesk display, Lexend body, soft rounded data geometry, tonal ramps, donut rings, bento grids, and frameless hero numbers.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/nocturne",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNocturne,
+    ),
+  },
+  {
+    id: "design-system:neo-brutalism",
+    kind: "design-system",
+    name: "Neo Brutalism",
+    description:
+      "High-contrast brutalist look with Mono Ink palette, Space Grotesk display, Lexend body, thick black outlines, sharp corners, hard offset shadows, nav chrome, circle badges, and arch cards.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/neo-brutalism",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNeoBrutalism,
     ),
   },
   {
