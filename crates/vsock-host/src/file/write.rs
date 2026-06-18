@@ -1,8 +1,8 @@
 use std::future::Future;
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use std::{fmt, io};
 
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
 
@@ -13,7 +13,7 @@ use crate::{
     request_on_shared_with_composite_operation_and_observer,
 };
 
-use super::{file_operation_error_is_terminal, normalize_file_exec_stderr, shell_quote};
+use super::{normalize_file_exec_stderr, shell_quote};
 
 /// Maximum content per write_file message. Leaves headroom below
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
@@ -30,6 +30,27 @@ const CLEANUP_EXEC_TIMEOUT_MS: u32 = 1000;
 enum WriteFileChunkTracking<'a> {
     Tracked,
     Composite(&'a mut CompositeNormalOperation),
+}
+
+#[derive(Debug)]
+struct WriteFileGuestError(String);
+
+impl fmt::Display for WriteFileGuestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for WriteFileGuestError {}
+
+fn write_file_guest_error(message: impl Into<String>) -> io::Error {
+    io::Error::other(WriteFileGuestError(message.into()))
+}
+
+fn error_is_write_file_guest_error(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|error| error.is::<WriteFileGuestError>())
 }
 
 struct ChunkedWriteCleanupGuard {
@@ -393,7 +414,7 @@ impl VsockHost {
 
         if let Err(error) = result {
             // Best-effort cleanup of the temp file.
-            let terminal_error = file_operation_error_is_terminal(&error);
+            let terminal_error = error_is_write_file_guest_error(&error);
             let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
             if terminal_error && cleanup_result.is_ok() {
                 normal_operation.complete()?;
@@ -484,7 +505,7 @@ impl VsockHost {
         if resp.msg_type == MSG_ERROR {
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Err(io::Error::other(msg));
+            return Err(write_file_guest_error(msg));
         }
 
         if resp.msg_type != MSG_WRITE_FILE_RESULT {
@@ -498,7 +519,7 @@ impl VsockHost {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         if !success {
-            return Err(io::Error::other(error));
+            return Err(write_file_guest_error(error));
         }
 
         Ok(())

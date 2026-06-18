@@ -745,6 +745,42 @@ async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_chunk_observer_error_keeps_tracker_fail_closed() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/big.bin",
+            &content,
+            false,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Err(io::Error::other("chunk observer failed"))
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("chunk observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn write_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
