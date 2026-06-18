@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { zeroUsageInsightContract } from "@vm0/core";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -158,24 +158,31 @@ describe("/usage page", () => {
       expect(screen.getByText("Roadmap Review")).toBeInTheDocument();
     });
 
-    const chart = creditsTotals().querySelector("svg");
-    if (!(chart instanceof SVGSVGElement)) {
-      throw new Error("usage chart not found");
+    const usageDetailTriggers = queryAllByRoleFast(
+      "button",
+      creditsTotals(),
+    ).filter((button) => {
+      return button
+        .getAttribute("aria-label")
+        ?.startsWith("Show usage details for ");
+    });
+    const latestUsageDetailTrigger =
+      usageDetailTriggers[usageDetailTriggers.length - 1];
+    if (!latestUsageDetailTrigger) {
+      throw new Error("latest usage detail trigger not found");
     }
-    fireEvent.mouseMove(chart, { clientX: 300, clientY: 80 });
+    click(latestUsageDetailTrigger);
 
     await waitFor(() => {
-      expect(within(creditsTotals()).getByText("Chat:")).toBeInTheDocument();
-      expect(within(creditsTotals()).getByText("Slack:")).toBeInTheDocument();
-      expect(within(creditsTotals()).getByText("Email:")).toBeInTheDocument();
+      expect(screen.getByText("Chat:")).toBeInTheDocument();
+      expect(screen.getByText("Slack:")).toBeInTheDocument();
+      expect(screen.getByText("Email:")).toBeInTheDocument();
     });
 
-    fireEvent.mouseLeave(chart);
+    click(latestUsageDetailTrigger);
 
     await waitFor(() => {
-      expect(
-        within(creditsTotals()).queryByText("Chat:"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Chat:")).not.toBeInTheDocument();
     });
 
     click(tabByText("Agent"));

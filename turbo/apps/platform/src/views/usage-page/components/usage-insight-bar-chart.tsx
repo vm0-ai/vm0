@@ -3,7 +3,14 @@ import type {
   UsageInsightBucket,
   UsageInsightResponse,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@vm0/ui";
 import {
   chartTooltip$,
   chartWidth$,
@@ -102,6 +109,20 @@ function formatBucketLabel(ts: string, range: string): string {
   });
 }
 
+function createChartXScale(
+  bucketCount: number,
+  width: number,
+): (index: number) => number {
+  const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
+  const spacing = bucketCount > 1 ? drawW / (bucketCount - 1) : 0;
+  return (index: number) => {
+    if (bucketCount <= 1) {
+      return CHART_PADDING.left + drawW / 2;
+    }
+    return CHART_PADDING.left + index * spacing;
+  };
+}
+
 function niceStep(range: number, targetTicks: number): number {
   const rough = range / targetTicks;
   const pow = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -193,24 +214,13 @@ function useChartResizeRef(setWidth: (w: number) => void) {
 
 // --- Tooltip ---
 
-const TOOLTIP_ESTIMATED_WIDTH = 200;
-const TOOLTIP_ESTIMATED_HEIGHT = 90;
-
-function ChartTooltip({
+function ChartTooltipContent({
   data,
-  containerWidth,
   range,
 }: {
   data: ChartTooltipData;
-  containerWidth: number;
   range: string;
 }) {
-  const flipLeft = data.x + 12 + TOOLTIP_ESTIMATED_WIDTH > containerWidth;
-  const flipTop = data.y < TOOLTIP_ESTIMATED_HEIGHT;
-  const left = flipLeft ? data.x - 12 : data.x + 12;
-  const top = flipTop ? data.y + 12 : data.y - 8;
-  const translateX = flipLeft ? "-100%" : "0";
-  const translateY = flipTop ? "0" : "-100%";
   // Lines are drawn per-category from y=0 (not stacked), so a synthetic Total
   // wouldn't correspond to anything visible. List per-category values that
   // match the dots on each line.
@@ -219,13 +229,15 @@ function ChartTooltip({
   });
 
   return (
-    <div
-      className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-3 py-2 text-xs shadow-md"
-      style={{
-        left,
-        top,
-        transform: `translate(${translateX}, ${translateY})`,
+    <PopoverContent
+      side="top"
+      align="center"
+      sideOffset={8}
+      collisionPadding={12}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
       }}
+      className="w-auto max-w-[min(16rem,calc(100vw-2rem))] px-3 py-2 text-xs"
     >
       <div className="font-medium text-foreground mb-1">
         {formatBucketLabel(data.ts, range)}
@@ -250,6 +262,104 @@ function ChartTooltip({
           );
         })
       )}
+    </PopoverContent>
+  );
+}
+
+function buildChartTooltipData({
+  bucket,
+  index,
+  stackOrder,
+  xScale,
+}: {
+  bucket: UsageInsightBucket;
+  index: number;
+  stackOrder: readonly string[];
+  xScale: (index: number) => number;
+}): ChartTooltipData {
+  return {
+    x: xScale(index),
+    y: CHART_PADDING.top,
+    ts: bucket.ts,
+    values: stackOrder.map((key, colorIndex) => {
+      return {
+        label: key,
+        value: valueAt(bucket, key),
+        color: colorFor(colorIndex),
+      };
+    }),
+  };
+}
+
+function ChartTooltipHitAreas({
+  buckets,
+  range,
+  stackOrder,
+  tooltip,
+  width,
+  setTooltip,
+}: {
+  buckets: UsageInsightBucket[];
+  range: string;
+  stackOrder: readonly string[];
+  tooltip: ChartTooltipData | null;
+  width: number;
+  setTooltip: (data: ChartTooltipData | null) => void;
+}) {
+  const xScale = createChartXScale(buckets.length, width);
+  return (
+    <div
+      className="absolute left-0 top-0 w-full"
+      style={{ height: CHART_HEIGHT }}
+    >
+      {buckets.map((bucket, index) => {
+        const data = buildChartTooltipData({
+          bucket,
+          index,
+          stackOrder,
+          xScale,
+        });
+        const previousMidpoint =
+          index === 0 ? 0 : (xScale(index - 1) + data.x) / 2;
+        const nextMidpoint =
+          index === buckets.length - 1
+            ? width
+            : (data.x + xScale(index + 1)) / 2;
+        const open = tooltip?.ts === bucket.ts;
+
+        return (
+          <Popover
+            key={bucket.ts}
+            open={open}
+            onOpenChange={(nextOpen) => {
+              if (nextOpen) {
+                setTooltip(data);
+              } else {
+                setTooltip(null);
+              }
+            }}
+          >
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Show usage details for ${formatBucketLabel(bucket.ts, range)}`}
+                className="absolute top-0 h-full cursor-crosshair rounded-sm bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
+                style={{
+                  left: previousMidpoint,
+                  width: Math.max(1, nextMidpoint - previousMidpoint),
+                }}
+                onMouseEnter={() => {
+                  setTooltip(data);
+                }}
+                onMouseLeave={() => {
+                  setTooltip(null);
+                }}
+              />
+            </PopoverTrigger>
+            <ChartTooltipContent data={data} range={range} />
+          </Popover>
+        );
+      })}
     </div>
   );
 }
@@ -284,14 +394,9 @@ function buildScales(
   const yMax = yTicks[yTicks.length - 1] ?? maxValue;
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
   const drawH = CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
-  const spacing = buckets.length > 1 ? drawW / (buckets.length - 1) : 0;
+  const xScale = createChartXScale(buckets.length, width);
   return {
-    xScale: (i: number) => {
-      if (buckets.length <= 1) {
-        return CHART_PADDING.left + drawW / 2;
-      }
-      return CHART_PADDING.left + i * spacing;
-    },
+    xScale,
     yScale: (v: number) => {
       return CHART_PADDING.top + drawH - (v / yMax) * drawH;
     },
@@ -456,8 +561,6 @@ function ChartSvg({
   range,
   hoveredKey,
   tooltip,
-  onMouseMove,
-  onMouseLeave,
 }: {
   buckets: UsageInsightBucket[];
   stackOrder: readonly string[];
@@ -465,18 +568,10 @@ function ChartSvg({
   range: string;
   hoveredKey: string | null;
   tooltip: ChartTooltipData | null;
-  onMouseMove: (e: React.MouseEvent<SVGSVGElement>) => void;
-  onMouseLeave: () => void;
 }) {
   const scales = buildScales(buckets, stackOrder, width);
   return (
-    <svg
-      width={width}
-      height={CHART_HEIGHT}
-      className="select-none"
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
+    <svg width={width} height={CHART_HEIGHT} className="select-none">
       <ChartGrid
         buckets={buckets}
         width={width}
@@ -532,51 +627,6 @@ export function UsageInsightBarChart({
 
   const { stackOrder, keyTotals } = buildStackOrder(buckets);
 
-  const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
-  const spacing = buckets.length > 1 ? drawW / (buckets.length - 1) : 0;
-
-  const xScale = (i: number) => {
-    if (buckets.length <= 1) {
-      return CHART_PADDING.left + drawW / 2;
-    }
-    return CHART_PADDING.left + i * spacing;
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    let closestIdx = 0;
-    let closestDist = Infinity;
-    for (let i = 0; i < buckets.length; i++) {
-      const dist = Math.abs(xScale(i) - mx);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = i;
-      }
-    }
-
-    const bucket = buckets[closestIdx];
-    if (!bucket) {
-      return;
-    }
-
-    const values = stackOrder.map((key, i) => {
-      return {
-        label: key,
-        value: valueAt(bucket, key),
-        color: colorFor(i),
-      };
-    });
-
-    setTooltip({ x: xScale(closestIdx), y: my, ts: bucket.ts, values });
-  };
-
-  const handleMouseLeave = () => {
-    setTooltip(null);
-  };
-
   return (
     <section
       aria-label="Credits totals"
@@ -609,13 +659,16 @@ export function UsageInsightBarChart({
               range={range}
               hoveredKey={hoveredKey}
               tooltip={tooltip}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
             />
           </div>
-          {tooltip && (
-            <ChartTooltip data={tooltip} containerWidth={width} range={range} />
-          )}
+          <ChartTooltipHitAreas
+            buckets={buckets}
+            stackOrder={stackOrder}
+            width={width}
+            range={range}
+            tooltip={tooltip}
+            setTooltip={setTooltip}
+          />
         </div>
       )}
 
