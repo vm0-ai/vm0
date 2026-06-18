@@ -50,7 +50,7 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
     Some((ppid, pgid))
 }
 
-fn child_pgid_to_signal(child_id: u32, pgid: u32) -> Option<u32> {
+fn signalable_child_pgid(child_id: u32, pgid: u32) -> Option<u32> {
     (pgid > 1 && pgid != child_id).then_some(pgid)
 }
 
@@ -82,7 +82,7 @@ fn find_child_pgid(parent_pid: u32) -> Option<u32> {
         };
 
         if ppid == parent_pid
-            && let Some(pgid) = child_pgid_to_signal(parent_pid, pgid)
+            && let Some(pgid) = signalable_child_pgid(parent_pid, pgid)
         {
             return Some(pgid);
         }
@@ -103,7 +103,7 @@ impl ProcessTreeKillTarget {
 
     fn child_pgid_to_signal(self) -> Option<u32> {
         self.child_pgid
-            .and_then(|pgid| child_pgid_to_signal(self.child_id, pgid))
+            .and_then(|pgid| signalable_child_pgid(self.child_id, pgid))
     }
 }
 
@@ -608,7 +608,7 @@ mod tests {
 
         let (dir, _guard) = temp_dir("refresh-same-group");
         let fifo = dir.join("child-fifo");
-        let ready = dir.join("ready");
+        let child_ready = dir.join("child-ready");
         let direct_pid_path = dir.join("direct-child-pid");
         let setsid_child_pid_path = dir.join("setsid-child-pid");
         let child_script = dir.join("child.sh");
@@ -617,7 +617,10 @@ mod tests {
         std::fs::write(
             &child_script,
             r#"#!/bin/sh
-read _ < "$FIFO"
+exec 3<> "$FIFO"
+touch "$CHILD_READY"
+read _ <&3
+exec 3>&-
 exec setsid sh -c 'printf %s "$$" > "$SETSID_CHILD_PID"; sleep 60'
 "#,
         )
@@ -628,7 +631,6 @@ exec setsid sh -c 'printf %s "$$" > "$SETSID_CHILD_PID"; sleep 60'
 mkfifo "$FIFO"
 sh "$CHILD_SCRIPT" &
 echo $! > "$DIRECT_PID"
-touch "$READY"
 wait
 "#,
         )
@@ -638,7 +640,7 @@ wait
         command
             .arg(&parent_script)
             .env("FIFO", &fifo)
-            .env("READY", &ready)
+            .env("CHILD_READY", &child_ready)
             .env("DIRECT_PID", &direct_pid_path)
             .env("SETSID_CHILD_PID", &setsid_child_pid_path)
             .env("CHILD_SCRIPT", &child_script)
@@ -647,9 +649,9 @@ wait
         command.process_group(0);
 
         let mut child = Some(command.spawn().unwrap());
-        if !wait_for_path(&ready, Duration::from_secs(2)) {
+        if !wait_for_path(&child_ready, Duration::from_secs(2)) {
             kill_spawned_child(&mut child);
-            panic!("parent should start same-group child before snapshot");
+            panic!("same-group child should block on fifo before snapshot");
         }
         let direct_pid_text = match std::fs::read_to_string(&direct_pid_path) {
             Ok(pid) => pid,
