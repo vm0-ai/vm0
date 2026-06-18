@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -24,6 +28,7 @@ helper gap:
 */
 
 const context = testContext();
+const store = createStore();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
@@ -141,6 +146,43 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       );
     }
     expect(repeatedSetup.body.agentId).toBe(defaultAgentId);
+
+    const writeDb = store.set(writeDb$);
+    const adminOrgId = admin.orgId;
+    if (!adminOrgId) {
+      throw new Error("Expected BDD admin to have an org");
+    }
+    await writeDb
+      .update(orgMetadata)
+      .set({ tier: "free", onboardingPaymentPending: false })
+      .where(eq(orgMetadata.orgId, adminOrgId));
+
+    const paidOnboardingSetup = await api.setupOnboarding(admin, {
+      displayName: "BDD Paid Onboarding Agent",
+      workspaceName: "BDD Chain Org",
+    });
+    if (
+      paidOnboardingSetup.status !== 200 &&
+      paidOnboardingSetup.status !== 409
+    ) {
+      throw new Error(
+        `Expected paid onboarding setup to succeed, got ${paidOnboardingSetup.status}`,
+      );
+    }
+    expect(paidOnboardingSetup.body.agentId).toBe(defaultAgentId);
+    const [paidOnboardingMetadata] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, adminOrgId))
+      .limit(1);
+    expect(paidOnboardingMetadata).toStrictEqual({
+      tier: "free",
+      onboardingPaymentPending: true,
+    });
+
     const afterRepeatedSetup = await api.listAgents(admin);
     expect(
       afterRepeatedSetup.filter((agent) => {
