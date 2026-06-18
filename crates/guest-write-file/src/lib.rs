@@ -175,7 +175,7 @@ where
             let _ = writeln!(stderr, "guest-write-file: {e}");
             let _ = writeln!(
                 stderr,
-                "usage: guest-write-file [--append | --create-parents] <path>"
+                "usage: guest-write-file [--append | --create-parents] [--] <path>"
             );
             return 2;
         }
