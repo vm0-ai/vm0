@@ -6,6 +6,7 @@ import {
   findImageStyle,
   findSkill,
   findTemplate,
+  findTool,
   findVideoTemplate,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
@@ -149,6 +150,7 @@ function privateRegistryResourceArchive(
 function findRegistryResource(id: string): PullableRegistryEntry | undefined {
   return (
     findSkill(id) ??
+    findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findColorSystem(id) ??
