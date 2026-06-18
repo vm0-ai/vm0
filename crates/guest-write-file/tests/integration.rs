@@ -162,7 +162,9 @@ fn append_mode_rejects_create_parents() {
     let output = run_helper(&["--append", "--create-parents", path_str], b"hello");
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used together"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used together"));
+    assert!(stderr.contains("usage: guest-write-file [--append | --create-parents] [--] <path>"));
     assert!(!path.exists());
 }
 

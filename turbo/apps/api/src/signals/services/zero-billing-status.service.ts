@@ -5,6 +5,12 @@ import { and, desc, eq, gt, lte, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$ } from "../external/db";
+import {
+  activeConcurrencySubscriptions,
+  displayBaseConcurrencyLimitForTier,
+  totalConcurrencyLimit,
+  type ActiveConcurrencySubscription,
+} from "./org-concurrency-entitlements.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,
@@ -81,6 +87,13 @@ interface BillingStatusResponse {
     createdAt: string;
     expiresAt: string;
   }[];
+  concurrencySubscriptions: {
+    id: string;
+    quantity: number;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  }[];
+  concurrencyLimit: number;
 }
 
 const DEFAULT_BILLING_ORG = Object.freeze<BillingOrgRow>({
@@ -317,9 +330,16 @@ function billingStatusResponse(args: {
   org: BillingOrgRow | undefined;
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
+  concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
   const displayedCredits = org.credits - args.unsettledExpired;
+  const paidConcurrencySlots = args.concurrencySubscriptions.reduce(
+    (total, subscription) => {
+      return total + subscription.quantity;
+    },
+    0,
+  );
 
   return {
     tier: org.tier,
@@ -343,6 +363,21 @@ function billingStatusResponse(args: {
       records: args.activeRecords,
     }),
     creditGrants: creditGrants(args.activeRecords),
+    concurrencyLimit: totalConcurrencyLimit({
+      baseLimit: displayBaseConcurrencyLimitForTier(org.tier),
+      paidSlots: paidConcurrencySlots,
+    }),
+    concurrencySubscriptions: args.concurrencySubscriptions.map(
+      (subscription) => {
+        return {
+          id: subscription.id,
+          quantity: subscription.quantity,
+          currentPeriodEnd:
+            subscription.currentPeriodEnd?.toISOString() ?? null,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        };
+      },
+    ),
   };
 }
 
@@ -352,65 +387,69 @@ export function zeroBillingStatus(
   return computed(async (get): Promise<BillingStatusResponse> => {
     const db = get(db$);
     const currentTime = nowDate();
-    const [org, unsettledExpiredRow, activeRecords] = await Promise.all([
-      db
-        .select({
-          tier: orgMetadata.tier,
-          credits: orgMetadata.credits,
-          onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-          subscriptionStatus: orgMetadata.subscriptionStatus,
-          currentPeriodEnd: orgMetadata.currentPeriodEnd,
-          cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-          pendingSubscriptionScheduleId:
-            orgMetadata.pendingSubscriptionScheduleId,
-          pendingSubscriptionTargetTier:
-            orgMetadata.pendingSubscriptionTargetTier,
-          pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-          stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-          autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
-          autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
-          autoRechargeAmount: orgMetadata.autoRechargeAmount,
-        })
-        .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
-        .limit(1),
-      db
-        .select({
-          total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,
-        })
-        .from(creditExpiresRecord)
-        .where(
-          and(
-            eq(creditExpiresRecord.orgId, orgId),
-            lte(creditExpiresRecord.expiresAt, currentTime),
-            gt(creditExpiresRecord.remaining, 0),
+    const [org, unsettledExpiredRow, activeRecords, concurrencySubscriptions] =
+      await Promise.all([
+        db
+          .select({
+            tier: orgMetadata.tier,
+            credits: orgMetadata.credits,
+            onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+            subscriptionStatus: orgMetadata.subscriptionStatus,
+            currentPeriodEnd: orgMetadata.currentPeriodEnd,
+            cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+            pendingSubscriptionScheduleId:
+              orgMetadata.pendingSubscriptionScheduleId,
+            pendingSubscriptionTargetTier:
+              orgMetadata.pendingSubscriptionTargetTier,
+            pendingSubscriptionChangeAt:
+              orgMetadata.pendingSubscriptionChangeAt,
+            stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+            autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
+            autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
+            autoRechargeAmount: orgMetadata.autoRechargeAmount,
+          })
+          .from(orgMetadata)
+          .where(eq(orgMetadata.orgId, orgId))
+          .limit(1),
+        db
+          .select({
+            total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,
+          })
+          .from(creditExpiresRecord)
+          .where(
+            and(
+              eq(creditExpiresRecord.orgId, orgId),
+              lte(creditExpiresRecord.expiresAt, currentTime),
+              gt(creditExpiresRecord.remaining, 0),
+            ),
           ),
-        ),
-      db
-        .select({
-          id: creditExpiresRecord.id,
-          source: creditExpiresRecord.source,
-          amount: creditExpiresRecord.amount,
-          remaining: creditExpiresRecord.remaining,
-          expiresAt: creditExpiresRecord.expiresAt,
-          createdAt: creditExpiresRecord.createdAt,
-        })
-        .from(creditExpiresRecord)
-        .where(
-          and(
-            eq(creditExpiresRecord.orgId, orgId),
-            gt(creditExpiresRecord.remaining, 0),
-            gt(creditExpiresRecord.expiresAt, currentTime),
-          ),
-        )
-        .orderBy(desc(creditExpiresRecord.createdAt)),
-    ]);
+        db
+          .select({
+            id: creditExpiresRecord.id,
+            source: creditExpiresRecord.source,
+            amount: creditExpiresRecord.amount,
+            remaining: creditExpiresRecord.remaining,
+            expiresAt: creditExpiresRecord.expiresAt,
+            createdAt: creditExpiresRecord.createdAt,
+          })
+          .from(creditExpiresRecord)
+          .where(
+            and(
+              eq(creditExpiresRecord.orgId, orgId),
+              gt(creditExpiresRecord.remaining, 0),
+              gt(creditExpiresRecord.expiresAt, currentTime),
+            ),
+          )
+          .orderBy(desc(creditExpiresRecord.createdAt)),
+        activeConcurrencySubscriptions(db, orgId, currentTime),
+      ]);
 
     return billingStatusResponse({
       orgId,
       org: org[0],
       unsettledExpired: unsettledExpiredRow[0]?.total ?? 0,
       activeRecords,
+      concurrencySubscriptions,
     });
   });
 }

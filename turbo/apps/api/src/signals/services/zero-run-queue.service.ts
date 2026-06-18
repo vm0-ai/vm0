@@ -24,7 +24,6 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -34,6 +33,11 @@ import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
+import {
+  activePaidConcurrencySlots,
+  cappedBaseConcurrencyLimit,
+  totalConcurrencyLimit,
+} from "./org-concurrency-entitlements.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -47,22 +51,18 @@ const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
     team: 10,
   });
 
-function effectiveOrgConcurrencyLimit(
+async function effectiveOrgConcurrencyLimit(
+  db: Pick<Db, "select">,
+  orgId: string,
   tier: OrgTier | null | undefined,
-): number {
-  if (!tier) {
-    return TIER_CONCURRENCY_LIMITS["pro-suspend"];
-  }
-  const tierLimit = TIER_CONCURRENCY_LIMITS[tier];
-  if (tierLimit === 0) {
-    return 0;
-  }
-
-  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
-  if (cap === 0) {
-    return Number.POSITIVE_INFINITY;
-  }
-  return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
+): Promise<number> {
+  const baseLimit = cappedBaseConcurrencyLimit(
+    tier
+      ? TIER_CONCURRENCY_LIMITS[tier]
+      : TIER_CONCURRENCY_LIMITS["pro-suspend"],
+  );
+  const paidSlots = await activePaidConcurrencySlots(db, orgId);
+  return totalConcurrencyLimit({ baseLimit, paidSlots });
 }
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -82,7 +82,7 @@ interface RunnerNotification {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
-  readonly sessionId: string | null;
+  readonly cliAgentSessionId: string | null;
 }
 
 type PromoteQueuedCandidateResult =
@@ -97,6 +97,29 @@ type PromoteQueuedCandidateResult =
 
 interface LockedQueueRunRow extends Record<string, unknown> {
   readonly status: string;
+}
+
+async function activeConcurrencyCount(
+  db: Pick<Db, "select">,
+  orgId: string,
+): Promise<number> {
+  const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
+  const [activeRow] = await db
+    .select({ count: count() })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.orgId, orgId),
+        or(
+          eq(agentRuns.status, "running"),
+          and(
+            eq(agentRuns.status, "pending"),
+            gt(agentRuns.createdAt, staleThreshold),
+          ),
+        ),
+      ),
+    );
+  return Number(activeRow?.count ?? 0);
 }
 
 async function insertPromotedRunnerJob(
@@ -129,7 +152,7 @@ async function insertPromotedRunnerJob(
     runId: args.runId,
     runnerGroup: args.payload.runnerGroup,
     profile: args.payload.profile,
-    sessionId: args.payload.sessionId,
+    cliAgentSessionId: args.payload.cliAgentSessionId,
     executionContext: {
       ...args.payload.executionContext,
       apiStartTime: promotedAt,
@@ -150,27 +173,13 @@ async function loadDrainCandidates(
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
-    const limit = effectiveOrgConcurrencyLimit(
+    const limit = await effectiveOrgConcurrencyLimit(
+      tx,
+      orgId,
       orgRow?.tier as OrgTier | null | undefined,
     );
 
-    const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-    const [activeRow] = await tx
-      .select({ count: count() })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.orgId, orgId),
-          or(
-            eq(agentRuns.status, "running"),
-            and(
-              eq(agentRuns.status, "pending"),
-              gt(agentRuns.createdAt, staleThreshold),
-            ),
-          ),
-        ),
-      );
-    const activeCount = Number(activeRow?.count ?? 0);
+    const activeCount = await activeConcurrencyCount(tx, orgId);
     if (activeCount >= limit) {
       return [];
     }
@@ -208,27 +217,13 @@ async function promoteQueuedCandidate(
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
-    const limit = effectiveOrgConcurrencyLimit(
+    const limit = await effectiveOrgConcurrencyLimit(
+      tx,
+      args.orgId,
       orgRow?.tier as OrgTier | null | undefined,
     );
 
-    const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-    const [activeRow] = await tx
-      .select({ count: count() })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.orgId, args.orgId),
-          or(
-            eq(agentRuns.status, "running"),
-            and(
-              eq(agentRuns.status, "pending"),
-              gt(agentRuns.createdAt, staleThreshold),
-            ),
-          ),
-        ),
-      );
-    const activeCount = Number(activeRow?.count ?? 0);
+    const activeCount = await activeConcurrencyCount(tx, args.orgId);
     if (activeCount >= limit) {
       return { status: "full" };
     }
@@ -321,7 +316,7 @@ async function promoteQueuedCandidate(
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
-        sessionId: args.payload.sessionId,
+        cliAgentSessionId: args.payload.cliAgentSessionId,
       },
     };
   });

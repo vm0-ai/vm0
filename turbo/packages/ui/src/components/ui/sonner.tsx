@@ -1,12 +1,18 @@
+import { createPortal } from "react-dom";
 import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 function Toaster({ ...props }: ToasterProps) {
-  return (
+  const { style, ...rest } = props;
+  const toaster = (
     <Sonner
       className="toaster group !flex !flex-col !items-center"
       duration={3000}
+      style={{
+        ...style,
+        zIndex: 2147483647,
+      }}
       toastOptions={{
         classNames: {
           toast:
@@ -22,9 +28,15 @@ function Toaster({ ...props }: ToasterProps) {
             '"Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         },
       }}
-      {...props}
+      {...rest}
     />
   );
+
+  if (typeof document === "undefined") {
+    return toaster;
+  }
+
+  return createPortal(toaster, document.body);
 }
 
 export { Toaster, toast };

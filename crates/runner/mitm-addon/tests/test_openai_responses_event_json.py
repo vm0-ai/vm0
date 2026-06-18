@@ -163,6 +163,45 @@ def test_returns_none_for_non_usage_event_type():
     assert extract_openai_responses_usage_from_event_json(body) is None
 
 
+def test_unknown_event_type_with_usage_extracts_usage():
+    body = json.dumps(
+        {
+            "type": "response.future_terminal",
+            "response": {
+                "id": "resp_future",
+                "model": "gpt-5.6",
+                "usage": {
+                    "input_tokens": 15,
+                    "output_tokens": 9,
+                    "input_tokens_details": {"cached_tokens": 4},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_future",
+        "model": "gpt-5.6",
+        "tokens.input": 11,
+        "tokens.output": 9,
+        "tokens.cache_read": 4,
+    }
+
+
+def test_known_non_usage_event_with_usage_fields_is_ignored():
+    body = json.dumps(
+        {
+            "type": "response.output_text.delta",
+            "response": {
+                "model": "gpt-5.6",
+                "usage": {"input_tokens": 15, "output_tokens": 9},
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
 def test_non_terminal_event_skips_full_usage_extractor(monkeypatch):
     def fail_extractor(**_kwargs):
         raise AssertionError("full extractor should not run for non-terminal events")
@@ -210,6 +249,30 @@ def test_duplicate_top_level_type_uses_first_type_boundary(monkeypatch):
             b'{"type":"response.output_text.delta",'
             b'"type":"response.completed",'
             b'"response":{"usage":{"input_tokens":1,"output_tokens":1}}}'
+        )
+        is None
+    )
+
+
+def test_duplicate_top_level_unknown_type_keeps_first_type_boundary():
+    assert extract_openai_responses_usage_from_event_json(
+        b'{"type":"response.future_terminal",'
+        b'"type":"response.output_text.delta",'
+        b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+    ) == {
+        "model": "gpt-5.6",
+        "tokens.input": 9,
+        "tokens.output": 4,
+    }
+
+
+def test_late_known_non_usage_event_type_is_ignored():
+    assert (
+        extract_openai_responses_usage_from_event_json(
+            b'{"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta",'
+            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
         )
         is None
     )
@@ -297,6 +360,18 @@ def test_oversized_type_falls_back_to_full_extractor(monkeypatch):
     ) == {
         "tokens.input": 5,
         "tokens.output": 1,
+    }
+
+
+def test_oversized_unknown_type_with_usage_extracts_usage():
+    assert extract_openai_responses_usage_from_event_json(
+        b'{"type":"'
+        + b"x" * 2048
+        + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+    ) == {
+        "model": "gpt-5.6",
+        "tokens.input": 9,
+        "tokens.output": 4,
     }
 
 

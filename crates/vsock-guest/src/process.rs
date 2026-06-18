@@ -43,11 +43,25 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
         return None;
     }
     let remainder = &stat[close_paren + 2..]; // skip ") "
-    let fields: Vec<&str> = remainder.split_whitespace().collect();
-    // fields: [0]=state [1]=ppid [2]=pgid [3]=session ...
-    let ppid = fields.get(1)?.parse().ok()?;
-    let pgid = fields.get(2)?.parse().ok()?;
+    let mut fields = remainder.split_whitespace();
+    fields.next()?; // state
+    let ppid = fields.next()?.parse().ok()?;
+    let pgid = fields.next()?.parse().ok()?;
     Some((ppid, pgid))
+}
+
+pub(crate) fn process_signal_pid(pid: u32) -> Option<libc::pid_t> {
+    let pid = libc::pid_t::try_from(pid).ok()?;
+    (pid > 0).then_some(pid)
+}
+
+fn process_group_signal_pid(pgid: u32) -> Option<libc::pid_t> {
+    let pgid = process_signal_pid(pgid)?;
+    (pgid > 1).then_some(-pgid)
+}
+
+fn signalable_child_pgid(child_id: u32, pgid: u32) -> Option<u32> {
+    (pgid != child_id && process_group_signal_pid(pgid).is_some()).then_some(pgid)
 }
 
 /// Find the process-group ID of a direct child of `parent_pid`.
@@ -58,8 +72,10 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
 /// the `su` process's group — the child's group (where the actual command
 /// runs) is missed.
 ///
-/// This function scans `/proc` to find that child and returns its PGID so
-/// the timeout killer can send SIGKILL to both process groups.
+/// This function scans `/proc` to find that child and returns its distinct PGID
+/// so the timeout killer can send SIGKILL to both process groups. Same-group
+/// children are skipped because `kill(-parent_pid, SIGKILL)` already reaches
+/// them, and a later refresh can still capture a child that calls `setsid()`.
 ///
 /// Must be called BEFORE killing the parent, because once the parent dies
 /// the child's PPID changes to 1 (init).
@@ -77,7 +93,9 @@ fn find_child_pgid(parent_pid: u32) -> Option<u32> {
             continue;
         };
 
-        if ppid == parent_pid {
+        if ppid == parent_pid
+            && let Some(pgid) = signalable_child_pgid(parent_pid, pgid)
+        {
             return Some(pgid);
         }
     }
@@ -97,7 +115,7 @@ impl ProcessTreeKillTarget {
 
     fn child_pgid_to_signal(self) -> Option<u32> {
         self.child_pgid
-            .filter(|pgid| *pgid > 1 && *pgid != self.child_id)
+            .and_then(|pgid| signalable_child_pgid(self.child_id, pgid))
     }
 }
 
@@ -114,9 +132,9 @@ pub(crate) fn process_tree_kill_target(child_id: u32) -> ProcessTreeKillTarget {
 }
 
 /// Refresh a snapshotted process-tree target while the direct child may still
-/// have a child session visible in `/proc`.
+/// have a distinct child session visible in `/proc`.
 pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarget) {
-    if target.child_pgid.is_none() {
+    if target.child_pgid_to_signal().is_none() {
         target.child_pgid = find_child_pgid(target.child_id);
     }
 }
@@ -141,14 +159,25 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
 /// `target.child_id` must come from a PID returned by `Command::spawn()`.
 pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> bool {
     // Kill the direct child's process group (the su wrapper).
-    let ret = unsafe { libc::kill(-(target.child_id as i32), libc::SIGKILL) };
-    let mut signalled = ret == 0;
-    if ret != 0 {
-        let err = std::io::Error::last_os_error();
+    let mut signalled = false;
+    if let Some(signal_pid) = process_group_signal_pid(target.child_id) {
+        let ret = unsafe { libc::kill(signal_pid, libc::SIGKILL) };
+        signalled = ret == 0;
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            log(
+                "WARN",
+                &format!(
+                    "process-tree kill(-{}, SIGKILL) failed: {err}",
+                    target.child_id
+                ),
+            );
+        }
+    } else {
         log(
             "WARN",
             &format!(
-                "process-tree kill(-{}, SIGKILL) failed: {err}",
+                "process-tree kill skipped invalid process group id {}",
                 target.child_id
             ),
         );
@@ -159,7 +188,10 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
     // Guard pgid > 1: kill(0, sig) targets the caller's group, and kill(-1, sig)
     // broadcasts to every process the caller may signal.
     if let Some(pgid) = target.child_pgid_to_signal() {
-        let ret = unsafe { libc::kill(-(pgid as i32), libc::SIGKILL) };
+        let Some(signal_pid) = process_group_signal_pid(pgid) else {
+            return signalled;
+        };
+        let ret = unsafe { libc::kill(signal_pid, libc::SIGKILL) };
         if ret == 0 {
             signalled = true;
         } else {
@@ -209,7 +241,7 @@ pub(crate) fn kill_and_reap_child_with_target(mut child: Child, mut target: Proc
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -249,6 +281,21 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         path.exists()
+    }
+
+    fn read_pid_file<T: std::str::FromStr>(path: &Path) -> Option<T> {
+        std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    }
+
+    fn wait_for_pid_file<T: std::str::FromStr>(path: &Path, timeout: Duration) -> Option<T> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Some(pid) = read_pid_file(path) {
+                return Some(pid);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        read_pid_file(path)
     }
 
     #[test]
@@ -372,6 +419,27 @@ mod tests {
             .child_pgid_to_signal(),
             Some(43)
         );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(i32::MAX as u32 + 1)
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+    }
+
+    #[test]
+    fn process_group_signal_pid_skips_reserved_and_unrepresentable_targets() {
+        assert_eq!(process_signal_pid(0), None);
+        assert_eq!(process_signal_pid(1), Some(1));
+        assert_eq!(process_signal_pid(i32::MAX as u32), Some(i32::MAX));
+        assert_eq!(process_signal_pid(i32::MAX as u32 + 1), None);
+        assert_eq!(process_group_signal_pid(0), None);
+        assert_eq!(process_group_signal_pid(1), None);
+        assert_eq!(process_group_signal_pid(42), Some(-42));
+        assert_eq!(process_group_signal_pid(i32::MAX as u32), Some(-i32::MAX));
+        assert_eq!(process_group_signal_pid(i32::MAX as u32 + 1), None);
     }
 
     #[cfg(target_os = "linux")]
@@ -533,8 +601,14 @@ mod tests {
         let mut child = Some(command.spawn().unwrap());
         let stdout = child.as_mut().unwrap().stdout.take().unwrap();
         let mut ready = String::new();
-        BufReader::new(stdout).read_line(&mut ready).unwrap();
-        assert_eq!(ready, "ready\n");
+        if let Err(e) = BufReader::new(stdout).read_line(&mut ready) {
+            kill_spawned_child(&mut child);
+            panic!("failed to read setsid child ready marker: {e}");
+        }
+        if ready != "ready\n" {
+            kill_spawned_child(&mut child);
+            panic!("setsid child should publish ready marker, got {ready:?}");
+        }
         let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
             Ok(pid) => pid,
             Err(e) => {
@@ -549,6 +623,10 @@ mod tests {
                 panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
             }
         };
+        if child_pid <= 0 {
+            kill_spawned_child(&mut child);
+            panic!("setsid child pid should be positive, got {child_pid}");
+        }
         let child_pidfd = match open_pidfd(child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
@@ -569,13 +647,33 @@ mod tests {
                     panic!("failed to open parent fifo: {e}");
                 }
             };
-            writeln!(fifo_writer, "done").unwrap();
+            if let Err(e) = writeln!(fifo_writer, "done") {
+                kill_spawned_child(&mut child);
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|cleanup| panic!("fifo write failed: {e}; cleanup={cleanup}"));
+                panic!("failed to release parent fifo: {e}");
+            }
         }
-        let status = child.take().unwrap().wait().unwrap();
-        assert!(status.success());
+        let status = match child.take().unwrap().wait() {
+            Ok(status) => status,
+            Err(e) => {
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|cleanup| panic!("parent wait failed: {e}; cleanup={cleanup}"));
+                panic!("failed to wait for parent shell: {e}");
+            }
+        };
+        if !status.success() {
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|cleanup| panic!("parent exited with {status}; cleanup={cleanup}"));
+            panic!("parent shell should exit successfully, got {status}");
+        }
 
         // SAFETY: `target` came from the spawned shell before it exited.
-        assert!(unsafe { kill_process_tree_target(target) });
+        if !unsafe { kill_process_tree_target(target) } {
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("snapshotted target should signal at least one process group");
+        }
         match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
             Ok(true) => {}
             Ok(false) => {
@@ -589,6 +687,150 @@ mod tests {
                 let cleanup = kill_pidfd_and_wait(&child_pidfd);
                 panic!(
                     "failed to wait for setsid child pid {child_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn refresh_process_tree_target_retries_same_group_child_pgid() {
+        use std::io::Write;
+        use std::os::unix::process::CommandExt;
+
+        let (dir, _guard) = temp_dir("refresh-same-group");
+        let fifo = dir.join("child-fifo");
+        let child_ready = dir.join("child-ready");
+        let direct_pid_path = dir.join("direct-child-pid");
+        let setsid_child_pid_path = dir.join("setsid-child-pid");
+        let child_script = dir.join("child.sh");
+        let parent_script = dir.join("parent.sh");
+
+        std::fs::write(
+            &child_script,
+            r#"#!/bin/sh
+exec 3<> "$FIFO"
+touch "$CHILD_READY"
+read _ <&3
+exec 3>&-
+exec setsid sh -c 'printf %s "$$" > "$SETSID_CHILD_PID"; sleep 60'
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &parent_script,
+            r#"#!/bin/sh
+mkfifo "$FIFO"
+sh "$CHILD_SCRIPT" &
+echo $! > "$DIRECT_PID"
+wait
+"#,
+        )
+        .unwrap();
+
+        let mut command = Command::new("sh");
+        command
+            .arg(&parent_script)
+            .env("FIFO", &fifo)
+            .env("CHILD_READY", &child_ready)
+            .env("DIRECT_PID", &direct_pid_path)
+            .env("SETSID_CHILD_PID", &setsid_child_pid_path)
+            .env("CHILD_SCRIPT", &child_script)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.process_group(0);
+
+        let mut child = Some(command.spawn().unwrap());
+        let direct_pid: u32 = match wait_for_pid_file(&direct_pid_path, Duration::from_secs(2)) {
+            Some(pid) => pid,
+            None => {
+                kill_spawned_child(&mut child);
+                panic!("parent should publish same-group child pid before snapshot");
+            }
+        };
+        if !wait_for_path(&child_ready, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("same-group child should block on fifo before snapshot");
+        }
+        let parent_pid = child.as_ref().unwrap().id();
+        let direct_stat = match std::fs::read_to_string(format!("/proc/{direct_pid}/stat")) {
+            Ok(stat) => stat,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read direct child stat: {e}");
+            }
+        };
+        let direct_target = parse_stat_ppid_pgid(&direct_stat);
+        if direct_target != Some((parent_pid, parent_pid)) {
+            kill_spawned_child(&mut child);
+            panic!(
+                "direct child should initially share the parent process group, got {direct_target:?}"
+            );
+        }
+
+        let mut target = process_tree_kill_target(parent_pid);
+        {
+            let mut fifo_writer = match std::fs::OpenOptions::new().write(true).open(&fifo) {
+                Ok(writer) => writer,
+                Err(e) => {
+                    kill_spawned_child(&mut child);
+                    panic!("failed to open child fifo: {e}");
+                }
+            };
+            if let Err(e) = writeln!(fifo_writer, "go") {
+                kill_spawned_child(&mut child);
+                panic!("failed to release child fifo: {e}");
+            }
+        }
+
+        let setsid_child_pid: libc::pid_t =
+            match wait_for_pid_file(&setsid_child_pid_path, Duration::from_secs(2)) {
+                Some(pid) => pid,
+                None => {
+                    kill_spawned_child(&mut child);
+                    panic!("setsid child should publish its pid before kill");
+                }
+            };
+        if setsid_child_pid <= 0 {
+            kill_spawned_child(&mut child);
+            panic!("setsid child pid should be positive, got {setsid_child_pid}");
+        }
+        let setsid_child_pidfd = match open_pidfd(setsid_child_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                // SAFETY: best-effort cleanup of a test-owned process.
+                let _ = unsafe { libc::kill(setsid_child_pid, libc::SIGKILL) };
+                panic!("failed to open pidfd for setsid child pid {setsid_child_pid}: {e}");
+            }
+        };
+
+        refresh_process_tree_kill_target(&mut target);
+        if !unsafe { kill_process_tree_target(target) } {
+            kill_spawned_child(&mut child);
+            kill_pidfd_and_wait(&setsid_child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("refreshed target should signal at least one process group");
+        }
+        if let Err(e) = child.take().unwrap().wait() {
+            kill_pidfd_and_wait(&setsid_child_pidfd)
+                .unwrap_or_else(|cleanup| panic!("parent wait failed: {e}; cleanup={cleanup}"));
+            panic!("failed to wait for killed parent shell: {e}");
+        }
+
+        match wait_for_pidfd_exit(&setsid_child_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&setsid_child_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+                panic!(
+                    "refresh should replace same-group child pgid and kill setsid child pid {setsid_child_pid}"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&setsid_child_pidfd);
+                panic!(
+                    "failed to wait for setsid child pid {setsid_child_pid} exit: {e}; cleanup={cleanup:?}"
                 );
             }
         }

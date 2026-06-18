@@ -94,6 +94,8 @@ function mockAdminAccountSidebar(): void {
         },
       ],
       creditGrants: [],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
     });
   });
 }

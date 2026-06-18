@@ -3,6 +3,7 @@
 import pytest
 
 import mitm_addon
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.x_flow_helpers import make_x_response_flow
 
@@ -70,6 +71,43 @@ class TestXStreamPathRouting:
 
         assert "x_ndjson_state" not in flow.metadata
         assert "connector_response_finish" in flow.metadata
+
+    def test_stream_error_response_uses_bounded_forensic_buffer_only(self, real_flow):
+        flow = make_x_response_flow(
+            real_flow,
+            path="/2/tweets/search/stream",
+            response_status=401,
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+        callback = response_stream(flow)
+        callback(b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}')
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    @pytest.mark.parametrize("path", ["/2/tweets", "/2/tweets/search/stream"])
+    @pytest.mark.parametrize("firewall_billable", [False, None])
+    def test_non_billable_x_responses_do_not_register_connector_parser(
+        self,
+        real_flow,
+        path,
+        firewall_billable,
+    ):
+        flow = make_x_response_flow(real_flow, path=path, firewall_billable=firewall_billable)
+        if firewall_billable is None:
+            flow.metadata.pop("firewall_billable")
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+
+        assert "connector_response_finish" not in flow.metadata
+        assert "x_ndjson_state" not in flow.metadata
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")

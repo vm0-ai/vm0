@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
@@ -23,7 +25,6 @@ import {
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
-type CompletedBillingCheckoutTier = "pro" | "team";
 type DowngradeTargetTier = "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
@@ -33,6 +34,8 @@ const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
 const RESTORE_SUCCESS_TOAST =
   "Plan restored. Your subscription will renew normally.";
+export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN = 1;
+export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 
 function formatEffectiveDate(effectiveDate: string | null): string | null {
   if (!effectiveDate) {
@@ -167,18 +170,17 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
-interface CompletedBillingCheckout {
-  readonly tier: CompletedBillingCheckoutTier;
-  readonly sessionId: string | null;
-}
-
-const internalCompletedBillingCheckout$ =
-  state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
 const internalFormAmountOverride$ = state<string | null>(null);
+const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
+const internalConcurrencyPurchaseDialogOpen$ = state(false);
+const internalConcurrencyConfirmDialog$ = state<{
+  readonly action: "cancel" | "restore";
+  readonly subscriptionId: string;
+} | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -193,26 +195,49 @@ export const restoreDialogOpen$ = computed((get) => {
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
 });
-export const completedBillingCheckout$ = computed((get) => {
-  return get(internalCompletedBillingCheckout$);
+export const concurrencySubscriptionQuantity$ = computed((get) => {
+  return get(internalConcurrencySubscriptionQuantity$);
+});
+export const concurrencyPurchaseDialogOpen$ = computed((get) => {
+  return get(internalConcurrencyPurchaseDialogOpen$);
+});
+export const concurrencyConfirmDialog$ = computed((get) => {
+  return get(internalConcurrencyConfirmDialog$);
 });
 
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
-export const markCompletedBillingCheckout$ = command(
-  (
-    { set },
-    tier: CompletedBillingCheckoutTier,
-    sessionId: string | null = null,
-  ) => {
-    set(internalCompletedBillingCheckout$, { tier, sessionId });
+export const setConcurrencySubscriptionQuantity$ = command(
+  ({ set }, value: number | null) => {
+    if (value === null) {
+      set(internalConcurrencySubscriptionQuantity$, null);
+      return;
+    }
+    set(
+      internalConcurrencySubscriptionQuantity$,
+      Math.min(
+        CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+        Math.max(CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN, value),
+      ),
+    );
   },
 );
-export const clearCompletedBillingCheckout$ = command(({ set }) => {
-  set(internalCompletedBillingCheckout$, null);
+export const openConcurrencyPurchaseDialog$ = command(({ set }) => {
+  set(internalConcurrencySubscriptionQuantity$, null);
+  set(internalConcurrencyPurchaseDialogOpen$, true);
 });
-
+export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
+  set(internalConcurrencyPurchaseDialogOpen$, false);
+});
+export const openConcurrencyConfirmDialog$ = command(
+  ({ set }, action: "cancel" | "restore", subscriptionId: string) => {
+    set(internalConcurrencyConfirmDialog$, { action, subscriptionId });
+  },
+);
+export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
+  set(internalConcurrencyConfirmDialog$, null);
+});
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -289,22 +314,6 @@ export const startCheckout$ = command(
   },
 );
 
-export const completeCheckoutSession$ = command(
-  async ({ get }, sessionId: string, signal: AbortSignal): Promise<boolean> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCheckoutContract);
-    const result = await accept(
-      client.complete({
-        body: { sessionId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return result.body.completed;
-  },
-);
-
 export const startCreditCheckout$ = command(
   async (
     { get },
@@ -348,6 +357,83 @@ export const startCreditCheckout$ = command(
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const startConcurrencyCheckout$ = command(
+  async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("concurrency", "purchased");
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("concurrency", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          quantity,
+          successUrl: successUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
+
+export const cancelConcurrencySubscription$ = command(
+  async ({ get, set }, subscriptionId: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.cancel({
+        params: { subscriptionId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    set(internalConcurrencyConfirmDialog$, null);
+    const effectiveDate = formatEffectiveDate(result.body.currentPeriodEnd);
+    toast.success(
+      effectiveDate
+        ? `Concurrency subscription canceled. Slots stay active until ${effectiveDate}.`
+        : "Concurrency subscription canceled.",
+    );
+  },
+);
+
+export const restoreConcurrencySubscription$ = command(
+  async ({ get, set }, subscriptionId: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    await accept(
+      client.restore({
+        params: { subscriptionId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    set(internalConcurrencyConfirmDialog$, null);
+    toast.success("Concurrency subscription restored.");
   },
 );
 

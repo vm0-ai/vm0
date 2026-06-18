@@ -33,7 +33,7 @@ impl WorkspacePromotionFixture {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
-                session_id: Some(session_id),
+                cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: image.len() as u64,
                 workspace_drive_required: true,
@@ -49,7 +49,7 @@ impl WorkspacePromotionFixture {
             .into_promotion_context(WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                session_id_override: Some(session_id),
+                cli_agent_session_id_override: Some(session_id),
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: TEST_COMPLETED_AT.into(),
                 storage_fingerprints: StorageFingerprints::default(),

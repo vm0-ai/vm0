@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { CONNECTOR_TYPES, type ConnectorType } from "../connectors";
 import {
+  createFirewallMetadataPolicyResolver,
   expandFirewallMetadataDefaultPolicy,
   FIREWALL_PERMISSION_METADATA_SUMMARIES,
   getFirewallPermissionSummary,
@@ -13,8 +14,14 @@ import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
 } from "../firewall-metadata";
-import type { FirewallPermissionMetadataPermission } from "../firewall-metadata";
-import type { FirewallConfig } from "../firewall-types";
+import type {
+  FirewallPermissionDetailMetadata,
+  FirewallPermissionMetadataPermission,
+} from "../firewall-metadata";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallConfig,
+} from "../firewall-types";
 import {
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
@@ -149,6 +156,26 @@ function runtimeEntries(): [FirewallConnectorType, FirewallConfig][] {
   }) as [FirewallConnectorType, FirewallConfig][];
 }
 
+const RESOLVER_METADATA = {
+  type: "slack",
+  label: "Slack",
+  permissionCount: 4,
+  permissions: [
+    { name: "metadata-default-one" },
+    { name: "metadata-default-two" },
+    { name: "metadata-deny" },
+    { name: "metadata-ask" },
+  ],
+  defaultPolicy: {
+    permissionDefault: "allow",
+    permissionOverrides: {
+      deny: ["metadata-deny"],
+      ask: ["metadata-ask"],
+    },
+    unknownPolicy: "deny",
+  },
+} satisfies FirewallPermissionDetailMetadata;
+
 describe("firewall metadata", () => {
   it("keeps the public entrypoint summary-first", () => {
     const entrypoint = path.resolve(
@@ -159,12 +186,105 @@ describe("firewall metadata", () => {
 
     expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
       "../firewall-types",
+      "./policy-resolver",
       "./summary.generated",
+      "./types",
+    ]);
+    expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
+      "./policy-resolver",
       "./types",
     ]);
     expect(dynamicImportSpecifiers(source)).toStrictEqual([
       "./loader.generated",
     ]);
+  });
+
+  it("resolves metadata permission defaults and overrides", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
+
+    expect(resolver.permission("metadata-default-one")).toBe("allow");
+    expect(resolver.permission("metadata-deny")).toBe("deny");
+    expect(resolver.permission("metadata-ask")).toBe("ask");
+    expect(resolver.permission("not-in-metadata")).toBe("allow");
+    expect(resolver.unknown()).toBe("deny");
+  });
+
+  it("applies sparse overlay precedence", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "deny",
+      permissionOverrides: {
+        "metadata-deny": "allow",
+        "metadata-ask": "ask",
+      },
+      unknownPolicy: "ask",
+    });
+
+    expect(resolver.permission("metadata-default-one")).toBe("deny");
+    expect(resolver.permission("metadata-deny")).toBe("allow");
+    expect(resolver.permission("metadata-ask")).toBe("ask");
+    expect(resolver.permission("not-in-metadata")).toBe("deny");
+    expect(resolver.unknown()).toBe("ask");
+  });
+
+  it("summarizes visible permission lists", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
+
+    expect(
+      resolver.list(["metadata-default-one", "metadata-default-two"]),
+    ).toBe("allow");
+    expect(resolver.list(["metadata-default-one", "metadata-deny"])).toBe(
+      "mixed",
+    );
+    expect(resolver.list([])).toBe("mixed");
+  });
+
+  it("reports only effective sparse overlay changes as overrides", () => {
+    const redundant = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "allow",
+      permissionOverrides: {
+        "metadata-deny": "deny",
+      },
+      unknownPolicy: "deny",
+    });
+
+    expect(redundant.isPermissionOverridden("metadata-default-one")).toBe(
+      false,
+    );
+    expect(redundant.isPermissionOverridden("metadata-deny")).toBe(false);
+    expect(redundant.isUnknownOverridden()).toBe(false);
+
+    const changed = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionDefault: "deny",
+      permissionOverrides: {
+        "metadata-deny": "allow",
+      },
+      unknownPolicy: "allow",
+    });
+
+    expect(changed.isPermissionOverridden("metadata-default-one")).toBe(true);
+    expect(changed.isPermissionOverridden("metadata-deny")).toBe(true);
+    expect(changed.isUnknownOverridden()).toBe(true);
+  });
+
+  it("keeps unknown endpoint policy separate from permission lookup", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionOverrides: {
+        [UNKNOWN_PERMISSION_GRANT]: "allow",
+      },
+      unknownPolicy: "ask",
+    });
+
+    expect(resolver.permission(UNKNOWN_PERMISSION_GRANT)).toBe("allow");
+    expect(resolver.unknown()).toBe("ask");
+  });
+
+  it("ignores inherited fields when resolving sparse overlay overrides", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionOverrides: {},
+    });
+
+    expect(resolver.permission("toString")).toBe("allow");
+    expect(resolver.isPermissionOverridden("toString")).toBe(false);
   });
 
   it("keeps metadata modules independent from runtime firewall modules", () => {

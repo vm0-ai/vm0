@@ -3048,37 +3048,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps the linked automation dropdown when the sidebar switch is off", async () => {
-    mockAutomationThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-    expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
-    expect(screen.getByText("Automation inactive")).toBeInTheDocument();
-    expect(screen.queryByTestId("automation-sidebar")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Close automations"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
-    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-  });
-
   it("shows linked automations from the chat header sidebar", async () => {
     mockAutomationThread();
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -3088,7 +3057,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {
@@ -3141,7 +3109,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {
@@ -3604,6 +3571,53 @@ describe("chat lifecycle", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-dismiss-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-dismiss-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    // Click inside the selection: in a real browser mouseup fires first and the
+    // selection collapses right after. Mirror that order so the deferred read
+    // sees the cleared selection and dismisses the toolbar.
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    window.getSelection()?.removeAllRanges();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
   });
 
   it("sends inline feedback with selected template and draft attachments", async () => {
@@ -4665,6 +4679,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
 
@@ -4707,6 +4723,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
     context.mocks.api(

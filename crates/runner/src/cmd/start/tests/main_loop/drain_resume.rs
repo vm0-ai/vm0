@@ -63,11 +63,12 @@ async fn drain_then_resume_keeps_jobs_running() {
     // Tear down hard — the shared gate would otherwise block the
     // second job's natural completion during Draining.
     env.trigger_stopping().await;
-    let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
-        .await
-        .expect("run should exit within 5s after hard shutdown")
-        .expect("task should not panic");
-    assert!(result.is_ok());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should exit within 5s after hard shutdown",
+    )
+    .await;
 }
 
 /// Regression guard for the unified reactor's Draining-entry state.
@@ -340,5 +341,10 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
 
     // Tear down cleanly.
     env.trigger_stopping().await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s after concurrent resume race",
+    )
+    .await;
 }

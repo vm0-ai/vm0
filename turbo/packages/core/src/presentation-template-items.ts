@@ -2125,7 +2125,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "playful-launch-presentation",
       title: "Playful launch presentation",
       prompt:
-        "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-launch`, create a 15-slide presentation for a product or service launch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it saturated, joyful, idea-led, and structured.",
+        "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge. Present it to people and culture leaders with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, testimonials, pricing, and next steps. Make it saturated, joyful, idea-led, and structured.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d0f6b313-9899-4143-a6da-26781fd7b946/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
@@ -2138,7 +2138,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "botane-organic-deck",
       title: "Botane organic deck",
       prompt:
-        "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
+        "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide brand story deck for Moss & Moon, a coastal wellness retreat launching a seasonal herb garden, tea bar, and slow-living membership program. Present it to hospitality partners with cover, agenda, origin story, guest philosophy, retreat spaces, treatment menu, garden-to-table process, photography gallery, sustainability metrics, member testimonials, packages, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/449e7efe-c73d-497d-962c-d77c576d0768/botane-organic.html",
       previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
@@ -2151,7 +2151,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "business-data-presentation",
       title: "Business data presentation",
       prompt:
-        "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
+        "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide executive data readout for HarborCart, an omnichannel grocery retailer reviewing 2026 growth, loyalty behavior, basket mix, and store-to-delivery conversion. Present it to the leadership team with cover, agenda, business context, KPI scorecard, regional segments, channel comparison, customer cohorts, operational drivers, forecast, strategic bets, risks, recommendations, and appendix contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a570cf6-d398-40a6-8de5-3857f1fa21a2/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
@@ -2164,7 +2164,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "crayon-learning-deck",
       title: "Crayon learning deck",
       prompt:
-        "/gen presentation with design system `crayon` and template `html-ppt-crayon`, create a 15-slide presentation for a playful education, kids product, creative workshop, or family program. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it bright, rounded, joyful, and crayon-like.",
+        "/gen presentation with design system `crayon` and template `html-ppt-crayon`, create a 15-slide parent-night deck for Rainbow Lab, a summer art-and-science camp where kids build storybooks, cardboard cities, and tiny robots. Present it to families with cover, agenda, camp promise, learning goals, weekly themes, instructor team, sample day, workshop stations, student gallery, safety plan, progress metrics, parent quotes, pricing, and registration steps. Make it bright, rounded, joyful, and crayon-like.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aa31138-3cfa-4ed2-997a-aeb37b51e258/crayon.html",
       previewImage: CRAYON_PREVIEW_IMAGES[0],
@@ -2178,7 +2178,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "creative-agency-presentation",
       title: "Creative agency presentation",
       prompt:
-        "/gen presentation with design system `creative-agency` and template `html-ppt-creative-agency`, create a 15-slide presentation for a design studio, creative agency, brand consultancy, or annual studio report. Include cover, agenda, about, vision, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it minimal, editorial, sharp, and agency-grade.",
+        "/gen presentation with design system `creative-agency` and template `html-ppt-creative-agency`, create a 15-slide rebrand pitch for Northstar Studio proposing a new identity, website, and launch campaign for a boutique hotel group expanding into three coastal cities. Present it to the client board with cover, agenda, brand challenge, strategic insight, creative direction, visual territories, service scope, project process, case-study gallery, launch roadmap, impact metrics, client quotes, investment, and contact. Make it minimal, editorial, sharp, and agency-grade.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/128e103c-8eed-4436-8da8-7d99d1a71021/creative-agency.html",
       previewImage: CREATIVE_AGENCY_PREVIEW_IMAGES[0],
@@ -2192,7 +2192,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "data-report-presentation",
       title: "Data report presentation",
       prompt:
-        "/gen presentation with design system `data-report` and template `html-ppt-data-report`, create a 15-slide presentation for a business data report, market analysis, annual review, product metrics readout, or research findings deck. Include cover, contents, context, trend, performance, segments, comparison, impact, forecast, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
+        "/gen presentation with design system `data-report` and template `html-ppt-data-report`, create a 15-slide research findings deck for MetroPulse, a city mobility study comparing bike-share, buses, rideshare, and commuter rail across 12 neighborhoods. Present it to urban planning stakeholders with cover, contents, study context, methodology, demand trends, neighborhood segments, mode comparison, peak-hour bottlenecks, equity impact, emissions estimate, 12-month forecast, recommendations, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ee4af44-fedf-4472-9754-b237b8d8ab4f/data-report.html",
       previewImage: DATA_REPORT_PREVIEW_IMAGES[0],
@@ -2206,7 +2206,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "editorial-magazine-deck",
       title: "Editorial magazine deck",
       prompt:
-        "/gen presentation with design system `editorial-magazine` and template `html-ppt-editorial-magazine`, create a 15-slide presentation for an editorial brand, publication, culture report, portfolio magazine, or catalogue-style pitch. Include cover, agenda, about, vision, team, formats, process, gallery, impact, testimonials, pricing/table, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
+        "/gen presentation with design system `editorial-magazine` and template `html-ppt-editorial-magazine`, create a 15-slide media kit for Field Notes Quarterly, an independent culture magazine pitching its autumn issue on craft, travel, food, and design to premium sponsors. Include cover, editor letter, issue theme, audience profile, editorial departments, contributor roster, feature previews, photography gallery, distribution plan, partnership formats, audience metrics, sponsor examples, rate card, production timeline, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ecb06a73-8d96-4565-951e-5ee3688af8c9/editorial-magazine.html",
       previewImage: EDITORIAL_MAGAZINE_PREVIEW_IMAGES[0],
@@ -2220,7 +2220,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "landing-consulting-deck",
       title: "Landing consulting deck",
       prompt:
-        "/gen presentation with design system `landing-consulting` and template `html-ppt-landing-consulting`, create a 15-slide presentation for a consulting firm, advisory practice, SaaS services team, strategy landing page, or growth proposal. Include cover, agenda, about, mission, team, services, process, gallery, proof metrics, testimonials, pricing, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
+        "/gen presentation with design system `landing-consulting` and template `html-ppt-landing-consulting`, create a 15-slide growth proposal for ScaleBridge advising a B2B fintech SaaS team on reducing onboarding drop-off and improving trial-to-paid conversion. Present it to the revenue leadership team with cover, agenda, opportunity size, diagnosis, desired outcomes, engagement model, workstreams, sprint process, benchmark gallery, proof metrics, client testimonials, pricing tiers, decision timeline, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/675da276-43e2-4925-9744-ee0ce44fd3d3/landing-consulting.html",
       previewImage: LANDING_CONSULTING_PREVIEW_IMAGES[0],
@@ -2234,7 +2234,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "lumina-creative-studio",
       title: "Lumina creative studio",
       prompt:
-        "/gen presentation with design system `lumina` and template `html-ppt-lumina`, create a 15-slide presentation for a creative studio, photo agency, branding shop, design collective, or studio portfolio. Include cover, agenda, about, mission, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it bold, sticker-tagged, sharp, and creative-studio oriented.",
+        "/gen presentation with design system `lumina` and template `html-ppt-lumina`, create a 15-slide portfolio deck for LensLab Studio, a photography and motion team pitching a beauty brand's global campaign shoot across studio sets, street casting, and social cutdowns. Include cover, agenda, studio point of view, campaign concept, team, production services, creative process, location plan, image gallery, motion deliverables, campaign metrics, client quotes, package options, and contact. Make it bold, sticker-tagged, sharp, and creative-studio oriented.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bd8fd3cd-7b48-4903-ad4c-ce8aae44a690/lumina-creative-studio.html",
       previewImage: LUMINA_PREVIEW_IMAGES[0],
@@ -2248,7 +2248,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "mosaic-geometric-pitch",
       title: "Mosaic geometric pitch",
       prompt:
-        "/gen presentation with design system `mosaic-geometric` and template `html-ppt-mosaic-geometric`, create a 15-slide presentation for a geometric brand pitch, design system proposal, creative studio, culture product, or modular portfolio. Include cover, agenda, about, principles, team, services, process, gallery, impact, testimonials, pricing, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
+        "/gen presentation with design system `mosaic-geometric` and template `html-ppt-mosaic-geometric`, create a 15-slide modular identity pitch for CivicLink, a new transit app unifying buses, bikes, scooters, and commuter rail under one visual system. Present it to city innovation leaders with cover, agenda, brand problem, design principles, logo grid, color and icon system, app moments, rollout process, station signage gallery, accessibility impact, pilot metrics, stakeholder quotes, implementation budget, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5f0f09fb-1c75-4158-ac62-6fba5a4ed361/mosaic-geometric.html",
       previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
@@ -2262,7 +2262,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "playful-pop-deck",
       title: "Playful pop deck",
       prompt:
-        "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
+        "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide campus launch deck for FizzPop, a sparkling tea brand planning a colorful back-to-school sampling tour, creator challenge, and limited-edition flavor drop. Present it to retail and student ambassador partners with cover, agenda, brand world, audience insight, campaign idea, flavor lineup, activation map, event flow, content plan, gallery, reach metrics, partner testimonials, budget, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/71a868cb-6e9b-4e9e-a99d-66a75c112b01/playful-pop.html",
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],

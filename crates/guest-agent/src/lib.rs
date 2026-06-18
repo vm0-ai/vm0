@@ -1,5 +1,6 @@
 //! Guest agent library — exposes modules for the binary and integration tests.
 
+pub mod active_input;
 mod artifact;
 pub mod checkpoint;
 pub mod cli;

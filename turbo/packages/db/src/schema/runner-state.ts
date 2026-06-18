@@ -9,6 +9,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 export interface RunnerHeldSessionState {
+  // Compatibility JSON field name. Semantically this is the CLI agent session
+  // id that keys runner sandbox reuse affinity.
   readonly sessionId: string;
   readonly lastCompletedAt: string;
 }

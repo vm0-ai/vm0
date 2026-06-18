@@ -6,8 +6,32 @@ import { detach, Reason, resetSignal } from "../utils.ts";
 const internalQueueDrawerOpen$ = state(false);
 const resetQueuePollingSignal$ = resetSignal();
 
+export const CONCURRENCY_QUANTITY_MIN = 1;
+export const CONCURRENCY_QUANTITY_MAX = 1000;
+
+const internalConcurrencyQuantity$ = state(CONCURRENCY_QUANTITY_MIN);
+
 export const queueDrawerOpen$ = computed((get) => {
   return get(internalQueueDrawerOpen$);
+});
+
+export const concurrencyQuantity$ = computed((get) => {
+  return get(internalConcurrencyQuantity$);
+});
+
+function clampConcurrencyQuantity(quantity: number): number {
+  return Math.min(
+    CONCURRENCY_QUANTITY_MAX,
+    Math.max(CONCURRENCY_QUANTITY_MIN, quantity),
+  );
+}
+
+export const setConcurrencyQuantity$ = command(({ set }, quantity: number) => {
+  set(internalConcurrencyQuantity$, clampConcurrencyQuantity(quantity));
+});
+
+export const resetConcurrencyQuantity$ = command(({ set }) => {
+  set(internalConcurrencyQuantity$, CONCURRENCY_QUANTITY_MIN);
 });
 
 export const setQueueDrawerOpen$ = command(

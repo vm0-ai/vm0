@@ -1,8 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
-    minimal_context, mock_run_config, mock_run_config_with_delay, mock_run_config_with_overrides,
-    push_job, shutdown, test_profiles, wait_budget_count, wait_budget_exhausted_reactor,
-    wait_cancel_token, wait_discover_entered, wait_status_mode,
+    assert_run_exits_within, minimal_context, mock_run_config, mock_run_config_with_delay,
+    mock_run_config_with_overrides, push_job, shutdown, test_profiles, wait_budget_count,
+    wait_budget_exhausted_reactor, wait_cancel_token, wait_discover_entered, wait_status_mode,
 };
 use std::sync::Arc;
 
@@ -116,7 +116,12 @@ async fn heartbeat_fires_while_draining() {
 
     // Tear down hard — the gate would block natural completion.
     env.trigger_stopping().await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s after Draining heartbeat check",
+    )
+    .await;
 }
 
 /// Invariant: heartbeat ticks must fire while the unified reactor is

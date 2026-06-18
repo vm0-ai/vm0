@@ -42,6 +42,11 @@ import {
 
 import { now } from "../../lib/time";
 import { db$, type Db } from "../external/db";
+import {
+  activePaidConcurrencySlots,
+  cappedBaseConcurrencyLimit,
+  totalConcurrencyLimit,
+} from "./org-concurrency-entitlements.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const RECENT_RUNS_FOR_ETA = 10;
@@ -86,8 +91,12 @@ function truncatePrompt(prompt: string): string {
     : prompt;
 }
 
-function effectiveConcurrencyLimit(tier: OrgTier): number {
-  return TIER_CONCURRENCY_LIMITS[tier];
+function effectiveConcurrencyLimit(tier: OrgTier, paidSlots: number): number {
+  const limit = totalConcurrencyLimit({
+    baseLimit: cappedBaseConcurrencyLimit(TIER_CONCURRENCY_LIMITS[tier]),
+    paidSlots,
+  });
+  return Number.isFinite(limit) ? limit : 0;
 }
 
 async function activeRunCount(db: ReadDb, orgId: string): Promise<number> {
@@ -460,13 +469,15 @@ export function zeroRunQueueStatus(args: {
 }): Computed<Promise<QueueResponse>> {
   return computed(async (get): Promise<QueueResponse> => {
     const db = get(db$);
-    const limit = effectiveConcurrencyLimit(args.orgTier);
-    const [active, queuedRuns, runningRuns, estimatedTime] = await Promise.all([
-      activeRunCount(db, args.orgId),
-      queuedRunRows(db, args.orgId),
-      runningRunRows(db, args.orgId),
-      estimatedTimePerRun(db, args.orgId),
-    ]);
+    const [active, queuedRuns, runningRuns, estimatedTime, paidSlots] =
+      await Promise.all([
+        activeRunCount(db, args.orgId),
+        queuedRunRows(db, args.orgId),
+        runningRunRows(db, args.orgId),
+        estimatedTimePerRun(db, args.orgId),
+        activePaidConcurrencySlots(db, args.orgId),
+      ]);
+    const limit = effectiveConcurrencyLimit(args.orgTier, paidSlots);
     const emails = await userEmailMap(db, queuedRuns, runningRuns);
 
     return {

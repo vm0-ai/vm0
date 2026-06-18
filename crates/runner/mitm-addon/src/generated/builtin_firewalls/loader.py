@@ -479,6 +479,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import infisical_0
 
         return (infisical_0.JSON_PART,)
+    if name == "insforge":
+        from . import insforge_0
+
+        return (insforge_0.JSON_PART,)
     if name == "instagram":
         from . import instagram_0
 

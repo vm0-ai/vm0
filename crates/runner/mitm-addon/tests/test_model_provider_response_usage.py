@@ -16,7 +16,7 @@ import flow_metadata_keys as metadata_keys
 import logging_utils
 import mitm_addon
 import usage
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -889,6 +889,31 @@ class TestModelProviderResponseUsage:
         assert webhook.request_count == 0
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
+    def test_non_billable_json_response_does_not_register_incremental_parser(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            billable=False,
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+
+        assert "model_json_usage_finish" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
     def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Non-billable model-provider fallback must not emit usage warnings."""
         proxy_log_path = tmp_path / "proxy.jsonl"
@@ -936,6 +961,11 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
+        assert extracted["message_id"] == "msg_1"
+        assert extracted["model"] == "claude-sonnet-4-6"
+        assert extracted["tokens.input"] == 50
+        assert extracted["tokens.output"] == 200
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
@@ -971,6 +1001,7 @@ class TestModelProviderResponseUsage:
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
+        assert extracted["message_id"] == expected_usage["message_id"]
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
@@ -979,6 +1010,40 @@ class TestModelProviderResponseUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
+
+    def test_full_pipeline_zstd_model_json_scans_past_decode_chunk_limit(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = (
+            b'{"id":"msg_zstd","model":"claude-sonnet-4-6","content":[{"text":"'
+            + b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3)
+            + b'"}],"usage":{"input_tokens":10,"output_tokens":20}}'
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "zstd"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(zstandard.ZstdCompressor().compress(payload))
+
+        webhook = self._run_response(flow)
+
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
+        assert extracted["message_id"] == "msg_zstd"
+        assert extracted["tokens.input"] == 10
+        assert extracted["tokens.output"] == 20
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {"tokens.input": 10, "tokens.output": 20}
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     @pytest.mark.parametrize(

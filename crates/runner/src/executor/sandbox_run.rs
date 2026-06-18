@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use super::agent_run::{AgentExecutionResult, RunStart, run_in_sandbox};
 use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
-    read_guest_session_id,
+    read_guest_cli_agent_session_id,
 };
 use super::env::{EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type};
 use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
@@ -154,7 +154,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     outcome.workspace_promotable = workspace_image_promotable(
         workspace_image.as_ref(),
         context,
-        outcome.guest_session_id.as_deref(),
+        outcome.discovered_cli_agent_session_id.as_deref(),
     );
     outcome.workspace_image = workspace_image;
     Ok(outcome)
@@ -211,7 +211,7 @@ pub(super) async fn prepare_workspace_image(
             run_id: context.run_id,
             sandbox_id,
             profile_name,
-            session_id: context.session_id(),
+            cli_agent_session_id: context.cli_agent_session_id(),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -224,10 +224,15 @@ pub(super) async fn prepare_workspace_image(
 pub(super) fn workspace_image_promotable(
     workspace_image: Option<&WorkspaceImageLease>,
     context: &ExecutionContext,
-    guest_session_id: Option<&str>,
+    discovered_cli_agent_session_id: Option<&str>,
 ) -> bool {
-    workspace_image
-        .is_some_and(|image| image.can_attempt_promotion(context.session_id().or(guest_session_id)))
+    workspace_image.is_some_and(|image| {
+        image.can_attempt_promotion(
+            context
+                .cli_agent_session_id()
+                .or(discovered_cli_agent_session_id),
+        )
+    })
 }
 
 async fn create_started_sandbox(
@@ -410,7 +415,7 @@ pub(super) async fn execute_reused_sandbox(
                 network_log_session: None,
                 workspace_image: None,
                 workspace_promotable: false,
-                guest_session_id: None,
+                discovered_cli_agent_session_id: None,
             };
         }
     };
@@ -437,7 +442,7 @@ pub(super) async fn execute_reused_sandbox(
             network_log_session: Some(network_log_session),
             workspace_image: None,
             workspace_promotable: false,
-            guest_session_id: None,
+            discovered_cli_agent_session_id: None,
         };
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
@@ -518,21 +523,22 @@ pub(super) async fn execute_prepared_sandbox_run(
     }
 
     // Read CLI-generated session ID for first-run parking.
-    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
-        let id = read_guest_session_id(sandbox.as_ref(), context.run_id)
-            .await
-            .and_then(|id| normalize_guest_session_id_for_parking(context, id));
-        if let Some(ref sid) = id {
-            info!(
-                run_id = %context.run_id,
-                session_fingerprint = %diagnostic_session_fingerprint(sid),
-                "read guest session ID for parking"
-            );
-        }
-        id
-    } else {
-        None
-    };
+    let discovered_cli_agent_session_id =
+        if agent_result.exit_code() == 0 && context.cli_agent_session_id().is_none() {
+            let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
+                .await
+                .and_then(|id| normalize_guest_cli_agent_session_id_for_parking(context, id));
+            if let Some(ref sid) = id {
+                info!(
+                    run_id = %context.run_id,
+                    session_fingerprint = %diagnostic_session_fingerprint(sid),
+                    "read guest session ID for parking"
+                );
+            }
+            id
+        } else {
+            None
+        };
 
     ExecuteOutcome {
         failure: agent_result.failure,
@@ -541,11 +547,11 @@ pub(super) async fn execute_prepared_sandbox_run(
         network_log_session: Some(network_log_session),
         workspace_image: None,
         workspace_promotable: false,
-        guest_session_id,
+        discovered_cli_agent_session_id,
     }
 }
 
-fn normalize_guest_session_id_for_parking(
+fn normalize_guest_cli_agent_session_id_for_parking(
     context: &ExecutionContext,
     session_id: String,
 ) -> Option<String> {

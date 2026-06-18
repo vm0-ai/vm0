@@ -102,7 +102,12 @@ async fn claim_after_stopping_sent_cancels_new_job() {
         *v = RunnerMode::Stopping;
     });
     env.cancel.cancel();
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should exit within 5s after Stopping notification",
+    )
+    .await;
 }
 
 // -----------------------------------------------------------------------

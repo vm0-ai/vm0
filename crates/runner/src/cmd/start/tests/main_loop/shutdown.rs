@@ -81,11 +81,12 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
     release_tx
         .send(())
         .expect("runner should still be waiting for prefetch release");
-    let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
-        .await
-        .expect("run should finish after memory prefetch drains")
-        .expect("task should not panic");
-    assert!(result.is_ok());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should finish after memory prefetch drains",
+    )
+    .await;
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 

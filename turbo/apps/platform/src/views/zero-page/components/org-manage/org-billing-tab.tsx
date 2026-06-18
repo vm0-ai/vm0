@@ -8,13 +8,28 @@ import {
   IconArrowLeft,
   IconChevronRight,
   IconCoins,
+  IconMinus,
+  IconPlus,
 } from "@tabler/icons-react";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
+  CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+  CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
   billingStatusAsync$,
+  cancelConcurrencySubscription$,
+  closeConcurrencyConfirmDialog$,
+  closeConcurrencyPurchaseDialog$,
+  concurrencyConfirmDialog$,
+  concurrencyPurchaseDialogOpen$,
+  concurrencySubscriptionQuantity$,
   reloadBillingStatus$,
+  openConcurrencyConfirmDialog$,
+  openConcurrencyPurchaseDialog$,
+  restoreConcurrencySubscription$,
   startCheckout$,
+  startConcurrencyCheckout$,
   startDowngrade$,
+  setConcurrencySubscriptionQuantity$,
   apiTierToBillingTier,
   openDowngradeDialog$,
   closeDowngradeDialog$,
@@ -874,6 +889,325 @@ function billingPeriodLabel(args: {
   return `Renews ${date}`;
 }
 
+const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 10;
+
+function slotCountLabel(count: number): string {
+  return `${count} slot${count === 1 ? "" : "s"}`;
+}
+
+function concurrencyMonthlyPrice(quantity: number): string {
+  return `$${quantity * CONCURRENCY_SLOT_MONTHLY_PRICE_USD}/month`;
+}
+
+type ConcurrencySubscription =
+  BillingStatusResponse["concurrencySubscriptions"][number];
+
+function concurrencySubscriptionPeriodLabel(
+  subscription: ConcurrencySubscription,
+  canceled: boolean,
+): string {
+  if (!subscription.currentPeriodEnd) {
+    return canceled ? "Cancellation scheduled" : "Billed monthly";
+  }
+
+  const date = formatBillingDate(subscription.currentPeriodEnd);
+  return canceled ? `Active until ${date}` : `Renews ${date}`;
+}
+
+function ConcurrencyQuantityControl({
+  disabled,
+  label,
+  onQuantityChange,
+  quantity,
+}: {
+  disabled: boolean;
+  label: string;
+  onQuantityChange: (quantity: number) => void;
+  quantity: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <span className="text-[13px] font-medium text-foreground">{label}</span>
+      <div className="flex h-8 items-center rounded-lg border border-border/70 bg-background">
+        <button
+          type="button"
+          aria-label="Decrease additional concurrency quantity"
+          disabled={
+            quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN || disabled
+          }
+          className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => {
+            onQuantityChange(quantity - 1);
+          }}
+        >
+          <IconMinus size={13} stroke={2} />
+        </button>
+        <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
+          {quantity}
+        </span>
+        <button
+          type="button"
+          aria-label="Increase additional concurrency quantity"
+          disabled={
+            quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX || disabled
+          }
+          className="flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => {
+            onQuantityChange(quantity + 1);
+          }}
+        >
+          <IconPlus size={13} stroke={2} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConcurrencySubscriptionRow({
+  changing,
+  canceled,
+  onAction,
+  subscription,
+}: {
+  changing: boolean;
+  canceled: boolean;
+  onAction: (action: "cancel" | "restore", subscriptionId: string) => void;
+  subscription: ConcurrencySubscription;
+}) {
+  const action = canceled ? "restore" : "cancel";
+  return (
+    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">
+          {slotCountLabel(subscription.quantity)}
+        </p>
+        <p
+          className={`text-[13px] mt-0.5 ${
+            canceled
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground"
+          }`}
+        >
+          {concurrencySubscriptionPeriodLabel(subscription, canceled)}
+        </p>
+      </div>
+      <Button
+        variant={canceled ? "default" : "outline"}
+        size="sm"
+        className="h-8 shrink-0 text-xs"
+        disabled={changing}
+        onClick={() => {
+          onAction(action, subscription.id);
+        }}
+      >
+        {changing ? "Updating..." : canceled ? "Restore" : "Cancel"}
+      </Button>
+    </div>
+  );
+}
+
+function ConcurrencyConfirmDialog() {
+  const pageSignal = useGet(pageSignal$);
+  const dialog = useGet(concurrencyConfirmDialog$);
+  const close = useSet(closeConcurrencyConfirmDialog$);
+  const [cancelLoadable, cancelSubscription] = useLoadableSet(
+    cancelConcurrencySubscription$,
+  );
+  const [restoreLoadable, restoreSubscription] = useLoadableSet(
+    restoreConcurrencySubscription$,
+  );
+  const loading =
+    cancelLoadable.state === "loading" || restoreLoadable.state === "loading";
+  const action = dialog?.action ?? "cancel";
+  const title =
+    action === "cancel"
+      ? "Cancel concurrency subscription?"
+      : "Restore concurrency subscription?";
+  const description =
+    action === "cancel"
+      ? "This stops renewal at the end of the current billing period. Existing slots stay active until then."
+      : "This resumes renewal for this concurrency subscription.";
+
+  const handleConfirm = () => {
+    if (!dialog) {
+      return;
+    }
+    const command =
+      action === "cancel" ? cancelSubscription : restoreSubscription;
+    detach(command(dialog.subscriptionId, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <Dialog
+      open={dialog !== null}
+      onOpenChange={(v) => {
+        return !v && close();
+      }}
+    >
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            variant="outline"
+            disabled={loading}
+            onClick={() => {
+              return close();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant={action === "cancel" ? "destructive" : "default"}
+            disabled={loading}
+            onClick={handleConfirm}
+          >
+            {loading
+              ? "Updating..."
+              : action === "cancel"
+                ? "Cancel subscription"
+                : "Restore subscription"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConcurrencyPurchaseDialog() {
+  const pageSignal = useGet(pageSignal$);
+  const open = useGet(concurrencyPurchaseDialogOpen$);
+  const close = useSet(closeConcurrencyPurchaseDialog$);
+  const quantityOverride = useGet(concurrencySubscriptionQuantity$);
+  const setQuantity = useSet(setConcurrencySubscriptionQuantity$);
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
+  );
+  const checkoutLoading = checkoutLoadable.state === "loading";
+  const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
+  const actionLabel = checkoutLoading
+    ? "Redirecting..."
+    : `Buy ${concurrencyMonthlyPrice(quantity)}`;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        return !v && close();
+      }}
+    >
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Buy concurrency</DialogTitle>
+          <DialogDescription>
+            Add a monthly subscription for more concurrent runs.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mt-2 flex flex-col gap-4">
+          <ConcurrencyQuantityControl
+            disabled={checkoutLoading}
+            label="Slots"
+            onQuantityChange={setQuantity}
+            quantity={quantity}
+          />
+          <p className="text-sm font-medium text-foreground">
+            {concurrencyMonthlyPrice(quantity)}
+          </p>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            variant="outline"
+            disabled={checkoutLoading}
+            onClick={() => {
+              return close();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={checkoutLoading}
+            onClick={(e) => {
+              detach(
+                checkout(quantity, e.metaKey || e.ctrlKey, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {actionLabel}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConcurrencyBillingSection({
+  status,
+}: {
+  status: BillingStatusResponse | null;
+}) {
+  const openPurchaseDialog = useSet(openConcurrencyPurchaseDialog$);
+  const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
+  const dialog = useGet(concurrencyConfirmDialog$);
+  const subscriptions = status?.concurrencySubscriptions ?? [];
+  const concurrencyLimit = status?.concurrencyLimit ?? 0;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-sm font-medium text-foreground">Concurrency</h3>
+        <p className="text-[13px] text-muted-foreground">
+          {concurrencyLimit} concurrent run{concurrencyLimit === 1 ? "" : "s"}
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-xl bg-card zero-border">
+        {subscriptions.length === 0 ? (
+          <div className="px-5 py-4">
+            <p className="text-sm font-medium text-foreground">
+              No concurrency subscriptions
+            </p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              Buy additional concurrent runs for this Team workspace.
+            </p>
+          </div>
+        ) : (
+          subscriptions.map((subscription, index) => {
+            const canceled = subscription.cancelAtPeriodEnd;
+            return (
+              <div key={subscription.id}>
+                {index > 0 && <div className="h-0 zero-border-t mx-5" />}
+                <ConcurrencySubscriptionRow
+                  changing={dialog?.subscriptionId === subscription.id}
+                  canceled={canceled}
+                  onAction={openConfirmDialog}
+                  subscription={subscription}
+                />
+              </div>
+            );
+          })
+        )}
+        <div className="h-0 zero-border-t mx-5" />
+        <div className="flex justify-end px-5 py-4">
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 px-4 text-sm font-medium"
+            onClick={openPurchaseDialog}
+          >
+            Buy concurrent
+          </Button>
+        </div>
+      </div>
+      <ConcurrencyPurchaseDialog />
+      <ConcurrencyConfirmDialog />
+    </section>
+  );
+}
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const billingScrollTarget = useGet(billingScrollTarget$);
@@ -925,6 +1259,10 @@ export function OrgBillingTab() {
     status !== null,
     currentTier,
   );
+  const showConcurrency = currentTier === "team";
+  const openBillingPortal = () => {
+    return detach(portal(pageSignal), Reason.DomCallback);
+  };
 
   if (pricingOpen) {
     return (
@@ -1039,9 +1377,7 @@ export function OrgBillingTab() {
                       size="sm"
                       className="shrink-0 h-8 text-xs gap-1.5"
                       disabled={loading}
-                      onClick={() => {
-                        return detach(portal(pageSignal), Reason.DomCallback);
-                      }}
+                      onClick={openBillingPortal}
                     >
                       Manage
                       <IconExternalLink size={13} stroke={1.5} />
@@ -1094,6 +1430,8 @@ export function OrgBillingTab() {
       {status && (
         <AutoRechargeSection currentTier={currentTier} loading={loading} />
       )}
+
+      {showConcurrency && <ConcurrencyBillingSection status={status} />}
 
       <DowngradeConfirmDialog currentTier={currentTier} />
       <RestorePlanConfirmDialog

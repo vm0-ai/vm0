@@ -12,15 +12,23 @@ import {
 
 const QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
 
-const queuedRunnerJobPayloadSchema = z.object({
+const queuedRunnerJobPayloadWireSchema = z.object({
   version: z.literal(1),
   runnerGroup: z.string(),
   profile: z.string(),
+  // Wire/backing payload compatibility field. Semantically this is the
+  // Claude/Codex CLI agent session id used for runner sandbox reuse affinity.
   sessionId: z.string().nullable(),
   executionContext: storedExecutionContextSchema,
 });
 
-type QueuedRunnerJobPayload = z.infer<typeof queuedRunnerJobPayloadSchema>;
+interface QueuedRunnerJobPayload {
+  readonly version: 1;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly cliAgentSessionId: string | null;
+  readonly executionContext: StoredExecutionContext;
+}
 
 export async function encryptQueuedRunnerJobPayload(
   payload: QueuedRunnerJobPayload,
@@ -28,7 +36,13 @@ export async function encryptQueuedRunnerJobPayload(
 ): Promise<string> {
   const encrypted = await encryptPersistentSecretsMap(
     {
-      [QUEUED_RUNNER_JOB_PAYLOAD_KEY]: JSON.stringify(payload),
+      [QUEUED_RUNNER_JOB_PAYLOAD_KEY]: JSON.stringify({
+        version: payload.version,
+        runnerGroup: payload.runnerGroup,
+        profile: payload.profile,
+        sessionId: payload.cliAgentSessionId,
+        executionContext: payload.executionContext,
+      }),
     },
     ctx,
   );
@@ -53,20 +67,27 @@ export async function decryptQueuedRunnerJobPayload(
   }
 
   const parsedJson: unknown = JSON.parse(rawPayload);
-  return queuedRunnerJobPayloadSchema.parse(parsedJson);
+  const wirePayload = queuedRunnerJobPayloadWireSchema.parse(parsedJson);
+  return {
+    version: wirePayload.version,
+    runnerGroup: wirePayload.runnerGroup,
+    profile: wirePayload.profile,
+    cliAgentSessionId: wirePayload.sessionId,
+    executionContext: wirePayload.executionContext,
+  };
 }
 
 export function queuedRunnerJobPayload(args: {
   readonly runnerGroup: string;
   readonly profile: string;
-  readonly sessionId: string | null;
+  readonly cliAgentSessionId: string | null;
   readonly executionContext: StoredExecutionContext;
 }): QueuedRunnerJobPayload {
   return {
     version: 1,
     runnerGroup: args.runnerGroup,
     profile: args.profile,
-    sessionId: args.sessionId,
+    cliAgentSessionId: args.cliAgentSessionId,
     executionContext: args.executionContext,
   };
 }
