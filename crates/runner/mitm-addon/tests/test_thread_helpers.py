@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import builtins
 import threading
 import traceback
 
 import pytest
 
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
+
+_base_exception_group = getattr(builtins, "BaseExceptionGroup", None)
 
 
 def test_join_and_raise_propagates_worker_assertion_with_traceback():
@@ -130,6 +134,53 @@ def test_join_and_raise_propagates_keyboard_interrupt_from_worker():
     thread.start()
 
     with pytest.raises(KeyboardInterrupt):
+        thread.join_and_raise(timeout=1)
+
+    assert not thread.is_alive()
+
+
+def test_join_and_raise_propagates_asyncio_cancelled_error_from_worker():
+    def cancel_worker() -> None:
+        raise asyncio.CancelledError
+
+    thread = ThreadUnderTest(target=cancel_worker)
+    thread.start()
+
+    with pytest.raises(asyncio.CancelledError):
+        thread.join_and_raise(timeout=1)
+
+    assert not thread.is_alive()
+
+
+def test_join_and_raise_propagates_generator_exit_from_worker():
+    def close_worker() -> None:
+        raise GeneratorExit
+
+    thread = ThreadUnderTest(target=close_worker)
+    thread.start()
+
+    with pytest.raises(GeneratorExit):
+        thread.join_and_raise(timeout=1)
+
+    assert not thread.is_alive()
+
+
+@pytest.mark.skipif(
+    _base_exception_group is None,
+    reason="BaseExceptionGroup was added in Python 3.11",
+)
+def test_join_and_raise_propagates_base_exception_group_from_worker():
+    base_exception_group = _base_exception_group
+    assert isinstance(base_exception_group, type)
+    assert issubclass(base_exception_group, BaseException)
+
+    def group_worker() -> None:
+        raise base_exception_group("worker group", [KeyboardInterrupt()])
+
+    thread = ThreadUnderTest(target=group_worker)
+    thread.start()
+
+    with pytest.raises(base_exception_group, match="worker group"):
         thread.join_and_raise(timeout=1)
 
     assert not thread.is_alive()

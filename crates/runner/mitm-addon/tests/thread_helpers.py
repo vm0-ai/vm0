@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
+import builtins
 import threading
 from collections.abc import Callable, Sequence
 from types import TracebackType
 
 import pytest
+
+_base_exception_group = getattr(builtins, "BaseExceptionGroup", None)
+_BASE_EXCEPTION_GROUPS: tuple[type[BaseException], ...]
+if isinstance(_base_exception_group, type) and issubclass(_base_exception_group, BaseException):
+    _BASE_EXCEPTION_GROUPS = (_base_exception_group,)
+else:
+    _BASE_EXCEPTION_GROUPS = ()
+
+_THREAD_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    Exception,
+    pytest.fail.Exception,
+    pytest.skip.Exception,
+    pytest.xfail.Exception,
+    asyncio.CancelledError,
+    GeneratorExit,
+    KeyboardInterrupt,
+    SystemExit,
+    *_BASE_EXCEPTION_GROUPS,
+)
 
 
 class ThreadUnderTest:
@@ -58,16 +79,9 @@ class ThreadUnderTest:
         try:
             self._target()
         # Thread targets run outside pytest's main exception capture. Include
-        # pytest outcomes and interpreter-control exceptions explicitly so a
+        # pytest outcomes and thread-contained BaseException leaves so a
         # terminated worker cannot look like a clean exit to join_and_raise().
-        except (
-            Exception,
-            pytest.fail.Exception,
-            pytest.skip.Exception,
-            pytest.xfail.Exception,
-            SystemExit,
-            KeyboardInterrupt,
-        ) as exc:
+        except _THREAD_FAILURE_EXCEPTIONS as exc:
             self._failure = (exc, exc.__traceback__)
 
     def _raise_if_not_started(self) -> None:
