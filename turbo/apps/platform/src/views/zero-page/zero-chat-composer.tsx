@@ -878,6 +878,16 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   );
 }
 
+/**
+ * Soft, cool-tinted card shadow matching the home chat composer
+ * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
+ * picker renders through a Radix portal on `document.body` — outside that
+ * scope — so the value is inlined here instead of referencing the CSS var.
+ * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
+ */
+const TEMPLATE_CARD_SHADOW =
+  "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
+
 function VideoTemplateCard({
   item,
   selected,
@@ -890,7 +900,8 @@ function VideoTemplateCard({
   return (
     <div
       className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
@@ -2400,7 +2411,8 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
@@ -2768,7 +2780,8 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        TEMPLATE_CARD_SHADOW,
         selected
           ? "border-primary ring-1 ring-primary"
           : "border-border hover:border-muted-foreground/30",

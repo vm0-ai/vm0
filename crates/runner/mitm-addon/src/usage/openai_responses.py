@@ -346,12 +346,12 @@ class _OpenAIResponsesSseUsageHandler:
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._eventless_prefix)
-            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
+            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
             extractor.feed(bytes(self._eventless_prefix))
             self._eventless_prefix = None
         if self._named_event_prefix is not None and self._data_event_type is None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._named_event_prefix)
-            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
+            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
             extractor.feed(bytes(self._named_event_prefix))
             self._named_event_prefix = None
         extractor = self._extractor
@@ -368,13 +368,18 @@ class _OpenAIResponsesSseUsageHandler:
                 data_event_type=data_event_type,
             )
             return
+        event_type = event_name
+        if event_type is None:
+            data_type = extractor.observed_scalar_for_diagnostics(("type",))
+            if isinstance(data_type, str):
+                event_type = data_type
         if (
-            event_name is not None
-            and event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
+            event_type is not None
+            and event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
             and result.error
             and self._on_parse_error is not None
         ):
-            self._on_parse_error(event_name, result.error)
+            self._on_parse_error(event_type, result.error)
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._reset_event_state()
@@ -393,6 +398,9 @@ class _OpenAIResponsesSseUsageHandler:
         )
         self._extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
         return self._extractor
+
+    def _should_include_type_scalar(self) -> bool:
+        return self._data_event_type is None or self._on_parse_error is not None
 
     def _feed_eventless_data(self, chunk: bytes) -> None:
         prefix = self._eventless_prefix
@@ -421,7 +429,7 @@ class _OpenAIResponsesSseUsageHandler:
 
         self._data_event_type = _resolved_data_event_type(event_type)
         self._fallback_eventless_prefix_to_full_extractor(
-            include_type=self._data_event_type is None
+            include_type=self._should_include_type_scalar()
         )
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
@@ -451,7 +459,9 @@ class _OpenAIResponsesSseUsageHandler:
             return
 
         self._data_event_type = _resolved_data_event_type(event_type)
-        self._fallback_named_prefix_to_full_extractor(include_type=self._data_event_type is None)
+        self._fallback_named_prefix_to_full_extractor(
+            include_type=self._should_include_type_scalar()
+        )
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
 

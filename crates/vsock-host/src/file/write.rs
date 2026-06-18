@@ -1,18 +1,19 @@
 use std::future::Future;
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use std::{fmt, io};
 
-use vsock_proto::{MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
+use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
 
 use crate::{
-    CompositeNormalOperation, ExecCaptureRequest, ExecResult, FrameWriteObserver, Shared,
-    VsockHost, exec_operation, normal_request_on_shared_with_write_observer,
+    CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
+    FrameWriteObserver, Shared, VsockHost, exec_operation,
+    normal_request_on_shared_with_write_observer,
     request_on_shared_with_composite_operation_and_observer,
 };
 
-use super::{file_operation_error_is_terminal, shell_quote};
+use super::{normalize_file_exec_stderr, shell_quote, validate_guest_file_path};
 
 /// Maximum content per write_file message. Leaves headroom below
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
@@ -29,6 +30,27 @@ const CLEANUP_EXEC_TIMEOUT_MS: u32 = 1000;
 enum WriteFileChunkTracking<'a> {
     Tracked,
     Composite(&'a mut CompositeNormalOperation),
+}
+
+#[derive(Debug)]
+struct WriteFileGuestError(String);
+
+impl fmt::Display for WriteFileGuestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for WriteFileGuestError {}
+
+fn write_file_guest_error(message: impl Into<String>) -> io::Error {
+    io::Error::other(WriteFileGuestError(message.into()))
+}
+
+fn error_is_write_file_guest_error(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|error| error.is::<WriteFileGuestError>())
 }
 
 struct ChunkedWriteCleanupGuard {
@@ -71,7 +93,7 @@ impl ChunkedWriteCleanupGuard {
 
         let result = if let Some(shared) = self.shared.as_ref() {
             cleanup_timeout(
-                exec_operation::exec_cleanup_with_composite_on_shared_and_observer(
+                exec_operation::exec_operation_cleanup_with_composite_on_shared_and_observer(
                     shared,
                     &self.command,
                     CLEANUP_EXEC_TIMEOUT_MS,
@@ -83,7 +105,7 @@ impl ChunkedWriteCleanupGuard {
                 CLEANUP_EXEC_TIMEOUT_MS,
             )
             .await
-            .and_then(validate_cleanup_result)
+            .and_then(|result| validate_cleanup_result(result).map_err(|err| err.error))
         } else {
             Ok(())
         };
@@ -94,25 +116,186 @@ impl ChunkedWriteCleanupGuard {
     }
 }
 
-async fn cleanup_timeout<F>(cleanup: F, timeout_ms: u32) -> io::Result<ExecResult>
+async fn cleanup_timeout<F>(cleanup: F, timeout_ms: u32) -> io::Result<ExecOperationResult>
 where
-    F: Future<Output = io::Result<ExecResult>>,
+    F: Future<Output = io::Result<ExecOperationResult>>,
 {
     tokio::time::timeout(Duration::from_millis(timeout_ms as u64), cleanup)
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "cleanup command timed out"))?
 }
 
-fn validate_cleanup_result(result: ExecResult) -> io::Result<()> {
-    if result.exit_code == 0 {
-        return Ok(());
+struct WriteHelperExecError {
+    error: io::Error,
+    terminal_proven: bool,
+}
+
+impl WriteHelperExecError {
+    fn terminal(error: io::Error) -> Self {
+        Self {
+            error,
+            terminal_proven: true,
+        }
     }
 
-    Err(io::Error::other(format!(
-        "cleanup command failed with exit code {}: {}",
-        result.exit_code,
-        String::from_utf8_lossy(&result.stderr)
-    )))
+    fn unproven(error: io::Error) -> Self {
+        Self {
+            error,
+            terminal_proven: false,
+        }
+    }
+
+    fn from_exec_wait(error: io::Error) -> Self {
+        if exec_operation::error_is_exec_operation_guest_error(&error) {
+            Self::terminal(error)
+        } else {
+            Self::unproven(error)
+        }
+    }
+}
+
+fn write_helper_exec_output(
+    context: &str,
+    result: ExecOperationResult,
+) -> Result<(ExecTermination, Vec<u8>, String), WriteHelperExecError> {
+    if result.stream_overflowed {
+        return Err(WriteHelperExecError::unproven(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{context} exec operation unexpectedly overflowed a stream queue"),
+        )));
+    }
+
+    let ExecOperationResult {
+        termination,
+        stdout,
+        stderr,
+        diagnostic,
+        ..
+    } = result;
+    let _stdout = write_helper_exec_captured_output(context, "stdout", stdout)?;
+    let (stderr, stderr_truncated) = write_helper_exec_captured_output(context, "stderr", stderr)?;
+
+    Ok((
+        termination,
+        normalize_file_exec_stderr(stderr, stderr_truncated),
+        diagnostic,
+    ))
+}
+
+fn write_helper_exec_captured_output(
+    context: &str,
+    name: &str,
+    output: ExecOwnedCapturedOutput,
+) -> Result<(Vec<u8>, bool), WriteHelperExecError> {
+    match output {
+        ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
+        ExecOwnedCapturedOutput::Discarded => Err(WriteHelperExecError::unproven(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{context} exec result discarded {name} for capture request"),
+        ))),
+    }
+}
+
+fn write_helper_terminal_message(prefix: String, stderr: &[u8], diagnostic: &str) -> String {
+    let mut details = Vec::new();
+    if !stderr.is_empty() {
+        details.push(format!("stderr: {}", String::from_utf8_lossy(stderr)));
+    }
+    if !diagnostic.is_empty() {
+        details.push(format!("diagnostic: {diagnostic}"));
+    }
+    if details.is_empty() {
+        prefix
+    } else {
+        format!("{prefix}: {}", details.join("; "))
+    }
+}
+
+fn validate_cleanup_result(result: ExecOperationResult) -> Result<(), WriteHelperExecError> {
+    let (termination, stderr, diagnostic) = write_helper_exec_output("cleanup command", result)?;
+    match termination {
+        ExecTermination::Exited { exit_code: 0 } => Ok(()),
+        ExecTermination::Exited { exit_code } => {
+            Err(WriteHelperExecError::terminal(io::Error::other(format!(
+                "cleanup command failed with exit code {exit_code}: {}",
+                String::from_utf8_lossy(&stderr)
+            ))))
+        }
+        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+            io::ErrorKind::TimedOut,
+            write_helper_terminal_message(
+                "cleanup command timed out".to_string(),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                "cleanup command was cancelled".to_string(),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                "cleanup command exec start failed".to_string(),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                "cleanup command exec wait failed".to_string(),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+    }
+}
+
+fn validate_rename_result(
+    path: &str,
+    result: ExecOperationResult,
+) -> Result<(), WriteHelperExecError> {
+    let (termination, stderr, diagnostic) = write_helper_exec_output("rename command", result)?;
+    match termination {
+        ExecTermination::Exited { exit_code: 0 } => Ok(()),
+        ExecTermination::Exited { exit_code } => {
+            Err(WriteHelperExecError::terminal(io::Error::other(format!(
+                "failed to rename temp file to {path} with exit code {exit_code}: {}",
+                String::from_utf8_lossy(&stderr)
+            ))))
+        }
+        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+            io::ErrorKind::TimedOut,
+            write_helper_terminal_message(
+                format!("rename command timed out while moving temp file to {path}"),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                format!("rename command was cancelled while moving temp file to {path}"),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                format!("rename command exec start failed while moving temp file to {path}"),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
+            write_helper_terminal_message(
+                format!("rename command exec wait failed while moving temp file to {path}"),
+                &stderr,
+                &diagnostic,
+            ),
+        ))),
+    }
 }
 
 impl Drop for ChunkedWriteCleanupGuard {
@@ -130,7 +313,7 @@ impl Drop for ChunkedWriteCleanupGuard {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let _ = cleanup_timeout(
-                    exec_operation::exec_cleanup_untracked_on_shared_with_write_observer(
+                    exec_operation::exec_operation_cleanup_untracked_on_shared_with_write_observer(
                         &shared,
                         &command,
                         CLEANUP_EXEC_TIMEOUT_MS,
@@ -181,6 +364,7 @@ impl VsockHost {
         sudo: bool,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        validate_guest_file_path(path)?;
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
             return self
                 .write_file_chunk(
@@ -231,7 +415,7 @@ impl VsockHost {
 
         if let Err(error) = result {
             // Best-effort cleanup of the temp file.
-            let terminal_error = file_operation_error_is_terminal(&error);
+            let terminal_error = error_is_write_file_guest_error(&error);
             let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
             if terminal_error && cleanup_result.is_ok() {
                 normal_operation.complete()?;
@@ -239,51 +423,43 @@ impl VsockHost {
             return Err(error);
         }
 
-        // Atomic rename temp → target.
-        let mv_cmd = format!("mv -f -- {quoted_tmp} {}", shell_quote(path));
-        match exec_operation::exec_capture_with_composite_on_shared_and_observer(
-            &self.shared,
-            ExecCaptureRequest {
-                command: &mv_cmd,
-                timeout_ms: HELPER_EXEC_TIMEOUT_MS,
-                env: &[],
-                sudo,
-                label: "write-file-rename",
-                stdout_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-                stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-                expected_exit_codes: &[],
-                stdin_bytes: None,
-                wait_timeout: Duration::from_millis(HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
-            },
-            &mut normal_operation,
-            write_observer,
-        )
-        .await
-        {
-            Ok(r) if r.exit_code == 0 => {
+        // `-T` keeps directory targets from being treated as destination directories.
+        let mv_cmd = format!("mv -fT -- {quoted_tmp} {}", shell_quote(path));
+        let rename_result =
+            exec_operation::exec_operation_capture_with_composite_on_shared_and_observer(
+                &self.shared,
+                ExecCaptureRequest {
+                    command: &mv_cmd,
+                    timeout_ms: HELPER_EXEC_TIMEOUT_MS,
+                    env: &[],
+                    sudo,
+                    label: "write-file-rename",
+                    stdout_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+                    stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+                    expected_exit_codes: &[],
+                    stdin_bytes: None,
+                    wait_timeout: Duration::from_millis(HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
+                },
+                &mut normal_operation,
+                write_observer,
+            )
+            .await
+            .map_err(WriteHelperExecError::from_exec_wait)
+            .and_then(|result| validate_rename_result(path, result));
+        match rename_result {
+            Ok(()) => {
                 cleanup_guard.disarm();
                 normal_operation.complete()?;
                 Ok(())
             }
-            Ok(r) => {
+            Err(err) => {
+                // Terminal proof only releases the tracker after cleanup also
+                // succeeds; unproven helper failures remain fail-closed.
                 let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
-                let error = io::Error::other(format!(
-                    "failed to rename temp file to {path}: {}",
-                    String::from_utf8_lossy(&r.stderr),
-                ));
-                if cleanup_result.is_ok() {
+                if err.terminal_proven && cleanup_result.is_ok() {
                     normal_operation.complete()?;
                 }
-                Err(error)
-            }
-            Err(e) => {
-                // Connection likely broken — short timeout to avoid blocking.
-                let terminal_error = file_operation_error_is_terminal(&e);
-                let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
-                if terminal_error && cleanup_result.is_ok() {
-                    normal_operation.complete()?;
-                }
-                Err(e)
+                Err(err.error)
             }
         }
     }
@@ -330,7 +506,7 @@ impl VsockHost {
         if resp.msg_type == MSG_ERROR {
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            return Err(io::Error::other(msg));
+            return Err(write_file_guest_error(msg));
         }
 
         if resp.msg_type != MSG_WRITE_FILE_RESULT {
@@ -344,7 +520,7 @@ impl VsockHost {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         if !success {
-            return Err(io::Error::other(error));
+            return Err(write_file_guest_error(error));
         }
 
         Ok(())
