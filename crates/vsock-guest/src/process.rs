@@ -578,6 +578,10 @@ mod tests {
                 panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
             }
         };
+        if child_pid <= 0 {
+            kill_spawned_child(&mut child);
+            panic!("setsid child pid should be positive, got {child_pid}");
+        }
         let child_pidfd = match open_pidfd(child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
@@ -742,6 +746,10 @@ wait
                     panic!("setsid child should publish its pid before kill");
                 }
             };
+        if setsid_child_pid <= 0 {
+            kill_spawned_child(&mut child);
+            panic!("setsid child pid should be positive, got {setsid_child_pid}");
+        }
         let setsid_child_pidfd = match open_pidfd(setsid_child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
