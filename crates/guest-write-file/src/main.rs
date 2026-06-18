@@ -1,11 +1,12 @@
 //! Direct guest file writer used by vsock-guest.
 //!
-//! Usage: `guest-write-file [--append | --create-parents] <path>`.
+//! Usage: `guest-write-file [--append | --create-parents] [--] <path>`.
 //!
 //! Content is read from stdin. Create mode truncates or creates the target.
 //! Append mode creates the target file when its parent already exists, matching
 //! shell `>>`, but does not create missing parents.
 //! Create-parents mode creates missing parent directories before writing.
+//! Use `--` before a path that begins with `-`.
 
 use std::io;
 

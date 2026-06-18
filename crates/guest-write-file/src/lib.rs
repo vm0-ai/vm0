@@ -152,7 +152,7 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// matching `std::env::args().skip(1)`. The accepted syntax is:
 ///
 /// ```text
-/// guest-write-file [--append | --create-parents] <path>
+/// guest-write-file [--append | --create-parents] [--] <path>
 /// ```
 ///
 /// Use `--` before `<path>` when the literal path begins with `-`. `stdin`
