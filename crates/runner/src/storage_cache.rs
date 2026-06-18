@@ -486,18 +486,17 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
     }
     if status == StatusCode::OK {
         // 200: server ignored Range. Fall back to Content-Length.
-        let total = resp
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok())
-            .and_then(parse_ascii_decimal_u64);
+        let total = match resp.headers().get(header::CONTENT_LENGTH) {
+            Some(value) => match value.to_str().ok().and_then(parse_ascii_decimal_u64) {
+                Some(0) => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
+                Some(total) => SizeProbe::Known(total),
+                None => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
+            },
+            None => SizeProbe::Unknown(SizeProbeUnknown::MissingSizeHeader),
+        };
         // Drop the response after headers instead of buffering an ignored
         // Range response into memory.
-        return Ok(match total {
-            Some(0) => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
-            Some(total) => SizeProbe::Known(total),
-            None => SizeProbe::Unknown(SizeProbeUnknown::MissingSizeHeader),
-        });
+        return Ok(total);
     }
     // 4xx / 5xx / 416 / anything else — treat as probe failure.
     let err = resp
@@ -1868,9 +1867,50 @@ mod tests {
         let result = probe_size(&http, &url).await;
 
         handle.await.unwrap().unwrap();
+        match result {
+            Ok(SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader)) => {}
+            Err(err) => assert!(err.to_string().contains("probe GET"), "got: {err}"),
+            other => panic!("malformed Content-Length must not become a known size: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_200_malformed_content_length_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
+        let (original, handle) = raw_http_url(response).await;
+        let name = "malformed-length";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        handle.await.unwrap().unwrap();
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
         assert!(
-            !matches!(result, Ok(SizeProbe::Known(_))),
-            "malformed Content-Length must not become a known size: {result:?}"
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(
+            reason == "invalid-size-header" || reason.contains("probe GET"),
+            "unexpected malformed Content-Length reason: {reason}"
         );
     }
 
