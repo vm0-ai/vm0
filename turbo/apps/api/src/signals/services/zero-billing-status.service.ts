@@ -7,7 +7,7 @@ import { nowDate } from "../../lib/time";
 import { db$ } from "../external/db";
 import {
   activeConcurrencySubscriptions,
-  baseConcurrencyLimitForTier,
+  displayBaseConcurrencyLimitForTier,
   totalConcurrencyLimit,
   type ActiveConcurrencySubscription,
 } from "./org-concurrency-entitlements.service";
@@ -364,7 +364,7 @@ function billingStatusResponse(args: {
     }),
     creditGrants: creditGrants(args.activeRecords),
     concurrencyLimit: totalConcurrencyLimit({
-      baseLimit: baseConcurrencyLimitForTier(org.tier),
+      baseLimit: displayBaseConcurrencyLimitForTier(org.tier),
       paidSlots: paidConcurrencySlots,
     }),
     concurrencySubscriptions: args.concurrencySubscriptions.map(

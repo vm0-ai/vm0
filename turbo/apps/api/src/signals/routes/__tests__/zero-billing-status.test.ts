@@ -6,6 +6,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {
   deleteBillingStatusOrg$,
@@ -200,6 +201,36 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
     expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
+  });
+
+  it("returns finite concurrency limit when the concurrency cap is disabled", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        {
+          subscription: {
+            tier: "pro",
+            status: "active",
+            currentPeriodEnd: new Date("2099-04-20T00:00:00Z"),
+            stripeCustomerId: `cus_${randomUUID()}`,
+            stripeSubscriptionId: `sub_${randomUUID()}`,
+          },
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.concurrencyLimit).toBe(2);
+    expect(Number.isFinite(response.body.concurrencyLimit)).toBeTruthy();
   });
 
   it("includes active concurrency subscription slots", async () => {

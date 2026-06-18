@@ -51,24 +51,33 @@ export function cappedBaseConcurrencyLimit(tierLimit: number): number {
   return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
 }
 
-export function baseConcurrencyLimitForTier(
-  tier: string | null | undefined,
-): number {
+function tierBaseConcurrencyLimit(tier: string | null | undefined): number {
   switch (tier) {
     case "free": {
-      return cappedBaseConcurrencyLimit(1);
+      return 1;
     }
     case "pro": {
-      return cappedBaseConcurrencyLimit(2);
+      return 2;
     }
     case "team": {
-      return cappedBaseConcurrencyLimit(10);
+      return 10;
     }
     case "pro-suspend":
     default: {
       return 0;
     }
   }
+}
+
+export function displayBaseConcurrencyLimitForTier(
+  tier: string | null | undefined,
+): number {
+  const tierLimit = tierBaseConcurrencyLimit(tier);
+  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
+  if (cap === undefined || cap === 0 || tierLimit === 0) {
+    return tierLimit;
+  }
+  return Math.min(tierLimit, cap);
 }
 
 export function totalConcurrencyLimit(args: {
