@@ -108,6 +108,12 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `zero generate video --provider built-in --template ${item.id}`,
     );
-    expect(result.prompt).toContain("Follow the returned authoring packet.");
+    expect(result.prompt).toContain(
+      "Run once to fetch the locked video authoring packet",
+    );
+    expect(result.prompt).toContain(
+      "read its SKILL.md before final generation",
+    );
+    expect(result.prompt).toContain("without `--template`");
   });
 });

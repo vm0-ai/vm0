@@ -34,7 +34,6 @@ interface VideoTemplateAuthoringPacket {
     readonly candidates: ResourceCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly videoTemplate: "string";
-      readonly skills: "string[]";
       readonly rationale: "string";
     };
   };
@@ -60,7 +59,8 @@ const artifactRules = [
   "Resolve the selected video template source before generating the video.",
   "Use the template skill's locked dimensions, prompt construction rules, generation parameters, worked examples, and reference output.",
   "Keep the user's subject and intent; use the selected template only to shape the video's look and generation parameters.",
-  "Always end the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content.",
+  "Write the final prompt in the template's subject -> scene -> motion -> camera -> light -> style order, and explicitly include the template's medium/style locks.",
+  "End the final video prompt with: safe for all audiences, nonviolent, no explicit content.",
   "Do not pass --template again when you run the final video generation command from this packet.",
 ] as const;
 
@@ -69,15 +69,29 @@ export function createVideoTemplateAuthoringPacket(
 ): VideoTemplateAuthoringPacket {
   const baseSlice = selectResourceCandidates();
   const candidateSlice: ResourceCandidateSlice = {
-    ...baseSlice,
+    registryVersion: baseSlice.registryVersion,
+    source: {
+      repo: options.template.source.repo,
+      ref: options.template.source.ref,
+    },
+    sources: [
+      {
+        repo: options.template.source.repo,
+        ref: options.template.source.ref,
+      },
+    ],
     candidates: {
-      ...baseSlice.candidates,
+      skills: [],
+      templates: [],
+      designSystems: [],
+      imageStyles: [],
+      audioStyles: [],
       videoTemplates: [options.template],
+      bundleTemplates: [],
     },
   };
   const selectionSchema = {
     videoTemplate: "string",
-    skills: "string[]",
     rationale: "string",
   } as const;
   const artifact = {
@@ -108,9 +122,9 @@ export function createVideoTemplateAuthoringPacket(
     "## Selected Video Template",
     `- \`${options.template.id}\` - ${options.template.name}`,
     "",
-    "## Stage 1: Supporting Resource Selection",
-    "- The video template is locked. Optionally pick supporting skills/templates from the candidate slice below.",
-    "- Choose only IDs present in this packet; do not invent registry IDs.",
+    "## Stage 1: Locked Template",
+    "- The video template is already selected and locked.",
+    "- Do not pick supporting skills or templates from outside this packet.",
     "- Treat the selection JSON as internal working state, then continue to generation.",
     "",
     "## Selection Output Schema",
@@ -118,7 +132,7 @@ export function createVideoTemplateAuthoringPacket(
     JSON.stringify(selectionSchema, null, 2),
     "```",
     "",
-    "## Candidate Registry Slice",
+    "## Locked Template Source",
     `Registry: \`${candidateSlice.registryVersion}\``,
     "Sources:",
     ...candidateSlice.sources.map(formatCandidateSource),
@@ -130,8 +144,7 @@ export function createVideoTemplateAuthoringPacket(
     "## Stage 2: Resolve Selected Resources",
     "- Fetch or read the selected resource source before generation.",
     "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
-    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
-    "- For directory refs, inspect the most relevant files such as `SKILL.md`, references, examples, and templates.",
+    "- For directory refs, inspect the template `SKILL.md` first; only open examples or references if the SKILL.md points to them.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",
     "## Stage 3: Generate Video",
