@@ -10,11 +10,10 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
   permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+  resolveFirewallMetadataPolicies,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
@@ -68,7 +67,7 @@ export const permissionAllowAgent$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Permissions list (derived from connector config)
+// Permissions list (derived from firewall metadata)
 // ---------------------------------------------------------------------------
 
 export interface Permission {
@@ -76,34 +75,18 @@ export interface Permission {
   description?: string;
 }
 
-function extractPermissions(ref: string): Permission[] {
-  if (!isFirewallConnectorType(ref)) {
-    return [];
-  }
-  const config = getConnectorFirewall(ref);
-  const seen = new Map<string, Permission>();
-  for (const api of config.apis) {
-    if (!api.permissions) {
-      continue;
-    }
-    for (const p of api.permissions) {
-      if (!seen.has(p.name)) {
-        seen.set(p.name, { name: p.name, description: p.description });
-      }
-    }
-  }
-  return [...seen.values()];
-}
-
-export function findPermission(ref: string, name: string): Permission | null {
-  if (name === UNKNOWN_PERMISSION_GRANT && isFirewallConnectorType(ref)) {
+export function findPermissionInMetadata(
+  metadata: FirewallPermissionDetailMetadata,
+  name: string,
+): Permission | null {
+  if (name === UNKNOWN_PERMISSION_GRANT) {
     return {
       name: UNKNOWN_PERMISSION_GRANT,
       description: "Unknown endpoints",
     };
   }
   return (
-    extractPermissions(ref).find((permission) => {
+    metadata.permissions.find((permission) => {
       return permission.name === name;
     }) ?? null
   );
@@ -117,13 +100,13 @@ const internalUserPermissionGrantsReload$ = state(0);
 
 export function resolveUserPermissionGrantPolicy(
   grants: readonly UserPermissionGrantResponse[],
-  connectorRef: string,
+  metadata: FirewallPermissionDetailMetadata,
   permission: string,
 ): FirewallPolicyValue | undefined {
-  const policies = resolveFirewallPolicies(
+  const policies = resolveFirewallMetadataPolicies(
     permissionGrantsToFirewallPolicies(grants),
-    [connectorRef],
-  )?.[connectorRef];
+    [metadata],
+  )?.[metadata.type];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy
     : policies?.policies[permission];

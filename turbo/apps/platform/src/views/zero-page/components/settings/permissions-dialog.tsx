@@ -1,7 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Sheet,
@@ -26,15 +26,13 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  groupPermissionsByCategory,
-  isFirewallConnectorType,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+  expandFirewallMetadataDefaultPolicy,
+  groupFirewallMetadataPermissionsByCategory,
+  resolveFirewallMetadataPolicies,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import {
   UNKNOWN_PERMISSION_GRANT,
-  type FirewallConfig,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
@@ -76,9 +74,11 @@ import {
   IconClock,
   IconChevronDown,
   IconArrowBackUp,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 
 interface ConnectorPermission {
   name: string;
@@ -105,6 +105,7 @@ interface PermissionsDrawerProps {
 
 interface PermissionDrawerApplyOptions {
   readonly resetConnectorGrants: boolean;
+  readonly metadata: FirewallPermissionDetailMetadata;
 }
 
 interface PermissionsDrawerFooterProps {
@@ -119,25 +120,9 @@ interface PermissionsDrawerFooterProps {
   readonly onApply: () => void;
 }
 
-function extractPermissions(config: FirewallConfig): ConnectorPermission[] {
-  const seen = new Map<string, ConnectorPermission>();
-  for (const api of config.apis) {
-    if (!api.permissions) {
-      continue;
-    }
-    for (const p of api.permissions) {
-      if (!seen.has(p.name)) {
-        seen.set(p.name, {
-          name: p.name,
-          description: p.description,
-        });
-      }
-    }
-  }
-  return [...seen.values()];
-}
-
-function sortPermissions(perms: ConnectorPermission[]): ConnectorPermission[] {
+function sortPermissions(
+  perms: readonly ConnectorPermission[],
+): ConnectorPermission[] {
   return [...perms].sort((a, b) => {
     const [aBase, aSuffix] = splitPermName(a.name);
     const [bBase, bSuffix] = splitPermName(b.name);
@@ -237,29 +222,22 @@ function PolicyPill({
 }
 
 function buildSortedGroups(
-  config: FirewallConfig | null,
-  ref: string,
+  metadata: FirewallPermissionDetailMetadata,
 ): { category: string; permissions: ConnectorPermission[] }[] | null {
-  if (!config) {
-    return null;
-  }
   return (
-    groupPermissionsByCategory(extractPermissions(config), ref)?.map(
-      (group) => {
-        return { ...group, permissions: sortPermissions(group.permissions) };
-      },
-    ) ?? null
+    groupFirewallMetadataPermissionsByCategory(
+      metadata.permissions,
+      metadata,
+    )?.map((group) => {
+      return { ...group, permissions: sortPermissions(group.permissions) };
+    }) ?? null
   );
 }
 
-function permissionDrawerConfig(ref: ConnectorType): FirewallConfig | null {
-  return isFirewallConnectorType(ref) ? getConnectorFirewall(ref) : null;
-}
-
-function sortedPermissionsForConfig(
-  config: FirewallConfig | null,
+function sortedPermissionsForMetadata(
+  metadata: FirewallPermissionDetailMetadata,
 ): ConnectorPermission[] {
-  return config ? sortPermissions(extractPermissions(config)) : [];
+  return sortPermissions(metadata.permissions);
 }
 
 function permissionPolicyRecord(
@@ -275,36 +253,26 @@ function permissionPolicyRecord(
 
 function buildInitialPolicies(
   ref: string,
-  config: FirewallConfig | null,
+  metadata: FirewallPermissionDetailMetadata,
   initialPolicies: FirewallPolicies,
 ): Record<string, Record<string, PermissionPolicy>> {
   const result: Record<string, Record<string, PermissionPolicy>> = {};
-  if (!config) {
-    return result;
-  }
-  const perms = extractPermissions(config);
-  const resolved = resolveFirewallPolicies(initialPolicies, [ref]);
+  const resolved = resolveFirewallMetadataPolicies(initialPolicies, [metadata]);
   const refPolicies: Record<string, PermissionPolicy> = {};
-  for (const p of perms) {
+  for (const p of metadata.permissions) {
     refPolicies[p.name] = resolved?.[ref]?.policies[p.name] ?? "allow";
   }
   result[ref] = refPolicies;
   return result;
 }
 
-function buildDefaultPolicyState(
-  ref: ConnectorType,
-  config: FirewallConfig | null,
-): {
+function buildDefaultPolicyState(metadata: FirewallPermissionDetailMetadata): {
   readonly policies: Record<string, PermissionPolicy>;
   readonly unknownPolicy: FirewallPolicyValue;
 } {
-  if (!config || !isFirewallConnectorType(ref)) {
-    return { policies: {}, unknownPolicy: "allow" };
-  }
-  const defaults = getDefaultFirewallPolicies(ref);
+  const defaults = expandFirewallMetadataDefaultPolicy(metadata);
   const policies: Record<string, PermissionPolicy> = {};
-  for (const permission of extractPermissions(config)) {
+  for (const permission of metadata.permissions) {
     policies[permission.name] = defaults.policies[permission.name] ?? "allow";
   }
   return {
@@ -314,16 +282,13 @@ function buildDefaultPolicyState(
 }
 
 function buildInitialUnknownPolicy(
-  ref: ConnectorType,
-  config: FirewallConfig | null,
+  ref: string,
+  metadata: FirewallPermissionDetailMetadata,
   initialPolicies: FirewallPolicies,
 ): FirewallPolicyValue {
-  if (!config || !isFirewallConnectorType(ref)) {
-    return "allow";
-  }
   return (
-    resolveFirewallPolicies(initialPolicies, [ref])?.[ref]?.unknownPolicy ??
-    "allow"
+    resolveFirewallMetadataPolicies(initialPolicies, [metadata])?.[ref]
+      ?.unknownPolicy ?? "allow"
   );
 }
 
@@ -477,15 +442,15 @@ function hasPendingPermissionControlChange({
 }
 
 function canApplyPermissionPolicies({
-  config,
+  metadata,
   saving,
   hasChanges,
 }: {
-  config: FirewallConfig | null;
+  metadata: FirewallPermissionDetailMetadata;
   saving: boolean;
   hasChanges: boolean;
 }): boolean {
-  return config !== null && !saving && hasChanges;
+  return metadata.permissionCount > 0 && !saving && hasChanges;
 }
 
 function UnknownEndpointsToggle({
@@ -1213,7 +1178,7 @@ function PermissionsDrawerFooter({
   );
 }
 
-export function PermissionsDrawer({
+function LoadedPermissionsDrawer({
   agentId,
   connectorType,
   displayName,
@@ -1223,18 +1188,23 @@ export function PermissionsDrawer({
   readOnly,
   onApply,
   onClose,
-}: PermissionsDrawerProps) {
+  metadata,
+}: PermissionsDrawerProps & {
+  readonly metadata: FirewallPermissionDetailMetadata;
+}) {
   const ref = connectorType;
-
-  const config = permissionDrawerConfig(ref);
 
   const initialUnknownPolicy = buildInitialUnknownPolicy(
     ref,
-    config,
+    metadata,
     initialPolicies,
   );
-  const initialPolicyState = buildInitialPolicies(ref, config, initialPolicies);
-  const defaultPolicyState = buildDefaultPolicyState(ref, config);
+  const initialPolicyState = buildInitialPolicies(
+    ref,
+    metadata,
+    initialPolicies,
+  );
+  const defaultPolicyState = buildDefaultPolicyState(metadata);
   const explicitGrants = buildExplicitGrantMap(ref, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
   const initialPolicyKey = `${agentId}\u0000${ref}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[ref] ?? {})}\u0000${grantStateKey}`;
@@ -1267,11 +1237,11 @@ export function PermissionsDrawer({
   const saving = applyLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
-  const permissions = sortedPermissionsForConfig(config);
+  const permissions = sortedPermissionsForMetadata(metadata);
   const policiesForRef = allPolicies[ref];
   const policies = policiesForRef ?? {};
   const initialPoliciesForRef = initialPolicyState[ref] ?? {};
-  const groups = buildSortedGroups(config, ref);
+  const groups = buildSortedGroups(metadata);
   const hasPermissionChanges = hasPermissionPolicyChanges({
     currentPolicies: policiesForRef,
     initialPolicies: initialPoliciesForRef,
@@ -1309,7 +1279,7 @@ export function PermissionsDrawer({
     hasDefaultPolicyChanges ||
     hasExpirationDraftSelections;
   const canApply = canApplyPermissionPolicies({
-    config,
+    metadata,
     saving,
     hasChanges:
       hasPermissionChanges || hasExpirationChanges || hasResetPersistedEffect,
@@ -1387,7 +1357,7 @@ export function PermissionsDrawer({
           unknownPolicy: unknownFlag,
         }),
         expirationSelections,
-        { resetConnectorGrants },
+        { resetConnectorGrants, metadata },
       );
     };
     detach(
@@ -1427,103 +1397,94 @@ export function PermissionsDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        {!config ? (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="text-sm text-destructive">
-              No permission config found for {ref}
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col min-h-0">
-            {!groups && (
-              <div
-                className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
-              >
-                <span className="text-xs font-medium text-foreground">
-                  {readOnly ? "Permissions" : "Select all"} (
-                  {permissions.length})
-                </span>
-                {!readOnly && (
-                  <PolicyPill
-                    policy={getGroupPolicy(permissions, policies)}
-                    onChange={handleSetAll}
-                  />
-                )}
-              </div>
-            )}
-
+        <div className="flex flex-1 flex-col min-h-0">
+          {!groups && (
             <div
-              className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
-              onScroll={(e) => {
-                const target = e.currentTarget;
-                setScrolled(target.scrollTop > 0);
-              }}
+              className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
             >
-              <PermissionRows
-                groups={groups}
-                permissions={permissions}
-                initialPolicies={initialPoliciesForRef}
-                policies={policies}
-                expandedGroups={expandedGroups}
-                explicitGrants={effectiveExplicitGrants}
-                expirationSelections={expirationSelections}
-                readOnly={readOnly}
-                saving={saving}
-                onToggleGroup={toggleGroup}
-                onSetGroupAll={handleSetGroupAll}
-                onPolicyChange={handlePolicyChange}
-                onGrantExpirationChange={setGrantExpiration}
-                onResetPermission={handleResetPermission}
-              />
-            </div>
-
-            <UnknownEndpointsToggle
-              policyControl={
-                <PermissionGrantPolicyControl
-                  permission={UNKNOWN_PERMISSION_GRANT}
-                  policy={unknownPolicy}
-                  grant={unknownGrant}
-                  selected={unknownSelectedExpiration}
-                  hasPendingChange={hasPendingPermissionControlChange({
-                    grant: unknownGrant,
-                    initialPolicy: initialUnknownPolicy,
-                    policy: unknownPolicy,
-                    selected: unknownSelectedExpiration,
-                  })}
-                  allowAlwaysActive={hasAllowAlwaysPolicy(
-                    unknownGrant,
-                    unknownPolicy,
-                  )}
-                  readOnly={readOnly}
-                  saving={saving}
-                  onClearExpiration={() => {
-                    setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
-                  }}
-                  onAllowDurationChange={(expiresIn) => {
-                    setGrantExpiration(
-                      UNKNOWN_PERMISSION_GRANT,
-                      menuOptionExpiresIn(
-                        expiresIn,
-                        unknownGrant?.action === "allow"
-                          ? unknownGrant
-                          : undefined,
-                      ),
-                    );
-                  }}
-                  onPolicyChange={(p) => {
-                    setUnknownPolicy(p);
-                  }}
-                  onReset={handleResetUnknownPermission}
+              <span className="text-xs font-medium text-foreground">
+                {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+              </span>
+              {!readOnly && (
+                <PolicyPill
+                  policy={getGroupPolicy(permissions, policies)}
+                  onChange={handleSetAll}
                 />
-              }
+              )}
+            </div>
+          )}
+
+          <div
+            className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              setScrolled(target.scrollTop > 0);
+            }}
+          >
+            <PermissionRows
+              groups={groups}
+              permissions={permissions}
+              initialPolicies={initialPoliciesForRef}
+              policies={policies}
+              expandedGroups={expandedGroups}
+              explicitGrants={effectiveExplicitGrants}
+              expirationSelections={expirationSelections}
+              readOnly={readOnly}
+              saving={saving}
+              onToggleGroup={toggleGroup}
+              onSetGroupAll={handleSetGroupAll}
+              onPolicyChange={handlePolicyChange}
+              onGrantExpirationChange={setGrantExpiration}
+              onResetPermission={handleResetPermission}
             />
           </div>
-        )}
+
+          <UnknownEndpointsToggle
+            policyControl={
+              <PermissionGrantPolicyControl
+                permission={UNKNOWN_PERMISSION_GRANT}
+                policy={unknownPolicy}
+                grant={unknownGrant}
+                selected={unknownSelectedExpiration}
+                hasPendingChange={hasPendingPermissionControlChange({
+                  grant: unknownGrant,
+                  initialPolicy: initialUnknownPolicy,
+                  policy: unknownPolicy,
+                  selected: unknownSelectedExpiration,
+                })}
+                allowAlwaysActive={hasAllowAlwaysPolicy(
+                  unknownGrant,
+                  unknownPolicy,
+                )}
+                readOnly={readOnly}
+                saving={saving}
+                onClearExpiration={() => {
+                  setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
+                }}
+                onAllowDurationChange={(expiresIn) => {
+                  setGrantExpiration(
+                    UNKNOWN_PERMISSION_GRANT,
+                    menuOptionExpiresIn(
+                      expiresIn,
+                      unknownGrant?.action === "allow"
+                        ? unknownGrant
+                        : undefined,
+                    ),
+                  );
+                }}
+                onPolicyChange={(p) => {
+                  setUnknownPolicy(p);
+                }}
+                onReset={handleResetUnknownPermission}
+              />
+            }
+          />
+        </div>
 
         <PermissionsDrawerFooter
           readOnly={readOnly}
           resetEnabled={resetEnabled}
-          canReset={config !== null}
+          canReset
           resetAvailable={resetAvailable}
           saving={saving}
           canApply={canApply}
@@ -1531,6 +1492,71 @@ export function PermissionsDrawer({
           onClose={handleClose}
           onApply={handleApply}
         />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export function PermissionsDrawer(props: PermissionsDrawerProps) {
+  const metadataLoadable = useLoadable(
+    firewallPermissionMetadataByConnector({
+      connectorType: props.connectorType,
+    }),
+  );
+  const connectorLabel = CONNECTOR_TYPES[props.connectorType].label;
+
+  if (metadataLoadable.state === "hasData" && metadataLoadable.data) {
+    return (
+      <LoadedPermissionsDrawer {...props} metadata={metadataLoadable.data} />
+    );
+  }
+
+  const loading = metadataLoadable.state === "loading";
+  const message =
+    metadataLoadable.state === "hasError"
+      ? "Failed to load permission metadata"
+      : `No permission metadata found for ${props.connectorType}`;
+
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        return !open && props.onClose();
+      }}
+    >
+      <SheetContent side="right">
+        <SheetHeader>
+          <div className="flex items-center gap-3">
+            <ConnectorIcon type={props.connectorType} size={24} />
+            <SheetTitle className="text-base">
+              {connectorLabel} permissions
+              <span className="text-sm font-normal text-muted-foreground ml-1">
+                for {props.displayName}
+              </span>
+            </SheetTitle>
+          </div>
+          <SheetDescription>
+            Configure which actions this agent is allowed to perform via this
+            connector.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex flex-1 items-center justify-center">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <IconLoader2 size={16} className="animate-spin" />
+              Loading permissions...
+            </div>
+          ) : (
+            <p className="text-sm text-destructive">{message}</p>
+          )}
+        </div>
+
+        <SheetFooter>
+          <Button variant="outline" onClick={props.onClose}>
+            {props.readOnly ? "Close" : "Cancel"}
+          </Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

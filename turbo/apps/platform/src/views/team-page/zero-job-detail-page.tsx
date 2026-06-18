@@ -116,11 +116,11 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import {
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
+  expandFirewallMetadataDefaultPolicy,
   permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+  resolveFirewallMetadataPolicies,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import type {
   UserPermissionGrantAction,
   UserPermissionGrantExpiresIn,
@@ -621,20 +621,22 @@ function addDefaultAllowExpirationChanges({
 
 function changedUserGrantPolicies({
   connectorType,
+  metadata,
   initialPolicies,
   initialGrants,
   policies,
   expiresInByPermission,
 }: {
   connectorType: ConnectorType;
+  metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
   expiresInByPermission: GrantExpirationSelections;
 }): ChangedUserGrantPolicy[] {
-  const initial = resolveFirewallPolicies(initialPolicies, [connectorType])?.[
-    connectorType
-  ];
+  const initial = resolveFirewallMetadataPolicies(initialPolicies, [
+    metadata,
+  ])?.[connectorType];
   const current = policies[connectorType];
   const changes = new Map<string, ChangedUserGrantPolicy>();
 
@@ -670,19 +672,17 @@ function changedUserGrantPolicies({
 }
 
 function defaultFirewallPoliciesForConnector(
-  connectorType: ConnectorType,
+  metadata: FirewallPermissionDetailMetadata,
 ): FirewallPolicies {
-  if (!isFirewallConnectorType(connectorType)) {
-    throw new Error(`Cannot reset permissions for ${connectorType}`);
-  }
   return {
-    [connectorType]: getDefaultFirewallPolicies(connectorType),
+    [metadata.type]: expandFirewallMetadataDefaultPolicy(metadata),
   };
 }
 
 async function saveUserGrantPolicies({
   agentId,
   connectorType,
+  metadata,
   initialPolicies,
   initialGrants,
   policies,
@@ -694,6 +694,7 @@ async function saveUserGrantPolicies({
 }: {
   agentId: string;
   connectorType: ConnectorType;
+  metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
@@ -714,12 +715,13 @@ async function saveUserGrantPolicies({
   }
 
   const basePolicies = resetPending
-    ? defaultFirewallPoliciesForConnector(connectorType)
+    ? defaultFirewallPoliciesForConnector(metadata)
     : initialPolicies;
   const baseGrants = resetPending ? [] : initialGrants;
 
   for (const { permission, action, expiresIn } of changedUserGrantPolicies({
     connectorType,
+    metadata,
     initialPolicies: basePolicies,
     initialGrants: baseGrants,
     policies,
@@ -741,6 +743,7 @@ async function saveUserGrantPolicies({
 async function saveDrawerPolicies({
   agentId,
   connectorType,
+  metadata,
   initialPolicies,
   initialGrants,
   policies,
@@ -752,6 +755,7 @@ async function saveDrawerPolicies({
 }: {
   agentId: string;
   connectorType: ConnectorType;
+  metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
@@ -764,6 +768,7 @@ async function saveDrawerPolicies({
   await saveUserGrantPolicies({
     agentId,
     connectorType,
+    metadata,
     initialPolicies,
     initialGrants,
     policies,
@@ -979,7 +984,10 @@ function AgentPermissionsDrawer({
   onApply: (
     policies: FirewallPolicies,
     expiresInByPermission: GrantExpirationSelections,
-    options: { readonly resetConnectorGrants: boolean },
+    options: {
+      readonly resetConnectorGrants: boolean;
+      readonly metadata: FirewallPermissionDetailMetadata;
+    },
   ) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1120,7 +1128,7 @@ function JobPermissionsTab({
             onApply={async (
               policies,
               expiresInByPermission,
-              { resetConnectorGrants },
+              { resetConnectorGrants, metadata },
             ) => {
               if (connectorType === null) {
                 throw new Error("Cannot save permissions without a connector");
@@ -1128,6 +1136,7 @@ function JobPermissionsTab({
               await saveDrawerPolicies({
                 agentId,
                 connectorType,
+                metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: userGrants,
                 policies,

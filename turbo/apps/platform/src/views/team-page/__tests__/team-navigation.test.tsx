@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getPermissionCategories } from "@vm0/connectors/firewalls";
+import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -119,33 +119,47 @@ function tabByText(text: string): HTMLElement {
 }
 
 async function permissionRowByName(
-  container: HTMLElement,
+  _container: HTMLElement,
   name: string,
 ): Promise<HTMLElement> {
-  const row = (await within(container).findByText(name)).closest(
-    "div",
-  )?.parentElement;
+  const row = (await screen.findByText(name)).closest("div")?.parentElement;
   if (!(row instanceof HTMLElement)) {
     throw new Error(`${name} permission row not found`);
   }
   return row;
 }
 
-function unknownEndpointsRow(container: HTMLElement): HTMLElement {
-  const row = within(container)
-    .getByText("Other endpoints")
-    .closest("div")?.parentElement;
+async function unknownEndpointsRow(
+  _container: HTMLElement,
+): Promise<HTMLElement> {
+  const row = (await screen.findByText("Other endpoints")).closest(
+    "div",
+  )?.parentElement;
   if (!(row instanceof HTMLElement)) {
     throw new Error("Other endpoints row not found");
   }
   return row;
 }
 
-function connectorCategoryLabel(
+function dialogForElement(element: HTMLElement): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error("dialog not found for element");
+  }
+  return dialog;
+}
+
+async function findLoadedPermissionsDialog(): Promise<HTMLElement> {
+  const unknownEndpoints = await screen.findByText("Other endpoints");
+  return dialogForElement(unknownEndpoints);
+}
+
+async function connectorCategoryLabel(
   connectorType: ConnectorType,
   category: string,
-): string {
-  const categoryData = getPermissionCategories(connectorType);
+): Promise<string> {
+  const metadata = await loadFirewallPermissionMetadata(connectorType);
+  const categoryData = metadata?.categories;
   if (!categoryData) {
     throw new Error(`${connectorType} categories not found`);
   }
@@ -583,10 +597,7 @@ describe("team page navigation", () => {
 
     click(screen.getByLabelText("Manage Axiom permissions"));
 
-    const permissionsDialog = await screen.findByRole("dialog");
-    expect(
-      within(permissionsDialog).getByText("Axiom permissions"),
-    ).toBeInTheDocument();
+    const permissionsDialog = await findLoadedPermissionsDialog();
     expect(
       within(permissionsDialog).getByText("for Research Agent"),
     ).toBeInTheDocument();
@@ -595,13 +606,14 @@ describe("team page navigation", () => {
       permissionsDialog,
       "annotations|create",
     );
+    const loadedPermissionsDialog = dialogForElement(permissionRow);
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
       expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
-      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
+      expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
     });
-    click(buttonByText("Apply", permissionsDialog));
+    click(buttonByText("Apply", loadedPermissionsDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -610,26 +622,26 @@ describe("team page navigation", () => {
 
     click(screen.getByLabelText("Manage Axiom permissions"));
 
-    const resetDialog = await screen.findByRole("dialog");
-    expect(
-      within(resetDialog).getByText("Axiom permissions"),
-    ).toBeInTheDocument();
+    const resetDialog = dialogForElement(
+      await screen.findByText("Axiom permissions"),
+    );
 
     const resetPermissionRow = await permissionRowByName(
       resetDialog,
       "annotations|create",
     );
+    const loadedResetDialog = dialogForElement(resetPermissionRow);
     click(buttonByText("Deny", resetPermissionRow));
-    click(buttonByText("Deny", unknownEndpointsRow(resetDialog)));
+    click(buttonByText("Deny", await unknownEndpointsRow(loadedResetDialog)));
 
     await waitFor(() => {
-      expect(buttonByText("Restore", resetDialog)).toBeEnabled();
+      expect(buttonByText("Restore", loadedResetDialog)).toBeEnabled();
     });
-    click(buttonByText("Restore", resetDialog));
+    click(buttonByText("Restore", loadedResetDialog));
     await waitFor(() => {
-      expect(buttonByText("Apply", resetDialog)).toBeEnabled();
+      expect(buttonByText("Apply", loadedResetDialog)).toBeEnabled();
     });
-    click(buttonByText("Apply", resetDialog));
+    click(buttonByText("Apply", loadedResetDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -654,17 +666,15 @@ describe("team page navigation", () => {
 
     click(screen.getByLabelText("Manage Cloudflare permissions"));
 
-    const permissionsDialog = await screen.findByRole("dialog");
-    expect(
-      within(permissionsDialog).getByText("Cloudflare permissions"),
-    ).toBeInTheDocument();
+    const permissionsDialog = await findLoadedPermissionsDialog();
 
-    const unknownRow = unknownEndpointsRow(permissionsDialog);
+    const unknownRow = await unknownEndpointsRow(permissionsDialog);
+    const loadedPermissionsDialog = dialogForElement(unknownRow);
     expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+    expect(buttonByText("Restore", loadedPermissionsDialog)).toBeDisabled();
 
     click(buttonByText("Allow", unknownRow));
     await waitFor(() => {
@@ -672,16 +682,16 @@ describe("team page navigation", () => {
         "aria-pressed",
         "true",
       );
-      expect(buttonByText("Restore", permissionsDialog)).toBeEnabled();
+      expect(buttonByText("Restore", loadedPermissionsDialog)).toBeEnabled();
     });
 
-    click(buttonByText("Restore", permissionsDialog));
+    click(buttonByText("Restore", loadedPermissionsDialog));
     await waitFor(() => {
       expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
         "aria-pressed",
         "true",
       );
-      expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+      expect(buttonByText("Restore", loadedPermissionsDialog)).toBeDisabled();
     });
   });
 
@@ -748,16 +758,17 @@ describe("team page navigation", () => {
       permissionsDialog,
       "annotations|create",
     );
+    const loadedPermissionsDialog = dialogForElement(createRow);
     expect(within(createRow).getByText("< 1 hour")).toBeInTheDocument();
 
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow always"));
     await waitFor(() => {
       expect(within(createRow).getByText("Always")).toBeInTheDocument();
-      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
+      expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
     });
 
-    click(buttonByText("Apply", permissionsDialog));
+    click(buttonByText("Apply", loadedPermissionsDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -791,18 +802,19 @@ describe("team page navigation", () => {
 
     click(screen.getByLabelText("Manage Slack permissions"));
 
-    const groupedDialog = await screen.findByRole("dialog");
+    const readGroupLabel = await connectorCategoryLabel("slack", "Read");
+    const writeGroupLabel = await connectorCategoryLabel("slack", "Write");
+    const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
+    const readGroupElement = await screen.findByText(readGroupLabel);
+    const loadedGroupedDialog = dialogForElement(readGroupElement);
     expect(
-      within(groupedDialog).getByText("Slack permissions"),
+      within(loadedGroupedDialog).getByText("Slack permissions"),
     ).toBeInTheDocument();
-    const readGroupLabel = connectorCategoryLabel("slack", "Read");
-    const writeGroupLabel = connectorCategoryLabel("slack", "Write");
-    const miscGroupLabel = connectorCategoryLabel("slack", "Misc");
-    expect(within(groupedDialog).getByText(readGroupLabel)).toBeInTheDocument();
-    expect(
-      within(groupedDialog).getByText(writeGroupLabel),
-    ).toBeInTheDocument();
-    expect(within(groupedDialog).getByText(miscGroupLabel)).toBeInTheDocument();
+    expect(readGroupElement).toBeInTheDocument();
+    const writeGroupElement = await screen.findByText(writeGroupLabel);
+    expect(writeGroupElement).toBeInTheDocument();
+    const miscGroupElement = await screen.findByText(miscGroupLabel);
+    expect(miscGroupElement).toBeInTheDocument();
 
     click(screen.getByText(miscGroupLabel));
     const miscGroup = screen.getByText(miscGroupLabel).closest("div");
@@ -823,7 +835,7 @@ describe("team page navigation", () => {
     click(menuItemByText("Allow always"));
 
     const permissionsScrollArea =
-      groupedDialog.querySelector(".overflow-y-auto");
+      loadedGroupedDialog.querySelector(".overflow-y-auto");
     if (!(permissionsScrollArea instanceof HTMLElement)) {
       throw new Error("permissions scroll area not found");
     }
@@ -834,7 +846,7 @@ describe("team page navigation", () => {
     fireEvent.scroll(permissionsScrollArea);
 
     const channelsJoinRow = await permissionRowByName(
-      groupedDialog,
+      loadedGroupedDialog,
       "channels:join",
     );
     click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
@@ -844,7 +856,7 @@ describe("team page navigation", () => {
       ).not.toBeInTheDocument();
     });
 
-    const unknownRow = unknownEndpointsRow(groupedDialog);
+    const unknownRow = await unknownEndpointsRow(loadedGroupedDialog);
     click(within(unknownRow).getByLabelText("__unknown__ allow options"));
     click(menuItemByText("Allow for 1h"));
     await waitFor(() => {
@@ -855,7 +867,7 @@ describe("team page navigation", () => {
       expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
     });
 
-    click(buttonByText("Apply", groupedDialog));
+    click(buttonByText("Apply", loadedGroupedDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
