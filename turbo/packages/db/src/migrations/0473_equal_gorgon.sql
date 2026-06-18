@@ -1,0 +1,3 @@
+ALTER TABLE "zero_runs" ADD COLUMN "workflow_trigger_id" uuid;--> statement-breakpoint
+ALTER TABLE "zero_runs" ADD CONSTRAINT "zero_runs_workflow_trigger_id_zero_workflow_triggers_id_fk" FOREIGN KEY ("workflow_trigger_id") REFERENCES "public"."zero_workflow_triggers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_zero_runs_workflow_trigger" ON "zero_runs" USING btree ("workflow_trigger_id") WHERE workflow_trigger_id IS NOT NULL;

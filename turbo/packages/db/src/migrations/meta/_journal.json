@@ -3312,6 +3312,13 @@
       "when": 1781775355294,
       "tag": "0472_brainy_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1781779477053,
+      "tag": "0473_equal_gorgon",
+      "breakpoints": true
     }
   ]
 }

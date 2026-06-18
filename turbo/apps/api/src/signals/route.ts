@@ -24,6 +24,7 @@ import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
+import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -231,6 +232,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteAutomationsRoutes,
+  ...cronExecuteWorkflowTriggersRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,

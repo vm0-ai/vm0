@@ -19,6 +19,7 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   cli: "CLI",
   agent: "Agent",
   webhook: "Webhook",
+  "workflow-schedule": "Workflow schedule",
 };
 
 /**

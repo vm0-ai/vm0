@@ -238,6 +238,8 @@ interface ZeroRunMetadata {
   // webhook inbound path). Persisted as first-class zero_runs columns.
   readonly automationId?: string;
   readonly triggerId?: string;
+  // Run provenance for workflow schedule triggers.
+  readonly workflowTriggerId?: string;
 }
 
 interface AgentConfig {
@@ -2980,6 +2982,7 @@ async function insertZeroRunRecord(
     triggerSource: args.body.triggerSource ?? "cli",
     automationId: args.zeroRunMetadata?.automationId ?? null,
     triggerId: args.zeroRunMetadata?.triggerId ?? null,
+    workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId ?? null,
     triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
     modelProvider: args.modelProvider?.type ?? null,
     modelProviderId: args.modelProvider?.id ?? null,
