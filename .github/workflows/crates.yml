@@ -1646,6 +1646,28 @@ jobs:
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${JOB_REF}"
+          SVC="${JOB_REF}-keepalive"
+
+          echo "=== Cleaning stale keep-alive runner state ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          BIN_DIR=$1; SVC=$2; GROUP_DIR=$3; RUNNER_DIR=$4
+          UNIT="vm0-runner-${SVC}.service"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          for _ in $(seq 1 30); do
+            if ! sudo systemctl is-active --quiet "$UNIT"; then
+              break
+            fi
+            sleep 1
+          done
+          if sudo systemctl is-active --quiet "$UNIT"; then
+            echo "FAIL: ${UNIT} is still active after cleanup stop" >&2
+            exit 1
+          fi
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+          REMOTE_SCRIPT
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
@@ -1665,20 +1687,34 @@ jobs:
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
           SVC="${JOB_REF}-keepalive"
+          UNIT="vm0-runner-${SVC}.service"
           GROUP="vm0/keepalive-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${JOB_REF}"
           SESSION_ID="e2e-keepalive-test-session"
 
           fail() { echo "FAIL: $1"; exit 1; }
+          wait_for_unit_inactive() {
+            for _ in $(seq 1 30); do
+              if ! sudo systemctl is-active --quiet "$UNIT"; then
+                return 0
+              fi
+              sleep 1
+            done
+            fail "$UNIT is still active after stop"
+          }
 
           cleanup() {
             echo "--- Cleanup ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit from a previous CI run.
+          # Clean up any residual transient unit or local queue files from a previous CI run.
           # stop() returns Ok when no service exists, so no need for || true.
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          wait_for_unit_inactive
+          sudo rm -rf "$GROUP_DIR"
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -1730,6 +1766,8 @@ jobs:
 
           # Stop transient service (drains idle pool)
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          wait_for_unit_inactive
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
           trap - EXIT
 
           echo "=== Keep-alive test passed ==="
