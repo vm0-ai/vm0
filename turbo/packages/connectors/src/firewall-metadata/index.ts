@@ -4,6 +4,7 @@ import {
   type FirewallPolicy,
   type FirewallPolicyValue,
 } from "../firewall-types";
+import { createFirewallMetadataPolicyResolver } from "./policy-resolver";
 import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./summary.generated";
 import type {
   FirewallPermissionDetailMetadata,
@@ -11,6 +12,12 @@ import type {
 } from "./types";
 
 export { FIREWALL_PERMISSION_METADATA_SUMMARIES };
+export { createFirewallMetadataPolicyResolver };
+export type {
+  FirewallMetadataPolicyListState,
+  FirewallMetadataPolicyOverlay,
+  FirewallMetadataPolicyResolver,
+} from "./policy-resolver";
 export type {
   FirewallPermissionCategoryMetadata,
   FirewallPermissionDefaultPolicyMetadata,
@@ -75,28 +82,16 @@ export async function loadFirewallPermissionMetadata(
 export function expandFirewallMetadataDefaultPolicy(
   metadata: FirewallPermissionDetailMetadata,
 ): FirewallPolicy {
+  const resolver = createFirewallMetadataPolicyResolver(metadata);
   const policies: Record<string, FirewallPolicyValue> = {};
-  const overrides = metadata.defaultPolicy.permissionOverrides ?? {};
-  const overrideLookup = new Map<string, FirewallPolicyValue>();
-
-  for (const [policy, permissions] of Object.entries(overrides) as [
-    FirewallPolicyValue,
-    readonly string[],
-  ][]) {
-    for (const permission of permissions) {
-      overrideLookup.set(permission, policy);
-    }
-  }
 
   for (const permission of metadata.permissions) {
-    policies[permission.name] =
-      overrideLookup.get(permission.name) ??
-      metadata.defaultPolicy.permissionDefault;
+    policies[permission.name] = resolver.permission(permission.name);
   }
 
   return {
     policies,
-    unknownPolicy: metadata.defaultPolicy.unknownPolicy,
+    unknownPolicy: resolver.unknown(),
   };
 }
 
