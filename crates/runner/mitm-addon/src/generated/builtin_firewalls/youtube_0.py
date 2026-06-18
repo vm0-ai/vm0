@@ -82,14 +82,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "See a list of your current active channel members, their current level, and when they became a member",
-          "name": "youtube.channel-memberships.creator",
-          "rules": [
-            "GET /v3/members",
-            "GET /v3/membershipsLevels"
-          ]
-        },
-        {
           "description": "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
           "name": "youtube.force-ssl",
           "rules": [
@@ -206,61 +198,6 @@ JSON_PART = r"""{
             "POST /v3/videos",
             "POST /v3/watermarks/set"
           ]
-        },
-        {
-          "description": "View and manage your assets and associated content on YouTube",
-          "name": "youtubepartner",
-          "rules": [
-            "GET /v3/captions",
-            "POST /v3/captions",
-            "PUT /v3/captions",
-            "DELETE /v3/captions",
-            "GET /v3/captions/{id}",
-            "GET /v3/channelSections",
-            "POST /v3/channelSections",
-            "PUT /v3/channelSections",
-            "DELETE /v3/channelSections",
-            "GET /v3/channels",
-            "PUT /v3/channels",
-            "GET /v3/i18nLanguages",
-            "GET /v3/i18nRegions",
-            "POST /v3/liveBroadcasts/cuepoint",
-            "GET /v3/playlistImages",
-            "POST /v3/playlistImages",
-            "PUT /v3/playlistImages",
-            "DELETE /v3/playlistImages",
-            "GET /v3/playlistItems",
-            "POST /v3/playlistItems",
-            "PUT /v3/playlistItems",
-            "DELETE /v3/playlistItems",
-            "GET /v3/playlists",
-            "POST /v3/playlists",
-            "PUT /v3/playlists",
-            "DELETE /v3/playlists",
-            "GET /v3/search",
-            "GET /v3/subscriptions",
-            "POST /v3/subscriptions",
-            "DELETE /v3/subscriptions",
-            "POST /v3/thumbnails/set",
-            "GET /v3/videoCategories",
-            "GET /v3/videoTrainability",
-            "GET /v3/videos",
-            "POST /v3/videos",
-            "PUT /v3/videos",
-            "DELETE /v3/videos",
-            "GET /v3/videos/getRating",
-            "POST /v3/videos/rate",
-            "POST /v3/videos/reportAbuse",
-            "POST /v3/watermarks/set",
-            "POST /v3/watermarks/unset"
-          ]
-        },
-        {
-          "description": "View private information of your YouTube channel relevant during the audit process with a YouTube partner",
-          "name": "youtubepartner-channel-audit",
-          "rules": [
-            "GET /v3/channels"
-          ]
         }
       ]
     },
@@ -307,19 +244,6 @@ JSON_PART = r"""{
             "POST /v3/videos",
             "POST /v3/watermarks/set"
           ]
-        },
-        {
-          "description": "View and manage your assets and associated content on YouTube",
-          "name": "youtubepartner",
-          "rules": [
-            "POST /v3/captions",
-            "PUT /v3/captions",
-            "POST /v3/playlistImages",
-            "PUT /v3/playlistImages",
-            "POST /v3/thumbnails/set",
-            "POST /v3/videos",
-            "POST /v3/watermarks/set"
-          ]
         }
       ]
     },
@@ -362,19 +286,6 @@ JSON_PART = r"""{
           "name": "youtube.upload",
           "rules": [
             "POST /v3/channelBanners/insert",
-            "POST /v3/thumbnails/set",
-            "POST /v3/videos",
-            "POST /v3/watermarks/set"
-          ]
-        },
-        {
-          "description": "View and manage your assets and associated content on YouTube",
-          "name": "youtubepartner",
-          "rules": [
-            "POST /v3/captions",
-            "PUT /v3/captions",
-            "POST /v3/playlistImages",
-            "PUT /v3/playlistImages",
             "POST /v3/thumbnails/set",
             "POST /v3/videos",
             "POST /v3/watermarks/set"
