@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.156.0](https://github.com/vm0-ai/vm0/compare/api-v1.155.1...api-v1.156.0) (2026-06-18)
+
+
+### Features
+
+* **connectors:** give InsForge a firewall with user-entered backend URL ([#18229](https://github.com/vm0-ai/vm0/issues/18229)) ([e1f702c](https://github.com/vm0-ai/vm0/commit/e1f702cb7000fa9290fcb5812cec2df76f886b85))
+
+
+### Bug Fixes
+
+* use figma pat firewall header ([#18266](https://github.com/vm0-ai/vm0/issues/18266)) ([f86838c](https://github.com/vm0-ai/vm0/commit/f86838c9e1aa3bef21ebe0f97689de0695c829a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/connectors bumped to 1.92.0
+    * @vm0/core bumped to 8.355.1
+    * @vm0/db bumped to 1.57.3
+
 ## [1.155.1](https://github.com/vm0-ai/vm0/compare/api-v1.155.0...api-v1.155.1) (2026-06-18)
 
 

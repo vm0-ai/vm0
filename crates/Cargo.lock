@@ -1246,7 +1246,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.38.0"
+version = "0.38.1"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1282,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.13"
+version = "0.2.14"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.28"
+version = "0.20.29"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.121.1"
+version = "0.122.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.6"
+version = "0.19.7"
 dependencies = [
  "async-trait",
  "serde",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.45"
+version = "0.37.46"
 dependencies = [
  "async-trait",
  "base64",
@@ -2773,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.7.12"
+version = "0.7.13"
 dependencies = [
  "async-trait",
  "guest-contracts",
