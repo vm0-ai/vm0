@@ -1427,7 +1427,8 @@ function presentationTemplateThemeAccentSwatches(
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
   return [
-    { id: "base", color: theme.colors[0] },
+    { id: "background", color: theme.colors[0] },
+    { id: "support-2", color: theme.colors[6] },
     { id: "accent", color: theme.colors[4] },
   ];
 }
