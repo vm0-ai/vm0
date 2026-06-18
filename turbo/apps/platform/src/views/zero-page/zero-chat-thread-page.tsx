@@ -3025,7 +3025,7 @@ function CompletedWorkFoldRow({
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="mt-0.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
         <IconHourglass
           aria-hidden
