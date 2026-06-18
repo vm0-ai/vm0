@@ -17,6 +17,7 @@ import {
   workflowSummary,
   type WorkflowMember,
 } from "./zero-workflow-data.service";
+import { loadWorkflowTriggers } from "./zero-workflow-trigger.service";
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -79,7 +80,12 @@ export function zeroWorkflowDetail(args: {
       workflowName: args.workflowName,
     });
 
-    return { ...summary, ...content, triggers: [] };
+    const triggers = await loadWorkflowTriggers(db, {
+      orgId: args.orgId,
+      workflowId: workflow.id,
+    });
+
+    return { ...summary, ...content, triggers: [...triggers] };
   });
 }
 
