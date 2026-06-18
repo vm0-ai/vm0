@@ -4079,7 +4079,7 @@ function ComputerUseDownloadDialog({
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
               <IconDeviceDesktop size={18} stroke={1.5} />
             </div>
-            <div className="min-w-0 space-y-1 text-left">
+            <div className="min-w-0 space-y-2 text-left">
               <DialogTitle>Connect your computer</DialogTitle>
               <DialogDescription>
                 Download Zero Computer Use for macOS, then open it to let Zero
