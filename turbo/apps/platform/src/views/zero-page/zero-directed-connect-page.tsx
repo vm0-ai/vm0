@@ -50,14 +50,10 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  shouldShowGoogleSecurityWarningNotice,
-  shouldShowMetaAdsReviewNotice,
-} from "../../lib/google-security-warning.ts";
+import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import {
   Vm0LogoLink,
   GoogleSecurityWarningNotice,
-  MetaAdsReviewNotice,
 } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
@@ -450,9 +446,6 @@ function ConnectorConnectNotices({
   }
   if (shouldShowGoogleSecurityWarningNotice(connectorType)) {
     return <GoogleSecurityWarningNotice />;
-  }
-  if (shouldShowMetaAdsReviewNotice(connectorType)) {
-    return <MetaAdsReviewNotice />;
   }
   return null;
 }
