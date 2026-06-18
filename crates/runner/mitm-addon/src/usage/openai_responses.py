@@ -108,6 +108,20 @@ def _classify_responses_event_name(event_name: str) -> _ResponsesEventTypeClassi
     return _RESPONSES_EVENT_UNKNOWN
 
 
+def _resolved_event_type(
+    event_type: _ResponsesEventTypeClassification,
+) -> _ResponsesEventTypeClassification:
+    if event_type == _RESPONSES_EVENT_PENDING:
+        return _RESPONSES_EVENT_UNKNOWN
+    return event_type
+
+
+def _resolved_event_type_from_prefix(
+    prefix: bytearray,
+) -> _ResponsesEventTypeClassification:
+    return _resolved_event_type(_classify_responses_event_type(bytes(prefix)))
+
+
 def _is_known_terminal_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in _RESPONSES_TERMINAL_USAGE_EVENTS
 
@@ -237,12 +251,16 @@ def _store_sse_result_values(
     target: dict,
     *,
     event_name: str | None,
+    data_event_type: _ResponsesEventTypeClassification | None = None,
 ) -> None:
     data_type = values.get(("type",))
-    if _is_known_non_usage_event(event_name) or _is_known_non_usage_event(data_type):
+    if _is_known_non_usage_event(event_name) or data_event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return
     event_identity = event_name if event_name is not None else data_type
-    is_known_terminal_usage_event = _is_known_terminal_usage_event(event_identity)
+    is_known_terminal_usage_event = (
+        _is_known_terminal_usage_event(event_identity)
+        or data_event_type == _RESPONSES_EVENT_TERMINAL
+    )
 
     prefix = ("response",) if _has_response_wrapper_values(values) else ()
     source: dict = {}
@@ -277,6 +295,8 @@ class _OpenAIResponsesSseUsageHandler:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
         self._eventless_prefix: bytearray | None = None
+        self._named_event_prefix: bytearray | None = None
+        self._data_event_type: _ResponsesEventTypeClassification | None = None
         self._discard_eventless_event = False
         self._on_parse_error = on_parse_error
 
@@ -288,12 +308,15 @@ class _OpenAIResponsesSseUsageHandler:
         if event_name is None:
             self._eventless_prefix = bytearray()
             return
+        if not _is_known_terminal_usage_event(event_name):
+            self._named_event_prefix = bytearray()
         self._start_full_extractor()
 
     def on_data(self, chunk: bytes) -> None:
         if self._discard_eventless_event:
             return
         if self._extractor is not None:
+            self._feed_named_event_prefix(chunk)
             self._extractor.feed(chunk)
             return
         if self._eventless_prefix is not None:
@@ -304,16 +327,25 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
+            self._data_event_type = _resolved_event_type_from_prefix(self._eventless_prefix)
             extractor = self._start_full_extractor()
             extractor.feed(bytes(self._eventless_prefix))
             self._eventless_prefix = None
+        if self._named_event_prefix is not None and self._data_event_type is None:
+            self._data_event_type = _resolved_event_type_from_prefix(self._named_event_prefix)
         extractor = self._extractor
+        data_event_type = self._data_event_type
         self._reset_event_state()
         if extractor is None:
             return
         result = extractor.finish()
         if result.complete:
-            _store_sse_result_values(result.values, self._usage, event_name=event_name)
+            _store_sse_result_values(
+                result.values,
+                self._usage,
+                event_name=event_name,
+                data_event_type=data_event_type,
+            )
             return
         if (
             event_name is not None
@@ -329,6 +361,8 @@ class _OpenAIResponsesSseUsageHandler:
     def _reset_event_state(self) -> None:
         self._extractor = None
         self._eventless_prefix = None
+        self._named_event_prefix = None
+        self._data_event_type = None
         self._discard_eventless_event = False
 
     def _start_full_extractor(self) -> JsonSelectiveExtractor:
@@ -359,9 +393,31 @@ class _OpenAIResponsesSseUsageHandler:
         if not should_fallback:
             return
 
+        self._data_event_type = _resolved_event_type(event_type)
         self._fallback_eventless_prefix_to_full_extractor()
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
+
+    def _feed_named_event_prefix(self, chunk: bytes) -> None:
+        prefix = self._named_event_prefix
+        if prefix is None or self._data_event_type is not None:
+            return
+
+        remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
+        captured_len = min(len(chunk), remaining)
+        if captured_len:
+            prefix.extend(chunk[:captured_len])
+
+        event_type = _classify_responses_event_type(bytes(prefix))
+        if (
+            event_type == _RESPONSES_EVENT_PENDING
+            and captured_len == len(chunk)
+            and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
+        ):
+            return
+
+        self._data_event_type = _resolved_event_type(event_type)
+        self._named_event_prefix = None
 
     def _fallback_eventless_prefix_to_full_extractor(self) -> None:
         prefix = self._eventless_prefix
@@ -469,7 +525,8 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
     ``event:`` / ``data:`` envelope, so reuse the SSE field map and event gate
     directly.
     """
-    if _classify_responses_event_type(body) == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+    event_type = _classify_responses_event_type(body)
+    if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None
 
     extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
@@ -479,7 +536,7 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
         return None
 
     usage: dict = {}
-    _store_sse_result_values(result.values, usage, event_name=None)
+    _store_sse_result_values(result.values, usage, event_name=None, data_event_type=event_type)
     if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
         return None
     return usage

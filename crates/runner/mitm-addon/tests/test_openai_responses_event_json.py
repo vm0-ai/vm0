@@ -254,6 +254,18 @@ def test_duplicate_top_level_type_uses_first_type_boundary(monkeypatch):
     )
 
 
+def test_duplicate_top_level_unknown_type_keeps_first_type_boundary():
+    assert extract_openai_responses_usage_from_event_json(
+        b'{"type":"response.future_terminal",'
+        b'"type":"response.output_text.delta",'
+        b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+    ) == {
+        "model": "gpt-5.6",
+        "tokens.input": 9,
+        "tokens.output": 4,
+    }
+
+
 def test_terminal_event_type_after_skipped_fields_still_extracts_usage():
     body = json.dumps(
         {

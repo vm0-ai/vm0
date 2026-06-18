@@ -127,6 +127,35 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
+    def test_eventless_duplicate_unknown_type_keeps_first_type_boundary(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.future_terminal",'
+            b'"type":"response.output_text.delta",'
+            b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
+    def test_named_duplicate_unknown_type_keeps_first_type_boundary(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal",'
+            b'"type":"response.output_text.delta",'
+            b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
     def test_named_unknown_malformed_event_does_not_report_parse_error(self):
         parse_errors: list[tuple[str, str]] = []
 
