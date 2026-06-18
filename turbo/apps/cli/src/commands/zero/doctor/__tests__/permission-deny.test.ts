@@ -102,6 +102,47 @@ describe("zero doctor permission-deny command", () => {
     });
   });
 
+  describe("computer-use capability denials", () => {
+    it("should explain selected-host token grants for computer-use ref", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "computer-use",
+        "--method",
+        "POST",
+        "--path",
+        "/computer-use/list-apps",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Computer Use access is not managed as a connector permission.",
+      );
+      expect(logCalls).toContain("selected for the chat or thread");
+      expect(logCalls).toContain("Existing run tokens cannot be upgraded");
+      expect(logCalls).toContain("zero whoami");
+      expect(mockConsoleError).not.toHaveBeenCalled();
+    });
+
+    it("should recognize computer-use paths before connector validation", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "agent",
+        "--method",
+        "POST",
+        "--path",
+        "/computer-use/list-apps",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Computer Use access is not managed as a connector permission.",
+      );
+      expect(mockConsoleError).not.toHaveBeenCalled();
+    });
+  });
+
   describe("slack matching", () => {
     it("should identify chat:write for POST /chat.postMessage", async () => {
       await permissionDenyCommand.parseAsync([
