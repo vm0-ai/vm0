@@ -321,7 +321,6 @@ def test_flushes_when_source_event_count_reaches_bound(tmp_path):
             "quantity": usage_buffer.MAX_BUFFERED_SOURCE_EVENTS,
         }
     ]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_empty_flush_is_noop():

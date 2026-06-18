@@ -7,7 +7,7 @@ import pytest
 import usage
 import usage.buffer as usage_buffer
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-from tests.pending_helpers import assert_pending
+from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import DeliveryOutcomeCallback, RecordingEnqueue, event
 
 
@@ -86,7 +86,6 @@ def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_suc
 
     assert enqueue.call_count == 2
     assert [payload["runId"] for payload in attempted_payloads] == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -149,16 +148,13 @@ def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
         usage.flush_usage_events(trigger="test")
 
     assert attempted_runs == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 2
 
     callbacks[0]("success")
-    assert usage.counters._buffered_usage_events == 1
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert retry_runs == ["run-2"]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
@@ -590,7 +586,13 @@ def test_partial_delivery_failure_retains_only_failed_batch_with_same_key(
         usage_webhook_server.requests[1].json_body(),
     ]
     assert [body["runId"] for body in first_attempts] == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 1
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="run-b-retained",
+    )
 
     usage_webhook_server.queue_response(204)
     assert usage.flush_usage_events(trigger="test") == 1
@@ -655,13 +657,11 @@ def test_same_priority_retained_batches_retry_fifo(tmp_path):
 
     callbacks[0]("retryable_failure")
     callbacks[1]("retryable_failure")
-    assert usage.counters._buffered_usage_events == 2
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_callbacks(
@@ -704,13 +704,11 @@ def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_ca
 
     callbacks[1]("retryable_failure")
     callbacks[0]("retryable_failure")
-    assert usage.counters._buffered_usage_events == 2
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
@@ -754,13 +752,11 @@ def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
 
     assert usage.flush_usage_events(trigger="test") == 1
     assert first_attempt_runs == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 2
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):

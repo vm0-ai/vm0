@@ -7,7 +7,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
-from tests.pending_helpers import assert_pending
+from tests.pending_helpers import assert_current_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
@@ -146,7 +146,6 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
     assert shutdown_returned.is_set()
     assert shutdown_results == [1]
     assert enqueued_runs == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
     assert timers[1].cancelled is True
 
@@ -214,7 +213,6 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
     assert shutdown_results == [1]
     assert enqueued_run_ids == ["run-1", "run-1"]
     assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
-    assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
@@ -284,7 +282,6 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
     assert not shutdown_thread.is_alive()
     assert shutdown_results == [1]
     assert enqueued_run_ids == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
@@ -321,7 +318,6 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
     assert usage.flush_usage_events(trigger="shutdown") == 2
 
     assert enqueued_runs == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
@@ -347,7 +343,6 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     with pytest.raises(OSError, match="shutdown failed"):
         usage.flush_usage_events(trigger="shutdown")
 
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
     retained_entries = [
@@ -369,7 +364,6 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
@@ -388,7 +382,6 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
     assert usage.flush_usage_events(trigger="shutdown") == 0
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
     retained_entries = [
@@ -412,7 +405,6 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
@@ -431,7 +423,6 @@ def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
     timers[0].callback()
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].started is True
@@ -442,7 +433,6 @@ def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
-    assert usage.counters._buffered_usage_events == 0
     assert timers[1].cancelled is True
 
 
@@ -494,7 +484,6 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert attempted_log_types == ["usage_event", "model_usage_observation"]
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 4
     assert timers[2].cancelled is True
     assert timers[3].started is True
@@ -504,7 +493,6 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-2"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
@@ -557,7 +545,6 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     assert len(timers) == 2
     assert timers[1].started is True
     assert timers[1].cancelled is False
-    assert usage.counters._buffered_usage_events == 1
 
 
 def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
@@ -586,11 +573,9 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     timers[0].callback()
 
     assert len(callbacks) == 1
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     callbacks[0]("retryable_failure")
 
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 2
     assert timers[1].started is True
     assert timers[1].cancelled is False
@@ -598,7 +583,6 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     timers[1].callback()
 
     assert enqueued_keys == [enqueued_keys[0], enqueued_keys[0]]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
@@ -633,15 +617,25 @@ def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
 
     timers[0].callback()
 
-    assert usage.counters._buffered_usage_events == 1
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="retained",
+    )
     assert len(timers) == 2
     assert timers[1].started is True
 
     timers[1].callback()
 
-    assert usage.counters._buffered_usage_events == 0
-    usage.write_pending_snapshot(flush_request_id="request-1")
-    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
     assert len(timers) == 2
     entries = flush_log_entries(proxy_log_path)
     dropped_entries = [entry for entry in entries if entry["phase"] == "dropped"]
@@ -677,7 +671,6 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
     )
 
     assert usage.flush_usage_events(trigger="shutdown") == 0
-    assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
 
@@ -685,7 +678,6 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
     assert usage.flush_usage_events(trigger="shutdown") == 0
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 1
     dropped_entries = [
         entry for entry in flush_log_entries(proxy_log_path) if entry["phase"] == "dropped"

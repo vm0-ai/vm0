@@ -16,6 +16,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
+from tests.pending_helpers import assert_current_pending
 
 
 class _QueuedUsageExecutor:
@@ -317,7 +318,8 @@ class TestUsageWebhookDelivery:
     ):
         """Synchronous executor fixture should store worker exceptions on its Future."""
         proxy_log = tmp_path / "proxy.jsonl"
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage.counters.increment_pending_reports()
 
         usage.webhook._enqueue_webhook(
@@ -328,7 +330,13 @@ class TestUsageWebhookDelivery:
             "usage",
         )
 
-        assert usage.counters._pending_reports == 1
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=1,
+            flush_request_id="worker-error",
+        )
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         assert "non-retryable" in read_jsonl_text_after_flush(proxy_log)
         with pytest.raises(ValueError, match="absolute http"):
@@ -436,7 +444,9 @@ class TestUsageWebhookDelivery:
 
     def test_does_not_admit_when_delivery_capacity_is_saturated(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
+        pending_path = tmp_path / "usage-pending"
         executor = _QueuedUsageExecutor()
+        usage.set_pending_path(str(pending_path))
 
         with patch.object(usage.webhook, "usage_executor", executor):
             for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
@@ -462,7 +472,13 @@ class TestUsageWebhookDelivery:
 
         assert admitted is False
         assert len(executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
-        assert usage.counters._pending_reports == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="saturated",
+        )
 
         entries = read_jsonl_entries_after_flush(proxy_log)
         saturated_entry = entries[-1]
@@ -485,6 +501,8 @@ class TestUsageWebhookDelivery:
         self, tmp_path, sync_usage_executor, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage_webhook_server.queue_response(204)
 
         assert usage.webhook._enqueue_webhook(
@@ -497,12 +515,20 @@ class TestUsageWebhookDelivery:
 
         assert usage_webhook_server.request_count == 1
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert usage.counters._pending_reports == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="success",
+        )
 
     def test_delivery_capacity_released_after_retry_exhaustion(
         self, tmp_path, sync_usage_executor, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage_webhook_server.queue_response(500)
         usage_webhook_server.queue_response(500)
 
@@ -517,4 +543,10 @@ class TestUsageWebhookDelivery:
 
         assert usage_webhook_server.request_count == 2
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert usage.counters._pending_reports == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="retry-exhausted",
+        )

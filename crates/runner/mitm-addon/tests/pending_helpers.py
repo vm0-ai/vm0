@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 
+import usage
+
 
 def _pending_state(path: Path) -> dict:
     return json.loads(path.read_text())
@@ -50,3 +52,22 @@ def assert_pending(
     if flush_request_id is not None:
         assert state["flushRequestId"] == flush_request_id
     return state
+
+
+def assert_current_pending(
+    path: Path,
+    *,
+    flows: int,
+    buffered: int,
+    reports: int,
+    flush_request_id: str | None = None,
+) -> dict:
+    """Write and assert the current runner-facing pending-state snapshot."""
+    usage.write_pending_snapshot(flush_request_id=flush_request_id)
+    return assert_pending(
+        path,
+        flows=flows,
+        buffered=buffered,
+        reports=reports,
+        flush_request_id=flush_request_id,
+    )
