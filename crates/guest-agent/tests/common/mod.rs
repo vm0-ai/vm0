@@ -21,9 +21,13 @@
 
 mod system_log;
 
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use std::io;
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -524,4 +528,65 @@ where
 /// code path entirely.
 pub fn spawn_dummy_heartbeat() -> guest_agent::cli::HeartbeatMonitor {
     None
+}
+
+pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {
+    tokio::time::timeout(timeout, wait_for_path_event(path))
+        .await
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("timed out waiting for {}", path.display()),
+            )
+        })?
+}
+
+async fn wait_for_path_event(path: &Path) -> io::Result<()> {
+    if tokio::fs::try_exists(path).await? {
+        return Ok(());
+    }
+
+    let dir = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path has no parent directory: {}", path.display()),
+        )
+    })?;
+    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
+        .map_err(|error| io::Error::other(format!("inotify init: {error}")))?;
+    inotify
+        .add_watch(dir, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
+        .map_err(|error| io::Error::other(format!("inotify watch: {error}")))?;
+
+    if tokio::fs::try_exists(path).await? {
+        return Ok(());
+    }
+
+    let async_fd = async_inotify_fd(inotify)?;
+    loop {
+        let mut guard = async_fd.readable().await?;
+        drain_inotify_fd(async_fd.get_ref().as_fd());
+        guard.clear_ready();
+
+        if tokio::fs::try_exists(path).await? {
+            return Ok(());
+        }
+    }
+}
+
+fn async_inotify_fd(inotify: Inotify) -> io::Result<AsyncFd<OwnedFd>> {
+    let fd: OwnedFd = inotify.into();
+    AsyncFd::new(fd).map_err(|error| io::Error::other(format!("AsyncFd: {error}")))
+}
+
+fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
+    let mut buf = [0u8; 4096];
+    loop {
+        // SAFETY: fd is a valid non-blocking inotify descriptor borrowed from
+        // AsyncFd. The stack buffer is valid for the requested byte length.
+        let result = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
+        if result <= 0 {
+            break;
+        }
+    }
 }

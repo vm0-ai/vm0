@@ -6,21 +6,7 @@
 mod common;
 
 use guest_agent::error::AgentError;
-use std::path::PathBuf;
 use std::time::Duration;
-
-async fn wait_for_marker(path: PathBuf) -> Result<(), AgentError> {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if tokio::fs::metadata(&path).await.is_ok() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .map_err(|_| AgentError::Execution("mock did not ignore SIGTERM".to_string()))
-}
 
 #[tokio::test]
 async fn heartbeat_panic_reap_escalates_to_sigkill_when_sigterm_ignored()
@@ -34,7 +20,9 @@ async fn heartbeat_panic_reap_escalates_to_sigkill_when_sigterm_ignored()
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let sigterm_ignored_marker = tmp.path().join(".vm0-mock-sigterm-ignored");
     let heartbeat = common::spawn_heartbeat_monitor(async move {
-        wait_for_marker(sigterm_ignored_marker).await?;
+        common::wait_for_path(&sigterm_ignored_marker, Duration::from_secs(5))
+            .await
+            .map_err(|_| AgentError::Execution("mock did not ignore SIGTERM".to_string()))?;
         panic!("heartbeat panic for reap test")
     });
 
