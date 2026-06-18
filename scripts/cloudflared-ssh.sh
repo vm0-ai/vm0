@@ -9,7 +9,7 @@
 #   CF_TUNNEL_ACCOUNT_ID  — Cloudflare account ID
 #
 # Usage:
-#   scripts/cloudflared-ssh.sh provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.2.0]
+#   scripts/cloudflared-ssh.sh provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.6.0]
 #   scripts/cloudflared-ssh.sh deprovision <host> [--domain vm3.ai] [--user ubuntu]
 #
 # Examples:
@@ -29,7 +29,7 @@ fi
 
 DEFAULT_DOMAIN="vm3.ai"
 DEFAULT_USER="ubuntu"
-DEFAULT_VERSION="2026.2.0"
+DEFAULT_VERSION="2026.6.0"
 
 log() { echo -e "\033[1;34m[cloudflared-ssh]\033[0m $1" >&2; }
 err() { echo -e "\033[1;31m[cloudflared-ssh]\033[0m $1" >&2; }
@@ -110,7 +110,7 @@ do_provision() {
     esac
   done
   if [[ -z "$host" ]]; then
-    err "Usage: $0 provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.2.0]"
+    err "Usage: $0 provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.6.0]"
     exit 1
   fi
 
