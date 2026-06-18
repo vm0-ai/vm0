@@ -354,10 +354,12 @@ fn validate_copy_exec_result(
                 String::from_utf8_lossy(&stderr)
             ),
         )),
-        ExecTermination::Exited { exit_code: 66 } if stderr.is_empty() => {
-            Ok(CopyFileExecStatus::Missing)
-        }
-        ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
+        ExecTermination::Exited {
+            exit_code: MISSING_FILE_EXIT_CODE,
+        } if stderr.is_empty() => Ok(CopyFileExecStatus::Missing),
+        ExecTermination::Exited {
+            exit_code: MISSING_FILE_EXIT_CODE,
+        } => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
                 "copy_file missing result for {path} included stderr: {}",
