@@ -998,6 +998,72 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
+  it("uses Figma personal access tokens in the X-Figma-Token firewall header", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "figma", "api-token", {
+      FIGMA_TOKEN: "figd_bdd",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use figma personal access token",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await api.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await api.claimRunnerJob(run.runId);
+    const figmaTokenPlaceholder = connectorPlaceholder("figma", "FIGMA_TOKEN");
+    const figmaTokenTemplate = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
+
+    expect(claim.environment?.FIGMA_TOKEN).toBe(figmaTokenPlaceholder);
+    expect(claim.secretConnectorMap).toMatchObject({ FIGMA_TOKEN: "figma" });
+
+    const figmaEntry = findFirewallEntry(claim.firewalls, "figma");
+    expect(figmaEntry?.kind).toBe("inline");
+    expect(
+      inlineFirewallApis(claim.firewalls, "figma")[0]?.auth.headers,
+    ).toStrictEqual({
+      "X-Figma-Token": figmaTokenTemplate,
+    });
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the figma claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "X-Figma-Token": figmaTokenTemplate,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the figma firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "X-Figma-Token": "figd_bdd",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  }, 15_000);
+
   it("keeps refresh-owned connector secrets out of the sandbox environment", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
