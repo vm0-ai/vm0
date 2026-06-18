@@ -39,7 +39,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
     common::ensure_canonical_workspace_for_test()?;
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
-    let heartbeat = tokio::spawn(async { Ok(()) });
+    let heartbeat = common::spawn_heartbeat_monitor(async { Ok::<(), AgentError>(()) });
 
     let result = tokio::time::timeout(
         Duration::from_secs(1),

@@ -501,11 +501,27 @@ pub unsafe fn setup_env(
     Ok(())
 }
 
+pub fn spawn_heartbeat_monitor<F>(future: F) -> guest_agent::cli::HeartbeatMonitor
+where
+    F: std::future::Future<Output = Result<(), guest_agent::error::AgentError>> + Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let task = tokio::spawn(future);
+        let status = match task.await {
+            Ok(Ok(())) => guest_agent::cli::HeartbeatStatus::Stopped,
+            Ok(Err(error)) => guest_agent::cli::HeartbeatStatus::Failed(error),
+            Err(error) => guest_agent::cli::HeartbeatStatus::TaskFailed(error.to_string()),
+        };
+        let _ = tx.send(status);
+    });
+    Some(rx)
+}
+
 /// Dummy heartbeat that never completes. The CLI-wait / reap-deadline
 /// branches of `execute_cli`'s select! loop are the intended exit paths
 /// for these tests; a heartbeat failure would go through a different
 /// code path entirely.
-pub fn spawn_dummy_heartbeat() -> tokio::task::JoinHandle<Result<(), guest_agent::error::AgentError>>
-{
-    tokio::spawn(std::future::pending())
+pub fn spawn_dummy_heartbeat() -> guest_agent::cli::HeartbeatMonitor {
+    None
 }

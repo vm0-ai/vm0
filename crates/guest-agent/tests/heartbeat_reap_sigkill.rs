@@ -19,7 +19,7 @@ async fn heartbeat_failure_reap_escalates_to_sigkill_when_sigterm_ignored()
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let sigterm_ignored_marker = tmp.path().join(".vm0-mock-sigterm-ignored");
-    let heartbeat = tokio::spawn(async move {
+    let heartbeat = common::spawn_heartbeat_monitor(async move {
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 if tokio::fs::metadata(&sigterm_ignored_marker).await.is_ok() {
