@@ -1,18 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <style>
     polygon { stroke-linejoin: round; stroke-width: 2; }
-    .outline { fill: none; }
-    .filled { }
-
-    /* Light mode (default) - dark icon */
-    .outline { stroke: #18181b; }
+    .outline { fill: none; stroke: #18181b; }
     .filled { fill: #18181b; stroke: #18181b; }
-
-    /* Dark mode - light icon */
-    @media (prefers-color-scheme: dark) {
-      .outline { stroke: #fafafa; }
-      .filled { fill: #fafafa; stroke: #fafafa; }
-    }
   </style>
 
   <!-- Top face outline -->
