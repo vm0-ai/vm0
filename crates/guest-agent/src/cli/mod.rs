@@ -502,38 +502,40 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            match active_input_controller.replay_user_event_action(&event) {
-                                ReplayUserEventAction::External => {}
-                                ReplayUserEventAction::InternalInitialPrompt => {
-                                    let _ = log_file
-                                        .write_all(
-                                            br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
-                                        )
-                                        .await;
-                                    let _ = log_file.write_all(b"\n").await;
-                                    continue;
-                                }
-                                ReplayUserEventAction::InternalActiveInput => {
-                                    let _ = log_file
-                                        .write_all(
-                                            br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
-                                        )
-                                        .await;
-                                    let _ = log_file.write_all(b"\n").await;
-                                    continue;
-                                }
-                                ReplayUserEventAction::UnknownPromptUser => {
-                                    let _ = log_file
-                                        .write_all(
-                                            br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
-                                        )
-                                        .await;
-                                    let _ = log_file.write_all(b"\n").await;
-                                    log_warn!(
-                                        LOG_TAG,
-                                        "Filtered unknown top-level Claude user replay event"
-                                    );
-                                    continue;
+                            if behavior.filters_replayed_user_events() {
+                                match active_input_controller.replay_user_event_action(&event) {
+                                    ReplayUserEventAction::External => {}
+                                    ReplayUserEventAction::InternalInitialPrompt => {
+                                        let _ = log_file
+                                            .write_all(
+                                                br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
+                                            )
+                                            .await;
+                                        let _ = log_file.write_all(b"\n").await;
+                                        continue;
+                                    }
+                                    ReplayUserEventAction::InternalActiveInput => {
+                                        let _ = log_file
+                                            .write_all(
+                                                br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
+                                            )
+                                            .await;
+                                        let _ = log_file.write_all(b"\n").await;
+                                        continue;
+                                    }
+                                    ReplayUserEventAction::UnknownPromptUser => {
+                                        let _ = log_file
+                                            .write_all(
+                                                br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
+                                            )
+                                            .await;
+                                        let _ = log_file.write_all(b"\n").await;
+                                        log_warn!(
+                                            LOG_TAG,
+                                            "Filtered unknown top-level Claude user replay event"
+                                        );
+                                        continue;
+                                    }
                                 }
                             }
 
