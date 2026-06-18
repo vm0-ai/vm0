@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.36](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.35...vsock-host-v0.17.36) (2026-06-18)
+
+
+### Refactoring
+
+* **vsock-host:** classify read_file structured exec results ([#18176](https://github.com/vm0-ai/vm0/issues/18176)) ([cb21bfd](https://github.com/vm0-ai/vm0/commit/cb21bfda176767f62931c62e19dbad2f883a97df))
+
 ## [0.17.35](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.34...vsock-host-v0.17.35) (2026-06-18)
 
 
