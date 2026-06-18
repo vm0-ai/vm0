@@ -1,6 +1,6 @@
 //! Guest-agent local active-input state for Claude stream-json stdin.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 const ACTIVE_INPUT_TYPE: &str = "active-input";
 const ACTIVE_INPUT_QUEUE_CAPACITY: usize = 8;
+const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveInputFrame {
@@ -66,6 +67,7 @@ struct ActiveInputState {
     initial_prompt_replay_seen: bool,
     observed_result: bool,
     seen_message_ids: HashSet<String>,
+    seen_message_id_order: VecDeque<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
 }
 
@@ -76,12 +78,43 @@ impl Default for ActiveInputState {
             initial_prompt_replay_seen: false,
             observed_result: false,
             seen_message_ids: HashSet::new(),
+            seen_message_id_order: VecDeque::new(),
             pending_by_uuid: HashMap::new(),
         }
     }
 }
 
 impl ActiveInputState {
+    fn has_seen_message_id(&self, message_id: &str) -> bool {
+        self.seen_message_ids.contains(message_id)
+    }
+
+    fn remember_message_id(&mut self, message_id: String) {
+        if !self.seen_message_ids.insert(message_id.clone()) {
+            return;
+        }
+        self.seen_message_id_order.push_back(message_id);
+        while self.seen_message_ids.len() > ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY {
+            let Some(oldest) = self.seen_message_id_order.pop_front() else {
+                break;
+            };
+            self.seen_message_ids.remove(&oldest);
+        }
+    }
+
+    fn forget_message_id(&mut self, message_id: &str) {
+        if !self.seen_message_ids.remove(message_id) {
+            return;
+        }
+        if let Some(index) = self
+            .seen_message_id_order
+            .iter()
+            .position(|seen| seen == message_id)
+        {
+            self.seen_message_id_order.remove(index);
+        }
+    }
+
     fn remove_pending_by_uuid(&mut self, uuid: &str) -> bool {
         self.pending_by_uuid.remove(uuid).is_some()
     }
@@ -298,7 +331,7 @@ impl ActiveInputController {
                 diagnostic: "active input is closed",
             };
         }
-        if state.seen_message_ids.contains(message_id) {
+        if state.has_seen_message_id(message_id) {
             return ActiveInputControlOutcome::Rejected {
                 diagnostic: "active input message id is duplicate",
             };
@@ -309,7 +342,7 @@ impl ActiveInputController {
             };
         }
 
-        state.seen_message_ids.insert(message_id.to_owned());
+        state.remember_message_id(message_id.to_owned());
         state.pending_by_uuid.insert(
             uuid.clone(),
             PendingInput {
@@ -321,14 +354,14 @@ impl ActiveInputController {
         match self.inner.tx.try_send(frame) {
             Ok(()) => ActiveInputControlOutcome::Accepted,
             Err(mpsc::error::TrySendError::Full(frame)) => {
-                state.seen_message_ids.remove(&frame.message_id);
+                state.forget_message_id(&frame.message_id);
                 state.pending_by_uuid.remove(&frame.uuid);
                 ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input queue is full",
                 }
             }
             Err(mpsc::error::TrySendError::Closed(frame)) => {
-                state.seen_message_ids.remove(&frame.message_id);
+                state.forget_message_id(&frame.message_id);
                 state.pending_by_uuid.remove(&frame.uuid);
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
@@ -551,6 +584,70 @@ mod tests {
             controller.handle_control_payload("overflow", br#"{"type":"active-input","text":"hello"}"#),
             ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input queue is full"
         ));
+    }
+
+    #[tokio::test]
+    async fn active_input_bounds_seen_message_id_cache() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        let mut writer = runtime.into_writer();
+
+        for index in 0..=ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY {
+            let message_id = format!("msg-{index}");
+            let text = format!("follow-up-{index}");
+            let payload = serde_json::to_vec(&json!({
+                "type": ACTIVE_INPUT_TYPE,
+                "text": &text,
+            }))
+            .expect("active input payload should serialize");
+            assert_eq!(
+                controller.handle_control_payload(&message_id, &payload),
+                ActiveInputControlOutcome::Accepted
+            );
+            let frame = writer
+                .next_frame()
+                .await
+                .expect("active input frame should be queued");
+            assert_eq!(frame.message_id, message_id);
+
+            let active = json!({
+                "type": "user",
+                "uuid": frame.uuid,
+                "message": {"role": "user", "content": text}
+            });
+            assert_eq!(
+                controller.replay_user_event_action(&active),
+                ReplayUserEventAction::InternalActiveInput
+            );
+        }
+
+        let state = controller
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(
+            state.seen_message_ids.len(),
+            ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY
+        );
+        assert!(!state.has_seen_message_id("msg-0"));
+        assert!(
+            state.has_seen_message_id(&format!("msg-{}", ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY))
+        );
+        drop(state);
+
+        assert!(matches!(
+            controller.handle_control_payload(
+                &format!("msg-{}", ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY),
+                br#"{"type":"active-input","text":"duplicate"}"#
+            ),
+            ActiveInputControlOutcome::Rejected { diagnostic }
+                if diagnostic == "active input message id is duplicate"
+        ));
+        assert_eq!(
+            controller.handle_control_payload("msg-0", br#"{"type":"active-input","text":"old"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
     }
 
     #[test]
