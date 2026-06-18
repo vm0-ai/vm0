@@ -815,6 +815,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import qiita_0
 
         return (qiita_0.JSON_PART,)
+    if name == "quickbooks":
+        from . import quickbooks_0
+
+        return (quickbooks_0.JSON_PART,)
     if name == "railway":
         from . import railway_0
 

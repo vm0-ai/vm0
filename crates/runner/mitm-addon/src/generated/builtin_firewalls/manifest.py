@@ -211,6 +211,7 @@ FIREWALL_MODULES = {
     "pushinator": ("pushinator_0",),
     "qdrant": ("qdrant_0",),
     "qiita": ("qiita_0",),
+    "quickbooks": ("quickbooks_0",),
     "railway": ("railway_0",),
     "railway-project": ("railway_project_0",),
     "reap": ("reap_0",),
