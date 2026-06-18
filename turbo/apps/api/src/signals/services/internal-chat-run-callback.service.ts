@@ -34,6 +34,7 @@ import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadRunFinished,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -213,6 +214,7 @@ interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly triggerSource: string;
 }
 
 interface ChatRunInfo {
@@ -455,6 +457,7 @@ async function insertAssistantErrorMessage(args: {
   readonly prompt: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly publishRunFinished: boolean;
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
 }): Promise<boolean> {
@@ -490,6 +493,12 @@ async function insertAssistantErrorMessage(args: {
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
+  if (args.publishRunFinished) {
+    await publishChatThreadRunFinished({
+      userId: args.userId,
+      threadId: args.threadId,
+    });
+  }
   await sendUserPushNotifications({
     db: args.db,
     userId: args.userId,
@@ -507,6 +516,7 @@ async function insertRunLifecycleMarker(args: {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly publishRunFinished: boolean;
   readonly event: "completed" | "cancelled";
   readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
@@ -557,6 +567,12 @@ async function insertRunLifecycleMarker(args: {
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
+  if (args.publishRunFinished) {
+    await publishChatThreadRunFinished({
+      userId: args.userId,
+      threadId: args.threadId,
+    });
+  }
   return true;
 }
 
@@ -654,6 +670,7 @@ async function handleCompletedChatCallback(args: {
       runId: args.runId,
       threadId: args.chatThread.chatThreadId,
       userId: args.chatThread.userId,
+      publishRunFinished: args.chatThread.triggerSource === "web",
       event: "completed",
       recommendedFollowups,
     });
@@ -712,6 +729,7 @@ async function handleFailedChatCallback(args: {
     prompt: args.run.prompt,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
+    publishRunFinished: args.chatThread.triggerSource === "web",
     lifecycleEvent,
     getFormattedError: args.getFormattedError,
   });
@@ -1155,6 +1173,7 @@ async function chatThreadForRunFromDb(
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
+      triggerSource: zeroRuns.triggerSource,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -1169,6 +1188,7 @@ async function chatThreadForRunFromDb(
     chatThreadId: row.chatThreadId,
     userId: row.userId,
     orgId: row.orgId,
+    triggerSource: row.triggerSource,
   };
 }
 

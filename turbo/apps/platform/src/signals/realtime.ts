@@ -145,6 +145,133 @@ const runWithChannel$ = command(
   },
 );
 
+const runPayloadNotification$ = command(
+  async (
+    { set },
+    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    payload: unknown,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+    try {
+      const done = await set(loopCommand$, payload, signal);
+      signal.throwIfAborted();
+      return done;
+    } catch (error) {
+      signal.throwIfAborted();
+      throwIfAbort(error);
+      L.warn(`transient error in ably payload notification`, error);
+      return false;
+    }
+  },
+);
+
+const runWithChannelPayload$ = command(
+  async (
+    { set },
+    channel: RealtimeChannel,
+    topic: string,
+    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    let deferred = createDeferredPromise(signal);
+    const pendingPayloads: unknown[] = [];
+
+    const pokeLoop = () => {
+      deferred.resolve(true);
+      deferred = createDeferredPromise(signal);
+    };
+
+    const callback = (message: InboundMessage) => {
+      L.debug("got payload message from topic", topic, message);
+      pendingPayloads.push(message.data);
+      pokeLoop();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      L.debug("tab visible, poking payload loop", topic);
+      pokeLoop();
+    };
+    let subscribed = false;
+    let registeredPoke = false;
+
+    const cleanup = () => {
+      set(subscriberPokeRegistry$, (prev) => {
+        if (!registeredPoke) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(pokeLoop);
+        return next;
+      });
+      registeredPoke = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (subscribed) {
+        subscribed = false;
+        channel.unsubscribe(topic, callback);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange, {
+      signal,
+    });
+    set(subscriberPokeRegistry$, (prev) => {
+      const next = new Set(prev);
+      next.add(pokeLoop);
+      return next;
+    });
+    registeredPoke = true;
+    signal.addEventListener("abort", cleanup, { once: true });
+
+    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
+    try {
+      await channel.subscribe(topic, callback);
+      signal.throwIfAborted();
+      subscribed = true;
+      L.debug("subscribed to payload topic: " + topic);
+
+      while (!signal.aborted) {
+        await deferred.promise;
+        signal.throwIfAborted();
+
+        while (pendingPayloads.length > 0) {
+          const payload = pendingPayloads.shift();
+          const done = await set(
+            runPayloadNotification$,
+            loopCommand$,
+            payload,
+            signal,
+          );
+          signal.throwIfAborted();
+          if (done) {
+            cleanup();
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      signal.throwIfAborted();
+      throwIfAbort(error);
+      if (isAblyConnectionClosedError(error)) {
+        L.debug(
+          "Ably connection closed before payload subscription completed",
+          {
+            topic,
+          },
+        );
+        return;
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", cleanup);
+      cleanup();
+    }
+  },
+);
+
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
  * Call once during app bootstrap, after Clerk auth is ready.
@@ -250,20 +377,17 @@ export const setupRealtime$ = command(
   },
 );
 
-export const setAblyLoop$ = command(
+const userChannel$ = command(
   async (
     { get, set },
     topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
     signal: AbortSignal,
-  ) => {
+  ): Promise<RealtimeChannel> => {
     signal.throwIfAborted();
 
-    let channel = get(internalUserChannel$);
+    const channel = get(internalUserChannel$);
     if (channel) {
-      await set(runWithChannel$, channel, topic, loopCommand$, signal);
-      signal.throwIfAborted();
-      return;
+      return channel;
     }
 
     const channelDeferred = createDeferredPromise<RealtimeChannel>(signal);
@@ -287,11 +411,38 @@ export const setAblyLoop$ = command(
       return [...prev, pendingSubscription];
     });
 
-    channel = await channelDeferred.promise.finally(() => {
+    const connectedChannel = await channelDeferred.promise.finally(() => {
       signal.removeEventListener("abort", removePendingSubscription);
     });
     signal.throwIfAborted();
+    return connectedChannel;
+  },
+);
+
+export const setAblyLoop$ = command(
+  async (
+    { set },
+    topic: string,
+    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    signal: AbortSignal,
+  ) => {
+    const channel = await set(userChannel$, topic, signal);
+    signal.throwIfAborted();
     await set(runWithChannel$, channel, topic, loopCommand$, signal);
+    signal.throwIfAborted();
+  },
+);
+
+export const setAblyPayloadLoop$ = command(
+  async (
+    { set },
+    topic: string,
+    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    signal: AbortSignal,
+  ) => {
+    const channel = await set(userChannel$, topic, signal);
+    signal.throwIfAborted();
+    await set(runWithChannelPayload$, channel, topic, loopCommand$, signal);
     signal.throwIfAborted();
   },
 );
