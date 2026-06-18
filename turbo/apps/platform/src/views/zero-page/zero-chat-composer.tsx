@@ -2719,7 +2719,34 @@ function preloadIllustrationVariant(
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
 ): void {
-  node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  if (node === null) {
+    return;
+  }
+
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const thumbnailRect = node.getBoundingClientRect();
+
+  const leftOverflow = thumbnailStripRect.left - thumbnailRect.left;
+  if (leftOverflow > 0) {
+    thumbnailStrip.scrollTo({
+      left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+    });
+    return;
+  }
+
+  const rightOverflow = thumbnailRect.right - thumbnailStripRect.right;
+  if (rightOverflow > 0) {
+    thumbnailStrip.scrollTo({
+      left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),
+    });
+  }
 }
 
 function IllustrationTemplateCard({
@@ -2758,7 +2785,10 @@ function IllustrationTemplateCard({
         onVariantChange={onVariantChange}
       />
       {hasMultipleVariants && (
-        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          data-illustration-variant-strip=""
+          className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {images.map((image, index) => {
             const active = index === safeIndex;
             const thumbnailImage = r2ImageTransformUrl(
@@ -2769,10 +2799,6 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
-                // Keep the selected thumbnail fully in view when the active
-                // variant changes (e.g. via hero navigation), so later
-                // thumbnails past the clipped strip edge stay reachable.
-                ref={active ? scrollIllustrationThumbnailIntoView : undefined}
                 aria-label={`Show variant ${index + 1}`}
                 aria-pressed={active}
                 className={cn(
@@ -2798,6 +2824,9 @@ function IllustrationTemplateCard({
                     item,
                     onVariantChange,
                   });
+                  if (!active) {
+                    scrollIllustrationThumbnailIntoView(event.currentTarget);
+                  }
                 }}
               >
                 <img
