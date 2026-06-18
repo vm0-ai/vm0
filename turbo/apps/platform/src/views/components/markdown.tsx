@@ -360,22 +360,33 @@ const MEDIA_MARKDOWN_COMPONENTS = {
   img: MediaImageRenderer,
 } as const;
 
+function escapeHtmlTags(source: string): string {
+  return source.replace(/[<>]/g, (char) => {
+    return char === "<" ? "&lt;" : "&gt;";
+  });
+}
+
 export function Markdown({
   className,
   style,
   mediaPreview = false,
   mathEnabled = false,
+  escapeHtml = false,
+  source,
   remarkPlugins,
   rehypePlugins,
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
   mathEnabled?: boolean;
+  escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
+  const renderedSource =
+    escapeHtml && typeof source === "string" ? escapeHtmlTags(source) : source;
   return (
     <MarkdownPreview
       className={`min-w-0 max-w-full !bg-transparent !text-foreground text-sm ${className ?? ""}`}
@@ -400,6 +411,7 @@ export function Markdown({
         mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
       }
       components={components}
+      source={renderedSource}
       {...rest}
     />
   );
