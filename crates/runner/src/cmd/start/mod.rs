@@ -77,7 +77,7 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_sessions::new_active_sessions;
+use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, collect_heartbeat_state,
@@ -1188,7 +1188,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
-    let active_sessions = new_active_sessions();
+    let active_cli_agent_sessions = new_active_cli_agent_sessions();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -1204,7 +1204,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget: &capacity.budget,
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
-        active_sessions: &active_sessions,
+        active_cli_agent_sessions: &active_cli_agent_sessions,
     });
 
     // Pin the discover future so it survives cancellation by other select!
@@ -1224,7 +1224,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
-        active_sessions: active_sessions.clone(),
+        active_cli_agent_sessions: active_cli_agent_sessions.clone(),
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,
@@ -1300,7 +1300,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 if let Some(evicted) =
                     evict_oldest_idle_entry(&shared.idle_pool, &shared.status).await
                 {
-                    let session_fingerprint = diagnostic_session_fingerprint(evicted.session_id());
+                    let session_fingerprint =
+                        diagnostic_session_fingerprint(evicted.cli_agent_session_id());
                     info!(
                         session_fingerprint = %session_fingerprint,
                         profile = %evicted.profile_name(),

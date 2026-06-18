@@ -293,7 +293,7 @@ impl ExecutionContext {
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
     /// `None`; the executor reads the CLI-generated session id from the
-    /// guest filesystem post-execution (see `read_guest_session_id`).
+    /// guest filesystem post-execution (see `read_guest_cli_agent_session_id`).
     pub fn cli_agent_session_id(&self) -> Option<&str> {
         self.resume_session
             .as_ref()

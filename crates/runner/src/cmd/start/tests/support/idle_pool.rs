@@ -14,7 +14,7 @@ fn make_synthetic_parked_candidate(
     ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
         sandbox: Box::new(MockSandbox::new("idle-test")),
         factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         sandbox_id: SandboxId::new_v4(),
         profile_name: profile_name.into(),
         device_rate_limits: None,
@@ -88,7 +88,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox,
             factory: factory_arc,
-            session_id: session_id.to_string(),
+            cli_agent_session_id: session_id.to_string(),
             sandbox_id,
             profile_name: profile_name.into(),
             device_rate_limits: None,

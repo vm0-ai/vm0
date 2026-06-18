@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use super::active_sessions::{ActiveSessionGuard, ActiveSessions};
+use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
@@ -71,7 +71,7 @@ pub(super) struct SpawnContext {
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_sessions: ActiveSessions,
+    pub(super) active_cli_agent_sessions: ActiveCliAgentSessions,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -85,7 +85,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) job_profile: JobProfile,
     pub(super) reuse_entry: Option<ReusableIdleSandbox>,
     pub(super) reuse_result: SandboxReuseResult,
-    pub(super) active_session_guard: ActiveSessionGuard,
+    pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
 }
 
 struct ExecutorInvocation {
@@ -188,7 +188,7 @@ impl ExecutorInvocation {
                         network_log_session: None,
                         workspace_image: None,
                         workspace_promotable: false,
-                        guest_session_id: None,
+                        discovered_cli_agent_session_id: None,
                     },
                     exit_code,
                     err,
@@ -206,7 +206,7 @@ struct FinalizationPhase {
     active_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
     profile_name: String,
-    session_id: Option<String>,
+    cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
     factory: SharedFactory,
@@ -237,7 +237,7 @@ impl FinalizationPhase {
             active_lease,
             reuse_result,
             profile_name,
-            session_id,
+            cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
             factory,
@@ -266,7 +266,7 @@ impl FinalizationPhase {
             network_log_session,
             workspace_image,
             workspace_promotable,
-            guest_session_id,
+            discovered_cli_agent_session_id,
         } = outcome;
 
         let completion_payload = CompletionPayload::new(
@@ -288,8 +288,8 @@ impl FinalizationPhase {
                 run_id,
                 sandbox_id,
                 profile_name,
-                session_id,
-                guest_session_id,
+                cli_agent_session_id,
+                discovered_cli_agent_session_id,
                 source_ip,
                 network_log_session,
                 workspace_image,
@@ -326,7 +326,7 @@ struct CompletionPhase {
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
     park_notify: Arc<tokio::sync::Notify>,
-    active_session_guard: ActiveSessionGuard,
+    active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
     cleanup_state: RunCleanupState,
 }
 
@@ -338,7 +338,7 @@ impl CompletionPhase {
             status,
             usage_flush_tx,
             park_notify,
-            active_session_guard,
+            active_cli_agent_session_guard,
             cleanup_state,
         } = self;
 
@@ -349,7 +349,7 @@ impl CompletionPhase {
         completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
-        drop(active_session_guard);
+        drop(active_cli_agent_session_guard);
         if needs_session_affinity_refresh {
             park_notify.notify_one();
         }
@@ -415,7 +415,7 @@ impl DeferredUploadPhase {
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// After a successful execution with a session ID available, the sandbox
+/// After a successful execution with a CLI agent session id available, the sandbox
 /// is parked in the idle pool instead of being destroyed.
 pub(super) fn spawn_job(
     request: SpawnJobRequest,
@@ -428,11 +428,11 @@ pub(super) fn spawn_job(
         job_profile,
         reuse_entry,
         reuse_result,
-        active_session_guard,
+        active_cli_agent_session_guard,
     } = request;
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
-    let session_id = if executor::validate_resume_session_id(&context).is_ok() {
+    let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
     } else {
         None
@@ -526,7 +526,7 @@ pub(super) fn spawn_job(
         active_lease,
         reuse_result,
         profile_name,
-        session_id,
+        cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
         factory,
@@ -549,14 +549,18 @@ pub(super) fn spawn_job(
     };
 
     jobs.spawn(async move {
-        let mut active_session_guard = active_session_guard;
+        let mut active_cli_agent_session_guard = active_cli_agent_session_guard;
         let body = async move {
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
             let executor_result = executor.execute().await;
-            if let Some(guest_session_id) = executor_result.outcome.guest_session_id.as_deref() {
-                active_session_guard.activate_late(guest_session_id);
+            if let Some(discovered_cli_agent_session_id) = executor_result
+                .outcome
+                .discovered_cli_agent_session_id
+                .as_deref()
+            {
+                active_cli_agent_session_guard.activate_late(discovered_cli_agent_session_id);
             }
             let cancelled_for_log = job_cancel.is_cancelled();
             log_terminal_job_outcome(
@@ -577,7 +581,7 @@ pub(super) fn spawn_job(
                 status,
                 usage_flush_tx,
                 park_notify,
-                active_session_guard,
+                active_cli_agent_session_guard,
                 cleanup_state: cleanup_state_for_body,
             }
             .complete(completion_ready)
@@ -1394,7 +1398,7 @@ mod tests {
             ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
                 sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-                session_id: "sess-idle-owned-cleanup".into(),
+                cli_agent_session_id: "sess-idle-owned-cleanup".into(),
                 sandbox_id,
                 profile_name: "vm0/default".into(),
                 device_rate_limits: None,

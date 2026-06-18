@@ -127,7 +127,7 @@ pub(crate) struct IdleParkRequest {
 pub(crate) struct IdleParkRequestParts {
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
-    pub(crate) session_id: String,
+    pub(crate) cli_agent_session_id: String,
     pub(crate) sandbox_id: SandboxId,
     pub(crate) profile_name: String,
     pub(crate) device_rate_limits: Option<DeviceRateLimits>,
@@ -138,7 +138,7 @@ pub(crate) struct IdleParkRequestParts {
 }
 
 struct IdleSandboxMetadata {
-    session_id: String,
+    cli_agent_session_id: String,
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
     /// doctor / kill / workspace-dir naming.
@@ -158,7 +158,7 @@ struct IdleSandboxMetadata {
 
 impl IdleSandboxMetadata {
     fn new(
-        session_id: String,
+        cli_agent_session_id: String,
         sandbox_id: SandboxId,
         profile_name: String,
         device_rate_limits: Option<DeviceRateLimits>,
@@ -166,7 +166,7 @@ impl IdleSandboxMetadata {
         storage_fingerprints: StorageFingerprints,
     ) -> Self {
         Self {
-            session_id,
+            cli_agent_session_id,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -176,8 +176,8 @@ impl IdleSandboxMetadata {
         }
     }
 
-    fn session_id(&self) -> &str {
-        &self.session_id
+    fn cli_agent_session_id(&self) -> &str {
+        &self.cli_agent_session_id
     }
 
     fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
@@ -245,7 +245,7 @@ pub struct ParkedIdleCandidate {
 pub(crate) struct SyntheticParkedIdleCandidateParts {
     pub sandbox: Box<dyn Sandbox>,
     pub factory: Arc<Box<dyn SandboxFactory>>,
-    pub session_id: String,
+    pub cli_agent_session_id: String,
     pub sandbox_id: SandboxId,
     pub profile_name: String,
     pub device_rate_limits: Option<DeviceRateLimits>,
@@ -284,7 +284,7 @@ impl IdleParkRequest {
         let IdleParkRequestParts {
             mut sandbox,
             factory,
-            session_id,
+            cli_agent_session_id,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -295,7 +295,7 @@ impl IdleParkRequest {
         } = self.parts;
 
         let metadata = IdleSandboxMetadata::new(
-            session_id,
+            cli_agent_session_id,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -373,7 +373,7 @@ impl ParkedIdleCandidate {
                 workspace_promotion: None,
             },
             metadata: IdleSandboxMetadata::new(
-                parts.session_id,
+                parts.cli_agent_session_id,
                 parts.sandbox_id,
                 parts.profile_name,
                 parts.device_rate_limits,
@@ -384,8 +384,8 @@ impl ParkedIdleCandidate {
         }
     }
 
-    fn session_id(&self) -> &str {
-        self.metadata.session_id()
+    fn cli_agent_session_id(&self) -> &str {
+        self.metadata.cli_agent_session_id()
     }
 
     #[cfg(test)]
@@ -486,7 +486,7 @@ pub struct ReusableIdleSandbox {
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
-    pub session_id: String,
+    pub cli_agent_session_id: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
     pub workspace_promotion: Option<WorkspaceImagePromotionContext>,
@@ -504,7 +504,7 @@ impl ReusableIdleSandbox {
             workspace_promotion,
         } = self;
         let IdleSandboxMetadata {
-            session_id,
+            cli_agent_session_id,
             sandbox_id: _,
             profile_name: _,
             device_rate_limits: _,
@@ -515,7 +515,7 @@ impl ReusableIdleSandbox {
 
         ReusableIdleSandboxParts {
             sandbox,
-            session_id,
+            cli_agent_session_id,
             source_ip,
             storage_fingerprints,
             workspace_promotion,
@@ -594,7 +594,7 @@ impl IdleDestroyPayload {
 pub struct IdleDestroyJob {
     payload: IdleDestroyPayload,
     budget_lease: BudgetLease,
-    session_id: String,
+    cli_agent_session_id: String,
     profile_name: String,
 }
 
@@ -608,7 +608,7 @@ impl IdleDestroyJob {
         let Self {
             payload,
             budget_lease,
-            session_id: _,
+            cli_agent_session_id: _,
             profile_name: _,
         } = self;
         let result = payload.promote_then_stop_and_destroy(context).await;
@@ -616,8 +616,8 @@ impl IdleDestroyJob {
         result.workspace_cache_promoted
     }
 
-    pub fn session_id(&self) -> &str {
-        &self.session_id
+    pub fn cli_agent_session_id(&self) -> &str {
+        &self.cli_agent_session_id
     }
 
     pub fn profile_name(&self) -> &str {
@@ -751,7 +751,7 @@ impl IdleEntry {
             ..
         } = self;
         let IdleSandboxMetadata {
-            session_id,
+            cli_agent_session_id,
             profile_name,
             ..
         } = metadata;
@@ -759,7 +759,7 @@ impl IdleEntry {
         IdleDestroyJob {
             payload: resources.into_destroy_payload(workspace_promotion_policy),
             budget_lease,
-            session_id,
+            cli_agent_session_id,
             profile_name,
         }
     }
@@ -818,18 +818,18 @@ impl IdlePool {
         parked_at: Instant,
         idle_timeout: Duration,
     ) -> ParkResult {
-        let session_id = candidate.session_id().to_string();
+        let cli_agent_session_id = candidate.cli_agent_session_id().to_string();
         if !self.parking_gate.is_open() {
             return ParkResult::Rejected(candidate.into_rejected());
         }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
             // At capacity and this session has no existing entry to replace.
-            if !self.entries.contains_key(&session_id) {
+            if !self.entries.contains_key(&cli_agent_session_id) {
                 return ParkResult::Rejected(candidate.into_rejected());
             }
         }
         let entry = candidate.into_idle_entry(parked_at, idle_timeout);
-        let result = match self.entries.insert(session_id, entry) {
+        let result = match self.entries.insert(cli_agent_session_id, entry) {
             Some(evicted) => ParkResult::Replaced(evicted.into_destroy_job()),
             None => ParkResult::Parked,
         };
@@ -1055,7 +1055,7 @@ mod tests {
         ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -1072,7 +1072,7 @@ mod tests {
         parked_at: Instant,
         idle_timeout: Duration,
     ) -> ParkResult {
-        assert_eq!(candidate.session_id(), session_id);
+        assert_eq!(candidate.cli_agent_session_id(), session_id);
         pool.park_at_for_test(candidate, parked_at, idle_timeout)
     }
 
@@ -1106,7 +1106,7 @@ mod tests {
         IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -1133,7 +1133,7 @@ mod tests {
         };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(candidate.session_id(), "session-1");
+        assert_eq!(candidate.cli_agent_session_id(), "session-1");
     }
 
     #[tokio::test]
@@ -1173,7 +1173,7 @@ mod tests {
         let request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             sandbox_id,
             profile_name: profile_name.into(),
             device_rate_limits: None,
@@ -1189,7 +1189,7 @@ mod tests {
         };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(candidate.session_id(), session_id);
+        assert_eq!(candidate.cli_agent_session_id(), session_id);
         assert_eq!(candidate.sandbox_id(), sandbox_id);
         assert_eq!(candidate.metadata.profile_name, profile_name);
 
@@ -1208,7 +1208,7 @@ mod tests {
         let sandbox = *sandbox;
         assert_eq!(sandbox.sandbox_id(), sandbox_id);
         let reused_parts = sandbox.into_parts();
-        assert_eq!(reused_parts.session_id, session_id);
+        assert_eq!(reused_parts.cli_agent_session_id, session_id);
         assert_eq!(reused_parts.source_ip, source_ip);
         assert_eq!(
             reused_parts.storage_fingerprints.storages,
