@@ -346,12 +346,12 @@ class _OpenAIResponsesSseUsageHandler:
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._eventless_prefix)
-            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
+            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
             extractor.feed(bytes(self._eventless_prefix))
             self._eventless_prefix = None
         if self._named_event_prefix is not None and self._data_event_type is None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._named_event_prefix)
-            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
+            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
             extractor.feed(bytes(self._named_event_prefix))
             self._named_event_prefix = None
         extractor = self._extractor
@@ -399,6 +399,9 @@ class _OpenAIResponsesSseUsageHandler:
         self._extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
         return self._extractor
 
+    def _should_include_type_scalar(self) -> bool:
+        return self._data_event_type is None or self._on_parse_error is not None
+
     def _feed_eventless_data(self, chunk: bytes) -> None:
         prefix = self._eventless_prefix
         if prefix is None:
@@ -426,7 +429,7 @@ class _OpenAIResponsesSseUsageHandler:
 
         self._data_event_type = _resolved_data_event_type(event_type)
         self._fallback_eventless_prefix_to_full_extractor(
-            include_type=self._data_event_type is None
+            include_type=self._should_include_type_scalar()
         )
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
@@ -456,7 +459,9 @@ class _OpenAIResponsesSseUsageHandler:
             return
 
         self._data_event_type = _resolved_data_event_type(event_type)
-        self._fallback_named_prefix_to_full_extractor(include_type=self._data_event_type is None)
+        self._fallback_named_prefix_to_full_extractor(
+            include_type=self._should_include_type_scalar()
+        )
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
 
