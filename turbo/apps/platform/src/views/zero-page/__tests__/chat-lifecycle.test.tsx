@@ -2681,12 +2681,14 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("loads older chat history from the thread control", async () => {
+  it("silently loads older chat history after rendering latest messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
+    const beforeHistoryGate = context.mocks.deferred<void>();
 
     mockChatLifecycle(context, {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "History review",
+      beforeHistoryGate: beforeHistoryGate.promise,
       historyMessages: [
         {
           role: "assistant",
@@ -2715,24 +2717,26 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current launch risks are ready."),
       ).toBeInTheDocument();
-      expect(buttonByText("Load history")).toBeInTheDocument();
     });
+    expect(queryButtonByText("Load history")).toBeNull();
     expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
 
-    click(buttonByText("Load history"));
+    beforeHistoryGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
-      expect(queryButtonByText("Load history")).not.toBeInTheDocument();
+      expect(queryButtonByText("Load history")).toBeNull();
     });
   });
 
   it("keeps chat scroll controls visible while browsing older messages", async () => {
     const resizeObserver = mockResizeObserver();
     const olderReply = "Scroll back to the planning notes.";
+    const beforeHistoryGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
       threadId: "scroll-history-thread",
       threadTitle: "Scroll history",
+      beforeHistoryGate: beforeHistoryGate.promise,
       historyMessages: [
         {
           role: "assistant",
@@ -2751,16 +2755,24 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: "/chats/scroll-history-thread" });
 
+    let scrollContainer: HTMLElement | undefined;
     await waitFor(() => {
-      expect(screen.getByText("Visible launch update 7")).toBeInTheDocument();
-      expect(buttonByText("Load history")).toBeInTheDocument();
+      scrollContainer = chatScrollContainer();
+      expect(scrollContainer).toBeInTheDocument();
     });
-
-    const scrollContainer = chatScrollContainer();
+    if (scrollContainer === undefined) {
+      throw new Error("Chat scroll container not found");
+    }
     setScrollMetrics(scrollContainer, {
       scrollHeight: 1200,
       clientHeight: 300,
     });
+
+    await waitFor(() => {
+      expect(screen.getByText("Visible launch update 7")).toBeInTheDocument();
+      expect(queryButtonByText("Load history")).toBeNull();
+    });
+
     scrollContainer.scrollTop = 900;
     fireEvent.scroll(scrollContainer);
     fireEvent.wheel(scrollContainer);
@@ -2790,7 +2802,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "ArrowUp" });
     expect(scrollContainer.scrollTop).toBe(420);
 
-    click(buttonByText("Load history"));
+    beforeHistoryGate.resolve();
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
     });
