@@ -96,21 +96,27 @@ function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [
     {
       id: "workflow-trigger-weekday-brief",
-      name: "Weekday brief",
       kind: "schedule",
+      schedule: {
+        type: "cron",
+        cronExpression: "0 9 * * 1-5",
+        timezone: "UTC",
+      },
+      scheduleSummary: "Weekdays at 9:00 AM",
+      agentId: "c0000000-0000-4000-a000-000000000201",
       enabled: true,
-      description: "Every weekday at 9:00 AM",
       chatThreadId: "thread_weekday_brief",
       nextRunAt: "2026-06-19T01:00:00.000Z",
       lastRunAt: "2026-06-18T01:00:00.000Z",
     },
     {
-      id: "workflow-trigger-vip-escalation",
-      name: "VIP escalation",
-      kind: "event",
+      id: "workflow-trigger-hourly-sync",
+      kind: "schedule",
+      schedule: { type: "loop", intervalSeconds: 3600 },
+      scheduleSummary: "Every 1 hour",
+      agentId: null,
       enabled: false,
-      description: "When a priority customer event arrives",
-      chatThreadId: "thread_vip_escalation",
+      chatThreadId: "thread_hourly_sync",
       nextRunAt: null,
       lastRunAt: null,
     },
@@ -433,9 +439,9 @@ describe("workflows page", () => {
     expect(screen.getByText("Attached agents")).toBeInTheDocument();
     expect(screen.getByText("Support Bot")).toBeInTheDocument();
     expect(screen.getByText("Triggers")).toBeInTheDocument();
-    expect(screen.getByText("Weekday brief")).toBeInTheDocument();
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-    expect(screen.getByText("VIP escalation")).toBeInTheDocument();
+    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Paused")).toBeInTheDocument();
     expect(screen.getAllByText("Open thread")).toHaveLength(2);
 

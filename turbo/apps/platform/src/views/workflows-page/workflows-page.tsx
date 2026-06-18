@@ -630,7 +630,7 @@ function WorkflowTriggerRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
-            {trigger.name}
+            {trigger.scheduleSummary}
           </span>
           <span
             className={cn(
@@ -644,7 +644,7 @@ function WorkflowTriggerRow({
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {trigger.description ?? triggerKindLabel(trigger.kind)}
+          {triggerKindLabel(trigger.kind)}
         </p>
         {trigger.chatThreadId ? (
           <Link
