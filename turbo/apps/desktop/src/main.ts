@@ -88,6 +88,7 @@ import {
   type DesktopAuthCallback,
 } from "./desktop-auth";
 import {
+  buildDesktopMainWindowSizeOptions,
   hideDockForHiddenMainWindow,
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
@@ -910,10 +911,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   await showDockForActiveMainWindow();
   const window = new BrowserWindow({
     ...browserWindowOptions(),
-    width: 1280,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 700,
+    ...buildDesktopMainWindowSizeOptions(),
   });
 
   mainWindow = window;
