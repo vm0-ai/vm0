@@ -37,6 +37,9 @@ function parseSlideCount(value: string): number {
   if (!Number.isInteger(slideCount)) {
     throw new InvalidArgumentError("slides must be an integer");
   }
+  if (slideCount < 4 || slideCount > 20) {
+    throw new InvalidArgumentError("slides must be between 4 and 20");
+  }
   return slideCount;
 }
 
@@ -184,6 +187,9 @@ ${formatRegistryListing(templates, "presentation templates")}`;
             "Use one section per slide and keep repeated elements in consistent positions.",
             "Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
             "Keep slide text readable from across a room; avoid memo-like walls of text.",
+            "Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",
+            "Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a selected template layout or device.",
+            "Adapt the selected template to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
             "Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
             "Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
             "Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
