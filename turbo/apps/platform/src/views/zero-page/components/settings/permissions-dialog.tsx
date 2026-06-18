@@ -1561,6 +1561,7 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
       connectorType: props.connectorType,
     }),
   );
+  const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
   const loadedMetadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   const loadedInitialState = loadedMetadata
@@ -1573,6 +1574,7 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
       })
     : null;
   const handleClose = () => {
+    resetPermissionDrawerState();
     props.onClose();
   };
   const loading = metadataLoadable.state === "loading";

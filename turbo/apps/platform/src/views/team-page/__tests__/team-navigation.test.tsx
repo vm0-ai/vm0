@@ -98,6 +98,19 @@ function buttonByText(
   return button;
 }
 
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitem").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -613,7 +626,32 @@ describe("team page navigation", () => {
       expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
       expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
     });
-    click(buttonByText("Apply", loadedPermissionsDialog));
+
+    click(buttonByAriaLabel("Close", loadedPermissionsDialog));
+    await waitFor(() => {
+      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Axiom permissions"));
+    const reopenedPermissionsDialog = await findLoadedPermissionsDialog();
+    const reopenedPermissionRow = await permissionRowByName(
+      reopenedPermissionsDialog,
+      "annotations|create",
+    );
+    expect(
+      within(reopenedPermissionRow).queryByText("24h"),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
+
+    click(screen.getByLabelText("annotations|create allow options"));
+    click(menuItemByText("Allow for 24h"));
+    await waitFor(() => {
+      expect(
+        within(reopenedPermissionRow).getByText("24h"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", reopenedPermissionsDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
