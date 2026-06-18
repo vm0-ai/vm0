@@ -1641,16 +1641,20 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
-          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${JOB_REF}"
-          SVC="${JOB_REF}-keepalive"
+          KEEPALIVE_REF="${JOB_REF}-r${RUN_ID}-a${RUN_ATTEMPT}"
+          SVC="${KEEPALIVE_REF}-keepalive"
+          GROUP="vm0/keepalive-${KEEPALIVE_REF}"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${KEEPALIVE_REF}"
 
-          echo "=== Cleaning stale keep-alive runner state ==="
+          echo "=== Cleaning existing keep-alive runner state for this run ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
           set -euo pipefail
           BIN_DIR=$1; SVC=$2; GROUP_DIR=$3; RUNNER_DIR=$4
@@ -1675,22 +1679,18 @@ jobs:
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-            --name ${JOB_REF}-keepalive \
-            --group vm0/keepalive-${JOB_REF} \
-            --runner-dirname ${JOB_REF}-keepalive \
+            --name ${SVC} \
+            --group ${GROUP} \
+            --runner-dirname ${SVC} \
             --max-concurrent 2 \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running keep-alive test ==="
-          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" <<'REMOTE_SCRIPT'
           set -euo pipefail
-          BIN_DIR=$1; JOB_REF=$2
-          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
-          SVC="${JOB_REF}-keepalive"
+          BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
           UNIT="vm0-runner-${SVC}.service"
-          GROUP="vm0/keepalive-${JOB_REF}"
-          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${JOB_REF}"
           SESSION_ID="e2e-keepalive-test-session"
 
           fail() { echo "FAIL: $1"; exit 1; }
@@ -1712,7 +1712,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit or local queue files from a previous CI run.
+          # Clean up any residual transient unit or local queue files for this isolated run name.
           # stop() returns Ok when no service exists, so no need for || true.
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           wait_for_unit_inactive
