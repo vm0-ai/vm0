@@ -30,7 +30,7 @@ describe("generation gallery data", () => {
     ).toBe(true);
   });
 
-  it("builds onboarding remix URLs for hosted website items", () => {
+  it("builds paid onboarding remix URLs for hosted website items", () => {
     const item = GALLERY_ITEMS.find((candidate) => {
       return candidate.artifactUrl;
     });

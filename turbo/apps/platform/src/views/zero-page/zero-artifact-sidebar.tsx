@@ -1003,7 +1003,7 @@ function ArtifactIframeBody({
         focusOnMount={fullscreen}
         src={versionedSrc}
         title={`${filename} preview`}
-        sandbox="allow-scripts"
+        sandbox="allow-same-origin allow-scripts"
         className="h-full w-full border-0 bg-background"
         data-testid={`artifact-sidebar-body-${kind}`}
       />

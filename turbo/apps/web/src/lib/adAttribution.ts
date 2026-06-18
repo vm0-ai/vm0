@@ -304,7 +304,7 @@ function readAllowedRedirectUrl(
   }
 
   try {
-    const redirectUrl = normalizePaidOnboardingRedirectUrl(
+    const redirectUrl = normalizeOnboardingRedirectUrl(
       new URL(rawRedirectUrl),
       paidOnboardingUrl,
     );
@@ -316,7 +316,7 @@ function readAllowedRedirectUrl(
   }
 }
 
-function normalizePaidOnboardingRedirectUrl(
+function normalizeOnboardingRedirectUrl(
   redirectUrl: URL,
   paidOnboardingUrl: string | undefined,
 ): URL {
