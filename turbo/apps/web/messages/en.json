@@ -145,6 +145,19 @@
       },
       "buttonText": "Start with Team"
     },
+    "enterprise": {
+      "description": "Advanced security, dedicated support, and custom limits for your organization.",
+      "features": {
+        "credits": "Custom credit volume",
+        "concurrentRuns": "Custom concurrent runs",
+        "unlimitedAgents": "Unlimited total agents",
+        "bringOwnLLM": "Bring your own LLM keys",
+        "sso": "SSO & SAML",
+        "dedicatedSupport": "Dedicated support & SLA",
+        "annualBilling": "Volume & annual billing"
+      },
+      "buttonText": "Contact sales"
+    },
     "needMoreCredits": "Need more credits?",
     "topUpDescription": "Top up anytime at",
     "topUpRate": "1,000 credits per $1",
@@ -204,7 +217,8 @@
       "120k": "120,000",
       "unlimited": "Unlimited",
       "oneMonth": "1 month",
-      "allConnectors": "All connectors"
+      "allConnectors": "All connectors",
+      "custom": "Custom"
     },
     "faq": {
       "title": "Frequently asked questions",

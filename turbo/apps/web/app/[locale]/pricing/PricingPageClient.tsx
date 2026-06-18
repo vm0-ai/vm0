@@ -206,6 +206,26 @@ export function PricingPageClient() {
                 buttonHref="/sign-up?plan=team"
                 buttonClassName="btn-secondary-large"
               />
+
+              {/* Enterprise Plan */}
+              <PricingCard
+                title="Enterprise"
+                price="Custom"
+                period=""
+                description={t("enterprise.description")}
+                features={[
+                  t("enterprise.features.credits"),
+                  t("enterprise.features.concurrentRuns"),
+                  t("enterprise.features.unlimitedAgents"),
+                  t("enterprise.features.bringOwnLLM"),
+                  t("enterprise.features.sso"),
+                  t("enterprise.features.dedicatedSupport"),
+                  t("enterprise.features.annualBilling"),
+                ]}
+                buttonText={t("enterprise.buttonText")}
+                buttonHref="/support"
+                buttonClassName="btn-secondary-large"
+              />
             </div>
           </div>
 
@@ -325,6 +345,19 @@ export function PricingPageClient() {
                     >
                       Team
                     </th>
+                    <th
+                      style={{
+                        textAlign: "center",
+                        padding: "24px 20px",
+                        background: "transparent",
+                        color: "var(--text-primary)",
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        borderBottom: "1px solid var(--border-light)",
+                      }}
+                    >
+                      Enterprise
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,36 +367,42 @@ export function PricingPageClient() {
                     description={t("tableFeatures.creditsPerMonthDesc")}
                     pro={t("tableValues.20k")}
                     team={t("tableValues.120k")}
+                    enterprise={t("tableValues.custom")}
                   />
                   <TableRow
                     feature={t("tableFeatures.concurrentRuns")}
                     description={t("tableFeatures.concurrentRunsDesc")}
                     pro="2"
                     team="10"
+                    enterprise={t("tableValues.custom")}
                   />
                   <TableRow
                     feature={t("tableFeatures.totalAgents")}
                     description={t("tableFeatures.totalAgentsDesc")}
                     pro={t("tableValues.unlimited")}
                     team={t("tableValues.unlimited")}
+                    enterprise={t("tableValues.unlimited")}
                   />
                   <TableRow
                     feature={t("tableFeatures.creditTopUp")}
                     description={t("tableFeatures.creditTopUpDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.autoRecharge")}
                     description={t("tableFeatures.autoRechargeDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.scheduledRuns")}
                     description={t("tableFeatures.scheduledRunsDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
 
                   <TableSection
@@ -374,24 +413,28 @@ export function PricingPageClient() {
                     description={t("tableFeatures.connectorsDesc")}
                     pro={t("tableValues.allConnectors")}
                     team={t("tableValues.allConnectors")}
+                    enterprise={t("tableValues.allConnectors")}
                   />
                   <TableRow
                     feature={t("tableFeatures.multiChannel")}
                     description={t("tableFeatures.multiChannelDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.bringOwnLLM")}
                     description={t("tableFeatures.bringOwnLLMDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.voiceInput")}
                     description={t("tableFeatures.voiceInputDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
 
                   <TableSection title={t("sections.securityAndCompliance")} />
@@ -400,18 +443,21 @@ export function PricingPageClient() {
                     description={t("tableFeatures.sandboxedExecutionDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.fullAuditTrail")}
                     description={t("tableFeatures.fullAuditTrailDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.noCredentialExposure")}
                     description={t("tableFeatures.noCredentialExposureDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
 
                   <TableSection title={t("sections.collaboration")} />
@@ -420,12 +466,14 @@ export function PricingPageClient() {
                     description={t("tableFeatures.teamMembersDesc")}
                     pro={t("tableValues.unlimited")}
                     team={t("tableValues.unlimited")}
+                    enterprise={t("tableValues.unlimited")}
                   />
                   <TableRow
                     feature={t("tableFeatures.memberUsage")}
                     description={t("tableFeatures.memberUsageDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
 
                   <TableSection title={t("sections.support")} />
@@ -434,18 +482,21 @@ export function PricingPageClient() {
                     description={t("tableFeatures.communitySupportDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.emailSupport")}
                     description={t("tableFeatures.emailSupportDesc")}
                     pro={true}
                     team={true}
+                    enterprise={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.prioritySupport")}
                     description={t("tableFeatures.prioritySupportDesc")}
                     pro={false}
                     team={true}
+                    enterprise={true}
                   />
                 </tbody>
               </table>
@@ -516,7 +567,7 @@ function TableSection({ title }: { title: string }) {
   return (
     <tr>
       <td
-        colSpan={3}
+        colSpan={4}
         style={{
           padding: "32px 20px 16px 20px",
           fontSize: "15px",
@@ -537,11 +588,13 @@ function TableRow({
   description,
   pro,
   team,
+  enterprise,
 }: {
   feature: string;
   description?: string;
   pro: string | boolean;
   team: string | boolean;
+  enterprise: string | boolean;
 }) {
   const renderCell = (value: string | boolean) => {
     if (typeof value === "boolean") {
@@ -607,6 +660,16 @@ function TableRow({
         }}
       >
         {renderCell(team)}
+      </td>
+      <td
+        style={{
+          padding: "16px 20px",
+          textAlign: "center",
+          color: "var(--text-secondary)",
+          borderBottom: "1px solid var(--border-light)",
+        }}
+      >
+        {renderCell(enterprise)}
       </td>
     </tr>
   );

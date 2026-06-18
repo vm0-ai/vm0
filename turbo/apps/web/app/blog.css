@@ -1260,9 +1260,9 @@
 /* Pricing Page */
 .pricing-cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
-  max-width: 820px;
+  max-width: 1140px;
   margin: 0 auto 40px;
 }
 
@@ -1318,7 +1318,7 @@
   border-spacing: 0;
   font-size: 15px;
   font-weight: 300;
-  min-width: 600px;
+  min-width: 760px;
 }
 
 @media (max-width: 768px) {
