@@ -25,7 +25,6 @@ import {
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
-type CompletedBillingCheckoutTier = "pro" | "team";
 type DowngradeTargetTier = "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
@@ -171,13 +170,6 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
-interface CompletedBillingCheckout {
-  readonly tier: CompletedBillingCheckoutTier;
-  readonly sessionId: string | null;
-}
-
-const internalCompletedBillingCheckout$ =
-  state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
@@ -202,9 +194,6 @@ export const restoreDialogOpen$ = computed((get) => {
 });
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
-});
-export const completedBillingCheckout$ = computed((get) => {
-  return get(internalCompletedBillingCheckout$);
 });
 export const concurrencySubscriptionQuantity$ = computed((get) => {
   return get(internalConcurrencySubscriptionQuantity$);
@@ -249,19 +238,6 @@ export const openConcurrencyConfirmDialog$ = command(
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
-export const markCompletedBillingCheckout$ = command(
-  (
-    { set },
-    tier: CompletedBillingCheckoutTier,
-    sessionId: string | null = null,
-  ) => {
-    set(internalCompletedBillingCheckout$, { tier, sessionId });
-  },
-);
-export const clearCompletedBillingCheckout$ = command(({ set }) => {
-  set(internalCompletedBillingCheckout$, null);
-});
-
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -335,22 +311,6 @@ export const startCheckout$ = command(
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
     }
-  },
-);
-
-export const completeCheckoutSession$ = command(
-  async ({ get }, sessionId: string, signal: AbortSignal): Promise<boolean> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCheckoutContract);
-    const result = await accept(
-      client.complete({
-        body: { sessionId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return result.body.completed;
   },
 );
 

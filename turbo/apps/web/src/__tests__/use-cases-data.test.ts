@@ -147,7 +147,7 @@ describe("use cases translation coverage", () => {
 describe("buildPromptHref", () => {
   const connectors = USE_CASES[0]!.connectors;
 
-  it("points at /onboarding so Try It always goes through the connector step", () => {
+  it("points at /onboarding so Try It goes through the paid onboarding handoff", () => {
     const href = buildPromptHref(
       "show me recent errors",
       connectors,

@@ -3,7 +3,6 @@ import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { agents$, defaultAgentId$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import {
-  reloadUserPreferences$,
   updateUserPreference$,
   userPreferences$,
 } from "./settings/user-preferences.ts";
@@ -70,7 +69,3 @@ export const updatePinnedAgentIds$ = command(
     await set(updateUserPreference$, { pinnedAgentIds: ids }, signal);
   },
 );
-
-export const reloadPinnedAgents$ = command(({ set }) => {
-  set(reloadUserPreferences$);
-});

@@ -1,16 +1,12 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { command } from "ccstate";
 import { clerk$, resolveWebOrigin } from "../auth.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { searchParams$ } from "../route.ts";
 import {
-  onboardingEagerInitialized$,
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
 } from "./zero-onboarding.ts";
 
 const PAID_ONBOARDING_PATH = "/onboarding/2afcf6";
-const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
 
 function paidOnboardingUrl(searchParams: URLSearchParams): string {
   const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
@@ -42,39 +38,16 @@ const redirectToPaidOnboarding$ = command(
   },
 );
 
-function inAppOnboardingSearchParams(
-  searchParams: URLSearchParams,
-): URLSearchParams | undefined {
-  const forwarded = new URLSearchParams();
-  for (const key of FORWARDED_ONBOARDING_PARAMS) {
-    const value = searchParams.get(key);
-    if (value !== null) {
-      forwarded.set(key, value);
-    }
-  }
-  return forwarded.toString().length > 0 ? forwarded : undefined;
-}
-
-const redirectToInAppOnboarding$ = command(
-  ({ get, set }, searchParams?: URLSearchParams) => {
-    set(detachedNavigateTo$, "/onboarding", {
-      replace: true,
-      searchParams: inAppOnboardingSearchParams(
-        searchParams ?? get(searchParams$),
-      ),
-    });
+export const redirectToConfiguredOnboarding$ = command(
+  ({ set }, searchParams?: URLSearchParams) => {
+    set(redirectToPaidOnboarding$, searchParams);
   },
 );
 
-export const redirectToConfiguredOnboarding$ = command(
-  ({ get, set }, searchParams?: URLSearchParams) => {
-    const incoming = searchParams ?? get(searchParams$);
-    const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.PaidOnboardingRedirect]) {
-      set(redirectToPaidOnboarding$, incoming);
-      return;
-    }
-    set(redirectToInAppOnboarding$, incoming);
+export const setupOnboardingRedirectPage$ = command(
+  ({ set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    set(redirectToConfiguredOnboarding$);
   },
 );
 
@@ -92,14 +65,6 @@ export const redirectToConfiguredOnboarding$ = command(
  */
 export const onboardGuard$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    // Admin has already provisioned the workspace via eager init this
-    // session; the server may not have surfaced the new state in the cached
-    // status yet, but locally we know onboarding is done. Don't redirect
-    // back to /onboarding when they navigate elsewhere (e.g. continue-in-web).
-    if (get(onboardingEagerInitialized$)) {
-      return false;
-    }
-
     const needsOnboarding = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
 
