@@ -1,220 +1,132 @@
 import { command, computed, state } from "ccstate";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PermissionPolicy } from "./permissions.ts";
 
-// ---------------------------------------------------------------------------
-// Permissions dialog form state
-// ---------------------------------------------------------------------------
+import {
+  createEmptyPermissionDraftIntent,
+  type PermissionDraftIntent,
+} from "./permission-draft-intent.ts";
 
-const internalAllPolicies$ = state<
-  Record<string, Record<string, PermissionPolicy>>
->({});
-export const permissionAllPolicies$ = computed((get) => {
-  return get(internalAllPolicies$);
-});
-
-const internalUnknownPolicy$ = state<FirewallPolicyValue>("allow");
-export const permissionUnknownPolicy$ = computed((get) => {
-  return get(internalUnknownPolicy$);
-});
-export const setPermissionUnknownPolicy$ = command(
-  ({ set }, value: FirewallPolicyValue) => {
-    set(internalUnknownPolicy$, value);
-  },
-);
-
-const internalFormKey$ = state<string | null>(null);
-const internalResetPending$ = state(false);
-export const permissionConnectorResetPending$ = computed((get) => {
-  return get(internalResetPending$);
-});
-
-interface ApplyPermissionPoliciesOptions {
-  formKey: string;
-  ref: string;
+interface PermissionDrawerUiState {
+  readonly key: string | null;
+  readonly draft: PermissionDraftIntent;
+  readonly expandedGroups: ReadonlySet<string>;
+  readonly visibleCounts: Readonly<Record<string, number>>;
+  readonly search: string;
+  readonly saving: boolean;
+  readonly scrolled: boolean;
 }
 
-export const setPermissionPolicy$ = command(
-  ({ get, set }, ref: string, name: string, policy: PermissionPolicy) => {
-    const all = get(internalAllPolicies$);
-    const current = all[ref] ?? {};
-    set(internalAllPolicies$, {
-      ...all,
-      [ref]: { ...current, [name]: policy },
-    });
-  },
+function emptyPermissionDrawerUiState(
+  key: string | null,
+): PermissionDrawerUiState {
+  return {
+    key,
+    draft: createEmptyPermissionDraftIntent(),
+    expandedGroups: new Set(),
+    visibleCounts: {},
+    search: "",
+    saving: false,
+    scrolled: false,
+  };
+}
+
+export function permissionDrawerUiStateForKey(
+  current: PermissionDrawerUiState,
+  key: string,
+): PermissionDrawerUiState {
+  return current.key === key ? current : emptyPermissionDrawerUiState(key);
+}
+
+function stateForKey(
+  current: PermissionDrawerUiState,
+  key: string,
+): PermissionDrawerUiState {
+  return current.key === key ? current : emptyPermissionDrawerUiState(key);
+}
+
+const internalPermissionDrawerUiState$ = state<PermissionDrawerUiState>(
+  emptyPermissionDrawerUiState(null),
 );
 
-export const setPermissionAllPolicies$ = command(
-  ({ get, set }, ref: string, policies: Record<string, PermissionPolicy>) => {
-    const all = get(internalAllPolicies$);
-    set(internalAllPolicies$, { ...all, [ref]: policies });
-  },
-);
-
-const internalGrantExpirationFormKey$ = state<string | null>(null);
-const internalGrantExpirations$ = state<
-  Record<string, UserPermissionGrantExpiresIn>
->({});
-export const permissionGrantExpirations$ = computed((get) => {
-  return get(internalGrantExpirations$);
+export const permissionDrawerUiState$ = computed((get) => {
+  return get(internalPermissionDrawerUiState$);
 });
-export const setPermissionGrantExpiration$ = command(
+
+export const updatePermissionDrawerDraft$ = command(
   (
     { get, set },
-    permission: string,
-    expiresIn: UserPermissionGrantExpiresIn | null,
+    key: string,
+    update: (current: PermissionDraftIntent) => PermissionDraftIntent,
   ) => {
-    const current = get(internalGrantExpirations$);
-    if (expiresIn === null) {
-      const next = { ...current };
-      delete next[permission];
-      set(internalGrantExpirations$, next);
-      return;
-    }
-    set(internalGrantExpirations$, {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    set(internalPermissionDrawerUiState$, {
       ...current,
-      [permission]: expiresIn,
+      draft: update(current.draft),
     });
   },
 );
 
-export const stagePermissionConnectorReset$ = command(
-  (
-    { get, set },
-    formKey: string,
-    ref: string,
-    policies: Record<string, PermissionPolicy>,
-    unknownPolicy: FirewallPolicyValue,
-  ) => {
-    if (get(internalFormKey$) !== formKey) {
-      return;
-    }
-    const all = get(internalAllPolicies$);
-    set(internalAllPolicies$, { ...all, [ref]: policies });
-    set(internalUnknownPolicy$, unknownPolicy);
-    set(internalGrantExpirations$, {});
-    set(internalResetPending$, true);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Scroll tracking
-// ---------------------------------------------------------------------------
-
-const internalScrolled$ = state(false);
-export const permissionScrolled$ = computed((get) => {
-  return get(internalScrolled$);
-});
-export const setPermissionScrolled$ = command(({ set }, value: boolean) => {
-  set(internalScrolled$, value);
-});
-
-// ---------------------------------------------------------------------------
-// Expanded groups
-// ---------------------------------------------------------------------------
-
-const internalExpandedGroups$ = state<Set<string>>(new Set());
-export const permissionExpandedGroups$ = computed((get) => {
-  return get(internalExpandedGroups$);
-});
-export const togglePermissionGroup$ = command(
-  ({ get, set }, category: string) => {
-    const prev = get(internalExpandedGroups$);
-    const next = new Set(prev);
-    if (next.has(category)) {
-      next.delete(category);
+export const togglePermissionDrawerGroup$ = command(
+  ({ get, set }, key: string, category: string) => {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    const expandedGroups = new Set(current.expandedGroups);
+    if (expandedGroups.has(category)) {
+      expandedGroups.delete(category);
     } else {
-      next.add(category);
+      expandedGroups.add(category);
     }
-    set(internalExpandedGroups$, next);
+    set(internalPermissionDrawerUiState$, {
+      ...current,
+      expandedGroups,
+    });
   },
 );
 
-export const initPermissionPolicies$ = command(
-  (
-    { get, set },
-    formKey: string,
-    policies: Record<string, Record<string, PermissionPolicy>>,
-    unknownPolicy: FirewallPolicyValue,
-  ) => {
-    if (get(internalFormKey$) === formKey) {
-      return;
-    }
-    set(internalFormKey$, formKey);
-    set(internalAllPolicies$, policies);
-    set(internalUnknownPolicy$, unknownPolicy);
-    set(internalResetPending$, false);
-    set(internalScrolled$, false);
-    set(internalExpandedGroups$, new Set());
+export const showMorePermissionDrawerRows$ = command(
+  ({ get, set }, key: string, rowKey: string, pageSize: number) => {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    set(internalPermissionDrawerUiState$, {
+      ...current,
+      visibleCounts: {
+        ...current.visibleCounts,
+        [rowKey]: (current.visibleCounts[rowKey] ?? pageSize) + pageSize,
+      },
+    });
   },
 );
 
-export const initPermissionGrantExpirations$ = command(
-  (
-    { get, set },
-    formKey: string,
-    expirations: Record<string, UserPermissionGrantExpiresIn>,
-  ) => {
-    if (get(internalGrantExpirationFormKey$) === formKey) {
-      return;
-    }
-    set(internalGrantExpirationFormKey$, formKey);
-    set(internalGrantExpirations$, expirations);
+export const setPermissionDrawerSearch$ = command(
+  ({ get, set }, key: string, search: string) => {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    const visibleCounts = { ...current.visibleCounts };
+    delete visibleCounts.permissions;
+    set(internalPermissionDrawerUiState$, {
+      ...current,
+      search,
+      visibleCounts,
+    });
   },
 );
 
-export const resetPermissionPolicies$ = command(
-  ({ get, set }, formKey: string) => {
-    if (get(internalFormKey$) !== formKey) {
-      return;
-    }
-    set(internalFormKey$, null);
-    set(internalAllPolicies$, {});
-    set(internalUnknownPolicy$, "allow");
-    set(internalResetPending$, false);
-    set(internalScrolled$, false);
-    set(internalExpandedGroups$, new Set());
+export const setPermissionDrawerSaving$ = command(
+  ({ get, set }, key: string, saving: boolean) => {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    set(internalPermissionDrawerUiState$, {
+      ...current,
+      saving,
+    });
   },
 );
 
-export const resetPermissionGrantExpirations$ = command(
-  ({ get, set }, formKey: string) => {
-    if (get(internalGrantExpirationFormKey$) !== formKey) {
-      return;
-    }
-    set(internalGrantExpirationFormKey$, null);
-    set(internalGrantExpirations$, {});
+export const setPermissionDrawerScrolled$ = command(
+  ({ get, set }, key: string, scrolled: boolean) => {
+    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    set(internalPermissionDrawerUiState$, {
+      ...current,
+      scrolled,
+    });
   },
 );
 
-// ---------------------------------------------------------------------------
-// Apply (save) command
-// ---------------------------------------------------------------------------
-
-export const applyPermissionPolicies$ = command(
-  async (
-    { get },
-    options: ApplyPermissionPoliciesOptions,
-    onApply: (
-      policies: Record<string, Record<string, PermissionPolicy>>,
-      unknownPolicy: FirewallPolicyValue,
-      resetPending: boolean,
-    ) => Promise<void>,
-    onClose: () => void,
-    _signal: AbortSignal,
-  ): Promise<void> => {
-    if (get(internalFormKey$) !== options.formKey) {
-      throw new Error("Permission policies form is not initialized");
-    }
-    const policies = get(internalAllPolicies$);
-    if (policies[options.ref] === undefined) {
-      throw new Error("Permission policies form is missing connector state");
-    }
-    const unknownPolicy = get(internalUnknownPolicy$);
-    const resetPending = get(internalResetPending$);
-    await onApply(policies, unknownPolicy, resetPending);
-    onClose();
-  },
-);
+export const resetPermissionDrawerState$ = command(({ set }) => {
+  set(internalPermissionDrawerUiState$, emptyPermissionDrawerUiState(null));
+});

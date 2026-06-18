@@ -2,7 +2,6 @@
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Sheet,
   SheetContent,
@@ -26,9 +25,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  expandFirewallMetadataDefaultPolicy,
   groupFirewallMetadataPermissionsByCategory,
-  resolveFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import {
@@ -42,31 +39,47 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
-  connectorDraftDiffersFromDefault,
-  hasConnectorResetPersistedEffect,
-} from "./permission-grant-reset-state.ts";
+  createPermissionDraftContext,
+  explicitGrantStateKey,
+  hasAnyPermissionDraftChange,
+  hasPermissionDraftDefaultDifference,
+  hasPermissionDraftGroupChange,
+  hasPermissionDraftPermissionChange,
+  hasPermissionDraftUnknownChange,
+  isPermissionDraftPristine,
+  permissionDraftMetadataKey,
+  resolvePermissionDraftExpiration,
+  resolvePermissionDraftGroupExpiration,
+  resolvePermissionDraftListPolicy,
+  resolvePermissionDraftPolicy,
+  resolvePermissionDraftUnknownPolicy,
+  restorePermissionDraftGroup,
+  restorePermissionDraftPermission,
+  restorePermissionDraftUnknown,
+  setPermissionDraftConnectorPolicy,
+  setPermissionDraftExpiration,
+  setPermissionDraftGroupExpiration,
+  setPermissionDraftGroupPolicy,
+  setPermissionDraftPolicy,
+  setPermissionDraftUnknownExpiration,
+  setPermissionDraftUnknownPolicy,
+  stagePermissionDraftConnectorRestore,
+  type PermissionDraftContext,
+  type PermissionDraftIntent,
+} from "../../../../signals/zero-page/settings/permission-draft-intent.ts";
 import { permissionGrantExpiryText } from "../../../../signals/permission-allow/permission-grant-expiration.ts";
-import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
-  permissionAllPolicies$,
-  initPermissionPolicies$,
-  resetPermissionPolicies$,
-  setPermissionPolicy$,
-  setPermissionAllPolicies$,
-  permissionScrolled$,
-  setPermissionScrolled$,
-  permissionExpandedGroups$,
-  togglePermissionGroup$,
-  applyPermissionPolicies$,
-  permissionUnknownPolicy$,
-  setPermissionUnknownPolicy$,
-  permissionConnectorResetPending$,
-  permissionGrantExpirations$,
-  setPermissionGrantExpiration$,
-  initPermissionGrantExpirations$,
-  resetPermissionGrantExpirations$,
-  stagePermissionConnectorReset$,
+  permissionDrawerUiState$,
+  permissionDrawerUiStateForKey,
+  resetPermissionDrawerState$,
+  setPermissionDrawerSaving$,
+  setPermissionDrawerScrolled$,
+  setPermissionDrawerSearch$,
+  showMorePermissionDrawerRows$,
+  togglePermissionDrawerGroup$,
+  updatePermissionDrawerDraft$,
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
+import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
   IconCheck,
   IconBan,
@@ -75,9 +88,10 @@ import {
   IconChevronDown,
   IconArrowBackUp,
   IconLoader2,
+  IconSearch,
+  IconX,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 
 interface ConnectorPermission {
@@ -94,17 +108,13 @@ interface PermissionsDrawerProps {
   resetEnabled?: boolean;
   readOnly?: boolean;
   onApply: (
-    policies: FirewallPolicies,
-    expiresInByPermission: Readonly<
-      Record<string, UserPermissionGrantExpiresIn>
-    >,
+    intent: PermissionDraftIntent,
     options: PermissionDrawerApplyOptions,
   ) => Promise<void>;
   onClose: () => void;
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly resetConnectorGrants: boolean;
   readonly metadata: FirewallPermissionDetailMetadata;
 }
 
@@ -122,8 +132,6 @@ interface PermissionsDrawerFooterProps {
 
 interface InitialPermissionDrawerState {
   readonly ref: ConnectorType;
-  readonly initialUnknownPolicy: FirewallPolicyValue;
-  readonly initialPolicyState: Record<string, Record<string, PermissionPolicy>>;
   readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
   readonly initialPolicyKey: string;
 }
@@ -148,24 +156,13 @@ function buildInitialPermissionDrawerState({
 > & {
   readonly metadata: FirewallPermissionDetailMetadata;
 }): InitialPermissionDrawerState {
-  const initialUnknownPolicy = buildInitialUnknownPolicy(
-    connectorType,
-    metadata,
-    initialPolicies,
-  );
-  const initialPolicyState = buildInitialPolicies(
-    connectorType,
-    metadata,
-    initialPolicies,
-  );
   const explicitGrants = buildExplicitGrantMap(connectorType, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
+  const context = createPermissionDraftContext({ metadata, initialPolicies });
   return {
     ref: connectorType,
-    initialUnknownPolicy,
-    initialPolicyState,
     explicitGrants,
-    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[connectorType] ?? {})}\u0000${grantStateKey}`,
+    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${context.initialResolver.unknown()}\u0000${permissionDraftMetadataKey(metadata)}\u0000${grantStateKey}`,
   };
 }
 
@@ -231,20 +228,18 @@ const POLICY_OPTIONS = [
   { value: "deny" as const, label: "Deny" },
 ] as const;
 
+const PERMISSION_PAGE_SIZE = 100;
+
 function getGroupPolicy(
+  context: PermissionDraftContext,
+  draft: PermissionDraftIntent,
   perms: ConnectorPermission[],
-  policies: Record<string, PermissionPolicy>,
 ): PermissionPolicy | "mixed" {
-  if (perms.length === 0) {
-    return "allow";
-  }
-  const first = policies[perms[0].name] ?? "allow";
-  for (let i = 1; i < perms.length; i++) {
-    if ((policies[perms[i].name] ?? "allow") !== first) {
-      return "mixed";
-    }
-  }
-  return first;
+  return resolvePermissionDraftListPolicy({
+    context,
+    draft,
+    permissions: perms,
+  });
 }
 
 function PolicyPill({
@@ -314,79 +309,20 @@ function sortedPermissionsForMetadata(
   return sortPermissions(metadata.permissions);
 }
 
-function permissionPolicyRecord(
-  permissions: readonly ConnectorPermission[],
-  policy: PermissionPolicy,
-): Record<string, PermissionPolicy> {
-  const next: Record<string, PermissionPolicy> = {};
-  for (const permission of permissions) {
-    next[permission.name] = policy;
+function filterPermissionsForSearch(
+  permissions: ConnectorPermission[],
+  normalizedSearch: string,
+): ConnectorPermission[] {
+  if (normalizedSearch.length === 0) {
+    return permissions;
   }
-  return next;
-}
-
-function buildInitialPolicies(
-  ref: string,
-  metadata: FirewallPermissionDetailMetadata,
-  initialPolicies: FirewallPolicies,
-): Record<string, Record<string, PermissionPolicy>> {
-  const result: Record<string, Record<string, PermissionPolicy>> = {};
-  const resolved = resolveFirewallMetadataPolicies(initialPolicies, [metadata]);
-  const refPolicies: Record<string, PermissionPolicy> = {};
-  for (const p of metadata.permissions) {
-    refPolicies[p.name] = resolved?.[ref]?.policies[p.name] ?? "allow";
-  }
-  result[ref] = refPolicies;
-  return result;
-}
-
-function buildDefaultPolicyState(metadata: FirewallPermissionDetailMetadata): {
-  readonly policies: Record<string, PermissionPolicy>;
-  readonly unknownPolicy: FirewallPolicyValue;
-} {
-  const defaults = expandFirewallMetadataDefaultPolicy(metadata);
-  const policies: Record<string, PermissionPolicy> = {};
-  for (const permission of metadata.permissions) {
-    policies[permission.name] = defaults.policies[permission.name] ?? "allow";
-  }
-  return {
-    policies,
-    unknownPolicy: defaults.unknownPolicy ?? "allow",
-  };
-}
-
-function buildInitialUnknownPolicy(
-  ref: string,
-  metadata: FirewallPermissionDetailMetadata,
-  initialPolicies: FirewallPolicies,
-): FirewallPolicyValue {
-  return (
-    resolveFirewallMetadataPolicies(initialPolicies, [metadata])?.[ref]
-      ?.unknownPolicy ?? "allow"
-  );
-}
-
-function mergeDrawerPolicies({
-  initialPolicies,
-  ref,
-  policies,
-  unknownPolicy,
-}: {
-  initialPolicies: FirewallPolicies;
-  ref: string;
-  policies: Record<string, Record<string, PermissionPolicy>>;
-  unknownPolicy: FirewallPolicyValue;
-}): FirewallPolicies {
-  const unified: FirewallPolicies = { ...initialPolicies };
-  for (const [r, p] of Object.entries(policies)) {
-    const nextUnknownPolicy =
-      r === ref ? unknownPolicy : initialPolicies[r]?.unknownPolicy;
-    unified[r] =
-      nextUnknownPolicy === undefined
-        ? { policies: p }
-        : { policies: p, unknownPolicy: nextUnknownPolicy };
-  }
-  return unified;
+  return permissions.filter((permission) => {
+    return (
+      permission.name.toLowerCase().includes(normalizedSearch) ||
+      (permission.description?.toLowerCase().includes(normalizedSearch) ??
+        false)
+    );
+  });
 }
 
 function buildExplicitGrantMap(
@@ -402,116 +338,11 @@ function buildExplicitGrantMap(
   return result;
 }
 
-function explicitGrantStateKey(
-  grants: Map<string, UserPermissionGrantResponse>,
-): string {
-  return JSON.stringify(
-    [...grants.entries()].map(([permission, grant]) => {
-      return [permission, grant.action, grant.expiresAt] as const;
-    }),
-  );
-}
-
-function permissionPoliciesEqual(
-  a: Record<string, PermissionPolicy>,
-  b: Record<string, PermissionPolicy>,
-): boolean {
-  const aKeys = Object.keys(a);
-  if (aKeys.length !== Object.keys(b).length) {
-    return false;
-  }
-  for (const key of aKeys) {
-    if (a[key] !== b[key]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function hasPermissionPolicyChanges({
-  currentPolicies,
-  initialPolicies,
-  currentUnknownPolicy,
-  initialUnknownPolicy,
-}: {
-  currentPolicies: Record<string, PermissionPolicy> | undefined;
-  initialPolicies: Record<string, PermissionPolicy>;
-  currentUnknownPolicy: FirewallPolicyValue;
-  initialUnknownPolicy: FirewallPolicyValue;
-}): boolean {
-  if (currentPolicies === undefined) {
-    return false;
-  }
-  if (currentUnknownPolicy !== initialUnknownPolicy) {
-    return true;
-  }
-  return !permissionPoliciesEqual(currentPolicies, initialPolicies);
-}
-
-function hasGrantExpirationChanges({
-  explicitGrants,
-  policies,
-  unknownPolicy,
-  selections,
-}: {
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
-  policies: Record<string, PermissionPolicy>;
-  unknownPolicy: FirewallPolicyValue;
-  selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
-}): boolean {
-  for (const permission of Object.keys(selections)) {
-    const grant = explicitGrants.get(permission);
-    const selected = selections[permission];
-    const currentAction =
-      permission === UNKNOWN_PERMISSION_GRANT
-        ? unknownPolicy
-        : (policies[permission] ?? grant?.action ?? "allow");
-    if (
-      currentAction === "allow" &&
-      (grant?.action === "allow" || (!grant && selected !== "always"))
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasPendingGrantExpirationChange({
-  grant,
-  policy,
-  selected,
-}: {
-  grant: UserPermissionGrantResponse | undefined;
-  policy: FirewallPolicyValue;
-  selected: UserPermissionGrantExpiresIn | undefined;
-}): boolean {
-  if (selected === undefined || policy !== "allow") {
-    return false;
-  }
-  if (grant?.action === "allow") {
-    return selected !== "always" || Boolean(grant.expiresAt);
-  }
-  return selected !== "always";
-}
-
-function hasPendingPermissionControlChange({
-  grant,
-  initialPolicy,
-  policy,
-  selected,
-}: {
-  grant: UserPermissionGrantResponse | undefined;
-  initialPolicy: PermissionPolicy;
-  policy: FirewallPolicyValue;
-  selected: UserPermissionGrantExpiresIn | undefined;
-}): boolean {
+function hasDraftExpirationSelections(draft: PermissionDraftIntent): boolean {
   return (
-    policy !== initialPolicy ||
-    hasPendingGrantExpirationChange({
-      grant,
-      policy,
-      selected,
-    })
+    Object.keys(draft.groupExpirations).length > 0 ||
+    Object.keys(draft.permissionExpirations).length > 0 ||
+    draft.unknownExpiration !== undefined
   );
 }
 
@@ -844,45 +675,16 @@ function PermissionGrantPolicyControl({
 }
 
 function groupExpirationSelection(
+  context: PermissionDraftContext,
+  draft: PermissionDraftIntent,
+  category: string,
   permissions: readonly ConnectorPermission[],
-  selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>,
 ): UserPermissionGrantExpiresIn | undefined {
-  if (permissions.length === 0) {
-    return undefined;
-  }
-  const first = selections[permissions[0].name];
-  if (first === undefined) {
-    return undefined;
-  }
-  for (let i = 1; i < permissions.length; i++) {
-    if (selections[permissions[i].name] !== first) {
-      return undefined;
-    }
-  }
-  return first;
-}
-
-function hasPendingGroupControlChange({
-  explicitGrants,
-  initialPolicies,
-  permissions,
-  policies,
-  selections,
-}: {
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
-  initialPolicies: Record<string, PermissionPolicy>;
-  permissions: readonly ConnectorPermission[];
-  policies: Record<string, PermissionPolicy>;
-  selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
-}): boolean {
-  return permissions.some((permission) => {
-    const name = permission.name;
-    return hasPendingPermissionControlChange({
-      grant: explicitGrants.get(name),
-      initialPolicy: initialPolicies[name] ?? "allow",
-      policy: policies[name] ?? "allow",
-      selected: selections[name],
-    });
+  return resolvePermissionDraftGroupExpiration({
+    context,
+    draft,
+    category,
+    permissions,
   });
 }
 
@@ -894,31 +696,43 @@ function hasAllowAlwaysPolicy(
 }
 
 function hasGroupAllowAlwaysPolicy({
+  context,
+  draft,
   explicitGrants,
   permissions,
-  policies,
 }: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   permissions: readonly ConnectorPermission[];
-  policies: Record<string, PermissionPolicy>;
 }): boolean {
   return permissions.every((permission) => {
     const name = permission.name;
+    const selected = resolvePermissionDraftExpiration({
+      context,
+      draft,
+      permissionName: name,
+    });
+    if (selected !== undefined && selected !== "always") {
+      return false;
+    }
     return hasAllowAlwaysPolicy(
       explicitGrants.get(name),
-      policies[name] ?? "allow",
+      resolvePermissionDraftPolicy({ context, draft, permissionName: name }),
     );
   });
 }
 
 function groupExpirationStatusExpiresAt({
+  context,
+  draft,
   explicitGrants,
   permissions,
-  policies,
 }: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   permissions: readonly ConnectorPermission[];
-  policies: Record<string, PermissionPolicy>;
 }): string | null | undefined {
   if (permissions.length === 0) {
     return null;
@@ -927,7 +741,10 @@ function groupExpirationStatusExpiresAt({
   let firstExpiresAt: string | null | undefined;
   for (const permission of permissions) {
     const name = permission.name;
-    if ((policies[name] ?? "allow") !== "allow") {
+    if (
+      resolvePermissionDraftPolicy({ context, draft, permissionName: name }) !==
+      "allow"
+    ) {
       return undefined;
     }
 
@@ -946,33 +763,53 @@ function groupExpirationStatusExpiresAt({
   return firstExpiresAt ?? null;
 }
 
+function ShowMorePermissions({
+  remaining,
+  onClick,
+}: {
+  readonly remaining: number;
+  readonly onClick: () => void;
+}) {
+  return (
+    <div className="px-3 py-2">
+      <Button type="button" variant="outline" className="h-8" onClick={onClick}>
+        Show more ({remaining})
+      </Button>
+    </div>
+  );
+}
+
 function PermissionRows({
+  context,
+  draft,
   groups,
   permissions,
-  initialPolicies,
-  policies,
   expandedGroups,
+  visibleCounts,
   explicitGrants,
-  expirationSelections,
   readOnly,
   saving,
   onToggleGroup,
   onSetGroupAll,
   onPolicyChange,
   onGrantExpirationChange,
+  onGroupGrantExpirationChange,
   onResetPermission,
+  onResetGroup,
+  onShowMore,
 }: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
   groups: { category: string; permissions: ConnectorPermission[] }[] | null;
   permissions: ConnectorPermission[];
-  initialPolicies: Record<string, PermissionPolicy>;
-  policies: Record<string, PermissionPolicy>;
-  expandedGroups: Set<string>;
+  expandedGroups: ReadonlySet<string>;
+  visibleCounts: Readonly<Record<string, number>>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
-  expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
   onSetGroupAll: (
+    category: string,
     groupPerms: ConnectorPermission[],
     policy: PermissionPolicy,
   ) => void;
@@ -981,33 +818,47 @@ function PermissionRows({
     permission: string,
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
+  onGroupGrantExpirationChange: (
+    category: string,
+    expiresIn: UserPermissionGrantExpiresIn | null,
+  ) => void;
   onResetPermission: (name: string) => void;
+  onResetGroup: (category: string, groupPerms: ConnectorPermission[]) => void;
+  onShowMore: (key: string) => void;
 }) {
   if (groups) {
     return groups.map((group, groupIdx) => {
       const expanded = expandedGroups.has(group.category);
-      const groupPolicy = getGroupPolicy(group.permissions, policies);
+      const groupPolicy = getGroupPolicy(context, draft, group.permissions);
       const groupSelectedExpiration = groupExpirationSelection(
+        context,
+        draft,
+        group.category,
         group.permissions,
-        expirationSelections,
       );
-      const groupHasPendingChange = hasPendingGroupControlChange({
+      const groupHasPendingChange = hasPermissionDraftGroupChange({
+        context,
+        draft,
         explicitGrants,
-        initialPolicies,
         permissions: group.permissions,
-        policies,
-        selections: expirationSelections,
       });
       const groupAllowAlwaysActive = hasGroupAllowAlwaysPolicy({
+        context,
+        draft,
         explicitGrants,
         permissions: group.permissions,
-        policies,
       });
       const groupExpirationStatus = groupExpirationStatusExpiresAt({
+        context,
+        draft,
         explicitGrants,
         permissions: group.permissions,
-        policies,
       });
+      const groupListKey = `group:${group.category}`;
+      const groupVisibleCount =
+        visibleCounts[groupListKey] ?? PERMISSION_PAGE_SIZE;
+      const visiblePermissions = group.permissions.slice(0, groupVisibleCount);
+      const hasMore = visiblePermissions.length < group.permissions.length;
       return (
         <div key={group.category}>
           {groupIdx > 0 && (
@@ -1040,44 +891,33 @@ function PermissionRows({
               saving={saving}
               showCurrentExpirationStatus={groupExpirationStatus !== undefined}
               onClearExpiration={() => {
-                for (const permission of group.permissions) {
-                  onGrantExpirationChange(permission.name, null);
-                }
+                onGroupGrantExpirationChange(group.category, null);
               }}
               onAllowDurationChange={(expiresIn) => {
-                for (const permission of group.permissions) {
-                  const grant = explicitGrants.get(permission.name);
-                  onGrantExpirationChange(
-                    permission.name,
-                    menuOptionExpiresIn(
-                      expiresIn,
-                      grant?.action === "allow" ? grant : undefined,
-                    ),
-                  );
-                }
+                onGroupGrantExpirationChange(
+                  group.category,
+                  menuOptionExpiresIn(expiresIn, undefined),
+                );
               }}
               onPolicyChange={(p) => {
-                onSetGroupAll(group.permissions, p);
+                onSetGroupAll(group.category, group.permissions, p);
               }}
               onReset={() => {
-                for (const permission of group.permissions) {
-                  onResetPermission(permission.name);
-                }
+                onResetGroup(group.category, group.permissions);
               }}
             />
           </div>
           {expanded &&
-            group.permissions.map((perm, idx) => {
+            visiblePermissions.map((perm, idx) => {
               return (
                 <PermissionRow
                   key={perm.name}
+                  context={context}
+                  draft={draft}
                   permission={perm}
                   showSeparator={idx > 0}
                   indent
-                  initialPolicy={initialPolicies[perm.name] ?? "allow"}
-                  policies={policies}
                   explicitGrants={explicitGrants}
-                  expirationSelections={expirationSelections}
                   readOnly={readOnly}
                   saving={saving}
                   onPolicyChange={onPolicyChange}
@@ -1086,52 +926,71 @@ function PermissionRows({
                 />
               );
             })}
+          {expanded && hasMore && (
+            <ShowMorePermissions
+              remaining={group.permissions.length - visiblePermissions.length}
+              onClick={() => {
+                onShowMore(groupListKey);
+              }}
+            />
+          )}
         </div>
       );
     });
   }
 
-  return permissions.map((perm, idx) => {
-    return (
-      <PermissionRow
-        key={perm.name}
-        permission={perm}
-        showSeparator={idx > 0}
-        initialPolicy={initialPolicies[perm.name] ?? "allow"}
-        policies={policies}
-        explicitGrants={explicitGrants}
-        expirationSelections={expirationSelections}
-        readOnly={readOnly}
-        saving={saving}
-        onPolicyChange={onPolicyChange}
-        onGrantExpirationChange={onGrantExpirationChange}
-        onResetPermission={onResetPermission}
-      />
-    );
-  });
+  const visibleCount = visibleCounts.permissions ?? PERMISSION_PAGE_SIZE;
+  const visiblePermissions = permissions.slice(0, visibleCount);
+  return (
+    <>
+      {visiblePermissions.map((perm, idx) => {
+        return (
+          <PermissionRow
+            key={perm.name}
+            context={context}
+            draft={draft}
+            permission={perm}
+            showSeparator={idx > 0}
+            explicitGrants={explicitGrants}
+            readOnly={readOnly}
+            saving={saving}
+            onPolicyChange={onPolicyChange}
+            onGrantExpirationChange={onGrantExpirationChange}
+            onResetPermission={onResetPermission}
+          />
+        );
+      })}
+      {visiblePermissions.length < permissions.length && (
+        <ShowMorePermissions
+          remaining={permissions.length - visiblePermissions.length}
+          onClick={() => {
+            onShowMore("permissions");
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 function PermissionRow({
+  context,
+  draft,
   permission,
   showSeparator,
   indent,
-  initialPolicy,
-  policies,
   explicitGrants,
-  expirationSelections,
   readOnly,
   saving,
   onPolicyChange,
   onGrantExpirationChange,
   onResetPermission,
 }: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
   permission: ConnectorPermission;
   showSeparator: boolean;
   indent?: boolean;
-  initialPolicy: PermissionPolicy;
-  policies: Record<string, PermissionPolicy>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
-  expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
   readOnly?: boolean;
   saving: boolean;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
@@ -1141,14 +1000,23 @@ function PermissionRow({
   ) => void;
   onResetPermission: (name: string) => void;
 }) {
-  const policy = policies[permission.name] ?? "allow";
+  const policy = resolvePermissionDraftPolicy({
+    context,
+    draft,
+    permissionName: permission.name,
+  });
   const grant = explicitGrants.get(permission.name);
-  const selected = expirationSelections[permission.name];
-  const hasPendingChange = hasPendingPermissionControlChange({
-    grant,
-    initialPolicy,
-    policy,
+  const selected = resolvePermissionDraftExpiration({
+    context,
+    draft,
+    permissionName: permission.name,
+  });
+  const hasPendingChange = hasPermissionDraftPermissionChange({
+    context,
+    draft,
+    permissionName: permission.name,
     selected,
+    grant,
   });
   return (
     <div>
@@ -1261,173 +1129,201 @@ function LoadedPermissionsDrawerContent({
   metadata,
   initialState,
 }: LoadedPermissionsDrawerContentProps) {
-  const defaultPolicyState = buildDefaultPolicyState(metadata);
-  const {
-    ref,
-    initialUnknownPolicy,
-    initialPolicyState,
-    explicitGrants,
-    initialPolicyKey,
-  } = initialState;
-  useSet(initPermissionPolicies$)(
-    initialPolicyKey,
-    initialPolicyState,
-    initialUnknownPolicy,
+  const { explicitGrants } = initialState;
+  const stateKey = initialState.initialPolicyKey;
+  const drawerUiState = permissionDrawerUiStateForKey(
+    useGet(permissionDrawerUiState$),
+    stateKey,
   );
-  useSet(initPermissionGrantExpirations$)(initialPolicyKey, {});
+  const setDraft = useSet(updatePermissionDrawerDraft$);
+  const toggleGroup = useSet(togglePermissionDrawerGroup$);
+  const showMore = useSet(showMorePermissionDrawerRows$);
+  const setSearch = useSet(setPermissionDrawerSearch$);
+  const setSaving = useSet(setPermissionDrawerSaving$);
+  const setScrolled = useSet(setPermissionDrawerScrolled$);
+  const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
+  const context = createPermissionDraftContext({ metadata, initialPolicies });
+  const draft = drawerUiState.draft;
+  const scrolled = drawerUiState.scrolled;
+  const expandedGroups = drawerUiState.expandedGroups;
+  const visibleCounts = drawerUiState.visibleCounts;
+  const search = drawerUiState.search;
+  const saving = drawerUiState.saving;
 
-  const allPolicies = useGet(permissionAllPolicies$);
-  const unknownPolicy = useGet(permissionUnknownPolicy$);
-  const setUnknownPolicy = useSet(setPermissionUnknownPolicy$);
-  const resetPending = useGet(permissionConnectorResetPending$);
-  const effectiveExplicitGrants = resetPending
+  const effectiveExplicitGrants = draft.resetPending
     ? new Map<string, UserPermissionGrantResponse>()
     : explicitGrants;
-  const scrolled = useGet(permissionScrolled$);
-  const setScrolled = useSet(setPermissionScrolled$);
-  const expandedGroups = useGet(permissionExpandedGroups$);
-  const toggleGroup = useSet(togglePermissionGroup$);
-  const setPolicyFn = useSet(setPermissionPolicy$);
-  const setAllPoliciesFn = useSet(setPermissionAllPolicies$);
-  const expirationSelections = useGet(permissionGrantExpirations$);
-  const setGrantExpiration = useSet(setPermissionGrantExpiration$);
-  const resetPermissionPolicies = useSet(resetPermissionPolicies$);
-  const resetGrantExpirations = useSet(resetPermissionGrantExpirations$);
-  const stageConnectorReset = useSet(stagePermissionConnectorReset$);
-  const [applyLoadable, applyFn] = useLoadableSet(applyPermissionPolicies$);
-  const saving = applyLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-
   const permissions = sortedPermissionsForMetadata(metadata);
-  const policiesForRef = allPolicies[ref];
-  const policies = policiesForRef ?? {};
-  const initialPoliciesForRef = initialPolicyState[ref] ?? {};
   const groups = buildSortedGroups(metadata);
-  const hasPermissionChanges = hasPermissionPolicyChanges({
-    currentPolicies: policiesForRef,
-    initialPolicies: initialPoliciesForRef,
-    currentUnknownPolicy: unknownPolicy,
-    initialUnknownPolicy,
-  });
-  const hasDefaultPolicyChanges = connectorDraftDiffersFromDefault({
-    currentPolicies: policiesForRef,
-    defaultPolicies: defaultPolicyState.policies,
-    currentUnknownPolicy: unknownPolicy,
-    defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
-  });
-  const hasExpirationChanges = hasGrantExpirationChanges({
-    explicitGrants: effectiveExplicitGrants,
-    policies,
-    unknownPolicy,
-    selections: expirationSelections,
-  });
-  const hasExpirationDraftSelections =
-    Object.keys(expirationSelections).length > 0;
-  const hasResetPersistedEffect = hasConnectorResetPersistedEffect({
-    resetPending,
-    explicitGrants,
-    permissionNames: permissions.map((permission) => {
-      return permission.name;
-    }),
-    policies,
-    unknownPolicy,
-    defaultPolicies: defaultPolicyState.policies,
-    defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
-    selections: expirationSelections,
-  });
+  const normalizedSearch = search.trim().toLowerCase();
+  const searchActive = normalizedSearch.length > 0;
+  const displayedPermissions = filterPermissionsForSearch(
+    permissions,
+    normalizedSearch,
+  );
+  const displayedGroups = searchActive ? null : groups;
+  const unknownPolicy = resolvePermissionDraftUnknownPolicy({ context, draft });
+  const draftPristine = isPermissionDraftPristine(draft);
+  const hasDefaultPolicyChanges =
+    !draftPristine &&
+    hasPermissionDraftDefaultDifference({
+      context,
+      draft,
+      permissions,
+    });
+  const hasExpirationDraftSelections = hasDraftExpirationSelections(draft);
   const resetAvailable =
     explicitGrants.size > 0 ||
     hasDefaultPolicyChanges ||
     hasExpirationDraftSelections;
+  const hasPermissionChanges =
+    (draft.resetPending && resetAvailable) ||
+    (!draftPristine &&
+      hasAnyPermissionDraftChange({
+        context,
+        draft,
+        permissions,
+        explicitGrants,
+      }));
   const canApply = canApplyPermissionPolicies({
     metadata,
     saving,
-    hasChanges:
-      hasPermissionChanges || hasExpirationChanges || hasResetPersistedEffect,
+    hasChanges: hasPermissionChanges,
   });
   const unknownGrant = effectiveExplicitGrants.get(UNKNOWN_PERMISSION_GRANT);
-  const unknownSelectedExpiration =
-    expirationSelections[UNKNOWN_PERMISSION_GRANT];
+  const unknownSelectedExpiration = draft.unknownExpiration;
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
-    setPolicyFn(ref, name, policy);
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftPolicy({
+        draft: current,
+        permissionName: name,
+        policy,
+      });
+    });
   };
 
   const handleSetAll = (policy: PermissionPolicy) => {
-    setAllPoliciesFn(ref, permissionPolicyRecord(permissions, policy));
-    setUnknownPolicy(policy);
-    if (policy === "deny") {
-      for (const permission of permissions) {
-        setGrantExpiration(permission.name, null);
-      }
-      setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
-    }
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftConnectorPolicy({
+        draft: current,
+        policy,
+        includeUnknown: true,
+      });
+    });
   };
 
   const handleSetGroupAll = (
+    category: string,
     groupPerms: ConnectorPermission[],
     policy: PermissionPolicy,
   ) => {
-    setAllPoliciesFn(ref, {
-      ...policies,
-      ...permissionPolicyRecord(groupPerms, policy),
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftGroupPolicy({
+        draft: current,
+        category,
+        permissions: groupPerms,
+        policy,
+      });
     });
-    if (policy === "deny") {
-      for (const permission of groupPerms) {
-        setGrantExpiration(permission.name, null);
-      }
-    }
   };
 
   const handleResetPermission = (name: string) => {
-    setPolicyFn(ref, name, initialPoliciesForRef[name] ?? "allow");
-    setGrantExpiration(name, null);
+    setDraft(stateKey, (current) => {
+      return restorePermissionDraftPermission({
+        draft: current,
+        permissionName: name,
+      });
+    });
+  };
+
+  const handleResetGroup = (
+    category: string,
+    groupPerms: ConnectorPermission[],
+  ) => {
+    setDraft(stateKey, (current) => {
+      return restorePermissionDraftGroup({
+        draft: current,
+        category,
+        permissions: groupPerms,
+      });
+    });
   };
 
   const handleResetUnknownPermission = () => {
-    setUnknownPolicy(initialUnknownPolicy);
-    setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
+    setDraft(stateKey, (current) => {
+      return restorePermissionDraftUnknown({ draft: current });
+    });
   };
 
   const handleResetConnector = () => {
-    stageConnectorReset(
-      initialPolicyKey,
-      ref,
-      defaultPolicyState.policies,
-      defaultPolicyState.unknownPolicy,
-    );
+    setDraft(stateKey, (current) => {
+      return stagePermissionDraftConnectorRestore({ draft: current });
+    });
   };
 
   const handleClose = () => {
-    resetPermissionPolicies(initialPolicyKey);
-    resetGrantExpirations(initialPolicyKey);
+    resetPermissionDrawerState();
     onClose();
   };
 
+  const handleToggleGroup = (category: string) => {
+    toggleGroup(stateKey, category);
+  };
+
+  const handleGrantExpirationChange = (
+    permission: string,
+    expiresIn: UserPermissionGrantExpiresIn | null,
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftExpiration({
+        draft: current,
+        permissionName: permission,
+        expiresIn,
+      });
+    });
+  };
+
+  const handleGroupGrantExpirationChange = (
+    category: string,
+    expiresIn: UserPermissionGrantExpiresIn | null,
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftGroupExpiration({
+        draft: current,
+        category,
+        expiresIn,
+      });
+    });
+  };
+
+  const handleUnknownExpirationChange = (
+    expiresIn: UserPermissionGrantExpiresIn | null,
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftUnknownExpiration({ draft: current, expiresIn });
+    });
+  };
+
+  const handleShowMore = (key: string) => {
+    showMore(stateKey, key, PERMISSION_PAGE_SIZE);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(stateKey, value);
+  };
+
   const handleApply = () => {
-    const wrappedApply = async (
-      perms: Record<string, Record<string, PermissionPolicy>>,
-      unknownFlag: FirewallPolicyValue,
-      resetConnectorGrants: boolean,
-    ): Promise<void> => {
-      await onApply(
-        mergeDrawerPolicies({
-          initialPolicies,
-          ref,
-          policies: perms,
-          unknownPolicy: unknownFlag,
-        }),
-        expirationSelections,
-        { resetConnectorGrants, metadata },
-      );
-    };
+    if (saving) {
+      return;
+    }
+    setSaving(stateKey, true);
     detach(
-      applyFn(
-        { formKey: initialPolicyKey, ref },
-        wrappedApply,
-        handleClose,
-        pageSignal,
-      ),
+      (async () => {
+        await onApply(draft, { metadata });
+        setSaving(stateKey, false);
+        handleClose();
+      })(),
       Reason.DomCallback,
     );
   };
@@ -1435,45 +1331,82 @@ function LoadedPermissionsDrawerContent({
   return (
     <>
       <div className="flex flex-1 flex-col min-h-0">
-        {!groups && (
-          <div
-            className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
-          >
+        <div
+          className={`flex items-center gap-2 pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+        >
+          <div className="relative flex-1">
+            <IconSearch
+              size={14}
+              stroke={1.7}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              value={search}
+              onChange={(event) => {
+                handleSearchChange(event.currentTarget.value);
+              }}
+              aria-label="Find permissions"
+              placeholder="Find permissions..."
+              className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/30"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleSearchChange("");
+                }}
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Clear permission search"
+              >
+                <IconX size={13} stroke={1.8} />
+              </button>
+            )}
+          </div>
+          {!groups && !searchActive && (
             <span className="text-xs font-medium text-foreground">
               {readOnly ? "Permissions" : "Select all"} ({permissions.length})
             </span>
-            {!readOnly && (
-              <PolicyPill
-                policy={getGroupPolicy(permissions, policies)}
-                onChange={handleSetAll}
-              />
-            )}
-          </div>
-        )}
+          )}
+          {!groups && !searchActive && !readOnly && (
+            <PolicyPill
+              policy={getGroupPolicy(context, draft, permissions)}
+              onChange={handleSetAll}
+            />
+          )}
+        </div>
 
         <div
-          className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
+          className={`flex-1 overflow-y-auto -mx-6 px-3 ${displayedGroups ? "pt-1" : ""}`}
           onScroll={(e) => {
             const target = e.currentTarget;
-            setScrolled(target.scrollTop > 0);
+            setScrolled(stateKey, target.scrollTop > 0);
           }}
         >
-          <PermissionRows
-            groups={groups}
-            permissions={permissions}
-            initialPolicies={initialPoliciesForRef}
-            policies={policies}
-            expandedGroups={expandedGroups}
-            explicitGrants={effectiveExplicitGrants}
-            expirationSelections={expirationSelections}
-            readOnly={readOnly}
-            saving={saving}
-            onToggleGroup={toggleGroup}
-            onSetGroupAll={handleSetGroupAll}
-            onPolicyChange={handlePolicyChange}
-            onGrantExpirationChange={setGrantExpiration}
-            onResetPermission={handleResetPermission}
-          />
+          {searchActive && displayedPermissions.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">
+              No results for &ldquo;{search.trim()}&rdquo;
+            </p>
+          ) : (
+            <PermissionRows
+              context={context}
+              draft={draft}
+              groups={displayedGroups}
+              permissions={displayedPermissions}
+              expandedGroups={expandedGroups}
+              visibleCounts={visibleCounts}
+              explicitGrants={effectiveExplicitGrants}
+              readOnly={readOnly}
+              saving={saving}
+              onToggleGroup={handleToggleGroup}
+              onSetGroupAll={handleSetGroupAll}
+              onPolicyChange={handlePolicyChange}
+              onGrantExpirationChange={handleGrantExpirationChange}
+              onGroupGrantExpirationChange={handleGroupGrantExpirationChange}
+              onResetPermission={handleResetPermission}
+              onResetGroup={handleResetGroup}
+              onShowMore={handleShowMore}
+            />
+          )}
         </div>
 
         <UnknownEndpointsToggle
@@ -1483,11 +1416,11 @@ function LoadedPermissionsDrawerContent({
               policy={unknownPolicy}
               grant={unknownGrant}
               selected={unknownSelectedExpiration}
-              hasPendingChange={hasPendingPermissionControlChange({
-                grant: unknownGrant,
-                initialPolicy: initialUnknownPolicy,
-                policy: unknownPolicy,
+              hasPendingChange={hasPermissionDraftUnknownChange({
+                context,
+                draft,
                 selected: unknownSelectedExpiration,
+                grant: unknownGrant,
               })}
               allowAlwaysActive={hasAllowAlwaysPolicy(
                 unknownGrant,
@@ -1496,11 +1429,10 @@ function LoadedPermissionsDrawerContent({
               readOnly={readOnly}
               saving={saving}
               onClearExpiration={() => {
-                setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
+                handleUnknownExpirationChange(null);
               }}
               onAllowDurationChange={(expiresIn) => {
-                setGrantExpiration(
-                  UNKNOWN_PERMISSION_GRANT,
+                handleUnknownExpirationChange(
                   menuOptionExpiresIn(
                     expiresIn,
                     unknownGrant?.action === "allow" ? unknownGrant : undefined,
@@ -1508,7 +1440,12 @@ function LoadedPermissionsDrawerContent({
                 );
               }}
               onPolicyChange={(p) => {
-                setUnknownPolicy(p);
+                setDraft(stateKey, (current) => {
+                  return setPermissionDraftUnknownPolicy({
+                    draft: current,
+                    policy: p,
+                  });
+                });
               }}
               onReset={handleResetUnknownPermission}
             />
@@ -1548,13 +1485,7 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
         initialGrants: props.initialGrants,
       })
     : null;
-  const resetPermissionPolicies = useSet(resetPermissionPolicies$);
-  const resetGrantExpirations = useSet(resetPermissionGrantExpirations$);
   const handleClose = () => {
-    if (loadedInitialState) {
-      resetPermissionPolicies(loadedInitialState.initialPolicyKey);
-      resetGrantExpirations(loadedInitialState.initialPolicyKey);
-    }
     props.onClose();
   };
   const loading = metadataLoadable.state === "loading";
@@ -1578,6 +1509,7 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
 
         {loadedMetadata && loadedInitialState ? (
           <LoadedPermissionsDrawerContent
+            key={loadedInitialState.initialPolicyKey}
             {...props}
             metadata={loadedMetadata}
             initialState={loadedInitialState}

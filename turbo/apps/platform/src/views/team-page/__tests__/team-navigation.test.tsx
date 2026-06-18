@@ -695,6 +695,77 @@ describe("team page navigation", () => {
     });
   });
 
+  it("finds and saves permissions beyond the initial drawer page", async () => {
+    mockTeamAPIs();
+    context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedUpserts.push(body);
+        return respond(200, {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: null,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@cf-team")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Cloudflare permissions"));
+
+    const permissionsDialog = await findLoadedPermissionsDialog();
+    expect(
+      within(permissionsDialog).queryByText("memberships.read"),
+    ).not.toBeInTheDocument();
+
+    await fill(
+      within(permissionsDialog).getByLabelText("Find permissions"),
+      "memberships.read",
+    );
+
+    const permissionRow = await permissionRowByName(
+      permissionsDialog,
+      "memberships.read",
+    );
+    const loadedPermissionsDialog = dialogForElement(permissionRow);
+    click(buttonByText("Deny", permissionRow));
+    await waitFor(() => {
+      expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", loadedPermissionsDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(capturedUpserts).toStrictEqual([
+      {
+        agentId: researchAgentId,
+        connectorRef: "cloudflare",
+        permission: "memberships.read",
+        action: "deny",
+      },
+    ]);
+  });
+
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();
