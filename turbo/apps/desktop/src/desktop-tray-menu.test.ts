@@ -140,14 +140,14 @@ describe("desktop tray menu", () => {
     );
 
     expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
-      "Show Main Window",
+      "Open Computer Use",
       "Workspace: Max & Zoe",
       "Computer Use: Online",
       "Keep Mac Awake",
       "No Recent Commands",
       "Quit",
     ]);
-    expect(findItem(menu, "Show Main Window")).toBeDefined();
+    expect(findItem(menu, "Open Computer Use")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",
       type: "checkbox",

@@ -125,6 +125,20 @@ export class DesktopAuthSession {
     return await this.refresh();
   }
 
+  async fetchWithSessionAuth(requestUrl: URL): Promise<Response> {
+    const response = await fetch(requestUrl, {
+      headers: await this.headersFor(requestUrl),
+    });
+    if (response.status !== 401 || !this.token) {
+      return response;
+    }
+
+    this.token = null;
+    return await fetch(requestUrl, {
+      headers: await this.headersFor(requestUrl),
+    });
+  }
+
   getCachedToken(): string | null {
     return this.token;
   }
@@ -276,20 +290,6 @@ export class DesktopAuthSession {
     }
     this.signingIn = value;
     this.onChange();
-  }
-
-  private async fetchWithSessionAuth(requestUrl: URL): Promise<Response> {
-    const response = await fetch(requestUrl, {
-      headers: await this.headersFor(requestUrl),
-    });
-    if (response.status !== 401 || !this.token) {
-      return response;
-    }
-
-    this.token = null;
-    return await fetch(requestUrl, {
-      headers: await this.headersFor(requestUrl),
-    });
   }
 
   private async headersFor(requestUrl: URL): Promise<Headers> {

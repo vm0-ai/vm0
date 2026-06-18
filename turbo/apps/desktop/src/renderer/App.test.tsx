@@ -21,6 +21,8 @@ import type {
   DesktopAuthApi,
   DesktopAuthState,
   DesktopComputerUseApi,
+  DesktopDeveloperToolsApi,
+  DesktopDeveloperToolsState,
 } from "../desktop-bridge";
 import { App } from "./App";
 
@@ -41,6 +43,11 @@ const signedOutAuthState: DesktopAuthState = {
   status: "signed_out",
   user: null,
   organization: null,
+};
+
+const defaultDeveloperToolsState: DesktopDeveloperToolsState = {
+  available: false,
+  enabled: false,
 };
 
 function createComputerUseState({
@@ -225,23 +232,78 @@ function createAuthBridge(initialState: DesktopAuthState): {
   };
 }
 
+function createDeveloperToolsBridge(initialState: DesktopDeveloperToolsState): {
+  readonly api: DesktopDeveloperToolsApi;
+  readonly emitState: (nextState: DesktopDeveloperToolsState) => void;
+  readonly getState: ReturnType<
+    typeof vi.fn<DesktopDeveloperToolsApi["getState"]>
+  >;
+  readonly subscribe: ReturnType<
+    typeof vi.fn<DesktopDeveloperToolsApi["subscribe"]>
+  >;
+} {
+  let currentState = initialState;
+  const subscribers = new Set<() => void>();
+  const getState = vi.fn<DesktopDeveloperToolsApi["getState"]>(async () => {
+    return currentState;
+  });
+  const setEnabled = vi.fn<DesktopDeveloperToolsApi["setEnabled"]>(
+    async (enabled) => {
+      currentState = {
+        available: currentState.available,
+        enabled: currentState.available && enabled,
+      };
+      return currentState;
+    },
+  );
+  const subscribe = vi.fn<DesktopDeveloperToolsApi["subscribe"]>((callback) => {
+    subscribers.add(callback);
+    return () => {
+      subscribers.delete(callback);
+    };
+  });
+  const api: DesktopDeveloperToolsApi = {
+    getState,
+    setEnabled,
+    subscribe,
+  };
+
+  return {
+    api,
+    emitState: (nextState) => {
+      currentState = nextState;
+      for (const subscriber of subscribers) {
+        subscriber();
+      }
+    },
+    getState,
+    subscribe,
+  };
+}
+
 function installDesktopBridges({
   authState = signedInAuthState,
   computerUseState = createComputerUseState(),
+  developerToolsState = defaultDeveloperToolsState,
 }: {
   readonly authState?: DesktopAuthState;
   readonly computerUseState?: DesktopComputerUseState;
+  readonly developerToolsState?: DesktopDeveloperToolsState;
 } = {}): {
   readonly auth: ReturnType<typeof createAuthBridge>;
   readonly computerUse: ReturnType<typeof createComputerUseBridge>;
+  readonly developerTools: ReturnType<typeof createDeveloperToolsBridge>;
 } {
   const auth = createAuthBridge(authState);
   const computerUse = createComputerUseBridge(computerUseState);
+  const developerTools = createDeveloperToolsBridge(developerToolsState);
   window.vm0DesktopAuth = auth.api;
   window.vm0DesktopComputerUse = computerUse.api;
+  window.vm0DesktopDeveloperTools = developerTools.api;
   return {
     auth,
     computerUse,
+    developerTools,
   };
 }
 
@@ -265,6 +327,7 @@ afterEach(() => {
   cleanup();
   delete window.vm0DesktopAuth;
   delete window.vm0DesktopComputerUse;
+  delete window.vm0DesktopDeveloperTools;
   vi.clearAllMocks();
 });
 
@@ -306,6 +369,23 @@ describe("Desktop renderer bridge integration", () => {
 
     expect(await screen.findByText("Online")).toBeTruthy();
     expect(computerUse.subscribe).toHaveBeenCalled();
+  });
+
+  it("shows runtime details only after developer tools are enabled", async () => {
+    const { developerTools } = installDesktopBridges({
+      computerUseState: createComputerUseState({ status: "online" }),
+    });
+    renderDesktopApp();
+
+    expect(await screen.findByText("Online")).toBeTruthy();
+    expect(screen.queryByText("Runtime")).toBeNull();
+    expect(screen.queryByText("Command Log")).toBeNull();
+
+    developerTools.emitState({ available: true, enabled: true });
+
+    expect(await screen.findByText("Runtime")).toBeTruthy();
+    expect(await screen.findByText("Command Log")).toBeTruthy();
+    expect(developerTools.subscribe).toHaveBeenCalled();
   });
 
   it("delegates signed-out account actions to the auth bridge", async () => {
