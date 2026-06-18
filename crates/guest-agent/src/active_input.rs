@@ -151,6 +151,13 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
 }
 
 fn prompt_like_user_content(event: &Value) -> Option<String> {
+    if matches!(
+        event.pointer("/message/role").and_then(Value::as_str),
+        Some(role) if role != "user"
+    ) {
+        return None;
+    }
+
     let content = event.pointer("/message/content")?;
     if let Some(text) = content.as_str() {
         return Some(text.to_owned());
@@ -778,5 +785,46 @@ mod tests {
             runtime.controller().replay_user_event_action(&event),
             ReplayUserEventAction::External
         );
+    }
+
+    #[test]
+    fn replay_filter_keeps_non_user_role_events_external_without_advancing_prompt_replay() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+
+        let malformed = json!({
+            "type": "user",
+            "message": {"role": "assistant", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&malformed),
+            ReplayUserEventAction::External
+        );
+
+        let first_valid_prompt_like = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&first_valid_prompt_like),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+
+        let second_valid_prompt_like = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&second_valid_prompt_like),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
     }
 }
