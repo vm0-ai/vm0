@@ -3192,16 +3192,8 @@ function SelectedTemplateChip({
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onOpen}
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <img
-                src={r2ImageTransformUrl(
-                  item.previewImage,
-                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-                )}
-                alt=""
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
+            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <SelectedPresentationTemplateChipPreview item={item} />
             </span>
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Presentation
@@ -3223,6 +3215,97 @@ function SelectedTemplateChip({
       </div>
       <div className="mt-3 h-px bg-border/50" />
     </div>
+  );
+}
+
+function SelectedPresentationTemplateChipPreview({
+  item,
+}: {
+  item: PresentationTemplateItem;
+}) {
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
+  const selectedTheme = findPresentationTemplateTheme(
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+  );
+  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
+  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
+  const fallbackImageUrl = r2ImageTransformUrl(
+    item.previewImage,
+    SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+  );
+
+  const ensureChipHtmlPreview = () => {
+    if (htmlPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setChipPreview = (draft: PresentationEditDraft) => {
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+        theme: selectedTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(previewKey, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setChipPreview(cachedDraft);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl) || cache.defaultLoads.has(previewKey)) {
+      return;
+    }
+
+    cache.defaultLoads.add(previewKey);
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setChipPreview(result.value);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  if (!isHappyDomTestEnvironment()) {
+    ensureChipHtmlPreview();
+  }
+
+  return htmlPreview?.frameUrl ? (
+    <iframe
+      title={`${item.title} selected template preview`}
+      src={htmlPreview.frameUrl}
+      sandbox="allow-same-origin"
+      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
+    />
+  ) : (
+    <img
+      src={fallbackImageUrl}
+      alt=""
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
   );
 }
 
