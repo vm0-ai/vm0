@@ -19,6 +19,7 @@ def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
 
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
     failed_payloads = []
+    pending_path = tmp_path / "usage-pending"
 
     def fail_enqueue(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, path, log_type
@@ -27,6 +28,7 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
 
     enqueue = RecordingEnqueue(side_effect=fail_enqueue)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -41,6 +43,13 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
 
     enqueue.assert_called_once()
     failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="enqueue-failed",
+    )
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -52,6 +61,13 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
     assert retry_payload["events"][0]["quantity"] == 10
     assert retry_payload["events"][0]["idempotencyKey"] == failed_key
     assert_usage_buffer_drained(enqueue)
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="enqueue-drained",
+    )
 
 
 def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_success(tmp_path):
