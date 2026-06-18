@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
 import {
@@ -332,7 +332,7 @@ function PermissionAllowDoctorPage({
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
-  const metadataLoadable = useLastLoadable(
+  const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({ connectorType: ref }),
   );
 

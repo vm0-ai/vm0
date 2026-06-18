@@ -832,10 +832,6 @@ describe("team page navigation", () => {
 
       click(screen.getByLabelText("Manage Slack permissions"));
 
-      const groupedDialog = await screen.findByRole("dialog");
-      expect(
-        within(groupedDialog).getByText("Slack permissions"),
-      ).toBeInTheDocument();
       const readGroupLabel = await connectorCategoryLabel("slack", "Read");
       const writeGroupLabel = await connectorCategoryLabel("slack", "Write");
       const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
@@ -845,6 +841,9 @@ describe("team page navigation", () => {
         { timeout: PERMISSION_METADATA_TIMEOUT_MS },
       );
       const loadedGroupedDialog = dialogForElement(readGroupElement);
+      expect(
+        within(loadedGroupedDialog).getByText("Slack permissions"),
+      ).toBeInTheDocument();
       expect(readGroupElement).toBeInTheDocument();
       const writeGroupElement = await screen.findByText(
         writeGroupLabel,
