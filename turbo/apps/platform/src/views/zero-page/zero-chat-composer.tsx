@@ -1429,7 +1429,6 @@ function presentationTemplateThemeAccentSwatches(
   return [
     { id: "background", color: theme.colors[0] },
     { id: "support-2", color: theme.colors[6] },
-    { id: "accent", color: theme.colors[4] },
   ];
 }
 
