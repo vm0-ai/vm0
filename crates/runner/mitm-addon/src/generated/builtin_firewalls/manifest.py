@@ -216,6 +216,7 @@ FIREWALL_MODULES = {
     "recraft": ("recraft_0",),
     "reddit": ("reddit_0",),
     "reducto": ("reducto_0",),
+    "render": ("render_0",),
     "rentcast": ("rentcast_0",),
     "replicate": ("replicate_0",),
     "reportei": ("reportei_0",),
