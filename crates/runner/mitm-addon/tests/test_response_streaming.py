@@ -444,7 +444,10 @@ class TestXJsonFinalize:
         callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (200 * 1024))
-        callback(b'"}],"includes":{"users":[{"id":"u1"}]}}')
+        callback(
+            b'"}],"includes":{"users":[{"id":"u1"}]},'
+            b'"meta":{"result_count":1,"total_tweet_count":2}}'
+        )
         response_streaming.finalize_connector_response_state(flow)
 
         assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
@@ -454,6 +457,8 @@ class TestXJsonFinalize:
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert state["response_includes"] == {"users": 1}
+        assert state["response_result_count"] == 1
+        assert state["response_total_tweet_count"] == 2
 
     def test_decompresses_gzip_x_json_before_parsing(self, real_flow):
         body = (
