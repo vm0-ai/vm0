@@ -215,7 +215,7 @@ pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
 pub async fn execute_cli(
     masker: &SecretMasker,
-    mut heartbeat_monitor: HeartbeatMonitor,
+    heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
