@@ -68,6 +68,33 @@ def test_wait_for_event_raises_worker_failure_before_timeout_message():
     assert not thread.is_alive()
 
 
+def test_wait_for_event_raises_worker_failure_even_when_event_is_set():
+    event = threading.Event()
+    finished = threading.Event()
+
+    def signal_then_fail() -> None:
+        try:
+            event.set()
+            raise RuntimeError("worker failed after event")
+        finally:
+            finished.set()
+
+    thread = ThreadUnderTest(target=signal_then_fail)
+    thread.start()
+    assert finished.wait(timeout=1)
+
+    with pytest.raises(RuntimeError, match="worker failed after event"):
+        wait_for_event(
+            event,
+            timeout=1,
+            threads=(thread,),
+            message="event was not signaled",
+        )
+
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
 def test_join_and_raise_propagates_base_exception_subclasses():
     class WorkerAbort(BaseException):
         pass

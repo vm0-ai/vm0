@@ -64,6 +64,8 @@ def wait_for_event(
     message: str = "event was not set before timeout",
 ) -> None:
     if event.wait(timeout=timeout):
+        for thread in threads:
+            thread.raise_if_failed()
         return
 
     for thread in threads:
