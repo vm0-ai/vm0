@@ -61,7 +61,7 @@ def test_flush_prunes_completed_path_state(tmp_path):
                 flush_thread.join(timeout=1)
 
     assert flush_thread is not None
-    flush_thread.raise_if_failed()
+    flush_thread.join_and_raise(timeout=0)
     assert not flush_thread.is_alive()
 
     assert log_path not in jsonl_writer._accepted_by_path
@@ -109,7 +109,7 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
                 thread.join(timeout=1)
 
     for thread in flush_threads:
-        thread.raise_if_failed()
+        thread.join_and_raise(timeout=0)
         assert not thread.is_alive()
 
     assert log_path not in jsonl_writer._accepted_by_path

@@ -241,9 +241,8 @@ class TestLoadRegistry:
 
         thread = ThreadUnderTest(target=load_state, daemon=True)
         thread.start()
-        thread.join(1)
+        thread.join_and_raise(1)
 
-        thread.raise_if_failed()
         assert not thread.is_alive(), "registry load blocked on FIFO"
         state = results.get_nowait()
         assert isinstance(state, registry.RegistryUnavailable)
