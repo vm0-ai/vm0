@@ -1365,7 +1365,10 @@ function presentationTemplateThemePreviewSwatches(
 function presentationTemplateThemeAccentSwatches(
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
-  return presentationTemplateThemePreviewSwatches(theme);
+  return [
+    { id: "background", color: theme.colors[0] },
+    { id: "accent", color: theme.colors[4] },
+  ];
 }
 
 function hexLuminance(hexColor: string): number {
