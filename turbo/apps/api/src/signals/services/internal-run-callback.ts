@@ -1,5 +1,3 @@
-import { safeUrlParse } from "../utils";
-
 export const internalRunCallbackKinds = [
   "agent",
   "agentphone",
@@ -29,7 +27,6 @@ export interface InternalRunCallbackEnvelope {
 }
 
 interface InternalRunCallbackRecord {
-  readonly url: string | null;
   readonly internalKind: string | null;
 }
 
@@ -59,44 +56,5 @@ export function internalRunCallbackKindForRecord(
   if (isInternalRunCallbackKind(callback.internalKind)) {
     return callback.internalKind;
   }
-  return legacyInternalRunCallbackKind(callback.url);
-}
-
-function legacyInternalRunCallbackKind(
-  url: string | null,
-): InternalRunCallbackKind | null {
-  if (!url) {
-    return null;
-  }
-
-  const path = safeUrlParse(url)?.pathname ?? url;
-  switch (path) {
-    case "/api/internal/callbacks/agent": {
-      return "agent";
-    }
-    case "/api/internal/callbacks/agentphone": {
-      return "agentphone";
-    }
-    case "/api/internal/callbacks/chat": {
-      return "chat";
-    }
-    case "/api/internal/callbacks/github/issues": {
-      return "github:issues";
-    }
-    case "/api/internal/callbacks/slack/org": {
-      return "slack:org";
-    }
-    case "/api/internal/callbacks/telegram": {
-      return "telegram";
-    }
-    case "/api/internal/callbacks/trigger/cron": {
-      return "trigger:cron";
-    }
-    case "/api/internal/callbacks/trigger/loop": {
-      return "trigger:loop";
-    }
-    default: {
-      return null;
-    }
-  }
+  return null;
 }

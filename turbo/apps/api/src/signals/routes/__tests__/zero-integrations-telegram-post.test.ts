@@ -1340,8 +1340,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const [callback] = await db
       .update(agentRunCallbacks)
       .set({
-        url: "http://localhost:3000/api/internal/callbacks/telegram",
-        internalKind: null,
+        url: null,
+        internalKind: "telegram",
         payload: {
           installationId: fixture.telegramBotId,
           chatId: "77002",
