@@ -9,6 +9,7 @@ use super::super::guest_runtime_dir;
 use super::super::storage::{
     download_storages, filter_unchanged_storages, format_command_output_excerpt,
     format_guest_download_failure, guest_download_command, guest_download_env,
+    guest_download_has_work,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
@@ -229,6 +230,65 @@ fn art_fp(mount: &str, name: &str, ver: &str) -> HashMap<String, StorageFingerpr
     let mut m = HashMap::new();
     m.insert(mount.into(), fp(name, ver));
     m
+}
+
+// -----------------------------------------------------------------------
+// guest_download_has_work tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn guest_download_has_work_detects_instruction_normalization_without_archives() {
+    let mut storage = guest_storage("/home/user/.codex", "instructions", "v1", None);
+    storage.instructions_target_filename = Some("AGENTS.md".into());
+    let manifest = GuestDownloadManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+    };
+
+    assert!(guest_download_has_work(&manifest));
+}
+
+#[test]
+fn guest_download_has_work_skips_fully_empty_cached_manifest() {
+    let mut storage = guest_storage("/home/user/.codex", "instructions", "v1", None);
+    storage.cached = true;
+    let manifest = GuestDownloadManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+    };
+
+    assert!(!guest_download_has_work(&manifest));
+}
+
+#[test]
+fn guest_download_has_work_detects_archive_urls_and_cleanup_paths() {
+    let storage_work = GuestDownloadManifest {
+        storages: vec![guest_storage(
+            "/data",
+            "data",
+            "v1",
+            Some("https://s3/data"),
+        )],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+    };
+    assert!(guest_download_has_work(&storage_work));
+
+    let artifact_work = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![guest_art("workspace", "v1", Some("https://s3/workspace"))],
+        cleanup_paths: vec![],
+    };
+    assert!(guest_download_has_work(&artifact_work));
+
+    let cleanup_work = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: vec!["/old".into()],
+    };
+    assert!(guest_download_has_work(&cleanup_work));
 }
 
 #[test]
@@ -585,6 +645,37 @@ fn filter_unchanged_storage_sets_cached_true() {
     let result = filter_unchanged_storages(&manifest, &prev);
     assert!(result.storages[0].cached);
     assert!(result.storages[0].archive_url.is_none());
+}
+
+#[test]
+fn filter_unchanged_storage_leaves_instruction_normalization_work() {
+    let mut storage = guest_storage(
+        "/home/user/.codex",
+        "instructions",
+        "v1",
+        Some("https://s3/instructions"),
+    );
+    storage.instructions_target_filename = Some("AGENTS.md".into());
+    let manifest = GuestDownloadManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::from([("/home/user/.codex".into(), fp("instructions", "v1"))]),
+        artifacts: HashMap::new(),
+    };
+
+    let result = filter_unchanged_storages(&manifest, &prev);
+
+    assert!(result.storages[0].cached);
+    assert!(result.storages[0].archive_url.is_none());
+    assert_eq!(
+        result.storages[0].instructions_target_filename.as_deref(),
+        Some("AGENTS.md")
+    );
+    assert!(result.cleanup_paths.is_empty());
+    assert!(guest_download_has_work(&result));
 }
 
 #[test]

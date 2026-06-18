@@ -113,6 +113,16 @@ pub(super) fn filter_unchanged_storages(
     }
 }
 
+pub(super) fn guest_download_has_work(manifest: &GuestDownloadManifest) -> bool {
+    manifest.storages.iter().any(|s| s.archive_url.is_some())
+        || manifest.artifacts.iter().any(|a| a.archive_url.is_some())
+        || !manifest.cleanup_paths.is_empty()
+        || manifest
+            .storages
+            .iter()
+            .any(|s| s.instructions_target_filename.is_some())
+}
+
 /// Download storage volumes into the guest.
 pub(super) fn guest_download_command() -> String {
     format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
