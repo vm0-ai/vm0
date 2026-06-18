@@ -454,7 +454,7 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
             .headers()
             .get(header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
+            .and_then(parse_ascii_decimal_u64);
         // Drop the response after headers instead of buffering an ignored
         // Range response into memory.
         return Ok(total
@@ -501,10 +501,10 @@ fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
     let Some((start, end)) = range.split_once('-') else {
         return ProbeContentRange::Invalid;
     };
-    let Some(start) = parse_content_range_decimal(start) else {
+    let Some(start) = parse_ascii_decimal_u64(start) else {
         return ProbeContentRange::Invalid;
     };
-    let Some(end) = parse_content_range_decimal(end) else {
+    let Some(end) = parse_ascii_decimal_u64(end) else {
         return ProbeContentRange::Invalid;
     };
     if start != 0 || end != 0 {
@@ -514,7 +514,7 @@ fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
     if total == "*" {
         return ProbeContentRange::UnknownSize;
     }
-    let Some(total) = parse_content_range_decimal(total) else {
+    let Some(total) = parse_ascii_decimal_u64(total) else {
         return ProbeContentRange::Invalid;
     };
     if total <= end {
@@ -523,7 +523,7 @@ fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
     ProbeContentRange::Known(total)
 }
 
-fn parse_content_range_decimal(value: &str) -> Option<u64> {
+fn parse_ascii_decimal_u64(value: &str) -> Option<u64> {
     if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
@@ -1533,6 +1533,21 @@ mod tests {
         let _ = release_tx.send(());
         server_task.await.unwrap().unwrap();
         assert_eq!(result, SizeProbe::Known(advertised_size));
+    }
+
+    #[tokio::test]
+    async fn probe_200_rejects_malformed_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
+        let (url, handle) = raw_http_url(response).await;
+
+        let http = Client::builder().build().unwrap();
+        let result = probe_size(&http, &url).await;
+
+        handle.await.unwrap().unwrap();
+        assert!(
+            !matches!(result, Ok(SizeProbe::Known(_))),
+            "malformed Content-Length must not become a known size: {result:?}"
+        );
     }
 
     #[tokio::test]
