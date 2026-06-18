@@ -39,6 +39,7 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
 /// Serialize all tests - they share one mock server and process-wide env vars.
 pub(crate) static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+#[must_use = "keep SharedApiMock alive for the full test to hold the shared mock lock"]
 pub(crate) struct SharedApiMock {
     _guard: MutexGuard<'static, ()>,
     server: &'static MockServer,
