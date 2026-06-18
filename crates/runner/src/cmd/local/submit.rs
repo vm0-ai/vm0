@@ -21,6 +21,12 @@ use crate::paths::HomePaths;
 /// Poll interval for checking the result file.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Default wait budget for a submitted local job to complete.
+const DEFAULT_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 300;
+
+/// Local submit is an interactive wait, not a long-term scheduling primitive.
+const MAX_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 24 * 60 * 60;
+
 /// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
@@ -50,8 +56,8 @@ pub struct SubmitArgs {
     /// Local-only secret environment variables to pass and register for masking (KEY=VALUE)
     #[arg(long = "secret-env")]
     secret_env: Vec<String>,
-    /// Timeout in seconds waiting for a runner to complete the job
-    #[arg(long, default_value_t = 300)]
+    /// Timeout in seconds waiting for a runner to complete the job (max: 24 hours)
+    #[arg(long, default_value_t = DEFAULT_LOCAL_SUBMIT_TIMEOUT_SECS)]
     timeout: u64,
 }
 
@@ -279,6 +285,7 @@ impl SubmitPlan {
         let environment = Self::parse_env_entries("--env", &env, true)?;
         let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
+        let timeout = Self::validate_timeout(timeout)?;
         let group_dir = home.groups_dir().join(&group);
         local_queue::ensure_profile_jobs_dir(&group_dir, &profile).map_err(|e| {
             RunnerError::Config(format!("create job dir for profile {profile}: {e}"))
@@ -311,9 +318,18 @@ impl SubmitPlan {
             group,
             profile,
             queue,
-            timeout: Duration::from_secs(timeout),
+            timeout,
             request_json,
         })
+    }
+
+    fn validate_timeout(timeout: u64) -> RunnerResult<Duration> {
+        if timeout > MAX_LOCAL_SUBMIT_TIMEOUT_SECS {
+            return Err(RunnerError::Config(format!(
+                "invalid --timeout: must be <= {MAX_LOCAL_SUBMIT_TIMEOUT_SECS} seconds (got {timeout})"
+            )));
+        }
+        Ok(Duration::from_secs(timeout))
     }
 
     fn parse_feature_flags(flags: &[String]) -> RunnerResult<Option<HashMap<String, bool>>> {
@@ -431,13 +447,14 @@ impl SubmitPlan {
     }
 
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
-        let deadline = tokio::time::Instant::now() + self.timeout;
+        let started_at = tokio::time::Instant::now();
 
         loop {
             if let Some(buf) = try_read_result(&self.queue.result) {
                 return Ok(SubmitOutcome::Completed(buf));
             }
-            if tokio::time::Instant::now() >= deadline {
+            let elapsed = started_at.elapsed();
+            if elapsed >= self.timeout {
                 if let Some(buf) = try_read_result(&self.queue.result) {
                     return Ok(SubmitOutcome::Completed(buf));
                 }
@@ -448,8 +465,9 @@ impl SubmitPlan {
                 self.abandon(&error);
                 return Err(RunnerError::Internal(error));
             }
+            let remaining = self.timeout.saturating_sub(elapsed);
             tokio::select! {
-                () = tokio::time::sleep(POLL_INTERVAL) => {}
+                () = tokio::time::sleep(std::cmp::min(POLL_INTERVAL, remaining)) => {}
                 _ = tokio::signal::ctrl_c() => {
                     eprintln!("interrupted — requesting cancel for {}", self.queue.job_id);
                     let _ = local_queue::write_private_marker(&self.queue.cancel, "local cancel marker");
@@ -1773,6 +1791,52 @@ mod tests {
         assert!(msg.contains("profile: vm0/large"), "got: {msg}");
         assert!(msg.contains("no local runner"), "got: {msg}");
         assert!(msg.contains("support this profile"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn maximum_timeout_is_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let mut args = submit_args_for_test();
+        args.group = group.into();
+        args.timeout = MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
+        let watcher = tokio::spawn(wait_for_job_and_write_success(
+            group_dir,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+        ));
+
+        let code = run_submit_with_home(args, home).await.unwrap();
+        let request = watcher.await.unwrap();
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+    }
+
+    #[tokio::test]
+    async fn oversized_timeouts_are_rejected_before_publishing_job() {
+        for timeout in [MAX_LOCAL_SUBMIT_TIMEOUT_SECS + 1, u64::MAX] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().to_path_buf());
+            let group = "test/group";
+            let group_dir = home.groups_dir().join(group);
+            let mut args = submit_args_for_test();
+            args.group = group.into();
+            args.timeout = timeout;
+
+            let err = run_submit_with_home(args, home).await.unwrap_err();
+
+            assert!(matches!(&err, RunnerError::Config(_)), "got: {err:?}");
+            let msg = err.to_string();
+            assert!(msg.contains("--timeout"), "got: {msg}");
+            assert!(msg.contains("must be <="), "got: {msg}");
+            assert!(msg.contains(&timeout.to_string()), "got: {msg}");
+            assert!(
+                !group_dir.exists(),
+                "invalid timeout must not create a local queue group directory"
+            );
+        }
     }
 
     #[tokio::test]
