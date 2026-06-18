@@ -380,10 +380,12 @@ function RankingTable({
   rows,
   totalTokens,
   messages,
+  showChange,
 }: {
   rows: RankingRow[];
   totalTokens: number;
   messages: RankingTableMessages;
+  showChange: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -417,7 +419,7 @@ function RankingTable({
         <table
           style={{
             width: "100%",
-            minWidth: "640px",
+            minWidth: showChange ? "640px" : "530px",
             borderCollapse: "collapse",
             textAlign: "left",
             tableLayout: "fixed",
@@ -428,7 +430,7 @@ function RankingTable({
             <col />
             <col style={{ width: "180px" }} />
             <col style={{ width: "100px" }} />
-            <col style={{ width: "110px" }} />
+            {showChange ? <col style={{ width: "110px" }} /> : null}
           </colgroup>
           <thead>
             <tr>
@@ -440,9 +442,11 @@ function RankingTable({
               <th style={tableHeadCell({ align: "right" })}>
                 {messages.headerShare}
               </th>
-              <th style={tableHeadCell({ align: "right" })}>
-                {messages.headerChange}
-              </th>
+              {showChange ? (
+                <th style={tableHeadCell({ align: "right" })}>
+                  {messages.headerChange}
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -567,18 +571,20 @@ function RankingTable({
                       {formatShare(row.share)}
                     </span>
                   </td>
-                  <td
-                    style={{
-                      ...tableBodyCell({ isLast, align: "right" }),
-                      fontSize: 14,
-                    }}
-                  >
-                    <ChangeBadge
-                      current={row.totalTokens}
-                      previous={row.previousTotalTokens}
-                      changeNewLabel={messages.changeNew}
-                    />
-                  </td>
+                  {showChange ? (
+                    <td
+                      style={{
+                        ...tableBodyCell({ isLast, align: "right" }),
+                        fontSize: 14,
+                      }}
+                    >
+                      <ChangeBadge
+                        current={row.totalTokens}
+                        previous={row.previousTotalTokens}
+                        changeNewLabel={messages.changeNew}
+                      />
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -744,6 +750,7 @@ export default async function RankingsPage({
             rows={rankings.rows}
             totalTokens={rankings.totalTokens}
             messages={tableMessages}
+            showChange={activePeriod !== "month"}
           />
         </div>
       </section>
