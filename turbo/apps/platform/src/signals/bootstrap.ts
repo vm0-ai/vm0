@@ -41,7 +41,7 @@ import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
-import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
+import { setupOnboardingRedirectPage$ } from "./zero-page/onboard-guard.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
@@ -62,10 +62,7 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
-import {
-  markCompletedBillingCheckout$,
-  reloadBillingStatus$,
-} from "./zero-page/billing.ts";
+import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
@@ -251,7 +248,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.onboarding,
-    setup: setupAuthPageWrapper(setupOnboardingPage$),
+    setup: setupAuthPageWrapper(setupOnboardingRedirectPage$),
   },
   {
     path: ROUTES.signInToken,
@@ -331,7 +328,6 @@ function showSuccessToastAfterMount(message: string): void {
 const handleBillingRedirect$ = command(({ set }) => {
   const url = new URL(window.location.href);
   const billing = url.searchParams.get("billing");
-  const transactionId = url.searchParams.get("billing_session_id");
   const credits = url.searchParams.get("credits");
   const concurrency = url.searchParams.get("concurrency");
   if (!billing && !credits && !concurrency) {
@@ -350,7 +346,6 @@ const handleBillingRedirect$ = command(({ set }) => {
     showSuccessToastAfterMount(
       `${label} checkout completed. Credits will be added after the invoice is paid.`,
     );
-    set(markCompletedBillingCheckout$, billing, transactionId);
     set(reloadBillingStatus$);
   }
 

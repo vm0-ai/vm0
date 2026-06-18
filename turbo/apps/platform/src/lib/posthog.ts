@@ -21,9 +21,6 @@ export function initPostHog(): void {
       ui_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
-      // Replay is off app-wide; it is enabled only for scoped flows (currently
-      // onboarding) via startOnboardingSessionRecording(). When it runs, this
-      // config masks all inputs and text so we capture behavior, not content.
       disable_session_recording: true,
       session_recording: {
         maskAllInputs: true,
@@ -61,40 +58,9 @@ export function clearPostHogUser(): void {
   });
 }
 
-// ── Onboarding step funnel ─────────────────────────────────────────
-//
-// Fires on each onboarding step transition. The single choke point is
-// setZeroStep$ in zero-onboarding.ts, so one capture there gives us a
-// per-step funnel to see which onboarding step has the highest drop-off.
-export function captureOnboardingStep(step: string): void {
-  runPostHog(() => {
-    posthog.capture("onboarding_step_viewed", { step });
-  });
-}
-
 export function captureTaskCompletedSuccessfully(): void {
   runPostHog(() => {
     posthog.capture("task_completed_successfully", { surface: "chat_thread" });
-  });
-}
-
-// ── Scoped session replay ──────────────────────────────────────────
-//
-// Replay is disabled at init (see initPostHog). These helpers turn it on for a
-// single flow — currently onboarding — so we can see where new users drop off
-// without recording the entire app. Inputs and text are masked (see the
-// session_recording config), so replays show behavior, not content. The
-// onboarding route setup starts recording on enter and stops it on unmount.
-
-export function startOnboardingSessionRecording(): void {
-  runPostHog(() => {
-    posthog.startSessionRecording();
-  });
-}
-
-export function stopOnboardingSessionRecording(): void {
-  runPostHog(() => {
-    posthog.stopSessionRecording();
   });
 }
 

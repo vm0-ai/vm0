@@ -1345,7 +1345,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
         <iframe
           src={publicUrl}
           title={`${file.filename} artifact thumbnail`}
-          sandbox="allow-scripts"
+          sandbox="allow-same-origin allow-scripts"
           tabIndex={-1}
           loading="lazy"
           scrolling="no"
