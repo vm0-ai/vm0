@@ -3284,6 +3284,13 @@
       "when": 1781693654218,
       "tag": "0468_rename_skill_feature_switches_to_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 469,
+      "version": "7",
+      "when": 1781753644229,
+      "tag": "0469_slim_maginty",
+      "breakpoints": true
     }
   ]
 }

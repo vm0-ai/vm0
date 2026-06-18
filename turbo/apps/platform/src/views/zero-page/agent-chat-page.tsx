@@ -82,6 +82,7 @@ import {
 } from "./model-first-oauth-submit-blocker.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
+import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
 
 function getTagline(
   agentName: string,
@@ -460,6 +461,19 @@ function useNewThreadComputerUse() {
   };
 }
 
+function useAgentChatDraftSync(pageSignal: AbortSignal) {
+  const queueDraftSync = useSet(queueCurrentAgentDraftSync$);
+  const features = useLastResolved(featureSwitch$);
+  const agentDraftsEnabled =
+    features?.[FeatureSwitchKey.AgentChatDrafts] ?? false;
+
+  return () => {
+    if (agentDraftsEnabled) {
+      detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    }
+  };
+}
+
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
@@ -514,6 +528,7 @@ export function AgentChatPage() {
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
+  const queueAgentDraftSync = useAgentChatDraftSync(pageSignal);
   const startTiming = useSet(startChatNavigationTiming$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline =
@@ -526,6 +541,15 @@ export function AgentChatPage() {
       : "";
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    queueAgentDraftSync();
+  };
+
+  const handleDraftChange = () => {
+    queueAgentDraftSync();
+  };
 
   const handleSend = (
     text: string,
@@ -563,8 +587,9 @@ export function AgentChatPage() {
           <ZeroChatComposer
             className="w-full"
             input={input}
-            onInputChange={setInput}
+            onInputChange={handleInputChange}
             onSend={handleSend}
+            onDraftChange={handleDraftChange}
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={modelPicker}
@@ -577,7 +602,7 @@ export function AgentChatPage() {
             submitBlocker={submitBlockerProps}
           />
 
-          <SuggestedPromptsGrid onSelectPrompt={setInput} />
+          <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
         </div>
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />
