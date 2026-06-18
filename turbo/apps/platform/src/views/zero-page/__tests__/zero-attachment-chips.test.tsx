@@ -284,6 +284,45 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("shows user image attachments before the text bubble in chat history", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-image-then-text",
+          role: "user",
+          content: "Review this image",
+          attachFiles: [
+            {
+              id: "attachment-photo",
+              filename: "photo.png",
+              contentType: "image/png",
+              size: 2048,
+              url: imageUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("photo.png");
+    const preview = image.closest("a");
+    const text = await screen.findByText("Review this image");
+    const textBubble = text.closest(".zero-chat-bubble-user");
+
+    expect(preview).not.toBeNull();
+    expect(textBubble).not.toBeNull();
+    expect(preview?.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(
+      preview!.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("opens persisted audio, video, and document attachments from chat history", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
