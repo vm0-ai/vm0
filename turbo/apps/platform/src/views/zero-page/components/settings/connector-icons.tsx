@@ -189,6 +189,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "meta-ads": true,
   "tiktok-ads": true,
   metabase: true,
+  "microsoft-365": true,
   minicor: true,
   minimax: true,
   minio: true,
