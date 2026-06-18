@@ -23,6 +23,8 @@ import type { OpenApiSpec, PermissionGroup } from "./codegen";
 
 const OPENAPI_URL =
   "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json";
+export const PERMISSIONS_DOC_URL =
+  "https://raw.githubusercontent.com/getsentry/sentry-docs/master/docs/api/permissions.mdx";
 
 // Sentry API token placeholder.
 // No documented format; generic 32-char alphanumeric
@@ -34,9 +36,180 @@ interface SentryOperation {
   security?: Array<Record<string, string[]>>;
 }
 
+const SENTRY_SCOPE_LEVELS = {
+  read: 0,
+  write: 1,
+  admin: 2,
+} as const;
+const SENTRY_HTTP_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+]);
+
+type SentryScopeLevelName = keyof typeof SENTRY_SCOPE_LEVELS;
+type SentryScopeLevel = (typeof SENTRY_SCOPE_LEVELS)[SentryScopeLevelName];
+
+interface SentryStandardScopePolicy {
+  family: string;
+  level: SentryScopeLevel;
+}
+
+interface SentryPermissionPolicies {
+  standardMethods: Map<string, Map<string, SentryScopeLevel>>;
+  customMethods: Map<string, Set<string>>;
+}
+
+function parseScope(scope: string): SentryStandardScopePolicy | null {
+  const separatorIndex = scope.lastIndexOf(":");
+  if (separatorIndex === -1) return null;
+
+  const family = scope.slice(0, separatorIndex);
+  const levelName = scope.slice(separatorIndex + 1);
+  if (!isSentryScopeLevelName(levelName)) return null;
+
+  return {
+    family,
+    level: SENTRY_SCOPE_LEVELS[levelName],
+  };
+}
+
+function isSentryScopeLevelName(value: string): value is SentryScopeLevelName {
+  return Object.hasOwn(SENTRY_SCOPE_LEVELS, value);
+}
+
+function parseMethodCell(value: string): string[] {
+  const methods = value
+    .replace(/\*/g, "")
+    .split("/")
+    .map((method) => {
+      return method.trim().toUpperCase();
+    });
+
+  if (
+    methods.length === 0 ||
+    methods.some((method) => {
+      return !SENTRY_HTTP_METHODS.has(method);
+    })
+  ) {
+    return [];
+  }
+
+  if (methods.includes("GET") && !methods.includes("HEAD")) {
+    methods.push("HEAD");
+  }
+  if (
+    methods.some((method) => {
+      return method === "PUT" || method === "POST";
+    }) &&
+    !methods.includes("PATCH")
+  ) {
+    methods.push("PATCH");
+  }
+
+  return methods;
+}
+
+function addStandardPolicy(
+  policies: SentryPermissionPolicies,
+  method: string,
+  family: string,
+  level: SentryScopeLevel,
+): void {
+  let methodLevels = policies.standardMethods.get(family);
+  if (!methodLevels) {
+    methodLevels = new Map();
+    policies.standardMethods.set(family, methodLevels);
+  }
+
+  const existingLevel = methodLevels.get(method);
+  if (existingLevel === undefined || level < existingLevel) {
+    methodLevels.set(method, level);
+  }
+}
+
+function addCustomPolicy(
+  policies: SentryPermissionPolicies,
+  method: string,
+  scope: string,
+): void {
+  let methods = policies.customMethods.get(scope);
+  if (!methods) {
+    methods = new Set();
+    policies.customMethods.set(scope, methods);
+  }
+  methods.add(method);
+}
+
+function parsePermissionsDoc(markdown: string): SentryPermissionPolicies {
+  const policies: SentryPermissionPolicies = {
+    standardMethods: new Map(),
+    customMethods: new Map(),
+  };
+  const tableRowPattern = /^\|\s*(.*?)\s*\|\s*`([^`]+)`\s*\|\s*$/;
+
+  for (const line of markdown.split(/\r?\n/)) {
+    const match = tableRowPattern.exec(line);
+    if (!match) continue;
+
+    const methods = parseMethodCell(match[1]!);
+    if (methods.length === 0) continue;
+
+    const scope = match[2]!.replace(/\s+/g, "");
+    const standardScope = parseScope(scope);
+
+    for (const method of methods) {
+      if (standardScope) {
+        addStandardPolicy(
+          policies,
+          method,
+          standardScope.family,
+          standardScope.level,
+        );
+      } else {
+        addCustomPolicy(policies, method, scope);
+      }
+    }
+  }
+
+  if (
+    policies.standardMethods.size === 0 &&
+    policies.customMethods.size === 0
+  ) {
+    throw new Error("Sentry permissions doc has no method policies");
+  }
+
+  return policies;
+}
+
+function scopeAllowsMethod(
+  policies: SentryPermissionPolicies,
+  scope: string,
+  method: string,
+): boolean {
+  const customMethods = policies.customMethods.get(scope);
+  if (customMethods) return customMethods.has(method);
+
+  const standardScope = parseScope(scope);
+  if (!standardScope) return true;
+
+  const requiredLevel = policies.standardMethods
+    .get(standardScope.family)
+    ?.get(method);
+  if (requiredLevel === undefined) return true;
+
+  return standardScope.level >= requiredLevel;
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
-function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
+function buildGroups(
+  spec: OpenApiSpec,
+  policies: SentryPermissionPolicies,
+): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   if (!spec.paths) {
     throw new Error("OpenAPI spec has no 'paths'");
@@ -68,6 +241,9 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       const rule = `${methodLower.toUpperCase()} ${apiPath}`;
 
       for (const scope of scopes) {
+        if (!scopeAllowsMethod(policies, scope, methodLower.toUpperCase())) {
+          continue;
+        }
         let ruleSet = groups.get(scope);
         if (!ruleSet) {
           ruleSet = new Set();
@@ -93,6 +269,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   const lines: string[] = [
     "// Auto-generated from Sentry's official OpenAPI spec.",
     `// Source: ${OPENAPI_URL}`,
+    `// Permission method policy: ${PERMISSIONS_DOC_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:sentry",
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
@@ -134,7 +311,13 @@ export async function generate(): Promise<void> {
   const spec = (await res.json()) as OpenApiSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
-  const permissions = buildGroups(spec);
+  const permissionsDocRes = await fetchSpec(
+    PERMISSIONS_DOC_URL,
+    "Sentry permissions doc",
+  );
+  const permissionsDoc = await permissionsDocRes.text();
+  const policies = parsePermissionsDoc(permissionsDoc);
+  const permissions = buildGroups(spec, policies);
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
