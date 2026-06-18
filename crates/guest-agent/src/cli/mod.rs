@@ -249,10 +249,11 @@ async fn execute_cli_inner(
     active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     let behavior = CliFrameworkBehavior::new(framework);
+    let replay_user_messages = active_input.is_enabled();
     masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
-    let cmd = command::build_cli_command_for_framework(framework)?;
+    let cmd = command::build_cli_command_for_framework(framework, replay_user_messages)?;
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -504,7 +505,7 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if behavior.filters_replayed_user_events() {
+                            if behavior.filters_replayed_user_events() && replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
                                     ReplayUserEventAction::External => {}
                                     ReplayUserEventAction::InternalInitialPrompt => {
@@ -889,7 +890,7 @@ async fn execute_cli_inner(
         } else {
             handle.abort();
             let _ = handle.await;
-            log_warn!(LOG_TAG, "Aborted unfinished Claude stdin writer");
+            log_info!(LOG_TAG, "Stopped Claude stdin writer after CLI loop");
         }
     }
 

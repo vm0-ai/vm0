@@ -113,12 +113,18 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     });
 
     let masker = SecretMasker::from_raw("");
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        guest_agent::env::run_id(),
+        true,
+        guest_agent::env::prompt(),
+    );
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
+        guest_agent::cli::execute_cli_with_active_input(
             &masker,
             common::spawn_dummy_heartbeat(),
             HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)?,
+            active_input.into_writer(),
         ),
     )
     .await
