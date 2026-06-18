@@ -132,7 +132,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Stripe payment connector integration",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AwsConnector]: {
     maintainer: "ethan@vm0.ai",
