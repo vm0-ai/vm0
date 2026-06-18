@@ -185,6 +185,7 @@ function responseErrorCode(value: unknown): ComputerUseNativeErrorCode {
   if (
     value === "permission_denied" ||
     value === "accessibility_unavailable" ||
+    value === "automation_permission_denied" ||
     value === "element_action_unsupported" ||
     value === "element_not_editable" ||
     value === "window_unavailable" ||

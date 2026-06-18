@@ -1,6 +1,7 @@
 import os from "node:os";
 import type {
   ComputerUseCommand,
+  ComputerUseCommandFailure,
   ComputerUseCommandExecutionResult,
 } from "./computer-use-accessibility";
 import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
@@ -55,6 +56,10 @@ interface ComputerUseHostRuntimeOptions {
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
   ) => Promise<ComputerUseCommandExecutionResult>;
+  readonly onCommandFailure?: (args: {
+    readonly command: ComputerUseCommand;
+    readonly failure: ComputerUseCommandFailure;
+  }) => void;
   readonly onChange?: () => void;
   readonly setTimeout?: typeof setTimeout;
   readonly clearTimeout?: typeof clearTimeout;
@@ -227,6 +232,9 @@ export class ComputerUseHostRuntime {
   private readonly hostFetchRequest: ComputerUseHostFetch;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
+  private readonly onCommandFailure: NonNullable<
+    ComputerUseHostRuntimeOptions["onCommandFailure"]
+  >;
   private readonly onChange: () => void;
   private readonly scheduleTimeout: typeof setTimeout;
   private readonly clearScheduledTimeout: typeof clearTimeout;
@@ -257,6 +265,7 @@ export class ComputerUseHostRuntime {
     this.hostFetchRequest = options.hostFetch;
     this.getPermissions = options.getPermissions;
     this.executeCommand = options.executeCommand;
+    this.onCommandFailure = options.onCommandFailure ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
     this.scheduleTimeout = options.setTimeout ?? setTimeout;
     this.clearScheduledTimeout = options.clearTimeout ?? clearTimeout;
@@ -848,6 +857,9 @@ export class ComputerUseHostRuntime {
       completedAt: new Date(completedAtMs).toISOString(),
       durationMs: completedAtMs - startedAtMs,
     });
+    if (completed.status === "failed") {
+      this.onCommandFailure({ command: body.command, failure: completed });
+    }
     if (!this.running || !this.hostToken) {
       return;
     }

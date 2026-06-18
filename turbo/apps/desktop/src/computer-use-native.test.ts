@@ -549,6 +549,10 @@ describe("computer use native backend", () => {
   it.each([
     ["app_not_found", "Unable to open Things: Unable to find application"],
     ["app_open_failed", "Unable to open Things"],
+    [
+      "automation_permission_denied",
+      "Not authorized to send Apple events to Google Chrome. (-1743)",
+    ],
     ["element_action_unsupported", "Element does not support a primary click"],
     [
       "element_not_editable",

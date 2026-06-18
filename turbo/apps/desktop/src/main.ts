@@ -18,6 +18,10 @@ import {
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
 import {
+  MAC_AUTOMATION_SETTINGS_URL,
+  createAutomationPermissionDeniedPrompt,
+} from "./desktop-automation-permission";
+import {
   installComputerUseIpc,
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
@@ -144,6 +148,22 @@ const computerUseNativeBackend = createComputerUseNativeBackend({
   onRuntimeError: captureDesktopNativeHelperError,
 });
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const automationPermissionPrompt = createAutomationPermissionDeniedPrompt({
+  sourceLabel: config.identity.displayName,
+  showDialog: async (options) => {
+    const window = currentDialogWindow();
+    const result = window
+      ? await dialog.showMessageBox(window, options)
+      : await dialog.showMessageBox(options);
+    return result.response;
+  },
+  openAutomationSettings: () => {
+    openExternal(MAC_AUTOMATION_SETTINGS_URL);
+  },
+  onError: (error) => {
+    console.error("Automation permission prompt failed", error);
+  },
+});
 const computerUseAutoStart = new DesktopComputerUseAutoStartSupervisor({
   getState: getComputerUseBridgeState,
   start: async () => {
@@ -485,6 +505,7 @@ async function startComputerUseRuntime(
           snapshotStore: computerUseSnapshotStore,
         });
       },
+      onCommandFailure: automationPermissionPrompt,
       onChange: notifyComputerUseChanged,
     });
   }
@@ -724,14 +745,17 @@ function applyApplicationMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+function currentDialogWindow(): BrowserWindow | undefined {
+  return mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+    ? mainWindow
+    : undefined;
+}
+
 async function confirmDesktopQuit(): Promise<boolean> {
   const options = buildDesktopQuitConfirmationOptions(
     config.identity.displayName,
   );
-  const window =
-    mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
-      ? mainWindow
-      : undefined;
+  const window = currentDialogWindow();
   const result = window
     ? await dialog.showMessageBox(window, options)
     : await dialog.showMessageBox(options);

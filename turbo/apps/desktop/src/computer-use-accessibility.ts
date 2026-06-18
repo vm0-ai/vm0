@@ -174,6 +174,7 @@ export interface ComputerUseCommandFailure {
     readonly code:
       | "permission_denied"
       | "accessibility_unavailable"
+      | "automation_permission_denied"
       | "element_action_unsupported"
       | "element_not_editable"
       | "window_unavailable"
