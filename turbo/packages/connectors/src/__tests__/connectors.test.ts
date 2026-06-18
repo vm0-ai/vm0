@@ -234,6 +234,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   "outlook-mail":
     "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
   posthog: "https://us.posthog.com/oauth/authorize",
+  quickbooks: "https://appcenter.intuit.com/connect/oauth2",
   reddit: "https://www.reddit.com/api/v1/authorize",
   sentry: "https://sentry.io/oauth/authorize/",
   slack: "https://slack.com/oauth/v2/authorize",
@@ -2544,6 +2545,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(
       getAvailableConnectorAuthMethodIds("tiktok-ads", {
         [FeatureSwitchKey.TikTokAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes QuickBooks OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("quickbooks", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("quickbooks", {
+        [FeatureSwitchKey.QuickBooksConnector]: true,
       }),
     ).toStrictEqual(["oauth"]);
   });

@@ -231,6 +231,7 @@ import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { profoundFirewall } from "./profound.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qdrantFirewall } from "./qdrant.generated";
+import { quickbooksFirewall } from "./quickbooks.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { railwayFirewall } from "./railway.generated";
 import { railwayProjectFirewall } from "./railway-project.generated";
@@ -510,6 +511,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qdrant: qdrantFirewall,
+  quickbooks: quickbooksFirewall,
   qiita: qiitaFirewall,
   railway: railwayFirewall,
   "railway-project": railwayProjectFirewall,

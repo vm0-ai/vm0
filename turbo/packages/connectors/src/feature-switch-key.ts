@@ -15,6 +15,7 @@ export enum FeatureSwitchKey {
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   GarminConnectConnector = "garminConnectConnector",
+  QuickBooksConnector = "quickbooksConnector",
   RedditConnector = "redditConnector",
   SupabaseConnector = "supabaseConnector",
   WebflowConnector = "webflowConnector",
