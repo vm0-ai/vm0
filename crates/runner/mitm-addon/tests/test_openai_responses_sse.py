@@ -90,6 +90,70 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.4-mini"
         assert usage["tokens.input"] == 3
 
+    def test_eventless_unknown_event_type_with_usage_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.future_terminal","response":{"id":"resp_future",'
+            b'"model":"gpt-5.6","usage":{"input_tokens":11,"output_tokens":7}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_future",
+            "model": "gpt-5.6",
+            "tokens.input": 11,
+            "tokens.output": 7,
+        }
+
+    def test_named_unknown_event_type_with_usage_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal","response":{"model":"gpt-5.6",'
+            b'"usage":{"output_tokens":12}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.output": 12,
+        }
+
+    def test_named_unknown_event_with_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"output_tokens":12}}}\n\n'
+        )
+
+        assert usage == {}
+
+    def test_named_unknown_malformed_event_does_not_report_parse_error(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b"event: response.future_terminal\n"
+            b'data: {"type":"response.future_terminal","response":{"model":"gpt'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
+    def test_known_non_usage_eventless_usage_fields_are_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"input_tokens":11,"output_tokens":7}}}\n\n'
+        )
+
+        assert usage == {}
+
     def test_eventless_non_terminal_skips_large_delta_before_full_extraction(self, monkeypatch):
         real_extractor = openai_responses.JsonSelectiveExtractor
         fed_chunks: list[bytes] = []

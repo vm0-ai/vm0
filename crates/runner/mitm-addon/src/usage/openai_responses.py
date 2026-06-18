@@ -18,7 +18,6 @@ model-provider usage billing:
   usage into a per-flow accumulator.
 """
 
-import json
 from collections.abc import Callable
 from typing import Literal, TypeGuard
 
@@ -27,6 +26,7 @@ from mitmproxy import http
 import body_decoding
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
+from .json_probe import probe_top_level_string_field
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import (
     MODEL_USAGE_CATEGORY_CACHE_READ,
@@ -42,15 +42,24 @@ from .sse import SseUsageScanner
 _RESPONSES_TERMINAL_USAGE_EVENTS = frozenset(
     ("response.completed", "response.done", "response.incomplete", "response.failed")
 )
+_RESPONSES_KNOWN_NON_USAGE_EVENTS = frozenset(
+    (
+        "response.created",
+        "response.in_progress",
+        "response.output_text.delta",
+        "response.refusal.delta",
+        "response.function_call_arguments.delta",
+        "response.code_interpreter_call.code.delta",
+    )
+)
 _SseUsageParseErrorCallback = Callable[[str, str], None]
-_ResponsesEventTypeClassification = Literal["terminal", "non_terminal", "unknown"]
+_ResponsesEventTypeClassification = Literal["terminal", "known_non_usage", "unknown", "pending"]
 _RESPONSES_EVENT_TERMINAL: _ResponsesEventTypeClassification = "terminal"
-_RESPONSES_EVENT_NON_TERMINAL: _ResponsesEventTypeClassification = "non_terminal"
+_RESPONSES_EVENT_KNOWN_NON_USAGE: _ResponsesEventTypeClassification = "known_non_usage"
 _RESPONSES_EVENT_UNKNOWN: _ResponsesEventTypeClassification = "unknown"
-_JSON_CONTROL_CHAR_MAX = 0x20
+_RESPONSES_EVENT_PENDING: _ResponsesEventTypeClassification = "pending"
 _JSON_PREFILTER_MAX_DEPTH = 256
 _JSON_PREFILTER_MAX_STRING_BYTES = 1024
-_JSON_HEX_BYTES = frozenset(b"0123456789abcdefABCDEF")
 # Eventless SSE frames normally expose ``type`` near the top of the JSON body.
 # After this bounded prefix, fall back to the full streaming extractor so rare
 # terminal frames with late ``type`` fields still report usage.
@@ -77,225 +86,34 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
 }
 
 
-def _skip_json_whitespace(body: bytes, i: int) -> int:
-    while i < len(body) and body[i] in b" \t\r\n":
-        i += 1
-    return i
-
-
-def _scan_json_string_end(
-    body: bytes,
-    i: int,
-    *,
-    max_string_bytes: int | None = None,
-) -> int | None:
-    if i >= len(body) or body[i] != ord('"'):
-        return None
-    i += 1
-    raw_bytes = 0
-    while i < len(body):
-        b = body[i]
-        if b == ord('"'):
-            return i + 1
-        raw_bytes += 1
-        if max_string_bytes is not None and raw_bytes > max_string_bytes:
-            return None
-        if b == ord("\\"):
-            i += 1
-            if i >= len(body):
-                return None
-            escape = body[i]
-            raw_bytes += 1
-            if max_string_bytes is not None and raw_bytes > max_string_bytes:
-                return None
-            if escape == ord("u"):
-                if i + 4 >= len(body):
-                    return None
-                if any(hex_byte not in _JSON_HEX_BYTES for hex_byte in body[i + 1 : i + 5]):
-                    return None
-                raw_bytes += 4
-                if max_string_bytes is not None and raw_bytes > max_string_bytes:
-                    return None
-                i += 5
-                continue
-            if escape not in b'"\\/bfnrt':
-                return None
-            i += 1
-            continue
-        if b < _JSON_CONTROL_CHAR_MAX:
-            return None
-        i += 1
-    return None
-
-
-def _read_json_string(body: bytes, i: int) -> tuple[str, int] | None:
-    end = _scan_json_string_end(
+def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
+    result = probe_top_level_string_field(
         body,
-        i,
+        "type",
+        max_depth=_JSON_PREFILTER_MAX_DEPTH,
         max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
     )
-    if end is None:
-        return None
-    try:
-        value = json.loads(body[i:end].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(value, str):
-        return None
-    return value, end
-
-
-def _skip_json_number(body: bytes, i: int) -> int | None:
-    if i < len(body) and body[i] == ord("-"):
-        i += 1
-    if i >= len(body):
-        return None
-
-    if body[i] == ord("0"):
-        i += 1
-        if i < len(body) and ord("0") <= body[i] <= ord("9"):
-            return None
-    elif ord("1") <= body[i] <= ord("9"):
-        i += 1
-        while i < len(body) and ord("0") <= body[i] <= ord("9"):
-            i += 1
-    else:
-        return None
-
-    if i < len(body) and body[i] == ord("."):
-        i += 1
-        if i >= len(body) or not ord("0") <= body[i] <= ord("9"):
-            return None
-        while i < len(body) and ord("0") <= body[i] <= ord("9"):
-            i += 1
-
-    if i < len(body) and body[i] in b"eE":
-        i += 1
-        if i < len(body) and body[i] in b"+-":
-            i += 1
-        if i >= len(body) or not ord("0") <= body[i] <= ord("9"):
-            return None
-        while i < len(body) and ord("0") <= body[i] <= ord("9"):
-            i += 1
-
-    return i
-
-
-def _skip_json_array(body: bytes, i: int, depth: int) -> int | None:
-    if depth >= _JSON_PREFILTER_MAX_DEPTH:
-        return None
-    i = _skip_json_whitespace(body, i + 1)
-    if i < len(body) and body[i] == ord("]"):
-        return i + 1
-
-    while i < len(body):
-        next_i = _skip_json_value(body, i, depth + 1)
-        if next_i is None:
-            return None
-        i = next_i
-        i = _skip_json_whitespace(body, i)
-        if i >= len(body):
-            return None
-        if body[i] == ord("]"):
-            return i + 1
-        if body[i] != ord(","):
-            return None
-        i = _skip_json_whitespace(body, i + 1)
-    return None
-
-
-def _skip_json_object(body: bytes, i: int, depth: int) -> int | None:
-    if depth >= _JSON_PREFILTER_MAX_DEPTH:
-        return None
-    i = _skip_json_whitespace(body, i + 1)
-    if i < len(body) and body[i] == ord("}"):
-        return i + 1
-
-    while i < len(body):
-        key = _scan_json_string_end(body, i)
-        if key is None:
-            return None
-        i = _skip_json_whitespace(body, key)
-        if i >= len(body) or body[i] != ord(":"):
-            return None
-        i = _skip_json_whitespace(body, i + 1)
-        next_i = _skip_json_value(body, i, depth + 1)
-        if next_i is None:
-            return None
-        i = next_i
-        i = _skip_json_whitespace(body, i)
-        if i >= len(body):
-            return None
-        if body[i] == ord("}"):
-            return i + 1
-        if body[i] != ord(","):
-            return None
-        i = _skip_json_whitespace(body, i + 1)
-    return None
-
-
-def _skip_json_value(body: bytes, i: int, depth: int = 0) -> int | None:
-    i = _skip_json_whitespace(body, i)
-    if i >= len(body):
-        return None
-    b = body[i]
-    if b == ord('"'):
-        return _scan_json_string_end(body, i)
-    if b == ord("{"):
-        return _skip_json_object(body, i, depth)
-    if b == ord("["):
-        return _skip_json_array(body, i, depth)
-    if b == ord("-") or ord("0") <= b <= ord("9"):
-        return _skip_json_number(body, i)
-    for literal in (b"true", b"false", b"null"):
-        if body.startswith(literal, i):
-            return i + len(literal)
-    return None
-
-
-def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
-    i = _skip_json_whitespace(body, 0)
-    if i >= len(body) or body[i] != ord("{"):
+    if result.status == "incomplete":
+        return _RESPONSES_EVENT_PENDING
+    if result.status != "found" or result.value is None:
         return _RESPONSES_EVENT_UNKNOWN
-    i = _skip_json_whitespace(body, i + 1)
-    if i < len(body) and body[i] == ord("}"):
-        return _RESPONSES_EVENT_UNKNOWN
+    return _classify_responses_event_name(result.value)
 
-    while i < len(body):
-        key_result = _read_json_string(body, i)
-        if key_result is None:
-            return _RESPONSES_EVENT_UNKNOWN
-        key, i = key_result
 
-        i = _skip_json_whitespace(body, i)
-        if i >= len(body) or body[i] != ord(":"):
-            return _RESPONSES_EVENT_UNKNOWN
-        i = _skip_json_whitespace(body, i + 1)
-
-        if key == "type":
-            type_result = _read_json_string(body, i)
-            if type_result is None:
-                return _RESPONSES_EVENT_UNKNOWN
-            event_type, _end = type_result
-            # Responses event JSON is expected to have one top-level type. Stop
-            # at the first conforming type so common delta frames stay cheap.
-            if event_type in _RESPONSES_TERMINAL_USAGE_EVENTS:
-                return _RESPONSES_EVENT_TERMINAL
-            return _RESPONSES_EVENT_NON_TERMINAL
-
-        i = _skip_json_value(body, i)
-        if i is None:
-            return _RESPONSES_EVENT_UNKNOWN
-        i = _skip_json_whitespace(body, i)
-        if i >= len(body):
-            return _RESPONSES_EVENT_UNKNOWN
-        if body[i] == ord("}"):
-            return _RESPONSES_EVENT_UNKNOWN
-        if body[i] != ord(","):
-            return _RESPONSES_EVENT_UNKNOWN
-        i = _skip_json_whitespace(body, i + 1)
-
+def _classify_responses_event_name(event_name: str) -> _ResponsesEventTypeClassification:
+    if event_name in _RESPONSES_TERMINAL_USAGE_EVENTS:
+        return _RESPONSES_EVENT_TERMINAL
+    if event_name in _RESPONSES_KNOWN_NON_USAGE_EVENTS:
+        return _RESPONSES_EVENT_KNOWN_NON_USAGE
     return _RESPONSES_EVENT_UNKNOWN
+
+
+def _is_known_terminal_usage_event(value: object) -> bool:
+    return isinstance(value, str) and value in _RESPONSES_TERMINAL_USAGE_EVENTS
+
+
+def _is_known_non_usage_event(value: object) -> bool:
+    return isinstance(value, str) and value in _RESPONSES_KNOWN_NON_USAGE_EVENTS
 
 
 def _is_usage_quantity(value: object) -> TypeGuard[int]:
@@ -317,6 +135,13 @@ def _has_positive_usage_quantity(values: dict) -> bool:
     for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
         value = values.get(category)
         if _is_usage_quantity(value) and value > 0:
+            return True
+    return False
+
+
+def _has_usage_quantity(values: dict) -> bool:
+    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+        if _is_usage_quantity(values.get(category)):
             return True
     return False
 
@@ -414,15 +239,16 @@ def _store_sse_result_values(
     event_name: str | None,
 ) -> None:
     data_type = values.get(("type",))
-    if (
-        event_name not in _RESPONSES_TERMINAL_USAGE_EVENTS
-        and data_type not in _RESPONSES_TERMINAL_USAGE_EVENTS
-    ):
+    if _is_known_non_usage_event(event_name) or _is_known_non_usage_event(data_type):
         return
+    event_identity = event_name if event_name is not None else data_type
+    is_known_terminal_usage_event = _is_known_terminal_usage_event(event_identity)
 
     prefix = ("response",) if _has_response_wrapper_values(values) else ()
     source: dict = {}
     _store_response_values(values, source, prefix)
+    if not is_known_terminal_usage_event and not _has_usage_quantity(source):
+        return
     merge_openai_responses_usage_result(target, source)
 
 
@@ -455,7 +281,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._on_parse_error = on_parse_error
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name is None or event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
+        return event_name is None or not _is_known_non_usage_event(event_name)
 
     def on_event_start(self, event_name: str | None) -> None:
         self._reset_event_state()
@@ -520,13 +346,13 @@ class _OpenAIResponsesSseUsageHandler:
             prefix.extend(chunk[:captured_len])
 
         event_type = _classify_responses_event_type(bytes(prefix))
-        if event_type == _RESPONSES_EVENT_NON_TERMINAL:
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
             self._eventless_prefix = None
             self._discard_eventless_event = True
             return
 
         should_fallback = (
-            event_type == _RESPONSES_EVENT_TERMINAL
+            event_type in (_RESPONSES_EVENT_TERMINAL, _RESPONSES_EVENT_UNKNOWN)
             or captured_len < len(chunk)
             or len(prefix) >= _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
         )
@@ -643,7 +469,7 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
     ``event:`` / ``data:`` envelope, so reuse the SSE field map and event gate
     directly.
     """
-    if _classify_responses_event_type(body) == _RESPONSES_EVENT_NON_TERMINAL:
+    if _classify_responses_event_type(body) == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None
 
     extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)

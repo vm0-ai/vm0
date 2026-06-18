@@ -163,6 +163,45 @@ def test_returns_none_for_non_usage_event_type():
     assert extract_openai_responses_usage_from_event_json(body) is None
 
 
+def test_unknown_event_type_with_usage_extracts_usage():
+    body = json.dumps(
+        {
+            "type": "response.future_terminal",
+            "response": {
+                "id": "resp_future",
+                "model": "gpt-5.6",
+                "usage": {
+                    "input_tokens": 15,
+                    "output_tokens": 9,
+                    "input_tokens_details": {"cached_tokens": 4},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_future",
+        "model": "gpt-5.6",
+        "tokens.input": 11,
+        "tokens.output": 9,
+        "tokens.cache_read": 4,
+    }
+
+
+def test_known_non_usage_event_with_usage_fields_is_ignored():
+    body = json.dumps(
+        {
+            "type": "response.output_text.delta",
+            "response": {
+                "model": "gpt-5.6",
+                "usage": {"input_tokens": 15, "output_tokens": 9},
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
 def test_non_terminal_event_skips_full_usage_extractor(monkeypatch):
     def fail_extractor(**_kwargs):
         raise AssertionError("full extractor should not run for non-terminal events")
