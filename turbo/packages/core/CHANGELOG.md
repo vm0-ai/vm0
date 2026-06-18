@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.354.0](https://github.com/vm0-ai/vm0/compare/core-v8.353.0...core-v8.354.0) (2026-06-18)
+
+
+### Features
+
+* register nocturne and neo-brutalism presentation resources ([#18209](https://github.com/vm0-ai/vm0/issues/18209)) ([5b76751](https://github.com/vm0-ai/vm0/commit/5b767515121b00104f45a81ecbd145c672e2ee3e))
+
+
+### Bug Fixes
+
+* update presentation picker CDN embeds ([#18210](https://github.com/vm0-ai/vm0/issues/18210)) ([f019454](https://github.com/vm0-ai/vm0/commit/f019454c5660ad97b1cbdaf4f685d7eda377c256))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+
 ## [8.353.0](https://github.com/vm0-ai/vm0/compare/core-v8.352.0...core-v8.353.0) (2026-06-18)
 
 
