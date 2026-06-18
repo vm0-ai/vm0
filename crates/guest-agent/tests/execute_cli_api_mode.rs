@@ -38,7 +38,12 @@ fn cleanup_run_files(ops_file: &str) {
     let _ = std::fs::remove_file(ops_file);
 }
 
-unsafe fn setup_api_env(mock_path: &Path, workdir: &Path, api_url: &str) -> Result<(), String> {
+unsafe fn setup_api_env(
+    mock_path: &Path,
+    workdir: &Path,
+    api_url: &str,
+    prompt: &str,
+) -> Result<(), String> {
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
@@ -52,7 +57,7 @@ unsafe fn setup_api_env(mock_path: &Path, workdir: &Path, api_url: &str) -> Resu
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "execute-cli-api-mode-test".to_string());
         std::env::set_var("VM0_RUN_ID", run_id);
-        std::env::set_var("VM0_PROMPT", "@exit-after-result");
+        std::env::set_var("VM0_PROMPT", prompt);
         std::env::set_var("VM0_API_URL", api_url);
         std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
@@ -71,9 +76,18 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let server = MockServer::start();
+    let session_id = "preview-filtered-user";
+    let prompt = [
+        "@ECHO@",
+        r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"preview-filtered-user","tools":["Bash"],"model":"mock-claude"}"#,
+        r#"{"type":"user","session_id":"preview-filtered-user","uuid":"unknown-user-replay","message":{"role":"user","content":"should-not-upload"},"parent_tool_use_id":null}"#,
+        r#"{"type":"result","subtype":"success","session_id":"preview-filtered-user","is_error":false,"duration_ms":100,"num_turns":1,"result":"Done.","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}"#,
+        "",
+    ]
+    .join("\n");
 
     unsafe {
-        setup_api_env(&mock_cli, tmp.path(), &server.base_url())?;
+        setup_api_env(&mock_cli, tmp.path(), &server.base_url(), &prompt)?;
     }
     let _run_files = RunFilesGuard::new();
 
@@ -90,14 +104,27 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
             .body_includes(r#""type":"result""#);
         then.status(200);
     });
+    let replayed_user_event = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""type":"user""#)
+            .body_includes("should-not-upload");
+        then.status(200);
+    });
 
     let masker = SecretMasker::from_raw("");
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        guest_agent::env::run_id(),
+        true,
+        guest_agent::env::prompt(),
+    );
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
+        guest_agent::cli::execute_cli_with_active_input(
             &masker,
             common::spawn_dummy_heartbeat(),
             HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)?,
+            active_input.into_writer(),
         ),
     )
     .await
@@ -111,15 +138,13 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     );
     init_event.assert_calls_async(1).await;
     result_event.assert_calls_async(1).await;
+    replayed_user_event.assert_calls_async(0).await;
 
-    let session_id = std::fs::read_to_string(guest_agent::paths::session_id_file())?;
-    assert!(
-        session_id.starts_with("mock-"),
-        "execute_cli should capture the mock CLI session id, got {session_id}"
-    );
+    let captured_session_id = std::fs::read_to_string(guest_agent::paths::session_id_file())?;
+    assert_eq!(captured_session_id, session_id);
     let history_path = std::fs::read_to_string(guest_agent::paths::session_history_path_file())?;
     assert!(
-        history_path.contains(session_id.trim()),
+        history_path.contains(session_id),
         "history path should contain the captured session id, got {history_path}"
     );
 

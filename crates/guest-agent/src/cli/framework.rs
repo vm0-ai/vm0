@@ -50,6 +50,10 @@ impl CliFrameworkBehavior {
         matches!(self.framework, env::Framework::ClaudeCode)
     }
 
+    pub(super) fn filters_replayed_user_events(self) -> bool {
+        matches!(self.framework, env::Framework::ClaudeCode)
+    }
+
     pub(super) fn track_claude_tool_events(
         self,
         event: &serde_json::Value,
@@ -121,6 +125,14 @@ mod tests {
     fn framework_behavior_stream_json_stdin_only_for_claude_code() {
         assert!(CliFrameworkBehavior::new(env::Framework::ClaudeCode).uses_stream_json_stdin());
         assert!(!CliFrameworkBehavior::new(env::Framework::Codex).uses_stream_json_stdin());
+    }
+
+    #[test]
+    fn framework_behavior_filters_replayed_user_events_only_for_claude_code() {
+        assert!(
+            CliFrameworkBehavior::new(env::Framework::ClaudeCode).filters_replayed_user_events()
+        );
+        assert!(!CliFrameworkBehavior::new(env::Framework::Codex).filters_replayed_user_events());
     }
 
     #[test]
