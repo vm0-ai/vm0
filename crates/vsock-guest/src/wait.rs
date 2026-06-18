@@ -303,6 +303,23 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    fn read_pid_file<T: std::str::FromStr>(path: &Path) -> Option<T> {
+        std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_for_pid_file<T: std::str::FromStr>(path: &Path, timeout: Duration) -> Option<T> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Some(pid) = read_pid_file(path) {
+                return Some(pid);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        read_pid_file(path)
+    }
+
+    #[cfg(target_os = "linux")]
     fn kill_spawned_child_with_watchdog(child: &mut Option<Child>) {
         if let Some(mut child) = child.take() {
             kill_child(process_tree_kill_target(child.id()), KillReason::Cancelled);
@@ -479,24 +496,20 @@ mod tests {
             }
         }
 
-        if !wait_for_path(&child_pid_path, Duration::from_secs(2)) {
+        let child_pid: libc::pid_t =
+            match wait_for_pid_file(&child_pid_path, Duration::from_secs(2)) {
+                Some(pid) => pid,
+                None => {
+                    let child_pid_text =
+                        std::fs::read_to_string(&child_pid_path).unwrap_or_default();
+                    kill_spawned_child_with_watchdog(&mut child);
+                    panic!("failed to parse setsid child pid {child_pid_text:?}");
+                }
+            };
+        if child_pid <= 0 {
             kill_spawned_child_with_watchdog(&mut child);
-            panic!("setsid child should publish its pid before watchdog kill");
+            panic!("setsid child pid should be positive, got {child_pid}");
         }
-        let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child_with_watchdog(&mut child);
-                panic!("failed to read setsid child pid: {e}");
-            }
-        };
-        let child_pid: libc::pid_t = match child_pid_text.trim().parse() {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child_with_watchdog(&mut child);
-                panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
-            }
-        };
         let child_pidfd = match open_pidfd(child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
