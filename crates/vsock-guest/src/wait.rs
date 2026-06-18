@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::process::{
     ProcessTreeKillTarget, kill_and_reap_child_with_target, kill_process_tree_target,
-    process_tree_kill_target, refresh_process_tree_kill_target,
+    process_signal_pid, process_tree_kill_target, refresh_process_tree_kill_target,
 };
 use crate::threading::spawn_scoped_named;
 
@@ -237,8 +237,9 @@ fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> Watchdo
     let child_id = kill_target.child_id();
     // SAFETY: kill_target comes from a PID returned by Command::spawn.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
-    // SAFETY: child_id is a process id from Command::spawn.
-    let child_killed = unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    let child_killed = process_signal_pid(child_id)
+        // SAFETY: child_id is a process id from Command::spawn and was validated as pid_t.
+        .is_some_and(|pid| unsafe { libc::kill(pid, libc::SIGKILL) == 0 });
     let killed = tree_killed || child_killed;
     WatchdogKill { reason, killed }
 }

@@ -50,8 +50,13 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
     Some((ppid, pgid))
 }
 
+pub(crate) fn process_signal_pid(pid: u32) -> Option<libc::pid_t> {
+    let pid = libc::pid_t::try_from(pid).ok()?;
+    (pid > 0).then_some(pid)
+}
+
 fn process_group_signal_pid(pgid: u32) -> Option<libc::pid_t> {
-    let pgid = libc::pid_t::try_from(pgid).ok()?;
+    let pgid = process_signal_pid(pgid)?;
     (pgid > 1).then_some(-pgid)
 }
 
@@ -426,6 +431,10 @@ mod tests {
 
     #[test]
     fn process_group_signal_pid_skips_reserved_and_unrepresentable_targets() {
+        assert_eq!(process_signal_pid(0), None);
+        assert_eq!(process_signal_pid(1), Some(1));
+        assert_eq!(process_signal_pid(i32::MAX as u32), Some(i32::MAX));
+        assert_eq!(process_signal_pid(i32::MAX as u32 + 1), None);
         assert_eq!(process_group_signal_pid(0), None);
         assert_eq!(process_group_signal_pid(1), None);
         assert_eq!(process_group_signal_pid(42), Some(-42));
