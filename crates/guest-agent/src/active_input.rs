@@ -152,6 +152,16 @@ impl ActiveInputState {
         true
     }
 
+    fn remove_replayable_pending_by_uuid(&mut self, uuid: &str) -> bool {
+        let Some(input) = self.pending_by_uuid.get(uuid) else {
+            return false;
+        };
+        if matches!(input.state, PendingState::Accepted) {
+            return false;
+        }
+        self.remove_pending_by_uuid(uuid)
+    }
+
     fn remove_replayable_pending_by_text(&mut self, text: &str) -> bool {
         if !self.initial_prompt_replay_seen && !self.observed_result {
             return false;
@@ -522,7 +532,7 @@ impl ActiveInputController {
             }
 
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            if state.remove_pending_by_uuid(uuid) {
+            if state.remove_replayable_pending_by_uuid(uuid) {
                 return ReplayUserEventAction::InternalActiveInput;
             }
         }
@@ -699,6 +709,7 @@ mod tests {
             if index == 0 {
                 first_message_uuid = Some(frame.uuid.clone());
             }
+            controller.mark_written(&frame.uuid);
 
             let active = json!({
                 "type": "user",
@@ -771,6 +782,7 @@ mod tests {
             controller.replay_user_event_action(&initial),
             ReplayUserEventAction::InternalInitialPrompt
         );
+        controller.mark_written(&active_uuid);
 
         let active = json!({
             "type": "user",
@@ -823,6 +835,7 @@ mod tests {
             controller.replay_user_event_action(&initial),
             ReplayUserEventAction::InternalInitialPrompt
         );
+        controller.mark_written(&claude_active_input_uuid("run-1", 0, "msg-1"));
 
         let active = json!({
             "type": "user",
@@ -834,6 +847,41 @@ mod tests {
         });
         assert_eq!(
             controller.replay_user_event_action(&active),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_does_not_consume_accepted_uuid_before_writer_owns_input() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        let stale = json!({
+            "type": "user",
+            "uuid": active_uuid,
+            "message": {"role": "user", "content": "follow-up"}
+        });
+
+        assert_eq!(
+            controller.replay_user_event_action(&stale),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+        assert!(!controller.close_for_result_if_idle());
+
+        controller.mark_writing(&claude_active_input_uuid("run-1", 0, "msg-1"));
+        let replay = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", 0, "msg-1"),
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&replay),
             ReplayUserEventAction::InternalActiveInput
         );
         assert!(controller.close_for_result_if_idle());
@@ -1533,6 +1581,7 @@ mod tests {
             ActiveInputControlOutcome::Accepted
         );
         let active_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        controller.mark_written(&active_uuid);
 
         let malformed = json!({
             "type": "user",
@@ -1565,10 +1614,12 @@ mod tests {
                 .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
             ActiveInputControlOutcome::Accepted
         );
+        let active_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        controller.mark_written(&active_uuid);
 
         let malformed = json!({
             "type": "user",
-            "uuid": claude_active_input_uuid("run-1", 0, "msg-1"),
+            "uuid": active_uuid,
             "message": {"role": 123, "content": "follow-up"}
         });
         assert_eq!(
@@ -1597,10 +1648,12 @@ mod tests {
                 .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
             ActiveInputControlOutcome::Accepted
         );
+        let active_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        controller.mark_written(&active_uuid);
 
         let child = json!({
             "type": "user",
-            "uuid": claude_active_input_uuid("run-1", 0, "msg-1"),
+            "uuid": active_uuid,
             "parent_tool_use_id": "tool-1",
             "message": {"role": "user", "content": "follow-up"}
         });
