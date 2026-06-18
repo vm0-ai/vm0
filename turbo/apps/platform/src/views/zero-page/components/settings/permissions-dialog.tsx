@@ -543,6 +543,7 @@ function PermissionGrantPolicyControl({
   readOnly,
   saving,
   showCurrentExpirationStatus = true,
+  onAllowClick,
   onClearExpiration,
   onAllowDurationChange,
   onPolicyChange,
@@ -558,6 +559,7 @@ function PermissionGrantPolicyControl({
   readOnly?: boolean;
   saving: boolean;
   showCurrentExpirationStatus?: boolean;
+  onAllowClick?: () => void;
   onClearExpiration: () => void;
   onAllowDurationChange: (expiresIn: UserPermissionGrantExpiresIn) => void;
   onPolicyChange: (policy: PermissionPolicy) => void;
@@ -593,6 +595,10 @@ function PermissionGrantPolicyControl({
             disabled={saving}
             aria-pressed={policy === "allow"}
             onClick={() => {
+              if (onAllowClick) {
+                onAllowClick();
+                return;
+              }
               onPolicyChange("allow");
             }}
             className={permissionPolicyButtonClass({
@@ -741,12 +747,26 @@ function groupExpirationStatusExpiresAt({
   }
 
   let firstExpiresAt: string | null | undefined;
+  let firstSelected: UserPermissionGrantExpiresIn | undefined;
+  let hasFirstSelected = false;
   for (const permission of permissions) {
     const name = permission.name;
     if (
       resolvePermissionDraftPolicy({ context, draft, permissionName: name }) !==
       "allow"
     ) {
+      return undefined;
+    }
+
+    const selected = resolvePermissionDraftExpiration({
+      context,
+      draft,
+      permissionName: name,
+    });
+    if (!hasFirstSelected) {
+      firstSelected = selected;
+      hasFirstSelected = true;
+    } else if (firstSelected !== selected) {
       return undefined;
     }
 
@@ -1045,6 +1065,12 @@ function PermissionRow({
           allowAlwaysActive={hasAllowAlwaysPolicy(grant, policy)}
           readOnly={readOnly}
           saving={saving}
+          onAllowClick={() => {
+            onPolicyChange(permission.name, "allow");
+            if (policy !== "allow") {
+              onGrantExpirationChange(permission.name, "always");
+            }
+          }}
           onClearExpiration={() => {
             onGrantExpirationChange(permission.name, null);
           }}
@@ -1434,6 +1460,17 @@ function LoadedPermissionsDrawerContent({
               )}
               readOnly={readOnly}
               saving={saving}
+              onAllowClick={() => {
+                setDraft(stateKey, (current) => {
+                  return setPermissionDraftUnknownPolicy({
+                    draft: current,
+                    policy: "allow",
+                  });
+                });
+                if (unknownPolicy !== "allow") {
+                  handleUnknownExpirationChange("always");
+                }
+              }}
               onClearExpiration={() => {
                 handleUnknownExpirationChange(null);
               }}

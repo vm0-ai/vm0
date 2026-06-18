@@ -266,10 +266,16 @@ export function resolvePermissionDraftExpiration(
   if (explicit !== undefined) {
     return explicit;
   }
+  if (params.draft.restoredPermissions[params.permissionName]) {
+    return undefined;
+  }
   const category = permissionCategory(
     params.context.metadata,
     params.permissionName,
   );
+  if (category && params.draft.restoredGroups[category]) {
+    return undefined;
+  }
   return category ? params.draft.groupExpirations[category] : undefined;
 }
 
@@ -286,6 +292,16 @@ export function resolvePermissionDraftGroupExpiration({
 }): UserPermissionGrantExpiresIn | undefined {
   const groupExpiration = draft.groupExpirations[category];
   if (groupExpiration !== undefined) {
+    for (const permission of permissions) {
+      const current = resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: permission.name,
+      });
+      if (current !== groupExpiration) {
+        return undefined;
+      }
+    }
     return groupExpiration;
   }
   if (permissions.length === 0) {
@@ -513,6 +529,7 @@ export function setPermissionDraftExpiration({
             ...draft.permissionExpirations,
             [permissionName]: expiresIn,
           },
+    restoredPermissions: omitKey(draft.restoredPermissions, permissionName),
   };
 }
 
@@ -534,6 +551,7 @@ export function setPermissionDraftGroupExpiration({
             ...draft.groupExpirations,
             [category]: expiresIn,
           },
+    restoredGroups: omitKey(draft.restoredGroups, category),
   };
 }
 

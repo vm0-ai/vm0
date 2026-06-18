@@ -910,10 +910,69 @@ describe("team page navigation", () => {
       "bookmarks:read",
     );
 
-    const bookmarksReadRow = await permissionRowByName(
+    let bookmarksReadRow = await permissionRowByName(
       loadedGroupedDialog,
       "bookmarks:read",
     );
+    click(buttonByText("Deny", bookmarksReadRow));
+    await waitFor(() => {
+      expect(buttonByText("Deny", bookmarksReadRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    click(buttonByText("Allow", bookmarksReadRow));
+    await waitFor(() => {
+      expect(buttonByText("Allow", bookmarksReadRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(within(bookmarksReadRow).getByText("Always")).toBeInTheDocument();
+      expect(
+        within(bookmarksReadRow).queryByText("7d"),
+      ).not.toBeInTheDocument();
+    });
+    click(
+      within(loadedGroupedDialog).getByLabelText("Clear permission search"),
+    );
+    const restoredReadGroupElement = await screen.findByText(readGroupLabel);
+    const restoredReadGroup = restoredReadGroupElement.closest("div");
+    if (!(restoredReadGroup instanceof HTMLElement)) {
+      throw new Error("Read permission group not found");
+    }
+    expect(within(restoredReadGroup).queryByText("7d")).not.toBeInTheDocument();
+    expect(
+      within(restoredReadGroup).queryByText("Always"),
+    ).not.toBeInTheDocument();
+    await fill(
+      within(loadedGroupedDialog).getByLabelText("Find permissions"),
+      "bookmarks:read",
+    );
+    bookmarksReadRow = await permissionRowByName(
+      loadedGroupedDialog,
+      "bookmarks:read",
+    );
+    click(buttonByText("Deny", bookmarksReadRow));
+    await waitFor(() => {
+      expect(buttonByText("Deny", bookmarksReadRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    click(
+      within(bookmarksReadRow).getByLabelText("Undo bookmarks:read changes"),
+    );
+    await waitFor(() => {
+      expect(buttonByText("Allow", bookmarksReadRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        within(bookmarksReadRow).queryByLabelText(
+          "Undo bookmarks:read changes",
+        ),
+      ).not.toBeInTheDocument();
+    });
     click(buttonByText("Deny", bookmarksReadRow));
     await waitFor(() => {
       expect(buttonByText("Deny", bookmarksReadRow)).toHaveAttribute(
