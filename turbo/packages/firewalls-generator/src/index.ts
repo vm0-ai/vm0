@@ -182,6 +182,7 @@ import { generate as generateProfound } from "./profound";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
+import { generate as generateQuickBooks } from "./quickbooks";
 import { generate as generateRailway } from "./railway";
 import { generate as generateRailwayProject } from "./railway-project";
 import { generate as generateReddit } from "./reddit";
@@ -431,6 +432,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pushinator: generatePushinator,
   qdrant: generateQdrant,
   qiita: generateQiita,
+  quickbooks: generateQuickBooks,
   railway: generateRailway,
   "railway-project": generateRailwayProject,
   reddit: generateReddit,

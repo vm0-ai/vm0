@@ -194,6 +194,7 @@
     "generate:pushinator": "tsx src/index.ts pushinator",
     "generate:qdrant": "tsx src/index.ts qdrant",
     "generate:qiita": "tsx src/index.ts qiita",
+    "generate:quickbooks": "tsx src/index.ts quickbooks",
     "generate:reap": "tsx src/index.ts reap",
     "generate:recraft": "tsx src/index.ts recraft",
     "generate:reddit": "tsx src/index.ts reddit",

@@ -89,6 +89,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Garmin Connect wellness connector",
     enabled: false,
   },
+  [FeatureSwitchKey.QuickBooksConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the QuickBooks accounting connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Reddit connector integration",

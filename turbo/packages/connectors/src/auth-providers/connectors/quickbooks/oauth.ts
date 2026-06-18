@@ -1,0 +1,223 @@
+import { z } from "zod";
+
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import { throwOAuthError } from "../../oauth/error";
+
+const QUICKBOOKS_TOKEN_URL =
+  "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+
+const QUICKBOOKS_AUTHORIZATION_URL =
+  "https://appcenter.intuit.com/connect/oauth2";
+
+const QUICKBOOKS_USERINFO_URL =
+  "https://accounts.platform.intuit.com/v1/openid_connect/userinfo";
+
+interface QuickBooksUserInfo {
+  id: string;
+  username: string | null;
+  email: string | null;
+}
+
+interface QuickBooksTokenResult {
+  accessToken: string;
+  refreshToken: string | null;
+  realmId: string;
+  expiresIn?: number;
+  scopes: string[];
+  userInfo: QuickBooksUserInfo;
+}
+
+interface QuickBooksRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn?: number;
+}
+
+export function buildQuickBooksAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: authCodeGrant.scopes.join(" "),
+    state,
+  });
+
+  return `${QUICKBOOKS_AUTHORIZATION_URL}?${params.toString()}`;
+}
+
+function basicAuth(clientId: string, clientSecret: string): string {
+  return Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+}
+
+function parseQuickBooksRealmId(oauthContext: string | undefined): string {
+  if (!oauthContext) {
+    throw new Error("QuickBooks realmId missing from OAuth callback");
+  }
+
+  let context: unknown;
+  try {
+    context = JSON.parse(oauthContext);
+  } catch {
+    throw new Error("QuickBooks realmId missing from OAuth callback");
+  }
+
+  const parsed = z
+    .object({
+      realmId: z.string().min(1),
+    })
+    .passthrough()
+    .safeParse(context);
+  if (!parsed.success) {
+    throw new Error("QuickBooks realmId missing from OAuth callback");
+  }
+  return parsed.data.realmId;
+}
+
+export async function exchangeQuickBooksCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+  oauthContext: string | undefined,
+): Promise<QuickBooksTokenResult> {
+  const response = await fetch(QUICKBOOKS_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${basicAuth(clientId, clientSecret)}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("QuickBooks", "exchange", response);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      scope: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+  if (!data.access_token) {
+    throw new Error("No access token in QuickBooks response");
+  }
+
+  const userInfo = await fetchQuickBooksUserInfo(data.access_token);
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    realmId: parseQuickBooksRealmId(oauthContext),
+    expiresIn: data.expires_in,
+    scopes: data.scope ? data.scope.split(" ") : authCodeGrant.scopes,
+    userInfo,
+  };
+}
+
+export async function refreshQuickBooksToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+  signal: AbortSignal,
+): Promise<QuickBooksRefreshResult> {
+  const response = await fetch(QUICKBOOKS_TOKEN_URL, {
+    signal,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${basicAuth(clientId, clientSecret)}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("QuickBooks", "refresh", response);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+  if (!data.access_token) {
+    throw new Error("No access token in QuickBooks refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
+  };
+}
+
+async function fetchQuickBooksUserInfo(
+  accessToken: string,
+): Promise<QuickBooksUserInfo> {
+  const response = await fetch(QUICKBOOKS_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`QuickBooks user info fetch failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      sub: z.string().optional(),
+      email: z.string().nullable().optional(),
+      givenName: z.string().nullable().optional(),
+      familyName: z.string().nullable().optional(),
+      given_name: z.string().nullable().optional(),
+      family_name: z.string().nullable().optional(),
+    })
+    .passthrough()
+    .parse(await response.json());
+  const givenName = data.givenName ?? data.given_name;
+  const familyName = data.familyName ?? data.family_name;
+  const username = [givenName, familyName].filter(Boolean).join(" ").trim();
+
+  return {
+    id: data.sub ?? data.email ?? "",
+    username: username || (data.email ?? null),
+    email: data.email ?? null,
+  };
+}
+
+export function getQuickBooksSecretName(): string {
+  return "QUICKBOOKS_ACCESS_TOKEN";
+}

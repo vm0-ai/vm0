@@ -223,6 +223,7 @@ const CONNECTOR_ICON_COLORFUL = {
   printful: true,
   qdrant: true,
   qiita: true,
+  quickbooks: true,
   reap: true,
   recraft: true,
   reddit: true,

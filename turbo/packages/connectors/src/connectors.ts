@@ -230,6 +230,7 @@ import { profound } from "./connectors/profound";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
+import { quickbooks } from "./connectors/quickbooks";
 import { qiita } from "./connectors/qiita";
 import { railway } from "./connectors/railway";
 import { railwayProject } from "./connectors/railway-project";
@@ -1262,6 +1263,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...productlane,
   ...pushinator,
   ...qdrant,
+  ...quickbooks,
   ...qiita,
   ...railway,
   ...railwayProject,
