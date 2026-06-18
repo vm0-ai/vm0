@@ -82,3 +82,26 @@ def test_join_and_raise_propagates_base_exception_subclasses():
         thread.join_and_raise(timeout=1)
 
     assert not thread.is_alive()
+
+
+def test_join_and_raise_fails_when_thread_is_still_running():
+    started = threading.Event()
+    release = threading.Event()
+
+    def wait_until_released() -> None:
+        started.set()
+        release.wait()
+
+    thread = ThreadUnderTest(target=wait_until_released)
+
+    try:
+        thread.start()
+        assert started.wait(timeout=1)
+
+        with pytest.raises(AssertionError, match="thread did not finish before timeout"):
+            thread.join_and_raise(timeout=0)
+    finally:
+        release.set()
+        thread.join(timeout=1)
+
+    assert not thread.is_alive()
