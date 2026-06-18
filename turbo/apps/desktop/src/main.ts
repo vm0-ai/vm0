@@ -967,15 +967,18 @@ function waitForAuthConsumeWindow(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let closed = false;
     const timeout = setTimeout(() => {
       rejectAuth(new Error("Desktop auth consume timed out"));
     }, 30_000);
 
     const cleanup = (): void => {
       clearTimeout(timeout);
-      window.webContents.off("did-navigate", handleNavigation);
-      window.webContents.off("did-fail-load", handleLoadFailure);
-      window.off("closed", handleClosed);
+      if (!closed && !window.isDestroyed()) {
+        window.webContents.off("did-navigate", handleNavigation);
+        window.webContents.off("did-fail-load", handleLoadFailure);
+        window.off("closed", handleClosed);
+      }
     };
 
     const resolveAuth = (): void => {
@@ -1043,6 +1046,7 @@ function waitForAuthConsumeWindow(
     };
 
     const handleClosed = (): void => {
+      closed = true;
       rejectAuth(new Error("Desktop auth consume window closed"));
     };
 
