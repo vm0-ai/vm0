@@ -53,15 +53,10 @@ struct PendingInput {
     text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PromptLikeUserContent {
-    Text(String),
-    Unmatchable,
-}
-
 #[derive(Debug)]
 struct ActiveInputState {
     lifecycle: Lifecycle,
+    observed_result: bool,
     seen_message_ids: HashSet<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
 }
@@ -70,6 +65,7 @@ impl Default for ActiveInputState {
     fn default() -> Self {
         Self {
             lifecycle: Lifecycle::Open,
+            observed_result: false,
             seen_message_ids: HashSet::new(),
             pending_by_uuid: HashMap::new(),
         }
@@ -82,6 +78,10 @@ impl ActiveInputState {
     }
 
     fn remove_replayable_pending_by_text(&mut self, text: &str) -> bool {
+        if !self.observed_result {
+            return false;
+        }
+
         let uuid = self
             .pending_by_uuid
             .iter()
@@ -148,10 +148,10 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
     .to_string()
 }
 
-fn prompt_like_user_content(event: &Value) -> Option<PromptLikeUserContent> {
+fn prompt_like_user_content(event: &Value) -> Option<String> {
     let content = event.pointer("/message/content")?;
     if let Some(text) = content.as_str() {
-        return Some(PromptLikeUserContent::Text(text.to_owned()));
+        return Some(text.to_owned());
     }
     let items = content.as_array()?;
     if items.is_empty() {
@@ -159,26 +159,18 @@ fn prompt_like_user_content(event: &Value) -> Option<PromptLikeUserContent> {
     }
 
     let mut text = String::new();
-    let mut all_text = true;
     for item in items {
         match item.get("type").and_then(Value::as_str) {
             Some("tool_result") => return None,
             Some("text") => {
-                let Some(part) = item.get("text").and_then(Value::as_str) else {
-                    all_text = false;
-                    continue;
-                };
+                let part = item.get("text").and_then(Value::as_str)?;
                 text.push_str(part);
             }
-            _ => all_text = false,
+            _ => return None,
         }
     }
 
-    if all_text {
-        Some(PromptLikeUserContent::Text(text))
-    } else {
-        Some(PromptLikeUserContent::Unmatchable)
-    }
+    Some(text)
 }
 
 impl ActiveInputRuntime {
@@ -326,6 +318,7 @@ impl ActiveInputController {
         }
 
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.observed_result = true;
         if !state.pending_by_uuid.is_empty() {
             return false;
         }
@@ -361,12 +354,10 @@ impl ActiveInputController {
             }
         }
 
-        if let Some(content) = prompt_like_user_content(event) {
-            if let PromptLikeUserContent::Text(text) = content {
-                let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                if state.remove_replayable_pending_by_text(&text) {
-                    return ReplayUserEventAction::InternalActiveInput;
-                }
+        if let Some(text) = prompt_like_user_content(event) {
+            let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.remove_replayable_pending_by_text(&text) {
+                return ReplayUserEventAction::InternalActiveInput;
             }
             return ReplayUserEventAction::UnknownPromptUser;
         }
@@ -617,6 +608,7 @@ mod tests {
         );
         let active_uuid = claude_active_input_uuid("run-1", "msg-1");
         controller.mark_writing(&active_uuid);
+        assert!(!controller.close_for_result_if_idle());
 
         let event = json!({
             "type": "user",
@@ -651,6 +643,29 @@ mod tests {
     }
 
     #[test]
+    fn replay_filter_does_not_consume_uuidless_text_match_before_first_result() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"same-text"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "same-text"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+        assert!(!controller.close_for_result_if_idle());
+    }
+
+    #[test]
     fn replay_filter_consumes_uuidless_text_block_active_input_replay() {
         let runtime = ActiveInputRuntime::new("run-1", true);
         let controller = runtime.controller();
@@ -661,6 +676,7 @@ mod tests {
         );
         let active_uuid = claude_active_input_uuid("run-1", "msg-1");
         controller.mark_written(&active_uuid);
+        assert!(!controller.close_for_result_if_idle());
 
         let event = json!({
             "type": "user",
@@ -674,5 +690,22 @@ mod tests {
             ReplayUserEventAction::InternalActiveInput
         );
         assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_keeps_unknown_user_content_blocks_external() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let event = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "image", "source": "future-schema"}]
+            }
+        });
+
+        assert_eq!(
+            runtime.controller().replay_user_event_action(&event),
+            ReplayUserEventAction::External
+        );
     }
 }
