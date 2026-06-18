@@ -50,8 +50,13 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
     Some((ppid, pgid))
 }
 
+fn process_group_signal_pid(pgid: u32) -> Option<libc::pid_t> {
+    let pgid = libc::pid_t::try_from(pgid).ok()?;
+    (pgid > 1).then_some(-pgid)
+}
+
 fn signalable_child_pgid(child_id: u32, pgid: u32) -> Option<u32> {
-    (pgid > 1 && pgid != child_id).then_some(pgid)
+    (pgid != child_id && process_group_signal_pid(pgid).is_some()).then_some(pgid)
 }
 
 /// Find the process-group ID of a direct child of `parent_pid`.
@@ -149,14 +154,25 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
 /// `target.child_id` must come from a PID returned by `Command::spawn()`.
 pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> bool {
     // Kill the direct child's process group (the su wrapper).
-    let ret = unsafe { libc::kill(-(target.child_id as i32), libc::SIGKILL) };
-    let mut signalled = ret == 0;
-    if ret != 0 {
-        let err = std::io::Error::last_os_error();
+    let mut signalled = false;
+    if let Some(signal_pid) = process_group_signal_pid(target.child_id) {
+        let ret = unsafe { libc::kill(signal_pid, libc::SIGKILL) };
+        signalled = ret == 0;
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            log(
+                "WARN",
+                &format!(
+                    "process-tree kill(-{}, SIGKILL) failed: {err}",
+                    target.child_id
+                ),
+            );
+        }
+    } else {
         log(
             "WARN",
             &format!(
-                "process-tree kill(-{}, SIGKILL) failed: {err}",
+                "process-tree kill skipped invalid process group id {}",
                 target.child_id
             ),
         );
@@ -167,7 +183,10 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
     // Guard pgid > 1: kill(0, sig) targets the caller's group, and kill(-1, sig)
     // broadcasts to every process the caller may signal.
     if let Some(pgid) = target.child_pgid_to_signal() {
-        let ret = unsafe { libc::kill(-(pgid as i32), libc::SIGKILL) };
+        let Some(signal_pid) = process_group_signal_pid(pgid) else {
+            return signalled;
+        };
+        let ret = unsafe { libc::kill(signal_pid, libc::SIGKILL) };
         if ret == 0 {
             signalled = true;
         } else {
@@ -395,6 +414,23 @@ mod tests {
             .child_pgid_to_signal(),
             Some(43)
         );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(i32::MAX as u32 + 1)
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+    }
+
+    #[test]
+    fn process_group_signal_pid_skips_reserved_and_unrepresentable_targets() {
+        assert_eq!(process_group_signal_pid(0), None);
+        assert_eq!(process_group_signal_pid(1), None);
+        assert_eq!(process_group_signal_pid(42), Some(-42));
+        assert_eq!(process_group_signal_pid(i32::MAX as u32), Some(-i32::MAX));
+        assert_eq!(process_group_signal_pid(i32::MAX as u32 + 1), None);
     }
 
     #[cfg(target_os = "linux")]
