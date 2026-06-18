@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
-use sandbox::ExecResult;
+use sandbox::{ExecResult, ProcessTerminationKind};
 use sandbox_mock::MockSandbox;
 
 use super::super::GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
@@ -91,13 +91,14 @@ async fn download_storages_nonzero_exit_code() {
 #[test]
 fn guest_download_failure_output_redacts_url_queries() {
     let result = ExecResult {
-            exit_code: 1,
-            stdout: Vec::new(),
-            stderr: b"HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?X-Amz-Signature=secret"
-                .to_vec(),
-            stdout_truncated: false,
-            stderr_truncated: true,
-        };
+        termination: ProcessTerminationKind::Exited,
+        exit_code: 1,
+        stdout: Vec::new(),
+        stderr: b"HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?X-Amz-Signature=secret"
+            .to_vec(),
+        stdout_truncated: false,
+        stderr_truncated: true,
+    };
 
     let msg = format_guest_download_failure(&result);
 
@@ -119,6 +120,7 @@ fn guest_download_failure_redacts_url_query_before_excerpting() {
         - suffix.len();
     let query = format!("{query_key}{secret_value}{}", "a".repeat(padding_len));
     let result = ExecResult {
+        termination: ProcessTerminationKind::Exited,
         exit_code: 1,
         stdout: Vec::new(),
         stderr: format!("{prefix}{query}{suffix}").into_bytes(),

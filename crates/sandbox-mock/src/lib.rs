@@ -1068,13 +1068,7 @@ impl MockSandbox {
 }
 
 fn default_exec_result() -> ExecResult {
-    ExecResult {
-        exit_code: 0,
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        stdout_truncated: false,
-        stderr_truncated: false,
-    }
+    ExecResult::new(0, Vec::new(), Vec::new())
 }
 
 fn apply_exec_output_limits(mut result: ExecResult, limits: ExecOutputLimits) -> ExecResult {
@@ -1195,6 +1189,7 @@ impl Sandbox for MockSandbox {
             {
                 let m = matchers.remove(idx);
                 Ok(ExecResult {
+                    termination: ProcessTerminationKind::Exited,
                     exit_code: m.exit_code,
                     stdout: m.stdout,
                     stderr: m.stderr,
@@ -1931,6 +1926,7 @@ mod tests {
             })
             .await;
         let exec = result.unwrap();
+        assert_eq!(exec.termination, ProcessTerminationKind::Exited);
         assert_eq!(exec.exit_code, 0);
         assert!(exec.stdout.is_empty());
     }
@@ -2062,6 +2058,7 @@ mod tests {
     async fn sandbox_queued_exec_results() {
         let sandbox = MockSandbox::new("test-1");
         sandbox.push_exec_result(Ok(ExecResult {
+            termination: ProcessTerminationKind::WaitFailed,
             exit_code: 42,
             stdout: b"out".to_vec(),
             stderr: b"err".to_vec(),
@@ -2085,6 +2082,7 @@ mod tests {
 
         // First call returns queued result.
         let r1 = sandbox.exec(&req).await.unwrap();
+        assert_eq!(r1.termination, ProcessTerminationKind::WaitFailed);
         assert_eq!(r1.exit_code, 42);
         assert_eq!(r1.stdout, b"out");
 
@@ -2094,6 +2092,7 @@ mod tests {
 
         // Third call falls back to default (exit 0).
         let r3 = sandbox.exec(&req).await.unwrap();
+        assert_eq!(r3.termination, ProcessTerminationKind::Exited);
         assert_eq!(r3.exit_code, 0);
     }
 
@@ -2472,6 +2471,7 @@ mod tests {
         assert!(result.stdout_truncated);
         assert_eq!(result.stderr, b"stde");
         assert!(result.stderr_truncated);
+        assert_eq!(result.termination, ProcessTerminationKind::Exited);
     }
 
     #[tokio::test]
