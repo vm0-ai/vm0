@@ -16,6 +16,7 @@ describe("buildGenerationTemplatePrompt", () => {
       selection: {
         designSystemId: item.designSystemId,
         templateId: item.templateId,
+        previewUrl: item.embedUrl,
       },
     });
 
@@ -32,6 +33,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain(`(${item.designSystemId})`);
     expect(result.prompt).toContain(`(${item.templateId})`);
+    expect(result.prompt).toContain(`Template preview URL: ${item.embedUrl}`);
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );
@@ -43,6 +45,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
+        colorSystemId: item.colorSystemId,
         designSystemId: item.designSystemId,
         templateId: item.templateId,
       },
@@ -55,6 +58,11 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("Playful Launch Presentation");
     expect(result.prompt).toContain(`(${item.designSystemId})`);
     expect(result.prompt).toContain(`(${item.templateId})`);
+    expect(result.prompt).toContain("Color system: Carnival");
+    expect(result.prompt).toContain("color-system:carnival");
+    expect(result.prompt).toContain(
+      "Apply the selected color system (color-system:carnival)",
+    );
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );

@@ -9,7 +9,6 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
@@ -328,6 +327,10 @@ function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
   });
 }
 
+function resetPresentationTemplateHtmlPreviewCache(): void {
+  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
+}
+
 async function expectComposerModel(label: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
@@ -338,9 +341,6 @@ async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
   template: PresentationTemplateItem = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
 ): Promise<void> {
-  const slideCount =
-    template.previewImages.length > 0 ? template.previewImages.length : 1;
-
   click(
     await waitFor(() => {
       return screen.getByLabelText("Template");
@@ -360,50 +360,17 @@ async function openTemplatePicker(
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
 
-  if (slideCount > 1) {
-    const previewImage = screen.getByTestId(
-      `${template.title} card preview slide 1`,
-    );
-    const preview = previewImage.parentElement;
-    if (!preview) {
-      throw new Error("Template preview not found");
-    }
-    Object.defineProperty(preview, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return new DOMRect(0, 0, 300, 160);
-      },
-    });
-    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(
-          `${template.title} card preview slide ${slideCount}`,
-        ),
-      ).toBeInTheDocument();
-    });
-    fireEvent.mouseLeave(preview);
-  }
-
   click(screen.getByLabelText(`View template ${template.title}`));
   await waitFor(() => {
-    expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`${template.title} detail HTML preview`),
+    ).toBeInTheDocument();
   });
-
-  if (slideCount > 1) {
-    click(screen.getByLabelText("Next slide"));
-    await waitFor(() => {
-      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Previous slide"));
-    await waitFor(() => {
-      expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Show slide 2"));
-    await waitFor(() => {
-      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
-    });
-  }
+  expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByLabelText("Select style Gold Luxe")).toBeInTheDocument();
 
   await user.click(screen.getByLabelText(`Select template ${template.title}`));
   await waitFor(() => {
@@ -570,6 +537,7 @@ function workflowSummary({
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  resetPresentationTemplateHtmlPreviewCache();
 });
 
 describe("chat composer models", () => {
@@ -1477,7 +1445,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1502,46 +1469,150 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("uses legacy presentation templates when the new catalog switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+  it("renders presentation template card hover previews from HTML when available", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const prismTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.colorSystemId === "color-system:prism";
+    });
+    if (prismTemplate === undefined) {
+      throw new Error("Prism presentation template not found");
+    }
+    const blobHtml: Promise<string>[] = [];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobHtml.push(blob.text());
+      return `blob:template-preview-${String(blobHtml.length)}`;
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `
+          <!doctype html>
+          <html>
+            <body>
+              <section data-vm0-slide data-slide-id="slide-one">
+                <h1>Slide one</h1>
+              </section>
+              <section data-vm0-slide data-slide-id="slide-two">
+                <h1>Slide two</h1>
+              </section>
+            </body>
+          </html>
+        `,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: false,
-      },
-    });
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: true,
+        },
+      });
 
-    click(
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await fill(screen.getByLabelText("Search templates"), template.title);
+      const previewFrame = await screen.findByTestId(
+        `${template.title} card HTML preview`,
+      );
+      const preview = previewFrame.parentElement;
+      if (!preview) {
+        throw new Error("Template preview not found");
+      }
+      Object.defineProperty(preview, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return new DOMRect(0, 0, 300, 160);
+        },
+      });
+
+      fireEvent.mouseEnter(preview);
       await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
+        expect(
+          screen.getByTestId(`${template.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-1");
+      });
+      await expect(blobHtml[0]).resolves.toContain("Slide one");
+      await expect(blobHtml[0]).resolves.toContain("--accent:#FF7A1A");
+      await expect(blobHtml[0]).resolves.toContain("--s2:#F5B73E");
+      await expect(blobHtml[0]).resolves.not.toContain("--fd:");
+      await expect(blobHtml[0]).resolves.not.toContain("--fb:");
 
-    await waitFor(() => {
-      expect(screen.getByText(legacyTemplate.title)).toBeInTheDocument();
-      expect(screen.queryByText(newTemplate.title)).not.toBeInTheDocument();
-    });
+      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
 
-    await user.click(
-      screen.getByLabelText(`Select template ${legacyTemplate.title}`),
-    );
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${template.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-2");
+      });
+      await expect(blobHtml[1]).resolves.toContain("Slide two");
+      fireEvent.mouseLeave(preview);
 
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${legacyTemplate.title}`),
-      ).toBeInTheDocument();
-    });
+      await fill(
+        screen.getByLabelText("Search templates"),
+        prismTemplate.title,
+      );
+      const prismPreviewFrame = await screen.findByTestId(
+        `${prismTemplate.title} card HTML preview`,
+      );
+      const prismPreview = prismPreviewFrame.parentElement;
+      if (!prismPreview) {
+        throw new Error("Prism template preview not found");
+      }
+      Object.defineProperty(prismPreview, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return new DOMRect(0, 0, 300, 160);
+        },
+      });
+
+      fireEvent.mouseEnter(prismPreview);
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${prismTemplate.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-3");
+      });
+      await expect(blobHtml[2]).resolves.toContain("--accent:#7257E6");
+      await expect(blobHtml[2]).resolves.toContain("--s1:#FF6B4A");
+      await expect(blobHtml[2]).resolves.toContain("--s2:#AEE63E");
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
   });
 
-  it("uses switched presentation templates when the new catalog switch is on", async () => {
-    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+  it("navigates presentation template detail previews from the main preview", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -1549,7 +1620,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1558,10 +1628,44 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+    click(screen.getByLabelText(`View template ${template.title}`));
 
     await waitFor(() => {
-      expect(screen.getByText(newTemplate.title)).toBeInTheDocument();
-      expect(screen.queryByText(legacyTemplate.title)).not.toBeInTheDocument();
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(screen.getByLabelText("Select style Prism"));
+    expect(screen.getByLabelText("Select style Prism")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(screen.getByText("Templates"));
+    click(screen.getByLabelText(`View template ${template.title}`));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByLabelText("Preview next slide"));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 of 15")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Preview previous slide"));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
     });
   });
 
@@ -1574,7 +1678,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1690,7 +1793,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1858,7 +1960,7 @@ describe("chat composer templates", () => {
 
   it("queues a selected template during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockActiveTemplateThread();
 
     detachedSetupPage({
@@ -1896,7 +1998,7 @@ describe("chat composer templates", () => {
 
   it("keeps newer template selections visible after a queued template is sent", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockActiveTemplateThread();
 
@@ -2006,7 +2108,7 @@ describe("chat composer templates", () => {
 
   it("reopens the picker on the presentation tab from the selected chip", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2097,7 +2199,7 @@ describe("chat composer templates", () => {
 
   it("removes the selected template from the chip without opening the picker", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({

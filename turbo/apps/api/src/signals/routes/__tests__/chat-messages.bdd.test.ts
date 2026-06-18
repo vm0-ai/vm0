@@ -1831,6 +1831,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       generationTemplate: {
         type: "presentation",
         selection: {
+          colorSystemId: template.colorSystemId,
           designSystemId: template.designSystemId,
           templateId: template.templateId,
         },
@@ -1846,6 +1847,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain("- Artifact type: presentation");
     expect(presentationPrompt).toContain(`(${template.designSystemId})`);
     expect(presentationPrompt).toContain(`(${template.templateId})`);
+    if (template.colorSystemId) {
+      expect(presentationPrompt).toContain(`(${template.colorSystemId})`);
+      expect(presentationPrompt).toContain(
+        `Apply the selected color system (${template.colorSystemId})`,
+      );
+    }
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
@@ -2011,6 +2018,17 @@ describe("CHAT-02: generation templates and attachments", () => {
           },
         },
         message: "Unknown generation template design system",
+      },
+      {
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            colorSystemId: "color-system:missing",
+            designSystemId: template.designSystemId,
+            templateId: template.templateId,
+          },
+        },
+        message: "Unknown generation template color system",
       },
       {
         generationTemplate: {
