@@ -323,6 +323,19 @@ function lifecycleMarkers(
   });
 }
 
+function publishedChatThreadRunFinished(threadId: string): boolean {
+  return context.mocks.ably.publish.mock.calls.some((call) => {
+    const payload = call[1];
+    return (
+      call[0] === "chatThreadRunFinished" &&
+      payload !== null &&
+      typeof payload === "object" &&
+      "threadId" in payload &&
+      payload.threadId === threadId
+    );
+  });
+}
+
 function assistantEvent(
   sequenceNumber: number,
   text: string,
@@ -468,6 +481,11 @@ describe("CHAT-02: completed chat callback", () => {
         generationType: "website",
       },
     ]);
+    await expect
+      .poll(() => {
+        return publishedChatThreadRunFinished(first.threadId);
+      })
+      .toBe(true);
 
     const recommender = assistantMessages(after.messages).find((message) => {
       return (
@@ -838,6 +856,11 @@ describe("CHAT-02: failed chat callbacks", () => {
         `chatThreadRunCreated:${threadId}`,
         null,
       );
+      await expect
+        .poll(() => {
+          return publishedChatThreadRunFinished(run.threadId);
+        })
+        .toBe(true);
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
