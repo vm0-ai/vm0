@@ -835,6 +835,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import reducto_0
 
         return (reducto_0.JSON_PART,)
+    if name == "render":
+        from . import render_0
+
+        return (render_0.JSON_PART,)
     if name == "rentcast":
         from . import rentcast_0
 
