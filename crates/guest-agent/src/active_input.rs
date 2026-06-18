@@ -98,6 +98,14 @@ impl ActiveInputState {
 
         self.pending_by_uuid.remove(&uuid).is_some()
     }
+
+    fn pending_inputs_are_in_stdin_writer(&self) -> bool {
+        !self.pending_by_uuid.is_empty()
+            && self
+                .pending_by_uuid
+                .values()
+                .all(|input| matches!(input.state, PendingState::Writing | PendingState::Written))
+    }
 }
 
 #[derive(Debug)]
@@ -338,9 +346,16 @@ impl ActiveInputController {
         }
 
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        let had_observed_result = state.observed_result;
         state.observed_result = true;
         if !state.pending_by_uuid.is_empty() {
-            return false;
+            if !had_observed_result || !state.pending_inputs_are_in_stdin_writer() {
+                return false;
+            }
+            // Claude should replay stdin user frames before the follow-up result.
+            // If that replay is missing, a later result still proves the CLI
+            // made progress after the writer took ownership of the frame.
+            state.pending_by_uuid.clear();
         }
         match state.lifecycle {
             Lifecycle::Open => {
@@ -694,6 +709,45 @@ mod tests {
             ReplayUserEventAction::UnknownPromptUser
         );
         assert!(!controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn followup_result_closes_writer_owned_pending_input_without_replay() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_writing(&active_uuid);
+
+        assert!(!controller.close_for_result_if_idle());
+        assert!(controller.close_for_result_if_idle());
+        assert!(matches!(
+            controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
+            ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
+        ));
+    }
+
+    #[test]
+    fn followup_result_keeps_unwritten_pending_input_open_without_replay() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+
+        assert!(!controller.close_for_result_if_idle());
+        assert!(!controller.close_for_result_if_idle());
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-2", br#"{"type":"active-input","text":"still-open"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
     }
 
     #[test]
