@@ -127,6 +127,16 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
+    def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.output_text.delta","response":{"model":"gpt-5.6",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {}
+
     def test_eventless_duplicate_unknown_type_keeps_first_type_boundary(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
@@ -140,6 +150,31 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.input": 9,
             "tokens.output": 4,
         }
+
+    def test_eventless_late_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta",'
+            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+            + b"\n\n"
+        )
+
+        assert usage == {}
+
+    def test_named_late_known_non_usage_type_is_ignored(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta",'
+            + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+            + b"\n\n"
+        )
+
+        assert usage == {}
 
     def test_named_duplicate_unknown_type_keeps_first_type_boundary(self):
         parse, usage = create_openai_responses_sse_usage_extractor()

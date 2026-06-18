@@ -26,6 +26,7 @@ class TopLevelStringFieldProbeResult:
 
     status: TopLevelStringFieldProbeStatus
     value: str | None = None
+    field_seen: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,12 +87,13 @@ def probe_top_level_string_field(
         if key == field_name:
             if body[i] != ord('"'):
                 return TopLevelStringFieldProbeResult(
-                    "non_string" if _is_json_value_start(body[i]) else "invalid"
+                    "non_string" if _is_json_value_start(body[i]) else "invalid",
+                    field_seen=True,
                 )
             value_result = _read_json_string(body, i, max_bytes=max_string_bytes)
             if value_result.status != "ok":
-                return TopLevelStringFieldProbeResult(value_result.status)
-            return TopLevelStringFieldProbeResult("found", value_result.value)
+                return TopLevelStringFieldProbeResult(value_result.status, field_seen=True)
+            return TopLevelStringFieldProbeResult("found", value_result.value, field_seen=True)
 
         skip_result = _skip_json_value(
             body,

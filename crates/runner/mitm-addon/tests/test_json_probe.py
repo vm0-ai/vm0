@@ -59,6 +59,7 @@ def test_probe_reports_non_string_field_value():
 
     assert result.status == "non_string"
     assert result.value is None
+    assert result.field_seen
 
 
 def test_probe_reports_invalid_json_prefix():
@@ -66,6 +67,7 @@ def test_probe_reports_invalid_json_prefix():
 
     assert result.status == "invalid"
     assert result.value is None
+    assert not result.field_seen
 
 
 def test_probe_reports_invalid_utf8_in_skipped_string():
@@ -80,6 +82,7 @@ def test_probe_reports_bound_exceeded_for_oversized_value():
 
     assert result.status == "bound_exceeded"
     assert result.value is None
+    assert result.field_seen
 
 
 def test_probe_reports_bound_exceeded_for_oversized_skipped_value():
@@ -90,6 +93,7 @@ def test_probe_reports_bound_exceeded_for_oversized_skipped_value():
 
     assert result.status == "bound_exceeded"
     assert result.value is None
+    assert not result.field_seen
 
 
 def test_probe_reports_bound_exceeded_for_depth_limit():

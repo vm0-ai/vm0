@@ -53,10 +53,17 @@ _RESPONSES_KNOWN_NON_USAGE_EVENTS = frozenset(
     )
 )
 _SseUsageParseErrorCallback = Callable[[str, str], None]
-_ResponsesEventTypeClassification = Literal["terminal", "known_non_usage", "unknown", "pending"]
+_ResponsesEventTypeClassification = Literal[
+    "terminal",
+    "known_non_usage",
+    "unknown",
+    "unresolved",
+    "pending",
+]
 _RESPONSES_EVENT_TERMINAL: _ResponsesEventTypeClassification = "terminal"
 _RESPONSES_EVENT_KNOWN_NON_USAGE: _ResponsesEventTypeClassification = "known_non_usage"
 _RESPONSES_EVENT_UNKNOWN: _ResponsesEventTypeClassification = "unknown"
+_RESPONSES_EVENT_UNRESOLVED: _ResponsesEventTypeClassification = "unresolved"
 _RESPONSES_EVENT_PENDING: _ResponsesEventTypeClassification = "pending"
 _JSON_PREFILTER_MAX_DEPTH = 256
 _JSON_PREFILTER_MAX_STRING_BYTES = 1024
@@ -96,7 +103,9 @@ def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassifica
     if result.status == "incomplete":
         return _RESPONSES_EVENT_PENDING
     if result.status != "found" or result.value is None:
-        return _RESPONSES_EVENT_UNKNOWN
+        if result.field_seen:
+            return _RESPONSES_EVENT_UNKNOWN
+        return _RESPONSES_EVENT_UNRESOLVED
     return _classify_responses_event_name(result.value)
 
 
@@ -108,18 +117,18 @@ def _classify_responses_event_name(event_name: str) -> _ResponsesEventTypeClassi
     return _RESPONSES_EVENT_UNKNOWN
 
 
-def _resolved_event_type(
+def _resolved_data_event_type(
     event_type: _ResponsesEventTypeClassification,
-) -> _ResponsesEventTypeClassification:
-    if event_type == _RESPONSES_EVENT_PENDING:
-        return _RESPONSES_EVENT_UNKNOWN
+) -> _ResponsesEventTypeClassification | None:
+    if event_type in (_RESPONSES_EVENT_PENDING, _RESPONSES_EVENT_UNRESOLVED):
+        return None
     return event_type
 
 
-def _resolved_event_type_from_prefix(
+def _resolved_data_event_type_from_prefix(
     prefix: bytearray,
-) -> _ResponsesEventTypeClassification:
-    return _resolved_event_type(_classify_responses_event_type(bytes(prefix)))
+) -> _ResponsesEventTypeClassification | None:
+    return _resolved_data_event_type(_classify_responses_event_type(bytes(prefix)))
 
 
 def _is_known_terminal_usage_event(value: object) -> bool:
@@ -254,12 +263,17 @@ def _store_sse_result_values(
     data_event_type: _ResponsesEventTypeClassification | None = None,
 ) -> None:
     data_type = values.get(("type",))
-    if _is_known_non_usage_event(event_name) or data_event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+    if (
+        _is_known_non_usage_event(event_name)
+        or data_event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
+        or (data_event_type is None and _is_known_non_usage_event(data_type))
+    ):
         return
     event_identity = event_name if event_name is not None else data_type
     is_known_terminal_usage_event = (
         _is_known_terminal_usage_event(event_identity)
         or data_event_type == _RESPONSES_EVENT_TERMINAL
+        or (data_event_type is None and _is_known_terminal_usage_event(data_type))
     )
 
     prefix = ("response",) if _has_response_wrapper_values(values) else ()
@@ -308,8 +322,7 @@ class _OpenAIResponsesSseUsageHandler:
         if event_name is None:
             self._eventless_prefix = bytearray()
             return
-        if not _is_known_terminal_usage_event(event_name):
-            self._named_event_prefix = bytearray()
+        self._named_event_prefix = bytearray()
         self._start_full_extractor()
 
     def on_data(self, chunk: bytes) -> None:
@@ -327,12 +340,12 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
-            self._data_event_type = _resolved_event_type_from_prefix(self._eventless_prefix)
+            self._data_event_type = _resolved_data_event_type_from_prefix(self._eventless_prefix)
             extractor = self._start_full_extractor()
             extractor.feed(bytes(self._eventless_prefix))
             self._eventless_prefix = None
         if self._named_event_prefix is not None and self._data_event_type is None:
-            self._data_event_type = _resolved_event_type_from_prefix(self._named_event_prefix)
+            self._data_event_type = _resolved_data_event_type_from_prefix(self._named_event_prefix)
         extractor = self._extractor
         data_event_type = self._data_event_type
         self._reset_event_state()
@@ -386,14 +399,15 @@ class _OpenAIResponsesSseUsageHandler:
             return
 
         should_fallback = (
-            event_type in (_RESPONSES_EVENT_TERMINAL, _RESPONSES_EVENT_UNKNOWN)
+            event_type
+            in (_RESPONSES_EVENT_TERMINAL, _RESPONSES_EVENT_UNKNOWN, _RESPONSES_EVENT_UNRESOLVED)
             or captured_len < len(chunk)
             or len(prefix) >= _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
         )
         if not should_fallback:
             return
 
-        self._data_event_type = _resolved_event_type(event_type)
+        self._data_event_type = _resolved_data_event_type(event_type)
         self._fallback_eventless_prefix_to_full_extractor()
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
@@ -416,7 +430,7 @@ class _OpenAIResponsesSseUsageHandler:
         ):
             return
 
-        self._data_event_type = _resolved_event_type(event_type)
+        self._data_event_type = _resolved_data_event_type(event_type)
         self._named_event_prefix = None
 
     def _fallback_eventless_prefix_to_full_extractor(self) -> None:
@@ -536,7 +550,12 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
         return None
 
     usage: dict = {}
-    _store_sse_result_values(result.values, usage, event_name=None, data_event_type=event_type)
+    _store_sse_result_values(
+        result.values,
+        usage,
+        event_name=None,
+        data_event_type=_resolved_data_event_type(event_type),
+    )
     if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
         return None
     return usage
