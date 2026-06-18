@@ -814,7 +814,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not show workflows in the sidebar manage navigation", async () => {
+  it("shows workflows in the sidebar manage navigation when enabled", async () => {
     prepareDefaultAgent();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse([]));
@@ -824,6 +824,25 @@ describe("zero sidebar", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+    });
+
+    const nav = await waitFor(() => {
+      return sidebar();
+    });
+
+    expect(within(nav).getByText("Agents")).toBeInTheDocument();
+    expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+  });
+
+  it("hides workflows in the sidebar manage navigation when disabled", async () => {
+    prepareDefaultAgent();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
     });
 
     const nav = await waitFor(() => {

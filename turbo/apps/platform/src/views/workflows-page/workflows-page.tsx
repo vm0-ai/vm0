@@ -4,12 +4,15 @@ import type {
   ZeroWorkflowAgentSummary,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSummary,
+  ZeroWorkflowTriggerSummary,
   WorkflowFileMetadata,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconChevronRight,
+  IconClock,
   IconFile,
   IconFolderOpen,
+  IconGitBranch,
   IconLock,
   IconLoader2,
   IconPlus,
@@ -455,7 +458,8 @@ function WorkflowDetailDialog({ open }: { readonly open: boolean }) {
           id="workflow-detail-dialog-description"
           className="sr-only"
         >
-          View workflow package content, visibility, attachments, and files.
+          View workflow package content, visibility, attachments, triggers, and
+          files.
         </DialogDescription>
         {loading || !selectedWorkflowName || !detail ? (
           <WorkflowDetailSkeleton />
@@ -541,6 +545,7 @@ function WorkflowViewer({
         </div>
         <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
           <AttachedAgentsPanel workflow={detail} />
+          <WorkflowTriggersPanel triggers={detail.triggers} />
           <WorkflowFiles
             files={files}
             selectedPath={selectedFilePath}
@@ -565,6 +570,93 @@ function VisibilityBadge({
       <Icon size={12} stroke={1.5} className="shrink-0" />
       <span className="truncate">{visibility}</span>
     </span>
+  );
+}
+
+function triggerKindLabel(kind: ZeroWorkflowTriggerSummary["kind"]): string {
+  if (kind === "schedule") {
+    return "Schedule trigger";
+  }
+
+  if (kind === "webhook") {
+    return "Webhook trigger";
+  }
+
+  return "Event trigger";
+}
+
+function WorkflowTriggersPanel({
+  triggers,
+}: {
+  readonly triggers: readonly ZeroWorkflowTriggerSummary[];
+}) {
+  return (
+    <div className="border-b border-border/70">
+      <div className="flex h-9 items-center justify-between px-3">
+        <span className="text-xs font-medium text-muted-foreground">
+          Triggers
+        </span>
+        <span className="text-xs text-muted-foreground">{triggers.length}</span>
+      </div>
+      <div className="max-h-[180px] overflow-auto px-2 pb-2">
+        {triggers.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {triggers.map((trigger) => {
+              return <WorkflowTriggerRow key={trigger.id} trigger={trigger} />;
+            })}
+          </div>
+        ) : (
+          <p className="px-2 pb-3 text-xs text-muted-foreground">
+            No triggers.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowTriggerRow({
+  trigger,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+}) {
+  const Icon = trigger.kind === "schedule" ? IconClock : IconGitBranch;
+
+  return (
+    <div className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5">
+      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+        <Icon size={13} stroke={1.5} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-xs font-medium text-foreground">
+            {trigger.name}
+          </span>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+              trigger.enabled
+                ? "bg-emerald-500/10 text-emerald-700"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            {trigger.enabled ? "Enabled" : "Paused"}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {trigger.description ?? triggerKindLabel(trigger.kind)}
+        </p>
+        {trigger.chatThreadId ? (
+          <Link
+            pathname={ROUTES.chat}
+            options={{ pathParams: { threadId: trigger.chatThreadId } }}
+            className="mt-1 inline-flex text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Open thread
+          </Link>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

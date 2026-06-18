@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowAgentSummary,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
@@ -91,6 +92,31 @@ function otherPrivateAgent(): TeamComposeItem {
   };
 }
 
+function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
+  return [
+    {
+      id: "workflow-trigger-weekday-brief",
+      name: "Weekday brief",
+      kind: "schedule",
+      enabled: true,
+      description: "Every weekday at 9:00 AM",
+      chatThreadId: "thread_weekday_brief",
+      nextRunAt: "2026-06-19T01:00:00.000Z",
+      lastRunAt: "2026-06-18T01:00:00.000Z",
+    },
+    {
+      id: "workflow-trigger-vip-escalation",
+      name: "VIP escalation",
+      kind: "event",
+      enabled: false,
+      description: "When a priority customer event arrives",
+      chatThreadId: "thread_vip_escalation",
+      nextRunAt: null,
+      lastRunAt: null,
+    },
+  ];
+}
+
 const BASE_WORKFLOW_DETAILS: readonly ZeroWorkflowDetailResponse[] = [
   {
     name: "sales-research",
@@ -114,6 +140,7 @@ Use CRM context before outreach.
       { path: "examples/deep/reference.md", size: 2_097_152 },
       { path: "config/settings.json", size: 32 },
     ],
+    triggers: workflowTriggers(),
     fileContents: [
       {
         path: "SKILL.md",
@@ -150,6 +177,7 @@ Use CRM context before outreach.
     canManage: true,
     content: "# Support escalation\n\nSummarize severity and next owner.\n",
     files: [{ path: "SKILL.md", size: 64 }],
+    triggers: [],
     fileContents: [
       {
         path: "SKILL.md",
@@ -168,6 +196,7 @@ Use CRM context before outreach.
     canManage: true,
     content: "# Ops playbook\n\nPrepare release checks.\n",
     files: [{ path: "SKILL.md", size: 2048 }],
+    triggers: [],
     fileContents: [
       {
         path: "SKILL.md",
@@ -182,6 +211,7 @@ function mutableWorkflowDetails(): ZeroWorkflowDetailResponse[] {
     return {
       ...workflow,
       attachedAgents: [...workflow.attachedAgents],
+      triggers: [...workflow.triggers],
       files: workflow.files ? [...workflow.files] : workflow.files,
       fileContents: workflow.fileContents
         ? [...workflow.fileContents]
@@ -402,6 +432,12 @@ describe("workflows page", () => {
     });
     expect(screen.getByText("Attached agents")).toBeInTheDocument();
     expect(screen.getByText("Support Bot")).toBeInTheDocument();
+    expect(screen.getByText("Triggers")).toBeInTheDocument();
+    expect(screen.getByText("Weekday brief")).toBeInTheDocument();
+    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    expect(screen.getByText("VIP escalation")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getAllByText("Open thread")).toHaveLength(2);
 
     click(screen.getByLabelText("Open examples/prompt.md"));
     await waitFor(() => {
@@ -434,6 +470,20 @@ describe("workflows page", () => {
         screen.queryByText("Use CRM context before outreach."),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("opens workflows directly without the workflows viewer entry switch", async () => {
+    mockWorkflowApis();
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Workflows")).toBeInTheDocument();
   });
 
   it("attaches and detaches configurable agents from workflow details", async () => {
