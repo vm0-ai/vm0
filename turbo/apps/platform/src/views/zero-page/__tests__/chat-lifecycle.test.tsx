@@ -4665,6 +4665,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
 
@@ -4707,6 +4709,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
     context.mocks.api(

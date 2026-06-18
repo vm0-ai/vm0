@@ -3,6 +3,20 @@ import { z, type ZodType } from "zod";
 
 import { testOverride } from "./singleton";
 
+const priceIdsSchema = z
+  .string()
+  .optional()
+  .transform((value) => {
+    return value
+      ?.split(",")
+      .map((priceId) => {
+        return priceId.trim();
+      })
+      .filter((priceId) => {
+        return priceId.length > 0;
+      });
+  });
+
 const SCHEMA = {
   DATABASE_URL: z.string().min(1),
   CLERK_SECRET_KEY: z.string().min(1),
@@ -60,15 +74,10 @@ const SCHEMA = {
   STRIPE_SECRET_KEY: z.string().min(1),
   ATOM_URL: z.url().optional(),
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
-  ZERO_PRICE: z
-    .string()
-    .optional()
-    .transform((val) => {
-      if (!val) {
-        return undefined;
-      }
-      return z.record(z.string(), z.array(z.string())).parse(JSON.parse(val));
-    }),
+  ZERO_PRICE_PRO: priceIdsSchema,
+  ZERO_PRICE_TEAM: priceIdsSchema,
+  ZERO_PRICE_CUSTOM_CREDITS: priceIdsSchema,
+  ZERO_PRICE_CONCURRENCY: priceIdsSchema,
   ZERO_ONE_TIME_CAMPAIGN: z
     .string()
     .optional()

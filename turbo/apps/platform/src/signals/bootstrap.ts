@@ -333,7 +333,8 @@ const handleBillingRedirect$ = command(({ set }) => {
   const billing = url.searchParams.get("billing");
   const transactionId = url.searchParams.get("billing_session_id");
   const credits = url.searchParams.get("credits");
-  if (!billing && !credits) {
+  const concurrency = url.searchParams.get("concurrency");
+  if (!billing && !credits && !concurrency) {
     return;
   }
 
@@ -341,6 +342,7 @@ const handleBillingRedirect$ = command(({ set }) => {
   url.searchParams.delete("billing_session_id");
   url.searchParams.delete("credits");
   url.searchParams.delete("credit_checkout_session_id");
+  url.searchParams.delete("concurrency");
   window.history.replaceState(null, "", url.toString());
 
   if (billing === "pro" || billing === "team") {
@@ -355,6 +357,13 @@ const handleBillingRedirect$ = command(({ set }) => {
   if (credits === "purchased") {
     showSuccessToastAfterMount(
       "Credits added. You can continue chatting with Zero.",
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "purchased") {
+    showSuccessToastAfterMount(
+      "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
     );
     set(reloadBillingStatus$);
   }

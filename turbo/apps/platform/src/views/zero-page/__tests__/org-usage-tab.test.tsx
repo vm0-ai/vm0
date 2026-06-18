@@ -83,6 +83,8 @@ function mockUsageStory(): void {
           expiresAt: "2026-04-01T00:00:00Z",
         },
       ],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
     });
   });
   context.mocks.api(zeroOrgMembersContract.members, ({ respond }) => {

@@ -32,10 +32,8 @@ describe("POST /api/zero/billing/downgrade", () => {
   });
 
   beforeEach(() => {
-    mockEnv(
-      "ZERO_PRICE",
-      JSON.stringify({ pro: [TEST_PRICE_PRO], team: [TEST_PRICE_TEAM] }),
-    );
+    mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
+    mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {

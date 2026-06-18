@@ -234,6 +234,8 @@ describe("onboarding web continuation", () => {
         creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
     mockChatLifecycle(context, {
