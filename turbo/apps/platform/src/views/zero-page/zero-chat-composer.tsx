@@ -2242,9 +2242,6 @@ function TemplatePreviewPage({
             <h3 className="text-xl font-semibold text-foreground">
               {item.title}
             </h3>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {detailSlideCount} slides
-            </p>
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <IconPalette size={14} stroke={1.9} />
