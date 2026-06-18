@@ -772,6 +772,7 @@ def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
     retrying = False
     first_attempt_runs: list[str] = []
     retry_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(
         url: str,
@@ -795,6 +796,7 @@ def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
         return False
 
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = tmp_path / "proxy.jsonl"
     for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
         usage.buffer_usage_events(
@@ -807,11 +809,25 @@ def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
 
     assert usage.flush_usage_events(trigger="test") == 1
     assert first_attempt_runs == ["run-a", "run-b"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="synchronous-retained",
+    )
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="synchronous-drained",
+    )
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):

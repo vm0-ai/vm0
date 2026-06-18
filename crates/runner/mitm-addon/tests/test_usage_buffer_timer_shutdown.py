@@ -384,9 +384,11 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
 
 def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
+    pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"
     enqueue = RecordingEnqueue(return_value=False)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -401,6 +403,13 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
     enqueue.assert_called_once()
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="shutdown-saturated",
+    )
     retained_entries = [
         entry
         for entry in flush_log_entries(proxy_log_path)
@@ -422,6 +431,13 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-saturated-drained",
+    )
 
 
 def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
@@ -704,6 +720,7 @@ def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
 def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_timer(
     tmp_path,
 ):
+    pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"
 
     enqueue = RecordingEnqueue(return_value=False)
@@ -711,6 +728,7 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
         enqueue_webhook=enqueue,
         max_retained_batch_retries=1,
     )
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "secret-token",
@@ -722,12 +740,26 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
     assert usage.flush_usage_events(trigger="shutdown") == 0
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="shutdown-retry-retained",
+    )
 
     enqueue.clear()
     assert usage.flush_usage_events(trigger="shutdown") == 0
 
     enqueue.assert_called_once()
     assert len(timers) == 1
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-retry-dropped",
+    )
     dropped_entries = [
         entry for entry in flush_log_entries(proxy_log_path) if entry["phase"] == "dropped"
     ]
