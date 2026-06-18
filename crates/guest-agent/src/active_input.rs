@@ -43,12 +43,20 @@ enum Lifecycle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingState {
     Accepted,
+    Writing,
     Written,
 }
 
 #[derive(Debug)]
 struct PendingInput {
     state: PendingState,
+    text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PromptLikeUserContent {
+    Text(String),
+    Unmatchable,
 }
 
 #[derive(Debug)]
@@ -65,6 +73,28 @@ impl Default for ActiveInputState {
             seen_message_ids: HashSet::new(),
             pending_by_uuid: HashMap::new(),
         }
+    }
+}
+
+impl ActiveInputState {
+    fn remove_pending_by_uuid(&mut self, uuid: &str) -> bool {
+        self.pending_by_uuid.remove(uuid).is_some()
+    }
+
+    fn remove_replayable_pending_by_text(&mut self, text: &str) -> bool {
+        let uuid = self
+            .pending_by_uuid
+            .iter()
+            .find(|(_, input)| {
+                matches!(input.state, PendingState::Writing | PendingState::Written)
+                    && input.text == text
+            })
+            .map(|(uuid, _)| uuid.clone());
+        let Some(uuid) = uuid else {
+            return false;
+        };
+
+        self.pending_by_uuid.remove(&uuid).is_some()
     }
 }
 
@@ -118,21 +148,37 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
     .to_string()
 }
 
-fn is_prompt_like_user_content(event: &Value) -> bool {
-    let Some(content) = event.pointer("/message/content") else {
-        return false;
-    };
-    if content.as_str().is_some() {
-        return true;
+fn prompt_like_user_content(event: &Value) -> Option<PromptLikeUserContent> {
+    let content = event.pointer("/message/content")?;
+    if let Some(text) = content.as_str() {
+        return Some(PromptLikeUserContent::Text(text.to_owned()));
     }
-    let Some(items) = content.as_array() else {
-        return false;
-    };
+    let items = content.as_array()?;
+    if items.is_empty() {
+        return None;
+    }
 
-    !items.is_empty()
-        && items
-            .iter()
-            .all(|item| item.get("type").and_then(Value::as_str) != Some("tool_result"))
+    let mut text = String::new();
+    let mut all_text = true;
+    for item in items {
+        match item.get("type").and_then(Value::as_str) {
+            Some("tool_result") => return None,
+            Some("text") => {
+                let Some(part) = item.get("text").and_then(Value::as_str) else {
+                    all_text = false;
+                    continue;
+                };
+                text.push_str(part);
+            }
+            _ => all_text = false,
+        }
+    }
+
+    if all_text {
+        Some(PromptLikeUserContent::Text(text))
+    } else {
+        Some(PromptLikeUserContent::Unmatchable)
+    }
 }
 
 impl ActiveInputRuntime {
@@ -207,10 +253,11 @@ impl ActiveInputController {
         }
 
         let uuid = claude_active_input_uuid(&self.inner.run_id, message_id);
+        let text = payload.text;
         let frame = ActiveInputFrame {
             message_id: message_id.to_owned(),
             uuid: uuid.clone(),
-            text: payload.text,
+            text: text.clone(),
         };
 
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -235,6 +282,7 @@ impl ActiveInputController {
             uuid.clone(),
             PendingInput {
                 state: PendingState::Accepted,
+                text,
             },
         );
 
@@ -262,6 +310,13 @@ impl ActiveInputController {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(input) = state.pending_by_uuid.get_mut(uuid) {
             input.state = PendingState::Written;
+        }
+    }
+
+    pub fn mark_writing(&self, uuid: &str) {
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(input) = state.pending_by_uuid.get_mut(uuid) {
+            input.state = PendingState::Writing;
         }
     }
 
@@ -301,12 +356,18 @@ impl ActiveInputController {
             }
 
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            if state.pending_by_uuid.remove(uuid).is_some() {
+            if state.remove_pending_by_uuid(uuid) {
                 return ReplayUserEventAction::InternalActiveInput;
             }
         }
 
-        if is_prompt_like_user_content(event) {
+        if let Some(content) = prompt_like_user_content(event) {
+            if let PromptLikeUserContent::Text(text) = content {
+                let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if state.remove_replayable_pending_by_text(&text) {
+                    return ReplayUserEventAction::InternalActiveInput;
+                }
+            }
             return ReplayUserEventAction::UnknownPromptUser;
         }
 
@@ -342,6 +403,10 @@ impl ActiveInputWriter {
 
     pub fn mark_written(&self, uuid: &str) {
         self.controller.mark_written(uuid);
+    }
+
+    pub fn mark_writing(&self, uuid: &str) {
+        self.controller.mark_writing(uuid);
     }
 
     pub fn close_terminal(&self) {
@@ -539,5 +604,75 @@ mod tests {
             runtime.controller().replay_user_event_action(&event),
             ReplayUserEventAction::UnknownPromptUser
         );
+    }
+
+    #[test]
+    fn replay_filter_consumes_uuidless_active_input_replay_by_text() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_writing(&active_uuid);
+
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_does_not_consume_unwritten_uuidless_text_match() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"same-text"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "same-text"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+        assert!(!controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_consumes_uuidless_text_block_active_input_replay() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+
+        let event = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "follow-up"}]
+            }
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
     }
 }

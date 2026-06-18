@@ -110,6 +110,7 @@ async fn write_claude_stream_json_to_stdin(
     }
 
     while let Some(frame) = active_input.next_frame().await {
+        active_input.mark_writing(&frame.uuid);
         write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await?;
         active_input.mark_written(&frame.uuid);
     }
