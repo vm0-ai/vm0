@@ -2985,6 +2985,7 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setDetailThemeId = useSet(setTemplateDetailThemeId$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -3028,6 +3029,7 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem) => {
+    setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
     setPreviewSlug(item.slug);
   };
 

@@ -1638,6 +1638,27 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByText("1 of 15")).toBeInTheDocument();
     });
+    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(screen.getByLabelText("Select style Prism"));
+    expect(screen.getByLabelText("Select style Prism")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(screen.getByText("Templates"));
+    click(screen.getByLabelText(`View template ${template.title}`));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     fireEvent.click(screen.getByLabelText("Preview next slide"));
 
