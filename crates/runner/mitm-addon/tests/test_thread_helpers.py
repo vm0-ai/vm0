@@ -108,6 +108,33 @@ def test_join_and_raise_propagates_pytest_outcome_failures():
     assert not thread.is_alive()
 
 
+def test_join_and_raise_propagates_system_exit_from_worker():
+    def exit_worker() -> None:
+        raise SystemExit(7)
+
+    thread = ThreadUnderTest(target=exit_worker)
+    thread.start()
+
+    with pytest.raises(SystemExit) as exc_info:
+        thread.join_and_raise(timeout=1)
+
+    assert exc_info.value.code == 7
+    assert not thread.is_alive()
+
+
+def test_join_and_raise_propagates_keyboard_interrupt_from_worker():
+    def interrupt_worker() -> None:
+        raise KeyboardInterrupt
+
+    thread = ThreadUnderTest(target=interrupt_worker)
+    thread.start()
+
+    with pytest.raises(KeyboardInterrupt):
+        thread.join_and_raise(timeout=1)
+
+    assert not thread.is_alive()
+
+
 def test_join_and_raise_fails_when_thread_is_still_running():
     started = threading.Event()
     release = threading.Event()

@@ -57,13 +57,16 @@ class ThreadUnderTest:
     def _run(self) -> None:
         try:
             self._target()
-        # Pytest outcome exceptions inherit directly from BaseException, so
-        # include them explicitly without catching interpreter control flow.
+        # Thread targets run outside pytest's main exception capture. Include
+        # pytest outcomes and interpreter-control exceptions explicitly so a
+        # terminated worker cannot look like a clean exit to join_and_raise().
         except (
             Exception,
             pytest.fail.Exception,
             pytest.skip.Exception,
             pytest.xfail.Exception,
+            SystemExit,
+            KeyboardInterrupt,
         ) as exc:
             self._failure = (exc, exc.__traceback__)
 
