@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.197.0](https://github.com/vm0-ai/vm0/compare/cli-v9.196.1...cli-v9.197.0) (2026-06-18)
+
+
+### Features
+
+* add batch presentation R2 templates ([#18106](https://github.com/vm0-ai/vm0/issues/18106)) ([aac1ca9](https://github.com/vm0-ai/vm0/commit/aac1ca9a4794a2bb8a378de195aa5d38cf1d5306))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.351.0
+
 ## [9.196.1](https://github.com/vm0-ai/vm0/compare/cli-v9.196.0...cli-v9.196.1) (2026-06-17)
 
 

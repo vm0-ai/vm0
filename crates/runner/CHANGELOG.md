@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.120.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.3...runner-rs-v0.120.0) (2026-06-18)
+
+
+### Features
+
+* add profound connector ([#18121](https://github.com/vm0-ai/vm0/issues/18121)) ([e9fb4c6](https://github.com/vm0-ai/vm0/commit/e9fb4c6b565a662c7697f1eca0b7a2c25e95f7c9))
+
 ## [0.119.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.2...runner-rs-v0.119.3) (2026-06-17)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.351.0](https://github.com/vm0-ai/vm0/compare/core-v8.350.1...core-v8.351.0) (2026-06-18)
+
+
+### Features
+
+* add batch presentation R2 templates ([#18106](https://github.com/vm0-ai/vm0/issues/18106)) ([aac1ca9](https://github.com/vm0-ai/vm0/commit/aac1ca9a4794a2bb8a378de195aa5d38cf1d5306))
+
 ## [8.350.1](https://github.com/vm0-ai/vm0/compare/core-v8.350.0...core-v8.350.1) (2026-06-17)
 
 

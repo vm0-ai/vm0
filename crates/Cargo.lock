@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.119.3"
+version = "0.120.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
