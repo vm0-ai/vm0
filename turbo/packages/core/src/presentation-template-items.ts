@@ -6,6 +6,7 @@ export interface PresentationTemplateItem {
   readonly previewImage: string;
   readonly previewImages: readonly string[];
   readonly previewHtmls?: readonly string[];
+  readonly colorSystemId?: string;
   readonly designSystemId: string;
   readonly templateId: string;
 }
@@ -2129,6 +2130,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c933bfa2-6b60-40f5-bd6a-72a5ab92eea8/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
+      colorSystemId: "color-system:carnival",
       designSystemId: "design-system:playful-editorial",
       templateId: "template:html-ppt-playful-launch",
     },
@@ -2141,6 +2143,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/763fcebf-f68e-4709-a870-55519282db1a/botane-organic.html",
       previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
+      colorSystemId: "color-system:mauve-dusk",
       designSystemId: "design-system:botane-organic",
       templateId: "template:html-ppt-botane-organic",
     },
@@ -2153,6 +2156,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3650eb44-eb5e-452e-800c-9de51b339aeb/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
+      colorSystemId: "color-system:berry-pop",
       designSystemId: "design-system:business-data",
       templateId: "template:html-ppt-business-data",
     },
@@ -2166,6 +2170,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: CRAYON_PREVIEW_IMAGES[0],
       previewImages: CRAYON_PREVIEW_IMAGES,
       previewHtmls: CRAYON_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:crayon",
       templateId: "template:html-ppt-crayon",
     },
@@ -2179,6 +2184,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: CREATIVE_AGENCY_PREVIEW_IMAGES[0],
       previewImages: CREATIVE_AGENCY_PREVIEW_IMAGES,
       previewHtmls: CREATIVE_AGENCY_PREVIEW_HTMLS,
+      colorSystemId: "color-system:coral-studio",
       designSystemId: "design-system:creative-agency",
       templateId: "template:html-ppt-creative-agency",
     },
@@ -2192,6 +2198,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: DATA_REPORT_PREVIEW_IMAGES[0],
       previewImages: DATA_REPORT_PREVIEW_IMAGES,
       previewHtmls: DATA_REPORT_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:data-report",
       templateId: "template:html-ppt-data-report",
     },
@@ -2205,6 +2212,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: EDITORIAL_MAGAZINE_PREVIEW_IMAGES[0],
       previewImages: EDITORIAL_MAGAZINE_PREVIEW_IMAGES,
       previewHtmls: EDITORIAL_MAGAZINE_PREVIEW_HTMLS,
+      colorSystemId: "color-system:warm-sand",
       designSystemId: "design-system:editorial-magazine",
       templateId: "template:html-ppt-editorial-magazine",
     },
@@ -2218,6 +2226,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: LANDING_CONSULTING_PREVIEW_IMAGES[0],
       previewImages: LANDING_CONSULTING_PREVIEW_IMAGES,
       previewHtmls: LANDING_CONSULTING_PREVIEW_HTMLS,
+      colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:landing-consulting",
       templateId: "template:html-ppt-landing-consulting",
     },
@@ -2231,6 +2240,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: LUMINA_PREVIEW_IMAGES[0],
       previewImages: LUMINA_PREVIEW_IMAGES,
       previewHtmls: LUMINA_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:lumina",
       templateId: "template:html-ppt-lumina",
     },
@@ -2244,6 +2254,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
       previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
       previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
+      colorSystemId: "color-system:carnival",
       designSystemId: "design-system:mosaic-geometric",
       templateId: "template:html-ppt-mosaic-geometric",
     },
@@ -2257,6 +2268,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
+      colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:playful-pop",
       templateId: "template:html-ppt-playful-pop",
     },

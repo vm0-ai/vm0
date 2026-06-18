@@ -367,7 +367,7 @@ async function openTemplatePicker(
       screen.getByTestId(`${template.title} detail HTML preview`),
     ).toBeInTheDocument();
   });
-  expect(screen.getByLabelText("Select style Warm Sand")).toHaveAttribute(
+  expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
     "aria-pressed",
     "true",
   );

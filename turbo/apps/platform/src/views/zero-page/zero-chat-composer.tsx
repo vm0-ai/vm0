@@ -1337,9 +1337,7 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
 ): string {
-  return item.designSystemId === "design-system:mauve-dusk"
-    ? "mauve-dusk"
-    : "warm-sand";
+  return item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
 }
 
 function findPresentationTemplateTheme(
