@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +12,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
 
@@ -68,6 +70,17 @@ async function openSettingsDialog(): Promise<HTMLElement> {
 }
 
 describe("assistant markdown", () => {
+  it("escapes html-like source when requested", () => {
+    const { container } = render(
+      <StoreProvider value={context.store}>
+        <Markdown source="<span> 123 </span>" escapeHtml />
+      </StoreProvider>,
+    );
+
+    expect(screen.getByText("<span> 123 </span>")).toBeInTheDocument();
+    expect(container.querySelector(".wmde-markdown span")).toBeNull();
+  });
+
   it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 
