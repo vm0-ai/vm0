@@ -331,7 +331,7 @@ async fn read_file_reports_non_exit_terminal_states() {
 }
 
 #[tokio::test]
-async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
+async fn read_file_rejects_invalid_inputs_without_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
