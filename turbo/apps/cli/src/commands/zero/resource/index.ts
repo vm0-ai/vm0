@@ -10,6 +10,7 @@ import {
   findColorSystem,
   findDesignSystem,
   findImageStyle,
+  findTool,
   findTemplate,
   findVideoTemplate,
   type RegistryEntry,
@@ -33,17 +34,21 @@ function candidateIds(id: string): readonly string[] {
     `template:${id}`,
     `design-system:${id}`,
     `color-system:${id}`,
+    `tool:${id}`,
     `image-style:${id}`,
     `video-template:${id}`,
   ];
 }
 
-function findRegistryResource(id: string): PullableRegistryEntry | undefined {
+export function findRegistryResourceForPull(
+  id: string,
+): PullableRegistryEntry | undefined {
   for (const candidate of candidateIds(id)) {
     const entry =
       findTemplate(candidate) ??
       findDesignSystem(candidate) ??
       findColorSystem(candidate) ??
+      findTool(candidate) ??
       findImageStyle(candidate) ??
       findVideoTemplate(candidate);
     if (entry) {
@@ -98,7 +103,7 @@ export const zeroResourceCommand = new Command()
       )
       .action(
         withErrorHandler(async (id: string, options: PullOptions) => {
-          const entry = findRegistryResource(id);
+          const entry = findRegistryResourceForPull(id);
           if (!entry) {
             throw new Error(`Unknown registry resource: ${id}`);
           }
