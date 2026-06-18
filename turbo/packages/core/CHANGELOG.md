@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.355.1](https://github.com/vm0-ai/vm0/compare/core-v8.355.0...core-v8.355.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* add scenarios to presentation picker prompts ([#18262](https://github.com/vm0-ai/vm0/issues/18262)) ([38720c7](https://github.com/vm0-ai/vm0/commit/38720c71893139a605ae44cb6852e8f17b624fb8))
+
+
+### Refactoring
+
+* remove paid onboarding redirect switch ([#18253](https://github.com/vm0-ai/vm0/issues/18253)) ([1cb8858](https://github.com/vm0-ai/vm0/commit/1cb88584d30a882541de87e535ebfdf99056097f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/connectors bumped to 1.92.0
+
 ## [8.355.0](https://github.com/vm0-ai/vm0/compare/core-v8.354.0...core-v8.355.0) (2026-06-18)
 
 

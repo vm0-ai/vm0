@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.122.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.121.1...runner-rs-v0.122.0) (2026-06-18)
+
+
+### Features
+
+* **connectors:** give InsForge a firewall with user-entered backend URL ([#18229](https://github.com/vm0-ai/vm0/issues/18229)) ([e1f702c](https://github.com/vm0-ai/vm0/commit/e1f702cb7000fa9290fcb5812cec2df76f886b85))
+
+
+### Bug Fixes
+
+* run guest download for cached instruction normalization ([#18260](https://github.com/vm0-ai/vm0/issues/18260)) ([acbbfe2](https://github.com/vm0-ai/vm0/commit/acbbfe21d14d828c50194f59b6ee858c47cf6506))
+* **runner:** guard local submit timeout ([#18264](https://github.com/vm0-ai/vm0/issues/18264)) ([9d648e6](https://github.com/vm0-ai/vm0/commit/9d648e6da78019d93bb9438c8d71b548d07abc87))
+
+
+### Refactoring
+
+* split runner build leaf modules ([#18268](https://github.com/vm0-ai/vm0/issues/18268)) ([d4efe3a](https://github.com/vm0-ai/vm0/commit/d4efe3a9a7c376d843dd8716f10eca8127d51178))
+
 ## [0.121.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.121.0...runner-rs-v0.121.1) (2026-06-18)
 
 
