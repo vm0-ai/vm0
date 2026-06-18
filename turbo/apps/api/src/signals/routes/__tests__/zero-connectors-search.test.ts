@@ -250,8 +250,6 @@ describe("GET /api/zero/connectors/search", () => {
 
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;
     const originalOauth = authMethods.oauth;
-    const originalCli = authMethods.cli;
-    const originalApiToken = authMethods["api-token"];
 
     restoreConnectorRegistry.push(() => {
       Object.defineProperty(authMethods, "oauth", {
@@ -280,51 +278,7 @@ describe("GET /api/zero/connectors/search", () => {
     const visibleStripe = partial.body.connectors.find((connector) => {
       return connector.id === "stripe";
     });
-    expect(visibleStripe?.authMethods).toStrictEqual(["cli", "api-token"]);
-
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "cli", {
-        value: originalCli,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "cli", {
-      value: {
-        ...originalCli,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "api-token", {
-        value: originalApiToken,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "api-token", {
-      value: {
-        ...originalApiToken,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-
-    const fullyHidden = await accept(
-      client.search({
-        query: { keyword: "stripe" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(
-      fullyHidden.body.connectors.find((connector) => {
-        return connector.id === "stripe";
-      }),
-    ).toBeUndefined();
+    expect(visibleStripe).toBeUndefined();
   });
 
   it("matches Google Cloud connector tags without a feature switch", async () => {

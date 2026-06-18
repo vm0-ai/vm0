@@ -34,12 +34,9 @@ import {
   mockGithubAppInstallProvider,
   mockSlackConnectorOAuth,
   mockSlockOAuthProvider,
-  mockStripeCliDashboardProvider,
   mockTestOAuthAuthCodeProvider,
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
-  STRIPE_CLI_BROWSER_URL,
-  STRIPE_CLI_TEST_SECRET,
 } from "./helpers/api-bdd-connectors";
 
 const context = testContext();
@@ -433,8 +430,6 @@ describe("CONN-02: OAuth device authorization", () => {
 
   it("rejects device-auth starts through visible validation, grant, and availability boundaries", async () => {
     const testOauthProvider = mockTestOAuthDeviceConnectorProvider();
-    const stripeProvider = mockStripeCliDashboardProvider();
-
     const bdd = createBddApi(context);
     const actor = bdd.user();
     const switchlessActor = bdd.user();
@@ -536,16 +531,16 @@ describe("CONN-02: OAuth device authorization", () => {
       "test-oauth-device api device-auth start option toString is not supported",
     );
 
-    const invalidStripeMode = await connectorsApi.requestDeviceAuthStart(
+    const stripeDeviceAuth = await connectorsApi.requestDeviceAuthStart(
       actor,
       "stripe",
       "cli",
       { mode: "production" },
       [400],
     );
-    expectApiError(invalidStripeMode.body);
-    expect(invalidStripeMode.body.error.message).toBe(
-      "stripe cli device-auth start option mode must be one of: test, live",
+    expectApiError(stripeDeviceAuth.body);
+    expect(stripeDeviceAuth.body.error.message).toBe(
+      "stripe connector does not support a device-auth grant",
     );
 
     const disabled = await connectorsApi.requestDeviceAuthStart(
@@ -561,7 +556,6 @@ describe("CONN-02: OAuth device authorization", () => {
     );
 
     expect(testOauthProvider.deviceCodeBodies).toStrictEqual([]);
-    expect(stripeProvider.startBodies).toStrictEqual([]);
 
     const missingSession = await connectorsApi.requestDeviceAuthPoll(
       actor,
@@ -989,148 +983,6 @@ describe("CONN-02: OAuth device authorization", () => {
     clearMockNow();
 
     await connectorsApi.deleteFeatureSwitches(actor);
-  });
-
-  it("runs the Stripe CLI dashboard device flow with redacted provider state", async () => {
-    const bdd = createBddApi(context);
-    const actor = bdd.user();
-
-    const startProvider = mockStripeCliDashboardProvider();
-    const started = await connectorsApi.startDeviceAuth(
-      actor,
-      "stripe",
-      "cli",
-      {
-        mode: "test",
-      },
-    );
-    expect(started).toMatchObject({
-      type: "stripe",
-      status: "pending",
-      userCode: "STRIPE-CLI",
-      verificationUri: STRIPE_CLI_BROWSER_URL,
-      verificationUriComplete: STRIPE_CLI_BROWSER_URL,
-      expiresIn: 600,
-      interval: 1,
-    });
-    expect(JSON.stringify(started)).not.toContain("poll_token");
-    expect(startProvider.startBodies).toHaveLength(1);
-    expect(startProvider.startBodies[0]?.get("device_name")).toBe(
-      "vm0-stripe-connector",
-    );
-    expect(startProvider.startBodies[0]?.get("client_version")).toBeTruthy();
-
-    mockStripeCliDashboardProvider({ pollToken: "pending" });
-    const pendingSession = await connectorsApi.startDeviceAuth(
-      actor,
-      "stripe",
-      "cli",
-      { mode: "test" },
-    );
-    mockNow(now() + 2000);
-    const pendingPoll = await connectorsApi.pollDeviceAuth(
-      actor,
-      "stripe",
-      pendingSession.sessionId,
-      pendingSession.sessionToken,
-    );
-    expect(pendingPoll).toStrictEqual({ status: "pending", interval: 1 });
-    clearMockNow();
-
-    const completeProvider = mockStripeCliDashboardProvider({
-      pollToken: "test-complete",
-    });
-    const completing = await connectorsApi.startDeviceAuth(
-      actor,
-      "stripe",
-      "cli",
-      { mode: "test" },
-    );
-    const completionBase = now();
-    mockNow(completionBase + 2000);
-    const completedPoll = await connectorsApi.pollDeviceAuth(
-      actor,
-      "stripe",
-      completing.sessionId,
-      completing.sessionToken,
-    );
-    expect(completedPoll.status).toBe("complete");
-    if (completedPoll.status !== "complete") {
-      throw new Error(
-        `Expected complete Stripe device auth, received ${completedPoll.status}`,
-      );
-    }
-    expect(JSON.stringify(completedPoll)).not.toContain(STRIPE_CLI_TEST_SECRET);
-    expect(
-      completeProvider.pollUrls.some((pollUrl) => {
-        return (
-          new URL(pollUrl).searchParams.get("poll_token") === "test-complete"
-        );
-      }),
-    ).toBeTruthy();
-
-    const stripeConnector = await connectorsApi.readConnectorByType(
-      actor,
-      "stripe",
-    );
-    expect(stripeConnector).toMatchObject({
-      type: "stripe",
-      authMethod: "cli",
-      externalId: "acct_test",
-      externalUsername: "Test Stripe Account",
-      externalEmail: null,
-      oauthScopes: [],
-      connectionStatus: "connected",
-    });
-    expect(JSON.stringify(stripeConnector)).not.toContain(
-      STRIPE_CLI_TEST_SECRET,
-    );
-    if (!stripeConnector.tokenExpiresAt) {
-      throw new Error("Expected Stripe CLI token expiry to be visible");
-    }
-    const tokenExpiresAtMs = Date.parse(stripeConnector.tokenExpiresAt);
-    expect(tokenExpiresAtMs).toBeGreaterThan(
-      completionBase + 2000 + 89 * 24 * 60 * 60 * 1000,
-    );
-    expect(tokenExpiresAtMs).toBeLessThanOrEqual(
-      completionBase + 2000 + 90 * 24 * 60 * 60 * 1000,
-    );
-    clearMockNow();
-    await connectorsApi.deleteConnectorByType(actor, "stripe");
-
-    mockStripeCliDashboardProvider({ pollToken: "malformed" });
-    const malformed = await connectorsApi.startDeviceAuth(
-      actor,
-      "stripe",
-      "cli",
-      { mode: "test" },
-    );
-    mockNow(now() + 2000);
-    const malformedPoll = await connectorsApi.pollDeviceAuth(
-      actor,
-      "stripe",
-      malformed.sessionId,
-      malformed.sessionToken,
-    );
-    expect(malformedPoll.status).toBe("error");
-    if (malformedPoll.status !== "error") {
-      throw new Error(
-        `Expected Stripe device auth error, received ${malformedPoll.status}`,
-      );
-    }
-    expect(malformedPoll.errorMessage).not.toContain("secret-poll");
-    expect(malformedPoll.errorMessage).not.toContain(STRIPE_CLI_TEST_SECRET);
-    clearMockNow();
-
-    mockStripeCliDashboardProvider({ oversizePollUrl: true });
-    const oversize = await connectorsApi.requestDeviceAuthStart(
-      actor,
-      "stripe",
-      "cli",
-      { mode: "test" },
-      [500],
-    );
-    expect(oversize.body).toStrictEqual({ error: "Internal server error" });
   });
 
   it("completes Base44 and Slock device sessions with provider metadata visible through connector reads", async () => {
