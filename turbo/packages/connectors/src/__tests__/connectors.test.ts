@@ -225,6 +225,8 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   mailchimp: "https://login.mailchimp.com/oauth2/authorize",
   mercury: "https://oauth2.mercury.com/oauth2/auth",
   "meta-ads": "https://www.facebook.com/v22.0/dialog/oauth",
+  "microsoft-365":
+    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
   "tiktok-ads": "https://business-api.tiktok.com/portal/auth",
   monday: "https://auth.monday.com/oauth2/authorize",
   neon: "https://oauth2.neon.tech/oauth2/auth",
@@ -2533,6 +2535,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(
       getAvailableConnectorAuthMethodIds("meta-ads", {
         [FeatureSwitchKey.MetaAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes Microsoft 365 OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("microsoft-365", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("microsoft-365", {
+        [FeatureSwitchKey.Microsoft365Connector]: true,
       }),
     ).toStrictEqual(["oauth"]);
   });

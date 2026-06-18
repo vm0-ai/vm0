@@ -16,7 +16,7 @@ const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
 
 type MicrosoftOAuthConnectorType = Extract<
   AuthCodeGrantConnectorType,
-  "outlook-calendar" | "outlook-mail"
+  "microsoft-365" | "outlook-calendar" | "outlook-mail"
 >;
 
 interface MicrosoftUserInfo {

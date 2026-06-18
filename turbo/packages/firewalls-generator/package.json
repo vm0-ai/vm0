@@ -159,6 +159,7 @@
     "generate:meshy": "tsx src/index.ts meshy",
     "generate:metabase": "tsx src/index.ts metabase",
     "generate:meta-ads": "tsx src/index.ts meta-ads",
+    "generate:microsoft-365": "tsx src/index.ts microsoft-365",
     "generate:minimax": "tsx src/index.ts minimax",
     "generate:mixpanel": "tsx src/index.ts mixpanel",
     "generate:modal": "tsx src/index.ts modal",

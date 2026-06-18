@@ -13,6 +13,7 @@ export enum FeatureSwitchKey {
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
   MercuryConnector = "mercuryConnector",
+  Microsoft365Connector = "microsoft365Connector",
   NeonConnector = "neonConnector",
   GarminConnectConnector = "garminConnectConnector",
   RedditConnector = "redditConnector",
