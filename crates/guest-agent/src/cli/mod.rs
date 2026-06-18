@@ -655,6 +655,7 @@ async fn execute_cli_inner(
                     }
                     Ok(None) => {
                         stdout_eof = true;
+                        active_input_controller.close_terminal();
                         if cli_status.is_some() {
                             break Ok(());
                         }
@@ -668,6 +669,7 @@ async fn execute_cli_inner(
                         cli_exit_at = Some(Instant::now());
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
+                        active_input_controller.close_terminal();
                         // CLI exited on its own (possibly in response to our
                         // SIGTERM). Park the termination FSM so it can't
                         // re-arm on any late `type=result` event.
