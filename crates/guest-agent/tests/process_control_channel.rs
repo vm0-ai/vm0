@@ -92,22 +92,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     ];
 
     let connection = start_host_and_guest(tmp.path()).await?;
-    let command = format!(
-        "cleanup_home_user=0; \
-         cleanup_workspace=0; \
-         if [ ! -e /home/user ]; then cleanup_home_user=1; fi; \
-         if [ ! -e /home/user/workspace ]; then cleanup_workspace=1; fi; \
-         {}; \
-         status=$?; \
-         if [ \"$cleanup_workspace\" = 1 ]; then \
-           rmdir /home/user/workspace 2>/dev/null || true; \
-         fi; \
-         if [ \"$cleanup_home_user\" = 1 ]; then \
-           rmdir /home/user 2>/dev/null || true; \
-        fi; \
-         exit $status",
-        shell_quote(guest_agent)
-    );
+    let command = guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
     let mut handle = connection
         .host()
@@ -176,6 +161,81 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         String::from_utf8_lossy(&stdout).contains("RESULT=before-ready+after-ready"),
         "guest-agent stdout did not include active-input result: {}",
         String::from_utf8_lossy(&stdout)
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> TestResult<()> {
+    let mock = common::build_and_locate_mock()?;
+    let tmp = tempfile::tempdir()?;
+    let run_id = format!(
+        "process-control-plain-run-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    );
+
+    let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
+    let prompt = "printf no-active-input";
+    let workdir = tmp.path().to_string_lossy().into_owned();
+    let mock_path = mock.to_string_lossy().into_owned();
+    let env = [
+        ("CLI_AGENT_TYPE", "claude-code"),
+        ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
+        ("USE_MOCK_CLAUDE", "true"),
+        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
+        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
+        ("VM0_RUN_ID", run_id.as_str()),
+        ("VM0_PROMPT", prompt),
+        ("VM0_API_URL", "http://127.0.0.1:1"),
+        ("VM0_API_TOKEN", ""),
+        ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
+        ("VM0_SANDBOX_REUSE_RESULT", "reused"),
+        ("HOME", workdir.as_str()),
+    ];
+
+    let connection = start_host_and_guest(tmp.path()).await?;
+    let command = guest_agent_wrapper_command(guest_agent);
+    let sudo = needs_sudo_for_canonical_workspace();
+    let handle = connection
+        .host()
+        .start_supervised_exec(SupervisedExecRequest {
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
+            command: &command,
+            env: &env,
+            sudo,
+            label: "guest-agent-process-control-plain-run",
+            stdout: ExecOutputPolicy::Capture {
+                limit_bytes: 1024 * 1024,
+            },
+            stderr: ExecOutputPolicy::Capture {
+                limit_bytes: 1024 * 1024,
+            },
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            control: SupervisedExecControl::Enabled { sink: true },
+            stream_queue_capacity: None,
+            start_timeout: Duration::from_secs(10),
+        })
+        .await?;
+
+    let exit = handle.wait(Duration::from_secs(20)).await?;
+
+    connection.finish()?;
+
+    let stdout = captured_output_lossy(&exit.stdout);
+    assert!(
+        matches!(exit.termination, ExecTermination::Exited { exit_code: 0 }),
+        "guest-agent failed: termination={:?} diagnostic={} stdout={} stderr={}",
+        exit.termination,
+        exit.diagnostic,
+        stdout,
+        captured_output_lossy(&exit.stderr)
+    );
+    assert!(
+        stdout.contains("no-active-input"),
+        "guest-agent stdout did not include plain run result: {stdout}"
     );
 
     Ok(())
@@ -347,6 +407,25 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
 
 fn shell_quote(raw: &str) -> String {
     format!("'{}'", raw.replace('\'', "'\\''"))
+}
+
+fn guest_agent_wrapper_command(guest_agent: &str) -> String {
+    format!(
+        "cleanup_home_user=0; \
+         cleanup_workspace=0; \
+         if [ ! -e /home/user ]; then cleanup_home_user=1; fi; \
+         if [ ! -e /home/user/workspace ]; then cleanup_workspace=1; fi; \
+         {}; \
+         status=$?; \
+         if [ \"$cleanup_workspace\" = 1 ]; then \
+           rmdir /home/user/workspace 2>/dev/null || true; \
+         fi; \
+         if [ \"$cleanup_home_user\" = 1 ]; then \
+           rmdir /home/user 2>/dev/null || true; \
+        fi; \
+         exit $status",
+        shell_quote(guest_agent)
+    )
 }
 
 fn needs_sudo_for_canonical_workspace() -> bool {
