@@ -40,6 +40,10 @@
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"
     },
+    "./firewall-metadata": {
+      "import": "./src/firewall-metadata/index.ts",
+      "types": "./src/firewall-metadata/index.ts"
+    },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"

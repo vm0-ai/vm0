@@ -258,6 +258,7 @@ import { generate as generateGong } from "./gong";
 import { generate as generateIronclad } from "./ironclad";
 import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
+import { generateFirewallMetadata } from "./metadata";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
@@ -534,6 +535,10 @@ async function main(): Promise<void> {
       console.error(`\n=== ${name} ===`);
       await gen();
     }
+
+    // Metadata summarizes the complete generated registry, so only rebuild it
+    // after every registered firewall has been regenerated.
+    await generateFirewallMetadata();
   }
 
   console.error("\nDone.");
