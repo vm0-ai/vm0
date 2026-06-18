@@ -2180,11 +2180,9 @@ function TemplatePreviewPage({
             className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
-            Templates
+            Template
           </button>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">Presentation</span>
-          <span className="shrink-0 text-muted-foreground">/</span>
+          {" "}
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
       </DialogHeader>

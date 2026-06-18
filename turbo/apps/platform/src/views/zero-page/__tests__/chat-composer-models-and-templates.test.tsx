@@ -1631,6 +1631,13 @@ describe("chat composer templates", () => {
     await fill(screen.getByLabelText("Search templates"), template.title);
     click(screen.getByLabelText(`View template ${template.title}`));
 
+    const templateDialog = screen.getByRole("dialog");
+    expect(
+      within(templateDialog).getByRole("heading", {
+        name: `Template ${template.title}`,
+      }),
+    ).toBeInTheDocument();
+
     await waitFor(() => {
       expect(screen.getByText("1 of 15")).toBeInTheDocument();
     });
@@ -1645,7 +1652,7 @@ describe("chat composer templates", () => {
       "true",
     );
 
-    click(screen.getByText("Templates"));
+    click(within(templateDialog).getByRole("button", { name: "Template" }));
     click(screen.getByLabelText(`View template ${template.title}`));
 
     await waitFor(() => {
