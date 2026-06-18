@@ -79,7 +79,7 @@ export function zeroWorkflowDetail(args: {
       workflowName: args.workflowName,
     });
 
-    return { ...summary, ...content };
+    return { ...summary, ...content, triggers: [] };
   });
 }
 

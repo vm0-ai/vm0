@@ -105,6 +105,7 @@ export const apiWorkflowsHandlers = [
     const updated: ZeroWorkflowDetailResponse = {
       ...response,
       fileContents: files,
+      triggers: existing.triggers,
     };
     mockWorkflows[index] = updated;
     return respond(200, response);
