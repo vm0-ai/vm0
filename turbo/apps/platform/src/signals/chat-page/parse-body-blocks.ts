@@ -59,6 +59,12 @@ type ExtractedPreviewUrl = {
   title?: string;
 };
 
+type OpenMarkdownFence = {
+  marker: "`" | "~";
+  length: number;
+  lines: string[];
+};
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -343,12 +349,13 @@ function hostedSitePublicSlug(hostname: string): string | null {
     return null;
   }
 
+  const normalizedHostname = hostname.toLowerCase();
   const suffix = `.${domain}`;
-  if (!hostname.endsWith(suffix)) {
+  if (!normalizedHostname.endsWith(suffix)) {
     return null;
   }
 
-  const slug = hostname.slice(0, -suffix.length);
+  const slug = normalizedHostname.slice(0, -suffix.length);
   return HOSTED_SITE_SLUG_PATTERN.test(slug) ? slug : null;
 }
 
@@ -466,6 +473,105 @@ function renderExtractedPreviewLine(
   }
 
   return { renderKind: "markdown", line };
+}
+
+function renderFencedHostedSitePreview(
+  contentLines: readonly string[],
+): ExtractedPreviewLineRender | null {
+  const nonEmptyLines = contentLines.filter((line) => {
+    return line.trim().length > 0;
+  });
+  if (nonEmptyLines.length !== 1) {
+    return null;
+  }
+
+  const line = nonEmptyLines[0]!;
+  const extracted = extractPreviewUrlFromLine(line);
+  if (!extracted || !isHostedSiteUrl(extracted.url)) {
+    return null;
+  }
+
+  const rendered = renderExtractedPreviewLine(extracted, line);
+  return rendered.renderKind === "preview" && rendered.preview.kind === "html"
+    ? rendered
+    : null;
+}
+
+type MarkdownFenceLineResult =
+  | {
+      kind: "pending";
+      openFence: OpenMarkdownFence | null;
+    }
+  | {
+      kind: "markdown";
+      openFence: null;
+      lines: readonly string[];
+    }
+  | {
+      kind: "preview";
+      openFence: null;
+      preview: {
+        filename: string;
+        url: string;
+        kind: BodyPreviewKind;
+      };
+    };
+
+function renderOpenMarkdownFence(
+  openFence: OpenMarkdownFence,
+  previews: boolean,
+): MarkdownFenceLineResult {
+  const renderedFence = previews
+    ? renderFencedHostedSitePreview(openFence.lines.slice(1))
+    : null;
+
+  if (renderedFence?.renderKind === "preview") {
+    return {
+      kind: "preview",
+      openFence: null,
+      preview: renderedFence.preview,
+    };
+  }
+
+  return { kind: "markdown", openFence: null, lines: openFence.lines };
+}
+
+function parseMarkdownFenceLine(
+  line: string,
+  openFence: OpenMarkdownFence | null,
+  previews: boolean,
+): MarkdownFenceLineResult | null {
+  const trimmedLine = line.trim();
+  const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
+  if (!fenceMatch) {
+    if (!openFence) {
+      return null;
+    }
+
+    openFence.lines.push(line);
+    return { kind: "pending", openFence };
+  }
+
+  const fence = fenceMatch[1]!;
+  const marker = fence.startsWith("`") ? "`" : "~";
+  if (!openFence) {
+    return {
+      kind: "pending",
+      openFence: { marker, length: fence.length, lines: [line] },
+    };
+  }
+
+  if (openFence.marker !== marker || fence.length < openFence.length) {
+    openFence.lines.push(line);
+    return { kind: "pending", openFence };
+  }
+
+  const result = renderOpenMarkdownFence(openFence, previews);
+  if (result.kind === "markdown") {
+    return { ...result, lines: [...openFence.lines, line] };
+  }
+
+  return result;
 }
 
 function stripMarkdownLineDecorations(value: string): string {
@@ -703,10 +809,7 @@ export function parseBodyRenderBlocks(
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
   let blockSequence = 0;
-  let openFence: {
-    marker: "`" | "~";
-    length: number;
-  } | null = null;
+  let openFence: OpenMarkdownFence | null = null;
   const nextBlockId = (type: BodyRenderBlock["type"]) => {
     blockSequence += 1;
     return `${type}-${blockSequence}`;
@@ -724,29 +827,37 @@ export function parseBodyRenderBlocks(
     markdownBuffer.length = 0;
   };
 
-  for (const [lineIndex, line] of lines.entries()) {
-    const trimmedLine = line.trim();
-    const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
-    if (fenceMatch) {
-      const fence = fenceMatch[1];
-      const marker = fence.startsWith("`") ? "`" : "~";
-      if (
-        openFence &&
-        openFence.marker === marker &&
-        fence.length >= openFence.length
-      ) {
-        openFence = null;
-      } else if (!openFence) {
-        openFence = { marker, length: fence.length };
-      }
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
+  const pushMarkdownLines = (nextLines: readonly string[]) => {
+    markdownBuffer.push(...nextLines);
+    keptLines.push(...nextLines);
+  };
 
-    if (openFence) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
+  const pushPreviewBlock = (
+    preview: Extract<MarkdownFenceLineResult, { kind: "preview" }>["preview"],
+  ) => {
+    flushMarkdownBuffer();
+    blocks.push({
+      type: "preview",
+      id: nextBlockId("preview"),
+      preview,
+    });
+  };
+
+  const applyFenceLineResult = (result: MarkdownFenceLineResult) => {
+    openFence = result.openFence;
+    if (result.kind === "markdown") {
+      pushMarkdownLines(result.lines);
+      return;
+    }
+    if (result.kind === "preview") {
+      pushPreviewBlock(result.preview);
+    }
+  };
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const fenceResult = parseMarkdownFenceLine(line, openFence, previews);
+    if (fenceResult) {
+      applyFenceLineResult(fenceResult);
       continue;
     }
 
@@ -785,10 +896,15 @@ export function parseBodyRenderBlocks(
     });
   }
 
+  if (openFence) {
+    applyFenceLineResult(renderOpenMarkdownFence(openFence, previews));
+  }
   flushMarkdownBuffer();
 
+  const cleanContent = keptLines.join("\n").trim();
+
   return {
-    cleanContent: keptLines.join("\n").trim(),
+    cleanContent,
     blocks,
   };
 }
