@@ -5,6 +5,7 @@ export interface PresentationTemplateItem {
   readonly embedUrl: string;
   readonly previewImage: string;
   readonly previewImages: readonly string[];
+  readonly cardPreviewImage?: string;
   readonly previewHtmls?: readonly string[];
   readonly colorSystemId?: string;
   readonly designSystemId: string;
@@ -2129,6 +2130,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d0f6b313-9899-4143-a6da-26781fd7b946/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f37e3c21-0864-46a2-b961-4adfebb1cba9/template-card-presentation-playful-launch-presentation-480x270.jpg",
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
       colorSystemId: "color-system:carnival",
       designSystemId: "design-system:playful-editorial",
@@ -2142,6 +2145,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/449e7efe-c73d-497d-962c-d77c576d0768/botane-organic.html",
       previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a9d30ea3-4647-4c2e-ab50-9d2edfeff9cd/template-card-presentation-botane-organic-deck-480x270.jpg",
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
       colorSystemId: "color-system:mauve-dusk",
       designSystemId: "design-system:botane-organic",
@@ -2155,6 +2160,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a570cf6-d398-40a6-8de5-3857f1fa21a2/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35258dc3-bbd1-4a4f-b714-e504ff14cee1/template-card-presentation-business-data-presentation-480x270.jpg",
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
       colorSystemId: "color-system:berry-pop",
       designSystemId: "design-system:business-data",
@@ -2168,6 +2175,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aa31138-3cfa-4ed2-997a-aeb37b51e258/crayon.html",
       previewImage: CRAYON_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f71dd44c-8543-4b00-9677-d885e7c7758b/template-card-presentation-crayon-learning-deck-480x270.jpg",
       previewImages: CRAYON_PREVIEW_IMAGES,
       previewHtmls: CRAYON_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
@@ -2182,6 +2191,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/128e103c-8eed-4436-8da8-7d99d1a71021/creative-agency.html",
       previewImage: CREATIVE_AGENCY_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1540d613-5882-41dd-be2b-219c319af340/template-card-presentation-creative-agency-presentation-480x270.jpg",
       previewImages: CREATIVE_AGENCY_PREVIEW_IMAGES,
       previewHtmls: CREATIVE_AGENCY_PREVIEW_HTMLS,
       colorSystemId: "color-system:coral-studio",
@@ -2196,6 +2207,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ee4af44-fedf-4472-9754-b237b8d8ab4f/data-report.html",
       previewImage: DATA_REPORT_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1d384ab7-5e0d-4a71-9658-e249143eef65/template-card-presentation-data-report-presentation-480x270.jpg",
       previewImages: DATA_REPORT_PREVIEW_IMAGES,
       previewHtmls: DATA_REPORT_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
@@ -2210,6 +2223,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ecb06a73-8d96-4565-951e-5ee3688af8c9/editorial-magazine.html",
       previewImage: EDITORIAL_MAGAZINE_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b28ca11d-4ca0-4eaa-bee9-295482eef074/template-card-presentation-editorial-magazine-deck-480x270.jpg",
       previewImages: EDITORIAL_MAGAZINE_PREVIEW_IMAGES,
       previewHtmls: EDITORIAL_MAGAZINE_PREVIEW_HTMLS,
       colorSystemId: "color-system:warm-sand",
@@ -2224,6 +2239,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/675da276-43e2-4925-9744-ee0ce44fd3d3/landing-consulting.html",
       previewImage: LANDING_CONSULTING_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f9e50e29-d532-4fe8-9620-fb5bdce2acf1/template-card-presentation-landing-consulting-deck-480x270.jpg",
       previewImages: LANDING_CONSULTING_PREVIEW_IMAGES,
       previewHtmls: LANDING_CONSULTING_PREVIEW_HTMLS,
       colorSystemId: "color-system:pop-art",
@@ -2238,6 +2255,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bd8fd3cd-7b48-4903-ad4c-ce8aae44a690/lumina-creative-studio.html",
       previewImage: LUMINA_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18dd03a3-8354-4696-b705-0fd11e64a69e/template-card-presentation-lumina-creative-studio-480x270.jpg",
       previewImages: LUMINA_PREVIEW_IMAGES,
       previewHtmls: LUMINA_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
@@ -2252,6 +2271,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d6a7348-5ed7-40a0-a482-aced65491923/mosaic-geometric-hidden.html",
       previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19ffef15-d346-4b8b-8e2d-c7c4b2b9a7d7/template-card-presentation-mosaic-geometric-pitch-480x270.jpg",
       previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
       previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
       colorSystemId: "color-system:carnival",
@@ -2266,6 +2287,8 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       embedUrl:
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/71a868cb-6e9b-4e9e-a99d-66a75c112b01/playful-pop.html",
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
+      cardPreviewImage:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d477b488-3263-4463-90d5-5c8fae7a01e9/template-card-presentation-playful-pop-deck-480x270.jpg",
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
       colorSystemId: "color-system:pop-art",

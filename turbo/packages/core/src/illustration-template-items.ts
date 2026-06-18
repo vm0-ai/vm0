@@ -869,12 +869,80 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
   },
 ];
 
+const ILLUSTRATION_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<
+  Record<string, string>
+> = {
+  "ink-storefront":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3633cfc-bb66-4cf1-9a9b-0c2ac53f12e4/template-card-illustration-ink-storefront-512.jpg",
+  "tiny-wanderer":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/139cd332-fe89-4326-aa8f-f7052b745bdf/template-card-illustration-tiny-wanderer-512.jpg",
+  "crowd-ink":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c4a91b62-96b1-42d2-bf87-30065da6e5b9/template-card-illustration-crowd-ink-512.jpg",
+  "cozy-parlor":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aa7daace-8fa8-4319-a31a-bb55c8804382/template-card-illustration-cozy-parlor-512.jpg",
+  "iberian-vignette":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/952a2f34-9148-49d4-8640-0fd9b6cbdf20/template-card-illustration-iberian-vignette-512.jpg",
+  "shadow-pop":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ee7e63c-d7fd-4755-a22a-d5be45237afc/template-card-illustration-shadow-pop-512.jpg",
+  "jade-blockprint":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4d790c1-c249-4dc0-8820-1366caaa3546/template-card-illustration-jade-blockprint-512.jpg",
+  "loose-contour":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fcfc3279-938d-4a5a-842d-c82bd19e96fa/template-card-illustration-loose-contour-512.jpg",
+  "soft-vector":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a3b7eab7-7db1-4630-a441-98a1b3ab7b3e/template-card-illustration-soft-vector-512.jpg",
+  "grain-poster":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/696913c7-8743-4033-95ea-203ba6faf294/template-card-illustration-grain-poster-512.jpg",
+  "sunlit-gouache":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ed2d0fe9-5f5c-4aae-bb46-faf132215426/template-card-illustration-sunlit-gouache-512.jpg",
+  "folk-muse":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/17eddd70-ef01-4d39-8d70-a0a0393b6eb8/template-card-illustration-folk-muse-512.jpg",
+  "light-pop-portrait":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ec684e9-2e98-4905-9a25-a32c1de06f22/template-card-illustration-light-pop-portrait-512.jpg",
+  "postcard-illustration":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/221efbba-3ed6-4d86-be6e-e6cf6c3d5d57/template-card-illustration-postcard-illustration-512.jpg",
+  "mosaic-still-life":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/20c33b1f-66aa-4ceb-89cd-10458e93a086/template-card-illustration-mosaic-still-life-512.jpg",
+  "painterly-botanical":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e054f277-e76c-429e-b88f-a205e8728375/template-card-illustration-painterly-botanical-512.jpg",
+  "op-ed-cover":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f93b734-20f9-4704-9d32-a5a1229b94a1/template-card-illustration-op-ed-cover-512.jpg",
+  endpaper:
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e17040a-a5f7-4184-b473-04b55546cbd0/template-card-illustration-endpaper-512.jpg",
+  inkstomp:
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f873461-5166-43f8-86d9-25d1d6e7cc1f/template-card-illustration-inkstomp-512.jpg",
+  "mellow-pop":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/16e05916-3e40-4890-a9a8-5ee968427305/template-card-illustration-mellow-pop-512.jpg",
+  papernook:
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb7b6c2f-0a5c-4e87-93f9-74a0bdc1533d/template-card-illustration-papernook-512.jpg",
+  "ink-mascot":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/13ad3bce-e719-4fa9-93a4-0e44c744091c/template-card-illustration-ink-mascot-512.jpg",
+  "riso-relic":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a1b7f915-b993-4faa-a37e-d870bc8918ab/template-card-illustration-riso-relic-512.jpg",
+  "editorial-flatfolk":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f37b65f3-9db8-4b57-b500-b686596649cf/template-card-illustration-editorial-flatfolk-512.jpg",
+  "flat-poster":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/88738b99-22b1-4e3b-8660-a0291c3e8e86/template-card-illustration-flat-poster-512.jpg",
+  "grainy-duotone":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce3fc7c4-55fe-4edf-8d9a-6b65554ab2bd/template-card-illustration-grainy-duotone-512.jpg",
+  "sticker-sheet":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc1b556a-afe3-4410-a46a-74431de1c976/template-card-illustration-sticker-sheet-512.jpg",
+  "folk-storybook":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/003c7de6-4409-46ec-b6c7-53005e877c7b/template-card-illustration-folk-storybook-512.jpg",
+  inkdab:
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b0f5c0e3-c827-4008-8eee-26b5117051be/template-card-illustration-inkdab-512.jpg",
+  "iso-scene":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2d9fe8aa-637a-4364-b035-cc42052da270/template-card-illustration-iso-scene-512.jpg",
+  "notion-illustration":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c1faa987-4b22-4594-80ab-0a2335bc6698/template-card-illustration-notion-illustration-512.jpg",
+};
+
 export interface IllustrationTemplateItem {
   readonly slug: string;
   readonly title: string;
   readonly illustrationStyleId: string;
   readonly previewImage: string;
   readonly previewImages: readonly string[];
+  readonly cardPreviewImage?: string;
   readonly variationCount: number;
   /** Intrinsic pixel dimensions of the style's reference frame, used to reserve
    * the card's aspect ratio so the full illustration renders without cropping,
@@ -889,6 +957,19 @@ function illustrationPreviewImage(style: IllustrationStyle): string {
   return illustrationAssetUrl(cover);
 }
 
+function illustrationTemplateCardPreviewImage(
+  style: IllustrationStyle,
+): string {
+  const cardPreviewImage =
+    ILLUSTRATION_TEMPLATE_CARD_PREVIEW_IMAGES[style.slug];
+  if (!cardPreviewImage) {
+    throw new Error(
+      `Missing illustration template card preview image: ${style.slug}`,
+    );
+  }
+  return cardPreviewImage;
+}
+
 export const ILLUSTRATION_TEMPLATE_ITEMS: readonly IllustrationTemplateItem[] =
   ILLUSTRATION_STYLES.map((style) => {
     return {
@@ -896,6 +977,7 @@ export const ILLUSTRATION_TEMPLATE_ITEMS: readonly IllustrationTemplateItem[] =
       title: style.title,
       illustrationStyleId: `image-style:${style.slug}`,
       previewImage: illustrationPreviewImage(style),
+      cardPreviewImage: illustrationTemplateCardPreviewImage(style),
       previewImages: style.refs.map((ref) => {
         return illustrationAssetUrl(`refs/${style.slug}/${ref}`);
       }),

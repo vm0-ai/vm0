@@ -38,6 +38,10 @@ describe("video template items", () => {
       expect(template?.source.ref).toBe("main");
       expect(template?.source.path).toBe(item.sourcePath);
       expect(item.previewImage).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.jpg$/u);
+      expect(item.cardPreviewImage).toMatch(
+        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.jpg$/u,
+      );
+      expect(item.cardPreviewImage).not.toContain("/cdn-cgi/image/");
       expect(item.previewVideo).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.mp4$/u);
       expect(template).not.toHaveProperty("previewImage");
       expect(template).not.toHaveProperty("previewVideo");
