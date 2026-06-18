@@ -163,6 +163,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_model_websocket_missing_context_releases_positive_source(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
@@ -192,6 +193,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
@@ -216,6 +218,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
@@ -235,6 +238,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
