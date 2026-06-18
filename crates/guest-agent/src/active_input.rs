@@ -87,10 +87,7 @@ impl ActiveInputState {
         let uuid = self
             .pending_by_uuid
             .iter()
-            .find(|(_, input)| {
-                matches!(input.state, PendingState::Writing | PendingState::Written)
-                    && input.text == text
-            })
+            .find(|(_, input)| matches!(input.state, PendingState::Written) && input.text == text)
             .map(|(uuid, _)| uuid.clone());
         let Some(uuid) = uuid else {
             return false;
@@ -99,12 +96,12 @@ impl ActiveInputState {
         self.pending_by_uuid.remove(&uuid).is_some()
     }
 
-    fn pending_inputs_are_in_stdin_writer(&self) -> bool {
+    fn pending_inputs_are_written_to_stdin(&self) -> bool {
         !self.pending_by_uuid.is_empty()
             && self
                 .pending_by_uuid
                 .values()
-                .all(|input| matches!(input.state, PendingState::Writing | PendingState::Written))
+                .all(|input| matches!(input.state, PendingState::Written))
     }
 }
 
@@ -349,7 +346,7 @@ impl ActiveInputController {
         let had_observed_result = state.observed_result;
         state.observed_result = true;
         if !state.pending_by_uuid.is_empty() {
-            if !had_observed_result || !state.pending_inputs_are_in_stdin_writer() {
+            if !had_observed_result || !state.pending_inputs_are_written_to_stdin() {
                 return false;
             }
             // Claude should replay stdin user frames before the follow-up result.
@@ -656,6 +653,30 @@ mod tests {
             ActiveInputControlOutcome::Accepted
         );
         let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+        assert!(!controller.close_for_result_if_idle());
+
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_does_not_consume_uuidless_text_match_while_writing() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
         controller.mark_writing(&active_uuid);
         assert!(!controller.close_for_result_if_idle());
 
@@ -663,6 +684,12 @@ mod tests {
             "type": "user",
             "message": {"role": "user", "content": "follow-up"}
         });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+
+        controller.mark_written(&active_uuid);
         assert_eq!(
             controller.replay_user_event_action(&event),
             ReplayUserEventAction::InternalActiveInput
@@ -724,7 +751,7 @@ mod tests {
             ActiveInputControlOutcome::Accepted
         );
         let active_uuid = claude_active_input_uuid("run-1", "msg-1");
-        controller.mark_writing(&active_uuid);
+        controller.mark_written(&active_uuid);
 
         assert!(!controller.close_for_result_if_idle());
         assert!(controller.close_for_result_if_idle());
@@ -732,6 +759,24 @@ mod tests {
             controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
             ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
         ));
+    }
+
+    #[test]
+    fn followup_result_keeps_writing_pending_input_open_without_replay() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_writing(&active_uuid);
+
+        assert!(!controller.close_for_result_if_idle());
+        assert!(!controller.close_for_result_if_idle());
+        controller.mark_written(&active_uuid);
+        assert!(controller.close_for_result_if_idle());
     }
 
     #[test]
