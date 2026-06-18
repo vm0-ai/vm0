@@ -10,7 +10,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { logger } from "../../lib/log";
@@ -397,7 +397,10 @@ async function updateOnboardingPaymentPending(
     })
     .where(
       onboardingPaymentPending
-        ? and(eq(orgMetadata.orgId, orgId), eq(orgMetadata.tier, "pro-suspend"))
+        ? and(
+            eq(orgMetadata.orgId, orgId),
+            inArray(orgMetadata.tier, ["free", "pro-suspend"]),
+          )
         : eq(orgMetadata.orgId, orgId),
     );
 }
