@@ -58,6 +58,7 @@ import { airtableProvider } from "./connectors/airtable/provider";
 import { asanaProvider } from "./connectors/asana/provider";
 import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
+import { boxProvider } from "./connectors/box/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
 import { cloudflareProvider } from "./connectors/cloudflare/provider";
@@ -442,6 +443,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   asana: { oauth: authCodeRefreshProviderEntry(asanaProvider) },
   aws: { cli: externalCodeRefreshProviderEntry(awsProvider) },
   base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
+  box: { oauth: authCodeRefreshProviderEntry(boxProvider) },
   canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
   close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
   cloudflare: {

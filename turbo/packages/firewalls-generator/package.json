@@ -55,6 +55,7 @@
     "generate:bitrefill": "tsx src/index.ts bitrefill",
     "generate:bitrix": "tsx src/index.ts bitrix",
     "generate:bland": "tsx src/index.ts bland",
+    "generate:box": "tsx src/index.ts box",
     "generate:brave-search": "tsx src/index.ts brave-search",
     "generate:brex": "tsx src/index.ts brex",
     "generate:brevo": "tsx src/index.ts brevo",
