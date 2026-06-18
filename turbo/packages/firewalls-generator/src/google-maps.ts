@@ -14,7 +14,6 @@ const PLACEHOLDER_VALUE =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 const GOOGLE_MAPS_BASE_URLS = [
-  "https://maps.googleapis.com",
   "https://geocode.googleapis.com",
   "https://places.googleapis.com",
   "https://routes.googleapis.com",

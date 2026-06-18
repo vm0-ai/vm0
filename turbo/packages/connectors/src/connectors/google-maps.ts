@@ -5,7 +5,7 @@ export const googleMaps = {
     label: "Google Maps",
     category: "data-automation-infrastructure",
     helpText:
-      "Connect Google Maps Platform to access geocoding, places, directions, and other Maps APIs",
+      "Connect Google Maps Platform to access geocoding, places, directions, and route matrices",
     authMethods: {
       oauth: {
         showExperimentalLabel: false,
