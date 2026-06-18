@@ -1927,6 +1927,10 @@ function TemplatePreviewPage({
   const fallbackSlideCount = Math.max(slideImages.length, 1);
   const detailSlideCount =
     visibleDetailPreview?.slideCount ?? fallbackSlideCount;
+  const canReuseDetailThumbnailFrameUrls =
+    detailPreview?.slug === item.slug &&
+    detailPreview.embedUrl === item.embedUrl &&
+    detailPreview.themeId === selectedTheme.id;
 
   const setLoadedDetailPreview = (params: {
     readonly draft: PresentationEditDraft;
@@ -1994,7 +1998,7 @@ function TemplatePreviewPage({
         index: activeSlideIndex,
         previousFrameUrl: detailPreview?.frameUrl ?? null,
         previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-        reuseThumbnailFrameUrls: detailPreview?.themeId === selectedTheme.id,
+        reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
         theme: selectedTheme,
       });
       return;
@@ -2082,7 +2086,7 @@ function TemplatePreviewPage({
         index: nextIndex,
         previousFrameUrl: detailPreview?.frameUrl ?? null,
         previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-        reuseThumbnailFrameUrls: detailPreview?.themeId === selectedTheme.id,
+        reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
         theme: selectedTheme,
       });
     }
