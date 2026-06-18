@@ -577,10 +577,26 @@ mod tests {
                     panic!("failed to open parent fifo: {e}");
                 }
             };
-            writeln!(fifo_writer, "done").unwrap();
+            if let Err(e) = writeln!(fifo_writer, "done") {
+                kill_spawned_child(&mut child);
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|cleanup| panic!("fifo write failed: {e}; cleanup={cleanup}"));
+                panic!("failed to release parent fifo: {e}");
+            }
         }
-        let status = child.take().unwrap().wait().unwrap();
-        assert!(status.success());
+        let status = match child.take().unwrap().wait() {
+            Ok(status) => status,
+            Err(e) => {
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|cleanup| panic!("parent wait failed: {e}; cleanup={cleanup}"));
+                panic!("failed to wait for parent shell: {e}");
+            }
+        };
+        if !status.success() {
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|cleanup| panic!("parent exited with {status}; cleanup={cleanup}"));
+            panic!("parent shell should exit successfully, got {status}");
+        }
 
         // SAFETY: `target` came from the spawned shell before it exited.
         if !unsafe { kill_process_tree_target(target) } {
@@ -686,11 +702,12 @@ wait
             }
         };
         let direct_target = parse_stat_ppid_pgid(&direct_stat);
-        assert_eq!(
-            direct_target,
-            Some((parent_pid, parent_pid)),
-            "direct child should initially share the parent process group"
-        );
+        if direct_target != Some((parent_pid, parent_pid)) {
+            kill_spawned_child(&mut child);
+            panic!(
+                "direct child should initially share the parent process group, got {direct_target:?}"
+            );
+        }
 
         let mut target = process_tree_kill_target(parent_pid);
         {
@@ -742,7 +759,11 @@ wait
                 .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
             panic!("refreshed target should signal at least one process group");
         }
-        let _ = child.take().unwrap().wait().unwrap();
+        if let Err(e) = child.take().unwrap().wait() {
+            kill_pidfd_and_wait(&setsid_child_pidfd)
+                .unwrap_or_else(|cleanup| panic!("parent wait failed: {e}; cleanup={cleanup}"));
+            panic!("failed to wait for killed parent shell: {e}");
+        }
 
         match wait_for_pidfd_exit(&setsid_child_pidfd, Duration::from_secs(2)) {
             Ok(true) => {}
