@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.353.0](https://github.com/vm0-ai/vm0/compare/core-v8.352.0...core-v8.353.0) (2026-06-18)
+
+
+### Features
+
+* add agent chat draft persistence ([#18181](https://github.com/vm0-ai/vm0/issues/18181)) ([98ac2e3](https://github.com/vm0-ai/vm0/commit/98ac2e36e56725ca8b620d30782057973d2d03da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.0
+    * @vm0/connectors bumped to 1.89.0
+
 ## [8.352.0](https://github.com/vm0-ai/vm0/compare/core-v8.351.2...core-v8.352.0) (2026-06-18)
 
 
