@@ -1338,7 +1338,6 @@ const PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS = new Set([
   "crayon-learning-deck",
   "data-report-presentation",
   "mosaic-geometric-pitch",
-  "playful-pop-deck",
 ]);
 
 function defaultPresentationTemplateThemeId(
