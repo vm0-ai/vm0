@@ -306,20 +306,29 @@ fn prompt_user_content(event: &Value) -> PromptUserContent {
     }
 
     let mut text = String::new();
+    let mut saw_text = false;
+    let mut saw_tool_result = false;
     for item in items {
         match item.get("type").and_then(Value::as_str) {
-            Some("tool_result") => return PromptUserContent::ToolResult,
+            Some("tool_result") => {
+                saw_tool_result = true;
+            }
             Some("text") => {
                 let Some(part) = item.get("text").and_then(Value::as_str) else {
                     return PromptUserContent::Unknown;
                 };
+                saw_text = true;
                 text.push_str(part);
             }
             _ => return PromptUserContent::Unknown,
         }
     }
 
-    PromptUserContent::Text(text)
+    match (saw_text, saw_tool_result) {
+        (true, false) => PromptUserContent::Text(text),
+        (false, true) => PromptUserContent::ToolResult,
+        _ => PromptUserContent::Unknown,
+    }
 }
 
 impl ActiveInputRuntime {
@@ -810,6 +819,46 @@ mod tests {
         assert_eq!(
             runtime.controller().replay_user_event_action(&event),
             ReplayUserEventAction::External
+        );
+    }
+
+    #[test]
+    fn replay_filter_keeps_multi_tool_result_user_events_external() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let event = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "tool-1"},
+                    {"type": "tool_result", "tool_use_id": "tool-2"}
+                ]
+            }
+        });
+
+        assert_eq!(
+            runtime.controller().replay_user_event_action(&event),
+            ReplayUserEventAction::External
+        );
+    }
+
+    #[test]
+    fn replay_filter_filters_mixed_text_and_tool_result_user_events() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let event = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "prompt-like text"},
+                    {"type": "tool_result", "tool_use_id": "tool-1"}
+                ]
+            }
+        });
+
+        assert_eq!(
+            runtime.controller().replay_user_event_action(&event),
+            ReplayUserEventAction::UnknownPromptUser
         );
     }
 
