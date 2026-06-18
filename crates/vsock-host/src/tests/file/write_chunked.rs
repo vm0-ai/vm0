@@ -101,7 +101,7 @@ impl ChunkedWriteFixture {
 
     fn expected_rename_command(&self) -> String {
         format!(
-            "mv -f -- {} {}",
+            "mv -fT -- {} {}",
             shell_quote_for_test(self.temp_path()),
             shell_quote_for_test(self.target_path)
         )
@@ -445,7 +445,7 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
                     .iter()
                     .find_map(|(temp_path, (_marker, chunk_count))| {
                         let expected_command = format!(
-                            "mv -f -- {} {}",
+                            "mv -fT -- {} {}",
                             shell_quote_for_test(temp_path),
                             shell_quote_for_test(target_path)
                         );
@@ -576,7 +576,7 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
         match decoded.label {
             "write-file-rename" => {
                 let expected_command = format!(
-                    "mv -f -- {} {}",
+                    "mv -fT -- {} {}",
                     shell_quote_for_test(success_temp),
                     shell_quote_for_test(target_path)
                 );

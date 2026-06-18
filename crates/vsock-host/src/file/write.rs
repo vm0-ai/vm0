@@ -423,8 +423,8 @@ impl VsockHost {
             return Err(error);
         }
 
-        // Atomic rename temp → target.
-        let mv_cmd = format!("mv -f -- {quoted_tmp} {}", shell_quote(path));
+        // `-T` keeps directory targets from being treated as destination directories.
+        let mv_cmd = format!("mv -fT -- {quoted_tmp} {}", shell_quote(path));
         let rename_result =
             exec_operation::exec_operation_capture_with_composite_on_shared_and_observer(
                 &self.shared,
