@@ -431,7 +431,8 @@ impl VsockHost {
                 Ok(())
             }
             Err(err) => {
-                // Connection likely broken — short timeout to avoid blocking.
+                // Terminal proof only releases the tracker after cleanup also
+                // succeeds; unproven helper failures remain fail-closed.
                 let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
                 if err.terminal_proven && cleanup_result.is_ok() {
                     normal_operation.complete()?;
