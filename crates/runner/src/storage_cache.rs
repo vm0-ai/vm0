@@ -365,6 +365,20 @@ async fn process_one(
             )));
         }
     };
+    let observed_size = u64::try_from(bytes.len())
+        .map_err(|_| RunnerError::Internal("downloaded archive length overflow".to_string()))?;
+    if observed_size != size {
+        warn!(
+            name = %target.name,
+            version = %target.version,
+            probe_size = size,
+            observed_size,
+            "storage_cache: full download size differed from probe, passthrough"
+        );
+        return Ok(TargetOutcome::SkippedInvalidDownload {
+            reason: "size-mismatch".to_string(),
+        });
+    }
     write_to_cache(&cache_dir, &bytes).await?;
     let guest_path = guest_archive_path(&target.name, &target.version);
     drop(writer);
@@ -1383,6 +1397,114 @@ mod tests {
         assert!(sandbox.write_file_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
         assert_storage_cache_skipped_invalid_download(&ops, "empty-download");
+    }
+
+    #[tokio::test]
+    async fn shorter_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/short-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len() + 1))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/short-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/short-body.tar.gz");
+        let name = "short-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
+    }
+
+    #[tokio::test]
+    async fn longer_full_download_within_limit_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/long-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bytes 0-0/1")
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/long-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/long-body.tar.gz");
+        let name = "long-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
     }
 
     #[tokio::test]
