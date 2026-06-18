@@ -228,6 +228,35 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     ).resolves.toMatchObject([{ value: "example", type: "connector" }]);
   });
 
+  it("normalizes a host field to bare host[:port] when a full URL is pasted", async () => {
+    const fixture = await seedFixture();
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+
+    await accept(
+      client.connect({
+        params: { type: "insforge" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            INSFORGE_API_KEY: "ik_test-key",
+            INSFORGE_DOMAIN: "https://9ksx253h.us-west.insforge.app/api/",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(
+      secretRows(fixture, "INSFORGE_API_KEY", "connector"),
+    ).resolves.toHaveLength(1);
+    await expect(
+      variableRows(fixture, "INSFORGE_DOMAIN"),
+    ).resolves.toMatchObject([
+      { value: "9ksx253h.us-west.insforge.app", type: "connector" },
+    ]);
+  });
+
   it("stores Lark app credentials without writing the logical access token", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);

@@ -127,6 +127,7 @@ FIREWALL_MODULES = {
     "hunter": ("hunter_0",),
     "imgur": ("imgur_0",),
     "infisical": ("infisical_0",),
+    "insforge": ("insforge_0",),
     "instagram": ("instagram_0",),
     "instantly": ("instantly_0",),
     "intercom": ("intercom_0",),
