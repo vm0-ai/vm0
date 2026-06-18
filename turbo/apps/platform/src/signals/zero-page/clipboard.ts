@@ -91,24 +91,17 @@ function formatMessageHtml(payload: ChatClipboardPayload): string {
   const textHtml = payload.text
     ? `<div>${escapeHtml(payload.text).replace(/\n/g, "<br>")}</div>`
     : "";
-  const attachmentsHtml = payload.attachments
+  const attachmentLinksHtml = payload.attachments
     .map((attachment) => {
       const name = escapeHtml(attachment.filename);
       const url = escapeHtml(attachment.url);
-      if (isImageAttachment(attachment)) {
-        return `<div><img src="${url}" alt="${name}" data-vm0-attachment-id="${escapeHtml(attachment.id ?? "")}" /></div>`;
-      }
       return `<div><a href="${url}" data-vm0-attachment-id="${escapeHtml(attachment.id ?? "")}">${name}</a></div>`;
     })
     .join("");
+  const attachmentsHtml = attachmentLinksHtml
+    ? `<div>Attachments:</div>${attachmentLinksHtml}`
+    : "";
   return `<div ${CHAT_MESSAGE_CLIPBOARD_ATTR}="${encoded}">${textHtml}${attachmentsHtml}</div>`;
-}
-
-function isImageAttachment(attachment: ChatClipboardAttachment): boolean {
-  return (
-    attachment.contentType.startsWith("image/") ||
-    /\.(png|jpe?g|gif|webp|svg)$/i.test(attachment.filename)
-  );
 }
 
 async function writeClipboardItem(items: Record<string, Blob>): Promise<void> {
