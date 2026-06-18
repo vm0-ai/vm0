@@ -733,6 +733,12 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByText("Download")).toBeInTheDocument();
       expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
     });
+    await user.hover(menuItemByText("Connect Google Drive"));
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Connect Google Drive to upload artifacts").length,
+      ).toBeGreaterThan(0);
+    });
 
     click(menuItemByText("Download"));
 
