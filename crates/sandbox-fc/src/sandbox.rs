@@ -1646,6 +1646,33 @@ fn process_termination_kind(termination: ExecTermination) -> ProcessTerminationK
     }
 }
 
+fn legacy_exit_code_for_exec_termination(
+    termination: ExecTermination,
+    stderr: &mut Vec<u8>,
+    diagnostic: &str,
+) -> i32 {
+    match termination {
+        ExecTermination::Exited { exit_code } => exit_code,
+        ExecTermination::TimedOut => {
+            if stderr.is_empty() {
+                stderr.extend_from_slice(b"Timeout");
+            }
+            EXEC_TIMEOUT_EXIT_CODE
+        }
+        ExecTermination::Cancelled => {
+            if stderr.is_empty() {
+                stderr.extend_from_slice(b"Cancelled");
+            }
+            append_diagnostic(stderr, diagnostic);
+            1
+        }
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            append_diagnostic(stderr, diagnostic);
+            1
+        }
+    }
+}
+
 fn bounded_exec_result_to_exec_result(
     result: vsock_host::ExecOperationResult,
 ) -> io::Result<ExecResult> {
@@ -1659,26 +1686,8 @@ fn bounded_exec_result_to_exec_result(
     let termination = process_termination_kind(result.termination);
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", result.stdout)?;
     let (mut stderr, stderr_truncated) = captured_exec_output_bytes("stderr", result.stderr)?;
-    let exit_code = match result.termination {
-        ExecTermination::Exited { exit_code } => exit_code,
-        ExecTermination::TimedOut => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Timeout");
-            }
-            EXEC_TIMEOUT_EXIT_CODE
-        }
-        ExecTermination::Cancelled => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Cancelled");
-            }
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-    };
+    let exit_code =
+        legacy_exit_code_for_exec_termination(result.termination, &mut stderr, &result.diagnostic);
 
     Ok(ExecResult {
         termination,
@@ -1697,26 +1706,8 @@ fn supervised_exec_result_to_process_exit(
     let (stdout, stdout_truncated) = captured_output_bytes(result.stdout);
     let (mut stderr, stderr_truncated) = captured_output_bytes(result.stderr);
     let termination = process_termination_kind(result.termination);
-    let exit_code = match result.termination {
-        ExecTermination::Exited { exit_code } => exit_code,
-        ExecTermination::TimedOut => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Timeout");
-            }
-            EXEC_TIMEOUT_EXIT_CODE
-        }
-        ExecTermination::Cancelled => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Cancelled");
-            }
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-    };
+    let exit_code =
+        legacy_exit_code_for_exec_termination(result.termination, &mut stderr, &result.diagnostic);
 
     ProcessExit {
         pid,
@@ -5309,10 +5300,18 @@ mod tests {
 
     #[test]
     fn bounded_exec_result_to_exec_result_maps_terminal_edge_states() {
-        for (termination, diagnostic, expected_code, expected_stderr, expected_termination) in [
+        for (
+            termination,
+            diagnostic,
+            input_stderr,
+            expected_code,
+            expected_stderr,
+            expected_termination,
+        ) in [
             (
                 ExecTermination::TimedOut,
                 "",
+                Vec::new(),
                 EXEC_TIMEOUT_EXIT_CODE,
                 "Timeout",
                 ProcessTerminationKind::TimedOut,
@@ -5320,6 +5319,7 @@ mod tests {
             (
                 ExecTermination::Cancelled,
                 "cancel diagnostic",
+                Vec::new(),
                 1,
                 "Cancelled\ncancel diagnostic",
                 ProcessTerminationKind::Cancelled,
@@ -5327,6 +5327,7 @@ mod tests {
             (
                 ExecTermination::StartFailed,
                 "spawn failed",
+                Vec::new(),
                 1,
                 "spawn failed",
                 ProcessTerminationKind::StartFailed,
@@ -5334,8 +5335,9 @@ mod tests {
             (
                 ExecTermination::WaitFailed,
                 "wait failed",
+                b"stderr clue".to_vec(),
                 1,
-                "wait failed",
+                "stderr clue\nwait failed",
                 ProcessTerminationKind::WaitFailed,
             ),
         ] {
@@ -5347,7 +5349,7 @@ mod tests {
                     truncated: false,
                 },
                 stderr: ExecOwnedCapturedOutput::Captured {
-                    bytes: Vec::new(),
+                    bytes: input_stderr,
                     truncated: false,
                 },
                 diagnostic: diagnostic.to_string(),

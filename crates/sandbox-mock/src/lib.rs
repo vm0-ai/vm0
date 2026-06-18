@@ -2058,10 +2058,18 @@ mod tests {
     async fn sandbox_queued_exec_results() {
         let sandbox = MockSandbox::new("test-1");
         sandbox.push_exec_result(Ok(ExecResult {
-            termination: ProcessTerminationKind::WaitFailed,
+            termination: ProcessTerminationKind::Exited,
             exit_code: 42,
             stdout: b"out".to_vec(),
             stderr: b"err".to_vec(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }));
+        sandbox.push_exec_result(Ok(ExecResult {
+            termination: ProcessTerminationKind::WaitFailed,
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"wait failed".to_vec(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
@@ -2082,18 +2090,24 @@ mod tests {
 
         // First call returns queued result.
         let r1 = sandbox.exec(&req).await.unwrap();
-        assert_eq!(r1.termination, ProcessTerminationKind::WaitFailed);
+        assert_eq!(r1.termination, ProcessTerminationKind::Exited);
         assert_eq!(r1.exit_code, 42);
         assert_eq!(r1.stdout, b"out");
 
-        // Second call returns queued error.
-        let r2 = sandbox.exec(&req).await;
-        assert!(r2.is_err());
+        // Second call preserves a queued non-exited terminal state.
+        let r2 = sandbox.exec(&req).await.unwrap();
+        assert_eq!(r2.termination, ProcessTerminationKind::WaitFailed);
+        assert_eq!(r2.exit_code, 1);
+        assert_eq!(r2.stderr, b"wait failed");
 
-        // Third call falls back to default (exit 0).
-        let r3 = sandbox.exec(&req).await.unwrap();
-        assert_eq!(r3.termination, ProcessTerminationKind::Exited);
-        assert_eq!(r3.exit_code, 0);
+        // Third call returns queued error.
+        let r3 = sandbox.exec(&req).await;
+        assert!(r3.is_err());
+
+        // Fourth call falls back to default (exit 0).
+        let r4 = sandbox.exec(&req).await.unwrap();
+        assert_eq!(r4.termination, ProcessTerminationKind::Exited);
+        assert_eq!(r4.exit_code, 0);
     }
 
     #[tokio::test]
