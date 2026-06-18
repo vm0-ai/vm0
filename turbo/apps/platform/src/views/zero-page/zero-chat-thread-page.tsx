@@ -4193,11 +4193,13 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
+  escapeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
+  escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
@@ -4216,6 +4218,7 @@ function BodyContentBlocks({
               }
               mediaPreview={markdownMediaPreview}
               mathEnabled
+              escapeHtml={escapeMarkdownHtml}
               style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           );
@@ -5818,6 +5821,7 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
+                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
