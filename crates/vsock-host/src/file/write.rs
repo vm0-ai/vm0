@@ -125,7 +125,7 @@ impl WriteHelperExecError {
     }
 
     fn from_exec_wait(error: io::Error) -> Self {
-        if file_operation_error_is_terminal(&error) {
+        if exec_operation::error_is_exec_operation_guest_error(&error) {
             Self::terminal(error)
         } else {
             Self::unproven(error)

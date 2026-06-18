@@ -840,6 +840,54 @@ async fn write_file_chunked_rename_guest_timeout_cleans_up_and_releases_tracker(
     fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
+#[tokio::test]
+async fn write_file_chunked_rename_observer_error_keeps_tracker_fail_closed() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task = {
+        let host = Arc::clone(&fixture.host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    if write_start_count.fetch_add(1, Ordering::SeqCst) == 2 {
+                        return Err(io::Error::other("rename observer failed"));
+                    }
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
+
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("rename observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+
+    let cleanup = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
+        .await
+        .expect("cleanup retry was not sent after rename observer error");
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+}
+
 async fn assert_rename_terminal_failure_reports(
     termination: ExecTermination,
     stderr: &'static [u8],

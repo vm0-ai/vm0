@@ -1,5 +1,5 @@
-use std::io;
 use std::time::Duration;
+use std::{fmt, io};
 
 mod diagnostics;
 mod dispatch;
@@ -49,6 +49,27 @@ const EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT: Duration = Duration::fr
 const EXEC_OPERATION_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const EXEC_OPERATION_FRAME_WRITE_STARTED: u8 = 1;
 const EXEC_OPERATION_FRAME_WRITE_COMPLETED: u8 = 2;
+
+#[derive(Debug)]
+struct ExecOperationGuestError(String);
+
+impl fmt::Display for ExecOperationGuestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ExecOperationGuestError {}
+
+fn exec_operation_guest_error(message: String) -> io::Error {
+    io::Error::other(ExecOperationGuestError(message))
+}
+
+pub(crate) fn error_is_exec_operation_guest_error(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|error| error.is::<ExecOperationGuestError>())
+}
 
 fn exec_operation_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())

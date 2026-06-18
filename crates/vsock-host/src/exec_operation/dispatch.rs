@@ -10,12 +10,12 @@ use vsock_proto::{
 use crate::{ConnectionState, Shared, normal_operation_transition_error};
 
 use super::diagnostics::exec_terminal_log_lifecycle;
-use super::exec_operation_protocol_error;
 use super::state::{ExecCaptureState, ExecOperation, ExecOperationLifecycle};
 use super::types::{
     ExecControlAck, ExecControlGuestStatus, ExecControlOutcome, ExecOperationResult,
     ExecOutputEvent, ExecOwnedCapturedOutput,
 };
+use super::{exec_operation_guest_error, exec_operation_protocol_error};
 
 fn validate_output(
     operation: &mut ExecOperation,
@@ -385,7 +385,7 @@ fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Resu
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
                 let err = vsock_proto::decode_error(msg.payload)
-                    .map(|message| io::Error::other(message.to_string()))
+                    .map(|message| exec_operation_guest_error(message.to_string()))
                     .map_err(exec_operation_protocol_error)?;
                 let Some(operation) = operations.take(msg.seq) else {
                     return Ok(false);
