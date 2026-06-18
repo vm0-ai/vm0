@@ -18,8 +18,7 @@ class ThreadUnderTest:
         daemon: bool | None = None,
     ) -> None:
         self._target = target
-        self._exception: BaseException | None = None
-        self._traceback: TracebackType | None = None
+        self._failure: tuple[BaseException, TracebackType | None] | None = None
         self._started = False
         self._thread = threading.Thread(target=self._run, name=name, daemon=daemon)
 
@@ -36,10 +35,12 @@ class ThreadUnderTest:
         self.raise_if_failed()
 
     def raise_if_failed(self) -> None:
-        if self._exception is None:
+        failure = self._failure
+        if failure is None:
             return
 
-        raise self._exception.with_traceback(self._traceback)
+        exception, traceback = failure
+        raise exception.with_traceback(traceback)
 
     def is_alive(self) -> bool:
         if not self._started:
@@ -50,8 +51,7 @@ class ThreadUnderTest:
         try:
             self._target()
         except BaseException as exc:
-            self._exception = exc
-            self._traceback = exc.__traceback__
+            self._failure = (exc, exc.__traceback__)
 
 
 def wait_for_event(
