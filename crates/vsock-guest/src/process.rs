@@ -43,11 +43,15 @@ fn parse_stat_ppid_pgid(stat: &str) -> Option<(u32, u32)> {
         return None;
     }
     let remainder = &stat[close_paren + 2..]; // skip ") "
-    let fields: Vec<&str> = remainder.split_whitespace().collect();
-    // fields: [0]=state [1]=ppid [2]=pgid [3]=session ...
-    let ppid = fields.get(1)?.parse().ok()?;
-    let pgid = fields.get(2)?.parse().ok()?;
+    let mut fields = remainder.split_whitespace();
+    fields.next()?; // state
+    let ppid = fields.next()?.parse().ok()?;
+    let pgid = fields.next()?.parse().ok()?;
     Some((ppid, pgid))
+}
+
+fn child_pgid_to_signal(child_id: u32, pgid: u32) -> Option<u32> {
+    (pgid > 1 && pgid != child_id).then_some(pgid)
 }
 
 /// Find the process-group ID of a direct child of `parent_pid`.
@@ -77,7 +81,9 @@ fn find_child_pgid(parent_pid: u32) -> Option<u32> {
             continue;
         };
 
-        if ppid == parent_pid {
+        if ppid == parent_pid
+            && let Some(pgid) = child_pgid_to_signal(parent_pid, pgid)
+        {
             return Some(pgid);
         }
     }
@@ -97,7 +103,7 @@ impl ProcessTreeKillTarget {
 
     fn child_pgid_to_signal(self) -> Option<u32> {
         self.child_pgid
-            .filter(|pgid| *pgid > 1 && *pgid != self.child_id)
+            .and_then(|pgid| child_pgid_to_signal(self.child_id, pgid))
     }
 }
 
@@ -116,7 +122,7 @@ pub(crate) fn process_tree_kill_target(child_id: u32) -> ProcessTreeKillTarget {
 /// Refresh a snapshotted process-tree target while the direct child may still
 /// have a child session visible in `/proc`.
 pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarget) {
-    if target.child_pgid.is_none() {
+    if target.child_pgid_to_signal().is_none() {
         target.child_pgid = find_child_pgid(target.child_id);
     }
 }
@@ -589,6 +595,151 @@ mod tests {
                 let cleanup = kill_pidfd_and_wait(&child_pidfd);
                 panic!(
                     "failed to wait for setsid child pid {child_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn refresh_process_tree_target_retries_same_group_child_pgid() {
+        use std::io::Write;
+        use std::os::unix::process::CommandExt;
+
+        let (dir, _guard) = temp_dir("refresh-same-group");
+        let fifo = dir.join("child-fifo");
+        let ready = dir.join("ready");
+        let direct_pid_path = dir.join("direct-child-pid");
+        let setsid_child_pid_path = dir.join("setsid-child-pid");
+        let child_script = dir.join("child.sh");
+        let parent_script = dir.join("parent.sh");
+
+        std::fs::write(
+            &child_script,
+            r#"#!/bin/sh
+read _ < "$FIFO"
+exec setsid sh -c 'printf %s "$$" > "$SETSID_CHILD_PID"; sleep 60'
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &parent_script,
+            r#"#!/bin/sh
+mkfifo "$FIFO"
+sh "$CHILD_SCRIPT" &
+echo $! > "$DIRECT_PID"
+touch "$READY"
+wait
+"#,
+        )
+        .unwrap();
+
+        let mut command = Command::new("sh");
+        command
+            .arg(&parent_script)
+            .env("FIFO", &fifo)
+            .env("READY", &ready)
+            .env("DIRECT_PID", &direct_pid_path)
+            .env("SETSID_CHILD_PID", &setsid_child_pid_path)
+            .env("CHILD_SCRIPT", &child_script)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.process_group(0);
+
+        let mut child = Some(command.spawn().unwrap());
+        if !wait_for_path(&ready, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("parent should start same-group child before snapshot");
+        }
+        let direct_pid_text = match std::fs::read_to_string(&direct_pid_path) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read direct child pid: {e}");
+            }
+        };
+        let direct_pid: u32 = match direct_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to parse direct child pid {direct_pid_text:?}: {e}");
+            }
+        };
+        let parent_pid = child.as_ref().unwrap().id();
+        let direct_stat = match std::fs::read_to_string(format!("/proc/{direct_pid}/stat")) {
+            Ok(stat) => stat,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read direct child stat: {e}");
+            }
+        };
+        let direct_target = parse_stat_ppid_pgid(&direct_stat);
+        assert_eq!(
+            direct_target,
+            Some((parent_pid, parent_pid)),
+            "direct child should initially share the parent process group"
+        );
+
+        let mut target = process_tree_kill_target(parent_pid);
+        {
+            let mut fifo_writer = match std::fs::OpenOptions::new().write(true).open(&fifo) {
+                Ok(writer) => writer,
+                Err(e) => {
+                    kill_spawned_child(&mut child);
+                    panic!("failed to open child fifo: {e}");
+                }
+            };
+            if let Err(e) = writeln!(fifo_writer, "go") {
+                kill_spawned_child(&mut child);
+                panic!("failed to release child fifo: {e}");
+            }
+        }
+
+        if !wait_for_path(&setsid_child_pid_path, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("setsid child should publish its pid before kill");
+        }
+        let setsid_child_pid_text = match std::fs::read_to_string(&setsid_child_pid_path) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read setsid child pid: {e}");
+            }
+        };
+        let setsid_child_pid: libc::pid_t = match setsid_child_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to parse setsid child pid {setsid_child_pid_text:?}: {e}");
+            }
+        };
+        let setsid_child_pidfd = match open_pidfd(setsid_child_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                // SAFETY: best-effort cleanup of a test-owned process.
+                let _ = unsafe { libc::kill(setsid_child_pid, libc::SIGKILL) };
+                panic!("failed to open pidfd for setsid child pid {setsid_child_pid}: {e}");
+            }
+        };
+
+        refresh_process_tree_kill_target(&mut target);
+        assert!(unsafe { kill_process_tree_target(target) });
+        let _ = child.take().unwrap().wait().unwrap();
+
+        match wait_for_pidfd_exit(&setsid_child_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&setsid_child_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+                panic!(
+                    "refresh should replace same-group child pgid and kill setsid child pid {setsid_child_pid}"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&setsid_child_pidfd);
+                panic!(
+                    "failed to wait for setsid child pid {setsid_child_pid} exit: {e}; cleanup={cleanup:?}"
                 );
             }
         }
