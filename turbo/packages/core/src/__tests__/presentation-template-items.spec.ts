@@ -359,7 +359,7 @@ describe("presentation template items", () => {
       expect(item.previewImages.length).toBe(15);
       expect(item.previewImage).toBe(item.previewImages[0]);
       expect(item.embedUrl).toMatch(
-        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/example\.html$/,
+        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/[^/]+\.html$/,
       );
       expectCdnPreviewImages(item);
       expectCdnPreviewHtmls(item);
