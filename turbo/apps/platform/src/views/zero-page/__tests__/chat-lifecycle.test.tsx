@@ -3606,6 +3606,53 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-dismiss-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-dismiss-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    // Click inside the selection: in a real browser mouseup fires first and the
+    // selection collapses right after. Mirror that order so the deferred read
+    // sees the cleared selection and dismisses the toolbar.
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    window.getSelection()?.removeAllRanges();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
+  });
+
   it("sends inline feedback with selected template and draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
