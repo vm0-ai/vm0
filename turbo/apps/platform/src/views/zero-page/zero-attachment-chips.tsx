@@ -756,7 +756,7 @@ function ArtifactDialogHtmlBody({
         focusOnMount
         src={src}
         title={`${filename} preview`}
-        sandbox="allow-scripts"
+        sandbox="allow-same-origin allow-scripts"
         scrolling="yes"
         className="block h-full w-full border-0 bg-background"
         data-testid="artifact-dialog-body-html"

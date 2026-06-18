@@ -13,7 +13,7 @@ import { accept } from "../../../lib/accept.ts";
 
 const internalReloadPreferences$ = state(0);
 
-export const reloadUserPreferences$ = command(({ set }) => {
+const reloadUserPreferences$ = command(({ set }) => {
   set(internalReloadPreferences$, (x) => {
     return x + 1;
   });

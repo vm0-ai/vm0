@@ -1,11 +1,26 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
+import {
+  expect,
+  test,
+  type APIResponse,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
+import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
 const TEST_OTP = "424242";
+const ONBOARDING_STATUS_PATH = "**/api/zero/onboarding/status";
+const READY_ONBOARDING_STATUS = JSON.stringify({
+  needsOnboarding: false,
+  isAdmin: true,
+  hasOrg: true,
+  hasDefaultAgent: false,
+  defaultAgentId: null,
+  defaultAgentMetadata: null,
+});
 
-test("sign in and complete onboarding to chat page", async ({ page }) => {
+test("sign in through onboarding handoff to chat page", async ({ page }) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
@@ -28,7 +43,7 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
     60_000,
   );
 
-  // Navigate to app — should land on onboarding or agents
+  // Navigate to app — should land on the onboarding handoff or agents
   await page.goto(appUrl);
   await page.waitForURL(
     (url) => {
@@ -38,10 +53,9 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
     { timeout: 30_000 },
   );
 
-  // Complete onboarding if needed
+  // Follow the external onboarding auth handoff if needed
   if (page.url().includes("/onboarding")) {
-    await signInThroughExternalOnboardingGate(page, email);
-    await completeOnboarding(page);
+    await completeOnboardingThroughApi(page, appUrl);
   }
 
   // Verify: landed on chat page
@@ -55,68 +69,147 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
   await page.context().storageState({ path: STORAGE_STATE });
 });
 
-async function signInThroughExternalOnboardingGate(
+async function completeOnboardingThroughApi(
   page: Page,
-  email: string,
+  appUrl: string,
 ): Promise<void> {
-  const deadline = Date.now() + 120_000;
+  const apiUrl = deriveApiUrl(appUrl);
+  const headers = await authHeadersForApp(page, appUrl);
+  const setupResponse = await page.request.post(
+    `${apiUrl}/api/zero/onboarding/setup`,
+    {
+      headers,
+      data: {
+        displayName: "E2E Test Agent",
+        workspaceName: "E2E Test Workspace",
+        selectedConnectors: [],
+        timezone: "UTC",
+      },
+    },
+  );
+  await expectStatus(setupResponse, [200, 409], "onboarding setup");
 
-  while (Date.now() < deadline) {
-    const url = new URL(page.url());
-    if (isAuthUrl(url)) {
-      const redirectUrl = redirectUrlFromAuthUrl(url);
-      await signInWithEmailCode(
-        page,
-        email,
-        redirectUrl,
-        remainingTimeout(deadline, 60_000),
-      );
-      continue;
-    }
+  const checkoutUrl = await createOnboardingTrialCheckout(
+    page,
+    appUrl,
+    apiUrl,
+    headers,
+  );
+  await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
+  await fillStripeCheckout(page);
+}
 
-    if (isChatUrl(url)) {
-      return;
-    }
-
-    const continueToSignUp = page.getByRole("link", {
-      name: "Continue to sign up",
-    });
-    if (
-      await waitForVisible(continueToSignUp, remainingTimeout(deadline, 2_000))
-    ) {
-      await continueToSignUp.click();
-      await waitForAuthOrOnboardingUrl(
-        page,
-        url.href,
-        remainingTimeout(deadline, 30_000),
-      );
-      continue;
-    }
-
-    if (url.pathname.includes("/onboarding")) {
-      if (
-        await waitForOnboardingStep(page, remainingTimeout(deadline, 5_000))
-      ) {
-        return;
-      }
-
-      if (await waitForAuthUrl(page, remainingTimeout(deadline, 10_000))) {
-        continue;
-      }
-
-      continue;
-    }
-
-    await waitForAuthOrOnboardingUrl(
-      page,
-      url.href,
-      remainingTimeout(deadline, 5_000),
+async function createOnboardingTrialCheckout(
+  page: Page,
+  appUrl: string,
+  apiUrl: string,
+  headers: Readonly<Record<"Authorization", string>>,
+): Promise<string> {
+  const successUrl = new URL("/", appUrl);
+  successUrl.searchParams.set("billing", "pro");
+  successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+  const stripeSuccessUrl = successUrl
+    .toString()
+    .replace(
+      "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+      "billing_session_id={CHECKOUT_SESSION_ID}",
     );
+
+  const cancelUrl = new URL("/", appUrl);
+  cancelUrl.searchParams.set("billing", "canceled");
+
+  const checkoutResponse = await page.request.post(
+    `${apiUrl}/api/zero/billing/checkout`,
+    {
+      headers,
+      data: {
+        tier: "pro",
+        trialDays: 7,
+        successUrl: stripeSuccessUrl,
+        cancelUrl: cancelUrl.toString(),
+      },
+    },
+  );
+  await expectStatus(checkoutResponse, [200], "onboarding trial checkout");
+
+  const body: unknown = await checkoutResponse.json();
+  if (!hasCheckoutUrl(body)) {
+    throw new Error(`Unexpected checkout response: ${JSON.stringify(body)}`);
+  }
+  return body.url;
+}
+
+async function authHeadersForApp(
+  page: Page,
+  appUrl: string,
+): Promise<Readonly<Record<"Authorization", string>>> {
+  const token = await clerkSessionTokenForApp(page, appUrl);
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function clerkSessionTokenForApp(
+  page: Page,
+  appUrl: string,
+): Promise<string> {
+  await page.route(ONBOARDING_STATUS_PATH, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: READY_ONBOARDING_STATUS,
+    });
+  });
+
+  try {
+    await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => Boolean(window.Clerk?.session),
+      undefined,
+      { timeout: 30_000 },
+    );
+
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const token = await page.evaluate(async () => {
+        const session = window.Clerk?.session;
+        return session ? await session.getToken() : null;
+      });
+      if (typeof token === "string" && token.length > 0) {
+        return token;
+      }
+      await page.waitForTimeout(250);
+    }
+  } finally {
+    await page.unroute(ONBOARDING_STATUS_PATH);
+  }
+
+  throw new Error(`Unable to read Clerk session token from ${page.url()}`);
+}
+
+async function expectStatus(
+  response: APIResponse,
+  statuses: readonly number[],
+  action: string,
+): Promise<void> {
+  if (statuses.includes(response.status())) {
+    return;
   }
 
   throw new Error(
-    `Unable to complete external onboarding sign-in: ${page.url()}`,
+    `${action} failed with ${response.status()}: ${await response.text()}`,
   );
+}
+
+function hasCheckoutUrl(value: unknown): value is { readonly url: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "url" in value &&
+    typeof value.url === "string"
+  );
+}
+
+function deriveApiUrl(appUrl: string): string {
+  return appUrl.replace(/-app\./, "-api.").replace(/\/\/app\./, "//api.");
 }
 
 async function signInWithEmailCode(
@@ -260,52 +353,8 @@ async function waitForNonAuthUrl(
     .catch(() => false);
 }
 
-async function waitForOnboardingStep(
-  page: Page,
-  timeout: number,
-): Promise<boolean> {
-  const visibleChecks = [
-    page.getByPlaceholder("e.g. Acme Corp"),
-    page.getByTestId("onboarding-step-select-connectors"),
-    page.getByTestId("onboarding-step-trial"),
-  ].map((locator) => locator.waitFor({ state: "visible", timeout }));
-
-  return await Promise.any(visibleChecks)
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function waitForAuthOrOnboardingUrl(
-  page: Page,
-  currentHref: string,
-  timeout: number,
-): Promise<boolean> {
-  return await page
-    .waitForURL(
-      (url) => {
-        return (
-          url.href !== currentHref &&
-          (isAuthUrl(url) || isOnboardingOrChatUrl(url))
-        );
-      },
-      { timeout, waitUntil: "domcontentloaded" },
-    )
-    .then(() => true)
-    .catch(() => false);
-}
-
 function remainingTimeout(deadline: number, maxTimeout: number): number {
   return Math.max(1, Math.min(maxTimeout, deadline - Date.now()));
-}
-
-async function waitForAuthUrl(page: Page, timeout: number): Promise<boolean> {
-  return await page
-    .waitForURL(isAuthUrl, {
-      timeout,
-      waitUntil: "domcontentloaded",
-    })
-    .then(() => true)
-    .catch(() => false);
 }
 
 function isAuthUrl(url: URL): boolean {
@@ -334,43 +383,4 @@ function redirectUrlFromAuthUrl(url: URL): string | null {
 
 function isOnboardingOrChatUrl(url: URL): boolean {
   return url.pathname.includes("/onboarding") || isChatUrl(url);
-}
-
-async function completeOnboarding(page: Page) {
-  // NOTE: Playwright's locator.isVisible() returns the *current* visibility
-  // synchronously — the `timeout` option only controls element resolution,
-  // not visibility polling. waitFor({ state: "visible" }) does the real wait
-  // and is what we need here, because the step 1 → step 2 transition runs
-  // an async eager-init API call before the next step renders.
-  const tryAwaitVisible = async (
-    locator: ReturnType<typeof page.locator>,
-    timeout: number,
-  ): Promise<boolean> => {
-    return await locator
-      .waitFor({ state: "visible", timeout })
-      .then(() => true)
-      .catch(() => false);
-  };
-
-  // Step 1: name the workspace (eager-inits the workspace + default agent).
-  const workspaceInput = page.getByPlaceholder("e.g. Acme Corp");
-  if (await tryAwaitVisible(workspaceInput, 5_000)) {
-    await workspaceInput.fill("E2E Test Workspace");
-    await page.getByRole("button", { name: "Next" }).click();
-  }
-
-  // Step 2: choose tools. The step 1 → step 2 transition runs the eager-init
-  // API, so allow plenty of time.
-  const chooseTools = page.getByTestId("onboarding-step-select-connectors");
-  if (await tryAwaitVisible(chooseTools, 15_000)) {
-    await page.getByRole("button", { name: "Next" }).click();
-  }
-
-  // Step 3: start the Pro trial. Stripe redirects back to onboarding; once the
-  // webhook clears onboardingPaymentPending, the app redirects to the chat page.
-  const trialStep = page.getByTestId("onboarding-step-trial");
-  if (await tryAwaitVisible(trialStep, 15_000)) {
-    await page.getByRole("button", { name: "Get Started" }).click();
-    await fillStripeCheckout(page);
-  }
 }
