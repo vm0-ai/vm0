@@ -1794,26 +1794,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn oversized_timeout_is_rejected_before_publishing_job() {
+    async fn maximum_timeout_is_accepted() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         let group = "test/group";
         let group_dir = home.groups_dir().join(group);
         let mut args = submit_args_for_test();
         args.group = group.into();
-        args.timeout = u64::MAX;
+        args.timeout = MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
+        let watcher = tokio::spawn(wait_for_job_and_write_success(
+            group_dir,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+        ));
 
-        let err = run_submit_with_home(args, home).await.unwrap_err();
+        let code = run_submit_with_home(args, home).await.unwrap();
+        let request = watcher.await.unwrap();
 
-        assert!(matches!(&err, RunnerError::Config(_)), "got: {err:?}");
-        let msg = err.to_string();
-        assert!(msg.contains("--timeout"), "got: {msg}");
-        assert!(msg.contains("must be <="), "got: {msg}");
-        assert!(msg.contains(&u64::MAX.to_string()), "got: {msg}");
-        assert!(
-            !group_dir.exists(),
-            "invalid timeout must not create a local queue group directory"
-        );
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+    }
+
+    #[tokio::test]
+    async fn oversized_timeouts_are_rejected_before_publishing_job() {
+        for timeout in [MAX_LOCAL_SUBMIT_TIMEOUT_SECS + 1, u64::MAX] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().to_path_buf());
+            let group = "test/group";
+            let group_dir = home.groups_dir().join(group);
+            let mut args = submit_args_for_test();
+            args.group = group.into();
+            args.timeout = timeout;
+
+            let err = run_submit_with_home(args, home).await.unwrap_err();
+
+            assert!(matches!(&err, RunnerError::Config(_)), "got: {err:?}");
+            let msg = err.to_string();
+            assert!(msg.contains("--timeout"), "got: {msg}");
+            assert!(msg.contains("must be <="), "got: {msg}");
+            assert!(msg.contains(&timeout.to_string()), "got: {msg}");
+            assert!(
+                !group_dir.exists(),
+                "invalid timeout must not create a local queue group directory"
+            );
+        }
     }
 
     #[tokio::test]
