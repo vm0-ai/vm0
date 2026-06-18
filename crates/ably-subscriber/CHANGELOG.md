@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.23](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.22...ably-subscriber-v0.7.23) (2026-06-18)
+
+
+### Documentation
+
+* document ably subscriber event fields ([#18150](https://github.com/vm0-ai/vm0/issues/18150)) ([cbf1ef8](https://github.com/vm0-ai/vm0/commit/cbf1ef8fb4d3ebad1acf2846f074fe6b292b29d8))
+
 ## [0.7.22](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.21...ably-subscriber-v0.7.22) (2026-06-16)
 
 

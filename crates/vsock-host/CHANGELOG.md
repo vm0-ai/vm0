@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.35](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.34...vsock-host-v0.17.35) (2026-06-18)
+
+
+### Refactoring
+
+* **vsock-host:** extract read file exec validation ([#18146](https://github.com/vm0-ai/vm0/issues/18146)) ([5ce4e3c](https://github.com/vm0-ai/vm0/commit/5ce4e3c73fc0a6cf14c485e67c83ef2609ee6ea3))
+
 ## [0.17.34](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.33...vsock-host-v0.17.34) (2026-06-16)
 
 
