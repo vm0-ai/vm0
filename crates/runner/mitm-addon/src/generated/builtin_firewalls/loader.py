@@ -109,6 +109,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import bland_0
 
         return (bland_0.JSON_PART,)
+    if name == "box":
+        from . import box_0
+
+        return (box_0.JSON_PART,)
     if name == "brave-search":
         from . import brave_search_0
 
