@@ -63,10 +63,27 @@ function expectCdnPreviewImages(
     expect(url).toMatch(/^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.png$/);
   }
 
-  for (const url of [item.previewImage, item.embedUrl, ...item.previewImages]) {
+  const assetUrls = [
+    item.previewImage,
+    item.embedUrl,
+    ...item.previewImages,
+    ...(item.previewHtmls ?? []),
+  ];
+
+  for (const url of assetUrls) {
     for (const forbidden of FORBIDDEN_ASSET_URL_PARTS) {
       expect(url).not.toContain(forbidden);
     }
+  }
+}
+
+function expectCdnPreviewHtmls(
+  item: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
+): void {
+  expect(item.previewHtmls?.length).toBe(15);
+
+  for (const url of item.previewHtmls ?? []) {
+    expect(url).toMatch(/^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.html$/);
   }
 }
 
@@ -87,6 +104,65 @@ function expectR2ArchiveSource(id: string, sourcePath: string): void {
   expect(entry.source.archive?.sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(entry.source.archive).not.toHaveProperty("url");
 }
+
+const BATCH_PRESENTATION_PICKER_ITEMS = [
+  {
+    slug: "crayon-learning-deck",
+    designSystemId: "design-system:crayon",
+    templateId: "template:html-ppt-crayon",
+    designSourcePath: "presentation-design-system/crayon",
+    templateSourcePath: "presentation-template/crayon",
+  },
+  {
+    slug: "creative-agency-presentation",
+    designSystemId: "design-system:creative-agency",
+    templateId: "template:html-ppt-creative-agency",
+    designSourcePath: "presentation-design-system/creative-agency",
+    templateSourcePath: "presentation-template/creative-agency",
+  },
+  {
+    slug: "data-report-presentation",
+    designSystemId: "design-system:data-report",
+    templateId: "template:html-ppt-data-report",
+    designSourcePath: "presentation-design-system/data-report",
+    templateSourcePath: "presentation-template/data-report",
+  },
+  {
+    slug: "editorial-magazine-deck",
+    designSystemId: "design-system:editorial-magazine",
+    templateId: "template:html-ppt-editorial-magazine",
+    designSourcePath: "presentation-design-system/editorial-magazine",
+    templateSourcePath: "presentation-template/editorial-magazine",
+  },
+  {
+    slug: "landing-consulting-deck",
+    designSystemId: "design-system:landing-consulting",
+    templateId: "template:html-ppt-landing-consulting",
+    designSourcePath: "presentation-design-system/landing-consulting",
+    templateSourcePath: "presentation-template/landing-consulting",
+  },
+  {
+    slug: "lumina-creative-studio",
+    designSystemId: "design-system:lumina",
+    templateId: "template:html-ppt-lumina",
+    designSourcePath: "presentation-design-system/lumina",
+    templateSourcePath: "presentation-template/lumina",
+  },
+  {
+    slug: "mosaic-geometric-pitch",
+    designSystemId: "design-system:mosaic-geometric",
+    templateId: "template:html-ppt-mosaic-geometric",
+    designSourcePath: "presentation-design-system/mosaic-geometric",
+    templateSourcePath: "presentation-template/mosaic-geometric",
+  },
+  {
+    slug: "playful-pop-deck",
+    designSystemId: "design-system:playful-pop",
+    templateId: "template:html-ppt-playful-pop",
+    designSourcePath: "presentation-design-system/playful-pop",
+    templateSourcePath: "presentation-template/playful-pop",
+  },
+] as const;
 
 function expectOpenDesignSource(
   id: string,
@@ -219,6 +295,9 @@ describe("presentation template items", () => {
     expect(item.templateId).toBe("template:html-ppt-playful-launch");
     expect(item.previewImages.length).toBe(15);
     expect(item.previewImage).toBe(item.previewImages[0]);
+    expect(item.embedUrl).toMatch(
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/aplocoto\.html$/,
+    );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
     expect(findTemplate(item.templateId)?.targets).toContain("presentation");
@@ -245,23 +324,50 @@ describe("presentation template items", () => {
       throw new Error("missing business-data-presentation picker item");
     }
 
-    expect(item.designSystemId).toBe("design-system:berry-pop");
+    expect(item.designSystemId).toBe("design-system:business-data");
     expect(item.templateId).toBe("template:html-ppt-business-data");
     expect(item.previewImages.length).toBe(15);
     expect(item.embedUrl).toMatch(
-      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/example\.html$/,
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/business-data\.html$/,
     );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
     expect(findTemplate(item.templateId)?.targets).toContain("presentation");
     expectR2ArchiveSource(
       item.designSystemId,
-      "presentation-design-system/berry-pop",
+      "presentation-design-system/business-data",
     );
     expectR2ArchiveSource(
       item.templateId,
       "presentation-template/business-data",
     );
+  });
+
+  it("keeps the batch picker items aligned with CDN assets and private R2 sources", () => {
+    for (const expected of BATCH_PRESENTATION_PICKER_ITEMS) {
+      const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+        return candidate.slug === expected.slug;
+      });
+
+      expect(item, expected.slug).toBeDefined();
+      if (!item) {
+        throw new Error(`missing ${expected.slug} picker item`);
+      }
+
+      expect(item.designSystemId).toBe(expected.designSystemId);
+      expect(item.templateId).toBe(expected.templateId);
+      expect(item.previewImages.length).toBe(15);
+      expect(item.previewImage).toBe(item.previewImages[0]);
+      expect(item.embedUrl).toMatch(
+        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/example\.html$/,
+      );
+      expectCdnPreviewImages(item);
+      expectCdnPreviewHtmls(item);
+      expect(findDesignSystem(item.designSystemId)).toBeDefined();
+      expect(findTemplate(item.templateId)?.targets).toContain("presentation");
+      expectR2ArchiveSource(item.designSystemId, expected.designSourcePath);
+      expectR2ArchiveSource(item.templateId, expected.templateSourcePath);
+    }
   });
 
   it("keeps the botane picker item aligned with CDN assets", () => {
@@ -273,11 +379,13 @@ describe("presentation template items", () => {
     if (!botaneItem) {
       throw new Error("Botane picker item is missing");
     }
-    expect(botaneItem.designSystemId).toBe("design-system:mauve-dusk");
+    expect(botaneItem.designSystemId).toBe("design-system:botane-organic");
     expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
     expect(botaneItem.previewImages.length).toBe(15);
     expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
-    expect(botaneItem.embedUrl).toMatch(/^https:\/\/cdn\.vm0\.io\/.+\.html$/);
+    expect(botaneItem.embedUrl).toMatch(
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/botane-organic\.html$/,
+    );
     expectCdnPreviewImages(botaneItem);
     expect(findDesignSystem(botaneItem.designSystemId)).toBeDefined();
     expect(findTemplate(botaneItem.templateId)?.targets).toContain(
@@ -285,7 +393,7 @@ describe("presentation template items", () => {
     );
     expectR2ArchiveSource(
       botaneItem.designSystemId,
-      "presentation-design-system/mauve-dusk",
+      "presentation-design-system/botane-organic",
     );
     expectR2ArchiveSource(
       botaneItem.templateId,

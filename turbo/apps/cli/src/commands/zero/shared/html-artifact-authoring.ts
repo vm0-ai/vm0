@@ -2,6 +2,7 @@ import {
   type GenerationOutputKind,
   type ResourceCandidateSlice,
   type GenerationTarget,
+  PRESENTATION_REQUIRED_RESOURCE_IDS,
   selectResourceCandidates,
 } from "./resource-registry";
 
@@ -36,6 +37,7 @@ interface HtmlArtifactAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
+    readonly requiredResources: readonly string[];
     readonly candidates: ResourceCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly skills: "string[]";
@@ -111,6 +113,8 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
+  const requiredResources =
+    options.kind === "presentation" ? PRESENTATION_REQUIRED_RESOURCE_IDS : [];
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -166,8 +170,24 @@ export function createHtmlArtifactAuthoringPacket(
     "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
+    ...(requiredResources.length > 0
+      ? [
+          "- The required resources listed below are mandatory and do not need to be re-selected.",
+        ]
+      : []),
     "- Treat the selection JSON as internal working state, then continue to authoring.",
     "",
+    ...(requiredResources.length > 0
+      ? [
+          "## Required Resources",
+          "Resolve these resources before authoring:",
+          "",
+          "```json",
+          JSON.stringify(requiredResources, null, 2),
+          "```",
+          "",
+        ]
+      : []),
     "## Selection Output Schema",
     "```json",
     JSON.stringify(selectionSchema, null, 2),
@@ -183,7 +203,7 @@ export function createHtmlArtifactAuthoringPacket(
     "```",
     "",
     "## Stage 2: Resolve Selected Resources",
-    "- For every selected resource, fetch or read the referenced source before authoring.",
+    "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
     "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
     "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
@@ -248,6 +268,7 @@ export function createHtmlArtifactAuthoringPacket(
     registryVersion: candidateSlice.registryVersion,
     artifact,
     selection: {
+      requiredResources,
       candidates: candidateSlice.candidates,
       outputSchema: selectionSchema,
     },

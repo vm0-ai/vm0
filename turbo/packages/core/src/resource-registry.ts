@@ -26,6 +26,7 @@ type ResourceKind =
   | "skill"
   | "template"
   | "design-system"
+  | "color-system"
   | "image-style"
   | "audio-style"
   | "video-template"
@@ -96,6 +97,10 @@ export interface ResourceCandidateSlice {
   };
 }
 
+export const PRESENTATION_REQUIRED_RESOURCE_IDS = [
+  "skill:presentation-deck-tools",
+] as const;
+
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
@@ -121,15 +126,89 @@ function privateR2ArchiveSource(
 }
 
 const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
-  berryPop: "dd0424e32f8534f23b46e02338ea11cc79d5fc2106e9be2c25343632b667a728",
-  mauveDusk: "a83c3d566c133234db5c31e4c93d06b403c9c651dcc62fce9d597a226712c61b",
+  designSystemBusinessData:
+    "a606c4c022200d3e1be70d69afa0579fd6473441be97b8e13ccfadcfecfecdbd",
+  designSystemBotaneOrganic:
+    "b0ed1fa2b7daa5d543ae3b187edea17f95b0594d2a408d4cc197510caafc26ef",
   playfulEditorial:
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "f5fd07c53c3f5f047975895d4a4d0af25345389a22d193c1020f032419f54c49",
+  aplocoto: "f81eb007394492bca0892ecc306e6277d00fd37f9a7e45705edcf6c9fe87a5d2",
   botaneOrganic:
-    "6b4015b5e81692586af89ba03f58eb0ccf966dfb0caa712d5414971824f83429",
+    "ba068d143065a04115363682d479ab645b49729efa449ead35d21092f1ddbafe",
   businessData:
-    "a5e0777b924534404a7be2e0a8b34feb546b70ec1f9b91058673e12c39772d86",
+    "1b6c4058bfc1edfc0ad18710e4e0674639dec8146e694306be9d8e90f1c06712",
+  presentationDeckTools:
+    "8496e875b20bb8df3e9af967c8815a0770d1e4c20e9258e64a6cae7a473e5ca3",
+  designSystemCrayon:
+    "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
+  templateCrayon:
+    "293f41b98c8266858a27aea3f75e94b424dc3997182b6d3c0436361b16ce451c",
+  designSystemCreativeAgency:
+    "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
+  templateCreativeAgency:
+    "5c4092656abf7f529bc6439d0f581d303dd1489cf640bda9ff29c5dde2130ebd",
+  designSystemDataReport:
+    "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
+  templateDataReport:
+    "c8d062ec2dbdea6c8e51f4debbc31e4894b27dfceadb1c0f9255330cc9405a68",
+  designSystemEditorialMagazine:
+    "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
+  templateEditorialMagazine:
+    "1c23ab5091b89b58ede9086669f4a0714d643bb436f8a54664d81a0b1a9acb9a",
+  designSystemLandingConsulting:
+    "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
+  templateLandingConsulting:
+    "6b2ae64734c389e9347e8b2b5af902ea81a16265f1ed5f7d51ddd05ccbc786f6",
+  designSystemLumina:
+    "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
+  templateLumina:
+    "73062bb286bd100229ee2cf11e3bc2e94189363ae5e05014b72626f9ee59c0a0",
+  designSystemMosaicGeometric:
+    "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
+  templateMosaicGeometric:
+    "ab5170d701a1cd827ccad51e33c1b2d6a91bf2738d32886e8db1551756b30278",
+  designSystemPlayfulPop:
+    "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
+  templatePlayfulPop:
+    "9bf259f8278c89e411a6903b36d5033a1135bc8952f841fa6ebd3dfafb300ccc",
+  colorSystemBauhausPrimary:
+    "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
+  colorSystemBerryPop:
+    "dfb63401d8991e2cc54acb2489eee937bce7e890991a2cc3a102447f39ed5539",
+  colorSystemCarnival:
+    "70d3721484929f0c841da5b0ecdb81889e81b5f37280607889c532cee1183f48",
+  colorSystemCitrusFresh:
+    "776e5e0f57f85b1896fe52cf9bc31a72a6e3a5e2f6629f5538abee022474b757",
+  colorSystemCoralStudio:
+    "d3a6f57fe02ac67530c005b011771dc48366155c537c35a04ed1c76d56d37b39",
+  colorSystemForestEditorial:
+    "359ebe14d8d3b3bd45a669402ef5f97223a67029e2ee6c6bab9f54af8a143ea6",
+  colorSystemGoldLuxe:
+    "0f9cabcf693ad4b6266bbaec2a4ec723a8292b759b8e342b180b79e48b485843",
+  colorSystemMauveDusk:
+    "de5abb4063c7abdba91efc3be2522130b51fe9bc1def51aa7fa05f3529b08588",
+  colorSystemMidnightMono:
+    "45db0976a10c24eede57bb38502d8a7d8ec5ad44456f32276d9b590760bb3875",
+  colorSystemMintTech:
+    "e66358f8ab1b8cb243a26540711add2343ede056b5218706074bbc75bc1089bc",
+  colorSystemMonoInk:
+    "851fc5dbf70fb4811362f6899ded96639e828b2efa82ae6ed716b4265eee712a",
+  colorSystemNordicFrost:
+    "b4d4920ec93bb39ddb7b9650f1c67567fdc4d19573011d573da14cb58e61e4d2",
+  colorSystemOceanDeep:
+    "b189e1454eb91bbf951753edf2cf9bd6a4e0317573dcb7b7bf002a9fef7165db",
+  colorSystemPopArt:
+    "076a4d943611abd05c1e2f5e2936901da38dbdf0b36f46aa7268e82f74b0a0af",
+  colorSystemPrism:
+    "059e0754eefc8bc2a49c3332ddabf65d8edb7d306d6d697929b367dbe2ea4768",
+  colorSystemSlateCorporate:
+    "4d8b502cb6ade2ec0490cfe9652e2c21477c2c67d5785f512135ba1b51694a13",
+  colorSystemSunsetMaroon:
+    "f57b3b2bc079f9c81d7cb6e394d0f3f098e3f971258de0dc6d3670e034c66467",
+  colorSystemTerracottaClay:
+    "f174828c51f50a0f8c6c91493920e232f16ba6ec8c08dd9a0f896aaade9fadee",
+  colorSystemWarmSand:
+    "b76919f0c5a3fe0a72586938e79eea81d90b6ab09701f7bef3fe9f50b94d757b",
 } as const;
 
 function videoTemplateSource(
@@ -225,6 +304,17 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
 ];
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
+  {
+    id: "skill:presentation-deck-tools",
+    kind: "skill",
+    name: "Presentation Deck Tools",
+    description:
+      "Shared HTML presentation deck shell, device primitives, render scripts, and QA gate required for vm0 presentation generation.",
+    source: privateR2ArchiveSource(
+      "presentation-runtime/html-ppt-deck-tools",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.presentationDeckTools,
+    ),
+  },
   {
     id: "skill:article-magazine",
     kind: "skill",
@@ -941,6 +1031,102 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-template/business-data",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.businessData,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-crayon",
+    kind: "template",
+    name: "Crayon Presentation",
+    description:
+      "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/crayon",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCrayon,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-creative-agency",
+    kind: "template",
+    name: "Creative Agency Presentation",
+    description:
+      "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
+    source: privateR2ArchiveSource(
+      "presentation-template/creative-agency",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCreativeAgency,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-data-report",
+    kind: "template",
+    name: "Data Report Presentation",
+    description:
+      "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
+    source: privateR2ArchiveSource(
+      "presentation-template/data-report",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateDataReport,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-editorial-magazine",
+    kind: "template",
+    name: "Editorial Magazine Presentation",
+    description:
+      "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
+    source: privateR2ArchiveSource(
+      "presentation-template/editorial-magazine",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateEditorialMagazine,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-landing-consulting",
+    kind: "template",
+    name: "Landing Consulting Presentation",
+    description:
+      "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
+    source: privateR2ArchiveSource(
+      "presentation-template/landing-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLandingConsulting,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-lumina",
+    kind: "template",
+    name: "Lumina Presentation",
+    description:
+      "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
+    source: privateR2ArchiveSource(
+      "presentation-template/lumina",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLumina,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-mosaic-geometric",
+    kind: "template",
+    name: "Mosaic Geometric Presentation",
+    description:
+      "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/mosaic-geometric",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateMosaicGeometric,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-playful-pop",
+    kind: "template",
+    name: "Playful Pop Presentation",
+    description:
+      "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
+    source: privateR2ArchiveSource(
+      "presentation-template/playful-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePlayfulPop,
     ),
     targets: ["presentation"],
   },
@@ -2519,14 +2705,14 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-systems/material" },
   },
   {
-    id: "design-system:mauve-dusk",
+    id: "design-system:botane-organic",
     kind: "design-system",
-    name: "Mauve Dusk",
+    name: "Botane Organic",
     description:
-      "Soft lavender editorial look with muted mauve accents, Fraunces display type, Work Sans body, and rounded organic motifs.",
+      "Organic wellness deck look with default Mauve Dusk palette, Fraunces display type, Work Sans body, rounded cards, circle badges, soft dots, and calm editorial pacing.",
     source: privateR2ArchiveSource(
-      "presentation-design-system/mauve-dusk",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.mauveDusk,
+      "presentation-design-system/botane-organic",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBotaneOrganic,
     ),
   },
   {
@@ -2698,14 +2884,292 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     ),
   },
   {
-    id: "design-system:berry-pop",
+    id: "design-system:business-data",
     kind: "design-system",
-    name: "Berry Pop",
+    name: "Business Data",
     description:
-      "Magenta/plum data-deck look with Space Grotesk display, Lexend body, soft corners, plus marks, stat blocks, photo squares, bars, and rings.",
+      "Business data deck look with default Berry Pop palette, Space Grotesk display, Lexend body, soft corners, plus marks, stat blocks, photo squares, bars, and rings.",
     source: privateR2ArchiveSource(
-      "presentation-design-system/berry-pop",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.berryPop,
+      "presentation-design-system/business-data",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBusinessData,
+    ),
+  },
+  {
+    id: "design-system:crayon",
+    kind: "design-system",
+    name: "Crayon",
+    description:
+      "Light, bouncy crayon look with Prism colours, Fredoka display, Quicksand body, round geometry, peripheral blobs, multi-colour titles, marker highlights, doodle sparks, and colour-block cards.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/crayon",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCrayon,
+    ),
+  },
+  {
+    id: "design-system:creative-agency",
+    kind: "design-system",
+    name: "Creative Agency",
+    description:
+      "Minimal modern agency look with Coral Studio palette, Space Grotesk display, Lexend body, sharp edges, monochrome photo blocks, foliage sprigs, and big-stat hero numbers.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/creative-agency",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCreativeAgency,
+    ),
+  },
+  {
+    id: "design-system:data-report",
+    kind: "design-system",
+    name: "Data Report",
+    description:
+      "Sharp vibrant data-report look with Prism colours, Sora display, Inter body, full-bleed colour grounds, frameless numbers, thin gridlines, chart outlines, and broad chart vocabulary.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/data-report",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemDataReport,
+    ),
+  },
+  {
+    id: "design-system:editorial-magazine",
+    kind: "design-system",
+    name: "Editorial Magazine",
+    description:
+      "Warm paper-forward editorial look with Warm Sand palette, Fraunces display, Work Sans body, mixed radius, running footer, rotated masthead, slash-number marks, stat boxes, dot matrix, and magazine table motifs.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/editorial-magazine",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemEditorialMagazine,
+    ),
+  },
+  {
+    id: "design-system:landing-consulting",
+    kind: "design-system",
+    name: "Landing Consulting",
+    description:
+      "Dark-vibrant landing-consulting look with Pop Art palette, Space Grotesk display, Lexend body, sharp panels, nav pills, dashed circuit wire, marker highlights, CTA pills, photo placeholders, percent badges, callouts, and frameless stats.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/landing-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLandingConsulting,
+    ),
+  },
+  {
+    id: "design-system:lumina",
+    kind: "design-system",
+    name: "Lumina",
+    description:
+      "Bold creative-studio look with Prism palette, Space Grotesk display, Lexend body, sharp geometry, sticker tags, brush-letter accents, asterisk punctuation, colour cells, and frame-edge chrome.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/lumina",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLumina,
+    ),
+  },
+  {
+    id: "design-system:mosaic-geometric",
+    kind: "design-system",
+    name: "Mosaic Geometric",
+    description:
+      "Graphic mosaic look with Carnival palette, Space Grotesk display, Lexend body, sharp geometry, mosaic tile clusters, semicircles, quarter circles, rings, segmented pies, burst stats, and framed icon tiles.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/mosaic-geometric",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemMosaicGeometric,
+    ),
+  },
+  {
+    id: "design-system:playful-pop",
+    kind: "design-system",
+    name: "Playful Pop",
+    description:
+      "Base visual language for Playful Pop presentations with default Pop Art palette, Space Grotesk display, Lexend body, rounded geometry, offset-shadow cards, organic blobs, dot grids, solid dots, burst rosettes, pill chips, and white hairline outlines.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/playful-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
+    ),
+  },
+  {
+    id: "color-system:bauhaus-primary",
+    kind: "color-system",
+    name: "Bauhaus Primary",
+    description: "Color tokens for the Bauhaus Primary presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/bauhaus-primary",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemBauhausPrimary,
+    ),
+  },
+  {
+    id: "color-system:berry-pop",
+    kind: "color-system",
+    name: "Berry Pop",
+    description: "Color tokens for the Berry Pop presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/berry-pop",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemBerryPop,
+    ),
+  },
+  {
+    id: "color-system:carnival",
+    kind: "color-system",
+    name: "Carnival",
+    description: "Color tokens for the Carnival presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/carnival",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemCarnival,
+    ),
+  },
+  {
+    id: "color-system:citrus-fresh",
+    kind: "color-system",
+    name: "Citrus Fresh",
+    description: "Color tokens for the Citrus Fresh presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/citrus-fresh",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemCitrusFresh,
+    ),
+  },
+  {
+    id: "color-system:coral-studio",
+    kind: "color-system",
+    name: "Coral Studio",
+    description: "Color tokens for the Coral Studio presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/coral-studio",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemCoralStudio,
+    ),
+  },
+  {
+    id: "color-system:forest-editorial",
+    kind: "color-system",
+    name: "Forest Editorial",
+    description: "Color tokens for the Forest Editorial presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/forest-editorial",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemForestEditorial,
+    ),
+  },
+  {
+    id: "color-system:gold-luxe",
+    kind: "color-system",
+    name: "Gold Luxe",
+    description: "Color tokens for the Gold Luxe presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/gold-luxe",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemGoldLuxe,
+    ),
+  },
+  {
+    id: "color-system:mauve-dusk",
+    kind: "color-system",
+    name: "Mauve Dusk",
+    description: "Color tokens for the Mauve Dusk presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/mauve-dusk",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemMauveDusk,
+    ),
+  },
+  {
+    id: "color-system:midnight-mono",
+    kind: "color-system",
+    name: "Midnight Mono",
+    description: "Color tokens for the Midnight Mono presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/midnight-mono",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemMidnightMono,
+    ),
+  },
+  {
+    id: "color-system:mint-tech",
+    kind: "color-system",
+    name: "Mint Tech",
+    description: "Color tokens for the Mint Tech presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/mint-tech",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemMintTech,
+    ),
+  },
+  {
+    id: "color-system:mono-ink",
+    kind: "color-system",
+    name: "Mono Ink",
+    description: "Color tokens for the Mono Ink presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/mono-ink",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemMonoInk,
+    ),
+  },
+  {
+    id: "color-system:nordic-frost",
+    kind: "color-system",
+    name: "Nordic Frost",
+    description: "Color tokens for the Nordic Frost presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/nordic-frost",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemNordicFrost,
+    ),
+  },
+  {
+    id: "color-system:ocean-deep",
+    kind: "color-system",
+    name: "Ocean Deep",
+    description: "Color tokens for the Ocean Deep presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/ocean-deep",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemOceanDeep,
+    ),
+  },
+  {
+    id: "color-system:pop-art",
+    kind: "color-system",
+    name: "Pop Art",
+    description: "Color tokens for the Pop Art presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/pop-art",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemPopArt,
+    ),
+  },
+  {
+    id: "color-system:prism",
+    kind: "color-system",
+    name: "Prism",
+    description: "Color tokens for the Prism presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/prism",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemPrism,
+    ),
+  },
+  {
+    id: "color-system:slate-corporate",
+    kind: "color-system",
+    name: "Slate Corporate",
+    description: "Color tokens for the Slate Corporate presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/slate-corporate",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemSlateCorporate,
+    ),
+  },
+  {
+    id: "color-system:sunset-maroon",
+    kind: "color-system",
+    name: "Sunset Maroon",
+    description: "Color tokens for the Sunset Maroon presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/sunset-maroon",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemSunsetMaroon,
+    ),
+  },
+  {
+    id: "color-system:terracotta-clay",
+    kind: "color-system",
+    name: "Terracotta Clay",
+    description: "Color tokens for the Terracotta Clay presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/terracotta-clay",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemTerracottaClay,
+    ),
+  },
+  {
+    id: "color-system:warm-sand",
+    kind: "color-system",
+    name: "Warm Sand",
+    description: "Color tokens for the Warm Sand presentation palette.",
+    source: privateR2ArchiveSource(
+      "presentation-color-system/warm-sand",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.colorSystemWarmSand,
     ),
   },
   {
@@ -3565,6 +4029,16 @@ export function listImageStyles(): readonly RegistryEntry[] {
   return filterByKind("image-style");
 }
 
+export function listSkills(): readonly RegistryEntry[] {
+  return filterByKind("skill");
+}
+
+export function findSkill(id: string): RegistryEntry | undefined {
+  return listSkills().find((entry) => {
+    return entry.id === id;
+  });
+}
+
 export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
@@ -3610,6 +4084,16 @@ export function listDesignSystems(): readonly RegistryEntry[] {
 
 export function findDesignSystem(id: string): RegistryEntry | undefined {
   return listDesignSystems().find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listColorSystems(): readonly RegistryEntry[] {
+  return filterByKind("color-system");
+}
+
+export function findColorSystem(id: string): RegistryEntry | undefined {
+  return listColorSystems().find((entry) => {
     return entry.id === id;
   });
 }
@@ -3673,7 +4157,7 @@ export function selectResourceCandidates(
       },
     ],
     candidates: {
-      skills: filterByKind("skill"),
+      skills: listSkills(),
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),

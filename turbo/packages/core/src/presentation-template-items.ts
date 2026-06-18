@@ -5,6 +5,7 @@ export interface PresentationTemplateItem {
   readonly embedUrl: string;
   readonly previewImage: string;
   readonly previewImages: readonly string[];
+  readonly previewHtmls?: readonly string[];
   readonly designSystemId: string;
   readonly templateId: string;
 }
@@ -1793,21 +1794,21 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
   ];
 
 const PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0e4eee8-78f5-4630-9133-5c1771268833/slide-01.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6b283082-35a6-466e-b44e-d1f03b7538b7/slide-02.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27522a10-0cf6-46aa-a25d-7c3fa5f125a3/slide-03.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/307dfb24-884e-437c-9a2d-7693fbee518c/slide-04.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b6e088b9-5dbf-4e31-b7fc-28f12098e458/slide-05.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/025efa81-1335-40a9-a23e-f5fd99514487/slide-06.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df433d75-a07b-4f09-b5b8-0781f4be8b45/slide-07.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fdeb3e55-5386-474d-a7b6-52c54c049369/slide-08.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/353a2ed5-3025-40c3-86c4-7262ded58aab/slide-09.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a698210-b1a2-43ca-a6b2-723b4905da72/slide-10.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db852f11-b0a7-4653-b733-c25a538882e1/slide-11.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/092dc4b8-105b-4419-8369-9cfccf60ed58/slide-12.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d1c5ddf-fe8b-4d27-9a25-531fabf71cad/slide-13.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5643224-c343-4588-bfa4-ab9ccf4e13af/slide-14.png",
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/968f9b6a-3ac9-4933-9902-df630f41e5b2/slide-15.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14faa970-e9b2-4c1d-990e-f4933bf6cd85/aplocoto-slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dbb11b25-20e0-433e-94d5-9a094667d5a7/aplocoto-slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d6a0800b-729e-4399-ba74-e3d56b4e9b00/aplocoto-slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/67781114-f6ff-45fd-bb74-bf65df1b75e9/aplocoto-slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9860a2f5-512a-4f0c-a215-33ad6153ee66/aplocoto-slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7c884040-00c0-4237-8560-44a78c9bc9df/aplocoto-slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90905547-8551-46ee-91fe-cdf364a0a415/aplocoto-slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/13260433-b222-4561-a62f-273f2c275f4c/aplocoto-slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f88b5182-4312-49a7-bd1c-3814405d5205/aplocoto-slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/060dafd9-d147-4a42-89dc-4b22fa92e880/aplocoto-slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d104d1c5-c038-40b0-b7e2-078a9f93c062/aplocoto-slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d51c10d0-fdba-41b3-b88f-1d4e118c7368/aplocoto-slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7e3ca86-846e-44f9-8eb0-637699168192/aplocoto-slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ecc39ab1-0a68-4da5-9cf4-20b1e0b2eeb0/aplocoto-slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f403f161-f63c-427f-ae15-401ede2672d9/aplocoto-slide-15.png",
 ] as const satisfies readonly [string, ...string[]];
 
 const BUSINESS_DATA_CDN_PREVIEW_IMAGES = [
@@ -1828,6 +1829,295 @@ const BUSINESS_DATA_CDN_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37616a8a-7386-49f2-8e18-198a2a234d4a/slide-15.png",
 ] as const satisfies readonly [string, ...string[]];
 
+// Batch presentation resources migrated from Google Drive to private R2.
+const CRAYON_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5163d6a1-f2df-4577-b75a-4b3623a2aae1/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8183eea0-8016-4680-82b8-8ad3a3b5ada2/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/356c7e99-4895-44e1-a56d-d53dfb0d722e/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f81f04ee-f164-4d0b-abd2-1bec62637036/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2aace698-e937-4c5c-83b7-43b4ea6aa193/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db411e40-59c5-4428-b2fd-dc71846bbf32/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4cea2af8-cd7b-4446-a895-03e151591e9a/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1e500a83-2644-49b6-a7a7-dabb10025344/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a6c157ad-644f-4dd8-be84-c04ad53e8eba/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/abadaabc-a366-40b7-8cad-17e302e24cea/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/810651dd-7c4e-4115-a9b4-8eb4e804e669/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/52fac853-0a29-4215-951d-2d9780720119/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32876cfe-2e5e-4807-b308-06a9b617ac36/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6db8270e-31fb-4df6-9d8f-495dced6c2ed/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d82049a8-dbb6-4425-9043-058720a335a6/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const CRAYON_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/351717b6-5c48-42c5-a349-d8a815bc229f/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c4116423-38ef-48d9-9728-695bf265e510/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2cb2711a-0638-4673-a47b-69a51116e21d/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32f3a867-b29d-4b0e-ba32-073167892556/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7e49363-33ae-48c6-998a-f911e51bf340/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0c005465-e491-4d84-915c-efc892bf6030/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3baf78ed-8cec-4da1-9734-3a8ca51a1d6c/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/803373ba-fa20-4ebd-84ad-cb73f4e10dcd/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27ef439c-3dc2-49d2-b5ca-de98d20f2ca6/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c498a285-2d3f-4c76-9ebb-d26ad42f677c/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b79a2ac4-ef78-4a3c-b47e-6f1310756b7c/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e8dac0bc-f2a2-440c-ade3-c979d34b7459/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f6c4cae-cac2-4cf1-93d8-d2d4609cad8e/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0742c906-1dcb-4bec-80e3-f0e5387e727d/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d13fd530-4917-4378-8e2b-8c0befd96119/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const CREATIVE_AGENCY_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1a95bb56-f72a-4d3f-a9dd-df653da20244/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a1883f03-854f-4f31-9da5-5d1f80179ea9/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/261165ff-ded6-4662-9b1a-62df42b234b0/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a2e4e44e-1a6d-491f-903c-4e2188023d3c/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/39871f71-1392-4911-8771-f22b715d7a9e/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f8b8651e-de6b-4adb-a733-c92dc0f859e6/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1d3342e3-e91f-48df-8302-1931423f7de6/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/70e13d5b-d9df-4e39-a257-ded24b0fd2f8/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8280b48a-4c05-4022-ae9c-8b5073562b53/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/efe70b44-2eaf-4094-8404-a2238e101d42/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6bc29f83-9a2f-4f9a-bf63-b7d30acc6941/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c6ca5fe0-1def-4eb2-a5fe-2e31fc60dac7/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7557bbcc-8502-43eb-8d91-fa2b8035e15d/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07fa40fd-5c73-4913-9ed2-a248e3e56865/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62403bf8-6aac-40af-b279-95239dc20139/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const CREATIVE_AGENCY_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/440dde23-496f-4e4c-9b78-226deda76c4c/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/80de0f45-96af-4131-8cc8-9f6a058efe96/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5acb529d-e17a-4b7b-b418-1dc49f50bc53/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ebc56020-ec50-4125-8467-f6361648687b/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/20d61d5a-a7d2-4cf5-a7ba-2d507e8df1d8/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a89a5f5-af1c-4b64-941d-59fd55904c43/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/152b7fb4-5619-4344-a714-0a29434f082c/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aa8de55e-a778-4a24-b530-9c76bcb85991/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/afe9346a-de0f-4141-9434-e5bda6f09efe/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/995f23c4-bda7-4f8c-80bb-cd5e4eda3f57/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/de3d07df-083a-4218-8c86-fcff79251a47/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a21f6ee8-f967-4415-9825-27c08a28cc09/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f25909ac-88d6-48eb-859c-488d5bbacd9f/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1bea8f97-d0e5-4240-bae5-c3bbe5cd5ba2/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/188bdf52-0a5b-466a-8417-b8920e35fb5a/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const DATA_REPORT_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5730d8c6-6fd1-4f41-93db-03aed2b3f152/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/efa3e160-e608-4658-9395-9a4139899038/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/edd27584-ef9f-4611-b8ab-59e3ac7247ad/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a505694f-8511-45bb-94bd-0095b75e6028/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77cb14b3-aec9-4694-9a12-880eb0a11fc6/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/02dffc66-0883-45bc-9567-a063368619b5/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c11f15e4-e164-4803-9d39-9b787e1b35c5/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6c426018-8ec4-43c6-8998-4b1ae1aff6d1/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19fceff3-2317-4e84-9918-600a66bf375a/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/401c3f73-810b-4ebc-a448-7d9bd5ecc882/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b97bb9b-667a-4596-bbf6-fba2c55eca5f/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc80199e-4b44-4602-8b4b-6af9d65f1845/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/95a0c217-421f-4a57-97db-700b076eed1a/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e7c176a-7997-4b5d-9773-68cf0b307c8e/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a0269c99-9d1b-44e2-b49a-0980820b3b90/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const DATA_REPORT_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/16310322-2d80-4142-a5f5-7bcff8c3eed0/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/be665757-c3d0-4091-b957-9b2090d6523d/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/38b3ce82-7212-44d1-a5ae-a9477ce5e086/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90d4ca26-8f11-413d-a9d5-611c3dfb7971/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b08266e5-92fe-45c8-82bd-a02a1921e780/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e958c1d0-9674-4149-94e5-23a6b78b7151/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99d8ebd7-fdc7-427a-a000-a24675b1a730/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/04fc9197-1543-487c-82eb-0560cde0c17d/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f979bae9-63ad-49fb-81f1-f4149e244fe0/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/eb896ae1-adf1-4681-948d-564c73a6ac82/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/479c66d1-7999-43ef-a24c-e18399053105/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e9763c0-7dfb-495c-af1d-9cf25bcfcb4c/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a9f6fc70-1099-461a-be6b-a4bbabce5f4a/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/be6017d7-be11-436c-b67a-050ebee5fdb7/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41099f41-7548-4a11-beb5-cebde83df691/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const EDITORIAL_MAGAZINE_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/903f1079-a1c8-4f01-839c-e27c0feda939/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/63b4c9a6-7f1a-4f49-af9b-dd93d9d9138a/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b7dc0361-f59a-4fdb-b350-f18bc99a422e/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4718eb4d-7672-4194-9710-f980a5e9d4a1/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/26bc2e44-8975-48d2-a659-0364f148c835/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3b3e8dab-8f75-4773-a467-043e5525b491/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/646d057e-f8d8-48e1-862e-db4095c2af28/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/506d1159-c15f-4b63-ad09-3ab538036099/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9618e2b2-425e-43c3-9399-6c89ea8ab458/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5008900e-ebc8-4355-b07e-995624af5a52/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0a84ce72-1816-4f5e-8e17-9d9ed3f7d7a4/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e80c360-a1ef-45d4-a0f2-fd18c1ce8f2a/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/172f784b-3502-485f-9ab4-e4714afa7b22/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2897a88f-0b4c-4892-bb32-eb4545cc3acc/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c453a78d-8109-423b-ae0e-278123d38239/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const EDITORIAL_MAGAZINE_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/539b64b7-ba42-4f62-a54f-1427b2afddb3/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b1a544b4-a4a1-4292-ba63-61843a14c5b3/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d4880c62-7c63-4696-b80a-2bed0108a988/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/84ddea62-a1eb-425f-8b09-450f104aa3a5/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/02425e87-5b9f-4680-bc3d-2c58c7d2adc1/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85d7e4f9-31bc-4ba8-9b21-11be2342d135/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58c58583-41fb-4d78-be75-1c905a8776f1/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/15c39a3c-05e0-41e5-b5b8-71ae03377232/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a9decabb-f920-46b6-a5f9-a5ec3d12b962/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62965071-8c8d-4b14-970c-3e7903c85195/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8d81c8d4-c1d4-49e1-b9cf-60ee42b1c225/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1539da62-2481-4dfc-8b5b-5ca6118bc1f3/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/326ebe33-8072-4a14-af18-70ec77f59360/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b45db466-6e73-418e-9e65-f86a3c17be8b/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/512d2421-0d60-44ed-81b1-29620a93ed5c/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const LANDING_CONSULTING_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a0191136-76a8-415f-b8f0-d6c1089f05cc/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ca96e383-1431-466c-8c3e-9fc13a91d2c5/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a8a9671-68bd-4d07-9fb5-078bdb0199a6/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/710c14c7-3dc6-4b10-b8d8-27fc4df2a0b0/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0eda445b-ed1d-4922-8a9e-ae8e39ff06e8/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e9e61546-3e5d-4307-ad97-7b5ddf92a960/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8646d1e2-4d3c-43c4-970a-df36476eec9c/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8dada9ca-9908-42c9-a010-ce42e431f108/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/73fc1ea3-e10b-4151-b0fe-e2cdf4ec7e4c/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/39f3b5b2-5cc9-409b-affd-f861460f1b8c/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f241aa1-5cad-4030-a00b-cb6402390704/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a79c9f31-d9cd-40c3-8cca-907599ee2a9a/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/622ee524-2f19-44a0-9613-26036f4474e4/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e38718d5-1059-4df4-a322-e9d73369c57e/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a5f1fff4-18f9-4eaa-860c-c9ce8b57922d/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const LANDING_CONSULTING_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b02b4e7a-861d-4db3-af6f-a6e1f492a805/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/512dda48-57e2-4264-aba7-21500b56e38c/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a15f57d1-fbad-4a2a-ae3b-e02f97eef373/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/45047a7b-242c-4cda-a8d1-98471d8bd8e7/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a138a120-8d27-4bfe-8e9b-2dee7e8398ad/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a2d4e51-7515-442b-9ff6-8ea1d74cbaed/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a0d46684-2831-4653-80af-34e0e6492da7/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c43fff61-c6a6-4524-a222-9ccbfb25e82e/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7016072-aada-44f8-93cf-15c2cf0bbcf9/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f4b22edf-cf10-4f7c-acbe-fbe5dab95f08/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/100de24b-6e80-40c7-864c-2dece1e3fcef/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/135a102e-1f28-4fc3-8d26-f57bc93ce1f9/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5e42744-3bbc-4e85-9f6a-dae697986214/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4507a7cb-ac95-4363-96bb-03def14afbe3/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9b54f283-b5de-4d49-a525-d3ad1b2304e8/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const LUMINA_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6472a6c7-e872-44bf-8598-709aa8d4babd/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/592fe965-5a74-4366-b8b9-e58605dcc16e/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb9df939-ec5a-4949-980d-7300eee0def4/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc1afd19-e772-4e27-baa0-5b0790b7b056/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/abfe04fb-2f9e-42bd-b7da-9613676dee09/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/71b059b8-e4b3-4aea-9210-10c0f321f827/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c91c081d-70a1-4a73-b7f9-2f2cce4c309f/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/065462c6-ed5f-499a-adb8-fec17c468cb7/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9733dd6f-9aa3-440b-88c4-cfcb61676035/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7dbb64c1-0a07-4b36-b96f-b1a460503f68/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/06a117bf-ca82-4a80-a282-3836a8079994/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddbcb419-6eba-41d6-aa30-0677352a042c/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40783c03-36a1-40a7-91e4-f974d9aa8a58/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a7c8c68-12e8-4500-ae37-5b7db7d782c7/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a913f8f3-3aa4-47d6-b29b-fe39de18ebaa/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const LUMINA_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77b00b14-0909-4e10-afea-3c39ae74db73/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/01faf670-8355-43f4-bd87-a283eff2500b/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1721d052-b4d9-4c8e-be68-b9d433dcc504/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/995dc4b4-929d-4788-9f42-6da9e37c7ffd/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c20a8bfb-4b85-4407-abc7-ac8b5e04f13d/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c6d6b98-8f11-4afe-8d44-1d07f0fc52f6/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2f236399-80f4-48d9-aa92-9f5c4fb2d161/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e02a7dc9-1fe7-454b-82ea-5968d10d5d73/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5373c442-9cb4-4245-99c0-270fe449880c/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3234608-ff95-4de6-84b4-50f077062609/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7779e5ca-9759-470c-abe2-3d9aa7e68e5c/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e45d5c9-9b2d-4b28-95ad-965a8566d48b/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/009219ba-4047-4e84-87d7-9d1295728751/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da94d8b8-375e-413f-91c0-8b84f631744e/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5c3ad467-780a-4a59-b95c-26379e13e598/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const MOSAIC_GEOMETRIC_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2502cfd6-0b0b-4027-838a-49c74f74cdc2/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22fd98ad-7ca0-4b08-8e9e-383da4ccbb49/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a04cac03-384e-4e05-95a2-d345e95e1141/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e3518b8-5077-467a-a2d5-612f754c8535/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cdbb1d16-dd0f-46a4-b43e-0963a4f2e7c3/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0c2632ed-2313-4286-9921-aa39e9472371/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cd4b3cbe-5287-4a8a-ae18-107f3bfd2419/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/279d368b-4772-460f-9fe6-aea782745e70/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92acc27f-60fe-42e7-8960-8c95b3921986/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd46a4b5-cff3-42a5-b39a-0add674c20c0/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0eca7af8-e188-4001-88d3-99b47fd49c2b/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c29e6151-c5c1-401a-9263-2949209e2a70/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f7132349-afea-44aa-8294-ca0e35a44210/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/847e4eb8-6f15-4b18-9133-eb48da0a0e30/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5355056e-e86d-4a65-afa3-9e3be0d05a32/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const MOSAIC_GEOMETRIC_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58a4dec5-db7a-4e03-835e-e49637dba964/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d75fe7-4224-4943-a765-f558ab426bce/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4482261-179a-4ca0-8a00-0186a51fcc1c/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af249477-c261-41cd-86d4-8e1aba376a32/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7f1da55-2c8c-4858-aa13-33ab42d216ba/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2992c1ee-84db-4ab5-b251-a317a160de66/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35e0c6f8-f96e-4c67-8375-62ce1c47178f/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/61a88e05-442b-4b25-9488-2f5e2df4dcf8/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/140aac80-54d7-46bb-af05-40121cc85f0a/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60b1ad5d-631b-42fc-8b29-bedf3b4e2a6c/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c3fd19a-8087-4177-bdd9-e7dde6109a2f/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0cc9cb46-0019-4d45-a33d-5fff36c2a754/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/29123d43-c90a-48e4-9d1d-f1657f396a34/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23284bc3-078b-4cd2-a3e2-f207605e6ad1/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ac616f61-f1bc-44af-8862-c219f7f74bfe/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
+const PLAYFUL_POP_PREVIEW_IMAGES = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a68b4d82-838b-4772-98ec-7967ab30197e/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/083b8e2c-ea0a-434b-93c9-69d129ed242c/slide-02.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d957db7-4449-4fe9-8adb-6eff201b0fcc/slide-03.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/25afe786-d2c6-4d49-acbc-d8c60fce5fb4/slide-04.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b2c5cf99-65ec-49f1-861e-0a80905ae5e5/slide-05.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e6a1d840-de51-4aec-a773-e3e8abe1ec1e/slide-06.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd4589bb-563e-44cf-bc26-f11b7db3a20c/slide-07.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a34076e-f629-4da3-a25b-68cf705cc788/slide-08.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/06757c76-66fb-4b6d-ac26-a6e0b50f9cd5/slide-09.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60f90bbb-bdb0-4f17-9258-4e52e8e41d91/slide-10.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/17941998-dab8-48ee-bda2-f6d6a502ff98/slide-11.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7cbb4445-e1ae-4876-8ac8-39d8bbb79df3/slide-12.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82b45a46-b5f3-4a97-a480-e07cadac0a96/slide-13.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85672b12-bd99-4748-9b56-ec39aae695f5/slide-14.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/805bd601-9e99-40b1-a66a-34251c70c787/slide-15.png",
+] as const satisfies readonly [string, ...string[]];
+
+const PLAYFUL_POP_PREVIEW_HTMLS = [
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/098f0ce4-c773-4479-ad85-221c9114881a/slide-01.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/009db4d7-19f9-4266-a08d-2eb827678fde/slide-02.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a143dba3-9e72-44c5-a105-0e5228125a1c/slide-03.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b541db0e-322e-4604-9b13-ff117b5fcf7f/slide-04.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fa2f420-248a-4679-b76e-fb620fd67868/slide-05.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/859a88eb-5f9c-469b-b6c7-5987fe9e92f0/slide-06.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23b1ec6d-ba39-41a6-923f-7c125c530f08/slide-07.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b469c7a6-5151-488d-a59f-e38e091e376d/slide-08.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/46c96f07-8232-44fd-932e-e0a6e6abc0a0/slide-09.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/465fb0cb-18ff-4284-a184-d6a7cc8aa49c/slide-10.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a72c8c6c-c5d5-4fac-95bd-f299102d344e/slide-11.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27203fae-eb0e-49eb-8077-e69f7a888382/slide-12.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bde44218-8dfd-418e-863a-f6e99808b2b3/slide-13.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f84b61fc-4775-4ee3-ab28-fa9762b602fe/slide-14.html",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c3eaf388-6b9f-49b6-90af-ce27eedb87e2/slide-15.html",
+] as const satisfies readonly [string, ...string[]];
+
 export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
@@ -1836,7 +2126,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-launch`, create a 15-slide presentation for a product or service launch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it saturated, joyful, idea-led, and structured.",
       embedUrl:
-        "https://playful-editorial-presentation-preview-715f6d07-adec3994.sites.vm0.io",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c933bfa2-6b60-40f5-bd6a-72a5ab92eea8/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
       designSystemId: "design-system:playful-editorial",
@@ -1846,24 +2136,128 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       slug: "botane-organic-deck",
       title: "Botane organic deck",
       prompt:
-        "/gen presentation with design system `mauve-dusk` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
+        "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide presentation for an organic, wellness, hospitality, or slow-brand story. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6cd68cca-09d9-44e0-b102-9b34f51985dc/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/763fcebf-f68e-4709-a870-55519282db1a/botane-organic.html",
       previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
-      designSystemId: "design-system:mauve-dusk",
+      designSystemId: "design-system:botane-organic",
       templateId: "template:html-ppt-botane-organic",
     },
     {
       slug: "business-data-presentation",
       title: "Business data presentation",
       prompt:
-        "/gen presentation with design system `berry-pop` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
+        "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide presentation for a business data report, annual review, market analysis, growth story, or metric-led service pitch. Include cover, agenda, company context, commitments, team, services, process, project gallery, proof metrics, testimonials, pricing, and contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3ff9478-a282-4946-9b1b-431c4cdb1788/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3650eb44-eb5e-452e-800c-9de51b339aeb/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
-      designSystemId: "design-system:berry-pop",
+      designSystemId: "design-system:business-data",
       templateId: "template:html-ppt-business-data",
+    },
+    {
+      slug: "crayon-learning-deck",
+      title: "Crayon learning deck",
+      prompt:
+        "/gen presentation with design system `crayon` and template `html-ppt-crayon`, create a 15-slide presentation for a playful education, kids product, creative workshop, or family program. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it bright, rounded, joyful, and crayon-like.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5bf26e6a-96b4-4d79-9380-48c17bba8715/example.html",
+      previewImage: CRAYON_PREVIEW_IMAGES[0],
+      previewImages: CRAYON_PREVIEW_IMAGES,
+      previewHtmls: CRAYON_PREVIEW_HTMLS,
+      designSystemId: "design-system:crayon",
+      templateId: "template:html-ppt-crayon",
+    },
+    {
+      slug: "creative-agency-presentation",
+      title: "Creative agency presentation",
+      prompt:
+        "/gen presentation with design system `creative-agency` and template `html-ppt-creative-agency`, create a 15-slide presentation for a design studio, creative agency, brand consultancy, or annual studio report. Include cover, agenda, about, vision, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it minimal, editorial, sharp, and agency-grade.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/270316a9-775f-4fb8-8ad4-2e282d4eeec9/example.html",
+      previewImage: CREATIVE_AGENCY_PREVIEW_IMAGES[0],
+      previewImages: CREATIVE_AGENCY_PREVIEW_IMAGES,
+      previewHtmls: CREATIVE_AGENCY_PREVIEW_HTMLS,
+      designSystemId: "design-system:creative-agency",
+      templateId: "template:html-ppt-creative-agency",
+    },
+    {
+      slug: "data-report-presentation",
+      title: "Data report presentation",
+      prompt:
+        "/gen presentation with design system `data-report` and template `html-ppt-data-report`, create a 15-slide presentation for a business data report, market analysis, annual review, product metrics readout, or research findings deck. Include cover, contents, context, trend, performance, segments, comparison, impact, forecast, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3d0288a-9d60-4127-bb3e-ce4d95950e9c/example.html",
+      previewImage: DATA_REPORT_PREVIEW_IMAGES[0],
+      previewImages: DATA_REPORT_PREVIEW_IMAGES,
+      previewHtmls: DATA_REPORT_PREVIEW_HTMLS,
+      designSystemId: "design-system:data-report",
+      templateId: "template:html-ppt-data-report",
+    },
+    {
+      slug: "editorial-magazine-deck",
+      title: "Editorial magazine deck",
+      prompt:
+        "/gen presentation with design system `editorial-magazine` and template `html-ppt-editorial-magazine`, create a 15-slide presentation for an editorial brand, publication, culture report, portfolio magazine, or catalogue-style pitch. Include cover, agenda, about, vision, team, formats, process, gallery, impact, testimonials, pricing/table, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83d874b2-cf42-41e5-9f39-cb56486ee6a8/example.html",
+      previewImage: EDITORIAL_MAGAZINE_PREVIEW_IMAGES[0],
+      previewImages: EDITORIAL_MAGAZINE_PREVIEW_IMAGES,
+      previewHtmls: EDITORIAL_MAGAZINE_PREVIEW_HTMLS,
+      designSystemId: "design-system:editorial-magazine",
+      templateId: "template:html-ppt-editorial-magazine",
+    },
+    {
+      slug: "landing-consulting-deck",
+      title: "Landing consulting deck",
+      prompt:
+        "/gen presentation with design system `landing-consulting` and template `html-ppt-landing-consulting`, create a 15-slide presentation for a consulting firm, advisory practice, SaaS services team, strategy landing page, or growth proposal. Include cover, agenda, about, mission, team, services, process, gallery, proof metrics, testimonials, pricing, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3b0dd6e7-0d78-4047-acff-77eaae02cb9a/example.html",
+      previewImage: LANDING_CONSULTING_PREVIEW_IMAGES[0],
+      previewImages: LANDING_CONSULTING_PREVIEW_IMAGES,
+      previewHtmls: LANDING_CONSULTING_PREVIEW_HTMLS,
+      designSystemId: "design-system:landing-consulting",
+      templateId: "template:html-ppt-landing-consulting",
+    },
+    {
+      slug: "lumina-creative-studio",
+      title: "Lumina creative studio",
+      prompt:
+        "/gen presentation with design system `lumina` and template `html-ppt-lumina`, create a 15-slide presentation for a creative studio, photo agency, branding shop, design collective, or studio portfolio. Include cover, agenda, about, mission, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it bold, sticker-tagged, sharp, and creative-studio oriented.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fcdfe1d0-3d25-4c9c-b790-8657cba4d5d3/example.html",
+      previewImage: LUMINA_PREVIEW_IMAGES[0],
+      previewImages: LUMINA_PREVIEW_IMAGES,
+      previewHtmls: LUMINA_PREVIEW_HTMLS,
+      designSystemId: "design-system:lumina",
+      templateId: "template:html-ppt-lumina",
+    },
+    {
+      slug: "mosaic-geometric-pitch",
+      title: "Mosaic geometric pitch",
+      prompt:
+        "/gen presentation with design system `mosaic-geometric` and template `html-ppt-mosaic-geometric`, create a 15-slide presentation for a geometric brand pitch, design system proposal, creative studio, culture product, or modular portfolio. Include cover, agenda, about, principles, team, services, process, gallery, impact, testimonials, pricing, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8aa49b66-de82-4774-a132-a5b8e39f2fbf/example.html",
+      previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
+      previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
+      previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
+      designSystemId: "design-system:mosaic-geometric",
+      templateId: "template:html-ppt-mosaic-geometric",
+    },
+    {
+      slug: "playful-pop-deck",
+      title: "Playful pop deck",
+      prompt:
+        "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30030f16-caf2-4bd4-bec9-b07b08d67a0b/example.html",
+      previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
+      previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
+      previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
+      designSystemId: "design-system:playful-pop",
+      templateId: "template:html-ppt-playful-pop",
     },
   ];
