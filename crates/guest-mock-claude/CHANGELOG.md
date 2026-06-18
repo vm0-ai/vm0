@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.20.0...guest-mock-claude-v0.21.0) (2026-06-18)
+
+
+### Features
+
+* **guest-agent:** add claude active input support ([#18124](https://github.com/vm0-ai/vm0/issues/18124)) ([a62e604](https://github.com/vm0-ai/vm0/commit/a62e60404961eea9a1034c0abf6f82b25364cea0))
+
 ## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.1...guest-mock-claude-v0.20.0) (2026-06-15)
 
 
