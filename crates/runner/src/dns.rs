@@ -7,6 +7,7 @@
 //! Defense-in-depth:
 //! - Layer 1: iptables REDIRECT → dnsmasq port (working path, preserves source IP)
 //! - Layer 2: iptables DROP external UDP 53 / TCP 853 (bypass prevention)
+//! - Layer 3: dnsmasq binds only VM-facing veth interfaces (listener restriction)
 //!
 //! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
 //! target. The REDIRECT rule in PREROUTING intercepts all UDP 53 from the VM
@@ -518,6 +519,7 @@ fn dnsmasq_args(port: u16) -> Vec<String> {
         "--no-resolv".into(),
         "--port".into(),
         port.to_string(),
+        // VM host-side veth devices are created after dnsmasq starts.
         format!("--interface={DNSMASQ_VM_INTERFACE_PATTERN}"),
         "--bind-dynamic".into(),
         "--server".into(),
