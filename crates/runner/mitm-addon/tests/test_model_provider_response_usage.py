@@ -961,6 +961,11 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
+        extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
+        assert extracted["message_id"] == "msg_1"
+        assert extracted["model"] == "claude-sonnet-4-6"
+        assert extracted["tokens.input"] == 50
+        assert extracted["tokens.output"] == 200
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
@@ -996,6 +1001,7 @@ class TestModelProviderResponseUsage:
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected_usage = _expected_usage(provider_case)
+        assert extracted["message_id"] == expected_usage["message_id"]
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
