@@ -102,8 +102,12 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
+        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+
         assert "connector_response_finish" not in flow.metadata
         assert "x_ndjson_state" not in flow.metadata
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
