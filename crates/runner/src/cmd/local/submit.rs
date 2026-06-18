@@ -142,8 +142,10 @@ impl SubmitQueueEntry {
             .remove_job_files_if_present(self.job_id);
         let has_claim =
             local_queue::marker_file_exists(&self.claim, "local claim marker").unwrap_or(true);
-        if jobs_removed && !has_claim {
+        if !has_claim {
             self.cleanup_active_inputs();
+        }
+        if jobs_removed && !has_claim {
             let _ = remove_file_if_exists(&self.claim);
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
@@ -1837,6 +1839,33 @@ mod tests {
 
         queue.cleanup_abandoned(Some(&marker));
 
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_unclaimed_active_inputs_when_job_already_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let marker =
+            write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
+
+        queue.cleanup_abandoned(Some(&marker));
+
+        assert!(!local_queue::run_inputs_dir(group_dir, job_id).exists());
         assert!(!queue.result.exists());
         assert!(!queue.cancel.exists());
         assert!(!queue.claim.exists());
