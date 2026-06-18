@@ -86,10 +86,13 @@ _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
 }
 
-_RESPONSES_SSE_SCALAR_FIELDS = {
-    ("type",): ScalarField("string", max_bytes=1024),
+_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
     **_RESPONSES_RESPONSE_SCALAR_FIELDS,
     **{("response", *path): field for path, field in _RESPONSES_RESPONSE_SCALAR_FIELDS.items()},
+}
+_RESPONSES_SSE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024),
+    **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
 
 
@@ -324,15 +327,15 @@ class _OpenAIResponsesSseUsageHandler:
             self._eventless_prefix = bytearray()
             return
         self._named_event_prefix = bytearray()
-        self._start_full_extractor()
 
     def on_data(self, chunk: bytes) -> None:
         if self._discard_eventless_event or self._discard_named_event:
             return
         if self._extractor is not None:
-            if self._feed_named_event_prefix(chunk):
-                return
             self._extractor.feed(chunk)
+            return
+        if self._named_event_prefix is not None:
+            self._feed_named_event_data(chunk)
             return
         if self._eventless_prefix is not None:
             self._feed_eventless_data(chunk)
@@ -343,11 +346,14 @@ class _OpenAIResponsesSseUsageHandler:
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._eventless_prefix)
-            extractor = self._start_full_extractor()
+            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
             extractor.feed(bytes(self._eventless_prefix))
             self._eventless_prefix = None
         if self._named_event_prefix is not None and self._data_event_type is None:
             self._data_event_type = _resolved_data_event_type_from_prefix(self._named_event_prefix)
+            extractor = self._start_full_extractor(include_type=self._data_event_type is None)
+            extractor.feed(bytes(self._named_event_prefix))
+            self._named_event_prefix = None
         extractor = self._extractor
         data_event_type = self._data_event_type
         self._reset_event_state()
@@ -381,8 +387,11 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_eventless_event = False
         self._discard_named_event = False
 
-    def _start_full_extractor(self) -> JsonSelectiveExtractor:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+    def _start_full_extractor(self, *, include_type: bool = True) -> JsonSelectiveExtractor:
+        scalar_fields = (
+            _RESPONSES_SSE_SCALAR_FIELDS if include_type else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
+        )
+        self._extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
         return self._extractor
 
     def _feed_eventless_data(self, chunk: bytes) -> None:
@@ -411,14 +420,16 @@ class _OpenAIResponsesSseUsageHandler:
             return
 
         self._data_event_type = _resolved_data_event_type(event_type)
-        self._fallback_eventless_prefix_to_full_extractor()
+        self._fallback_eventless_prefix_to_full_extractor(
+            include_type=self._data_event_type is None
+        )
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
 
-    def _feed_named_event_prefix(self, chunk: bytes) -> bool:
+    def _feed_named_event_data(self, chunk: bytes) -> None:
         prefix = self._named_event_prefix
-        if prefix is None or self._data_event_type is not None:
-            return False
+        if prefix is None:
+            return
 
         remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
         captured_len = min(len(chunk), remaining)
@@ -431,20 +442,30 @@ class _OpenAIResponsesSseUsageHandler:
             and captured_len == len(chunk)
             and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
         ):
-            return False
+            return
 
-        self._data_event_type = _resolved_data_event_type(event_type)
-        self._named_event_prefix = None
         if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            self._named_event_prefix = None
             self._extractor = None
             self._discard_named_event = True
-            return True
-        return False
+            return
 
-    def _fallback_eventless_prefix_to_full_extractor(self) -> None:
+        self._data_event_type = _resolved_data_event_type(event_type)
+        self._fallback_named_prefix_to_full_extractor(include_type=self._data_event_type is None)
+        if self._extractor is not None and captured_len < len(chunk):
+            self._extractor.feed(chunk[captured_len:])
+
+    def _fallback_eventless_prefix_to_full_extractor(self, *, include_type: bool) -> None:
         prefix = self._eventless_prefix
         self._eventless_prefix = None
-        extractor = self._start_full_extractor()
+        extractor = self._start_full_extractor(include_type=include_type)
+        if prefix:
+            extractor.feed(bytes(prefix))
+
+    def _fallback_named_prefix_to_full_extractor(self, *, include_type: bool) -> None:
+        prefix = self._named_event_prefix
+        self._named_event_prefix = None
+        extractor = self._start_full_extractor(include_type=include_type)
         if prefix:
             extractor.feed(bytes(prefix))
 
@@ -551,7 +572,13 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None
 
-    extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+    data_event_type = _resolved_data_event_type(event_type)
+    scalar_fields = (
+        _RESPONSES_SSE_SCALAR_FIELDS
+        if data_event_type is None
+        else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
+    )
+    extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
     extractor.feed(body)
     result = extractor.finish()
     if not result.complete:
@@ -562,7 +589,7 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
         result.values,
         usage,
         event_name=None,
-        data_event_type=_resolved_data_event_type(event_type),
+        data_event_type=data_event_type,
     )
     if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
         return None

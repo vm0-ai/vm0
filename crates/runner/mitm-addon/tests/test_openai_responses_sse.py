@@ -161,6 +161,21 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
+    def test_named_terminal_event_with_oversized_type_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"'
+            + b"x" * 2048
+            + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+
     def test_eventless_duplicate_unknown_type_keeps_first_type_boundary(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(

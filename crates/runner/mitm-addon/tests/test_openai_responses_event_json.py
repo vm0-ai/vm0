@@ -363,6 +363,18 @@ def test_oversized_type_falls_back_to_full_extractor(monkeypatch):
     }
 
 
+def test_oversized_unknown_type_with_usage_extracts_usage():
+    assert extract_openai_responses_usage_from_event_json(
+        b'{"type":"'
+        + b"x" * 2048
+        + b'","response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
+    ) == {
+        "model": "gpt-5.6",
+        "tokens.input": 9,
+        "tokens.output": 4,
+    }
+
+
 def test_returns_none_for_malformed_json():
     assert extract_openai_responses_usage_from_event_json(b'{"type":"response.completed"') is None
 
