@@ -1709,7 +1709,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit or local queue files for this isolated run name.
+          # Clean up any residual transient unit or local queue files for this keep-alive runner.
           # stop() returns Ok when no service exists, so no need for || true.
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           wait_for_unit_inactive
