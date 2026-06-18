@@ -3720,7 +3720,6 @@ describe("getConnectorEnvBindingEntries", () => {
         return api.base;
       }),
     ).toStrictEqual([
-      "https://maps.googleapis.com",
       "https://geocode.googleapis.com",
       "https://places.googleapis.com",
       "https://routes.googleapis.com",
@@ -3731,6 +3730,7 @@ describe("getConnectorEnvBindingEntries", () => {
           Authorization: "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}",
         },
       });
+      expect(api.permissions).toStrictEqual([]);
     }
   });
 
