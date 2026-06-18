@@ -1334,7 +1334,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
   ];
 
 const PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS = new Set([
-  "botane-organic-deck",
   "playful-launch-presentation",
   "crayon-learning-deck",
   "data-report-presentation",
