@@ -32,9 +32,10 @@ class ThreadUnderTest:
 
     def join_and_raise(self, timeout: float | None = None) -> None:
         self.join(timeout=timeout)
-        self.raise_if_failed()
         if self.is_alive():
+            self.raise_if_failed()
             raise AssertionError("thread did not finish before timeout")
+        self.raise_if_failed()
 
     def raise_if_failed(self) -> None:
         failure = self._failure
