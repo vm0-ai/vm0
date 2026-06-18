@@ -14,7 +14,8 @@ use crate::{
 };
 
 use super::{
-    file_operation_error_is_terminal, read_regular_file_command, validate_guest_file_path,
+    MISSING_FILE_EXIT_CODE, file_operation_error_is_terminal, normalize_file_exec_stderr,
+    read_regular_file_command, validate_guest_file_path,
 };
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
@@ -340,10 +341,8 @@ fn validate_copy_exec_result(
             "copy_file exec operation unexpectedly captured stdout",
         ));
     }
-    let (mut stderr, stderr_truncated) = copy_exec_stderr(&result)?;
-    if stderr_truncated {
-        exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
-    }
+    let (stderr, stderr_truncated) = copy_exec_stderr(&result)?;
+    let stderr = normalize_file_exec_stderr(stderr, stderr_truncated);
     match result.termination {
         ExecTermination::Exited { exit_code: 0 } if stderr.is_empty() => {
             Ok(CopyFileExecStatus::Present)
@@ -516,7 +515,6 @@ impl VsockHost {
             missing_ok,
             write_observer,
         } = request;
-        const MISSING_FILE_EXIT_CODE: i32 = 66;
         let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
         let expected_exit_codes: &[i32] = if missing_ok {
             &[MISSING_FILE_EXIT_CODE]
