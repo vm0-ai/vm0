@@ -224,6 +224,40 @@ async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_rejects_invalid_guest_path_before_cleanup_or_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/has\0nul",
+            &content,
+            false,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_eq!(operation_count(&host), 0);
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn write_file_chunked_rejects_temp_path_overflow_before_cleanup_or_write() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

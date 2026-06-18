@@ -13,7 +13,7 @@ use crate::{
     request_on_shared_with_composite_operation_and_observer,
 };
 
-use super::{normalize_file_exec_stderr, shell_quote};
+use super::{normalize_file_exec_stderr, shell_quote, validate_guest_file_path};
 
 /// Maximum content per write_file message. Leaves headroom below
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
@@ -364,6 +364,7 @@ impl VsockHost {
         sudo: bool,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        validate_guest_file_path(path)?;
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
             return self
                 .write_file_chunk(
