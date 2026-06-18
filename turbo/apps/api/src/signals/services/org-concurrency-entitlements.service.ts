@@ -1,13 +1,36 @@
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { and, gt, lte, sql } from "drizzle-orm";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
 import type { Db } from "../external/db";
 
 export const CONCURRENCY_SUBSCRIPTION_PURPOSE = "concurrency_subscription";
+const CONCURRENCY_SUBSCRIPTION_ACTIVE_STATUSES = [
+  "active",
+  "trialing",
+] as const;
+export const CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES = [
+  "past_due",
+  "unpaid",
+] as const;
+const CONCURRENCY_PAYMENT_FAILURE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 type ReadDb = Pick<Db, "select">;
+
+export interface ActiveConcurrencySubscription {
+  readonly id: string;
+  readonly quantity: number;
+  readonly currentPeriodEnd: Date | null;
+  readonly cancelAtPeriodEnd: boolean;
+}
+
+function dbTimestamp(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  return value instanceof Date ? value : new Date(value);
+}
 
 export function activeConcurrencyPriceId(): string | undefined {
   return env("ZERO_PRICE_CONCURRENCY")?.[0];
@@ -28,6 +51,26 @@ export function cappedBaseConcurrencyLimit(tierLimit: number): number {
   return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
 }
 
+export function baseConcurrencyLimitForTier(
+  tier: string | null | undefined,
+): number {
+  switch (tier) {
+    case "free": {
+      return cappedBaseConcurrencyLimit(1);
+    }
+    case "pro": {
+      return cappedBaseConcurrencyLimit(2);
+    }
+    case "team": {
+      return cappedBaseConcurrencyLimit(10);
+    }
+    case "pro-suspend":
+    default: {
+      return 0;
+    }
+  }
+}
+
 export function totalConcurrencyLimit(args: {
   readonly baseLimit: number;
   readonly paidSlots: number;
@@ -38,6 +81,10 @@ export function totalConcurrencyLimit(args: {
   return args.baseLimit + args.paidSlots;
 }
 
+function activePaidThroughCutoff(at: Date): Date {
+  return new Date(at.getTime() - CONCURRENCY_PAYMENT_FAILURE_GRACE_MS);
+}
+
 export async function activePaidConcurrencySlots(
   db: ReadDb,
   orgId: string,
@@ -45,16 +92,63 @@ export async function activePaidConcurrencySlots(
 ): Promise<number> {
   const [row] = await db
     .select({
-      slots: sql<number>`COALESCE(SUM(${orgConcurrencyEntitlements.slots}), 0)::int`,
+      slots: sql<number>`COALESCE(SUM(${orgConcurrencySubscriptions.slots}), 0)::int`,
     })
-    .from(orgConcurrencyEntitlements)
+    .from(orgConcurrencySubscriptions)
     .where(
       and(
-        lte(orgConcurrencyEntitlements.startsAt, at),
-        gt(orgConcurrencyEntitlements.expiresAt, at),
-        sql`${orgConcurrencyEntitlements.orgId} = ${orgId}`,
+        eq(orgConcurrencySubscriptions.orgId, orgId),
+        inArray(orgConcurrencySubscriptions.subscriptionStatus, [
+          ...CONCURRENCY_SUBSCRIPTION_ACTIVE_STATUSES,
+          ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
+        ]),
+        gt(
+          orgConcurrencySubscriptions.currentPeriodEnd,
+          activePaidThroughCutoff(at),
+        ),
       ),
     );
 
   return Number(row?.slots ?? 0);
+}
+
+export async function activeConcurrencySubscriptions(
+  db: ReadDb,
+  orgId: string,
+  at: Date = nowDate(),
+): Promise<readonly ActiveConcurrencySubscription[]> {
+  const rows = await db
+    .select({
+      id: orgConcurrencySubscriptions.stripeSubscriptionId,
+      quantity: orgConcurrencySubscriptions.slots,
+      currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
+      cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+    })
+    .from(orgConcurrencySubscriptions)
+    .where(
+      and(
+        eq(orgConcurrencySubscriptions.orgId, orgId),
+        inArray(orgConcurrencySubscriptions.subscriptionStatus, [
+          ...CONCURRENCY_SUBSCRIPTION_ACTIVE_STATUSES,
+          ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
+        ]),
+        gt(
+          orgConcurrencySubscriptions.currentPeriodEnd,
+          activePaidThroughCutoff(at),
+        ),
+      ),
+    );
+
+  return rows
+    .map((row) => {
+      return {
+        id: row.id,
+        quantity: Number(row.quantity),
+        currentPeriodEnd: dbTimestamp(row.currentPeriodEnd),
+        cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+      };
+    })
+    .filter((row) => {
+      return row.quantity > 0;
+    });
 }

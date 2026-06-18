@@ -2,11 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
+import { nowDate } from "../../../external/time";
 
 type WriteDb = ReturnType<typeof writeDb$.write>;
 type OrgMetadataInsert = typeof orgMetadata.$inferInsert;
@@ -37,11 +40,24 @@ interface ExpiresRecordSeed {
   readonly stripeInvoiceId?: string;
 }
 
+interface ConcurrencyEntitlementSeed {
+  readonly slots: number;
+  readonly startsAt: Date;
+  readonly expiresAt: Date;
+  readonly subscriptionStatus?: string;
+  readonly cancelAtPeriodEnd?: boolean;
+  readonly stripeSubscriptionId?: string;
+  readonly stripeInvoiceId?: string;
+  readonly stripeInvoiceLineId?: string;
+  readonly stripePriceId?: string;
+}
+
 interface BillingStatusSeedValues {
   readonly credits?: number;
   readonly onboardingPaymentPending?: boolean;
   readonly subscription?: SubscriptionSeed;
   readonly expiresRecords?: readonly ExpiresRecordSeed[];
+  readonly concurrencyEntitlements?: readonly ConcurrencyEntitlementSeed[];
   readonly extraGrantedCredits?: number;
 }
 
@@ -112,6 +128,74 @@ async function insertExpiresRecords(
   return expiresRecordIds;
 }
 
+async function insertConcurrencyEntitlements(
+  db: WriteDb,
+  orgId: string,
+  entitlements: readonly ConcurrencyEntitlementSeed[] | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  const subscriptions = new Map<
+    string,
+    {
+      readonly stripePriceId: string;
+      readonly subscriptionStatus: string;
+      readonly cancelAtPeriodEnd: boolean;
+      slots: number;
+      currentPeriodEnd: Date;
+    }
+  >();
+  const currentTime = nowDate();
+  for (const entitlement of entitlements ?? []) {
+    const stripeSubscriptionId =
+      entitlement.stripeSubscriptionId ?? `sub_${randomUUID()}`;
+    const stripePriceId = entitlement.stripePriceId ?? `price_${randomUUID()}`;
+    await db.insert(orgConcurrencyEntitlements).values({
+      orgId,
+      slots: entitlement.slots,
+      startsAt: entitlement.startsAt,
+      expiresAt: entitlement.expiresAt,
+      stripeSubscriptionId,
+      stripeInvoiceId: entitlement.stripeInvoiceId ?? `inv_${randomUUID()}`,
+      stripeInvoiceLineId:
+        entitlement.stripeInvoiceLineId ?? `il_${randomUUID()}`,
+      stripePriceId,
+    });
+    if (
+      entitlement.startsAt <= currentTime &&
+      entitlement.expiresAt > currentTime
+    ) {
+      const existing = subscriptions.get(stripeSubscriptionId);
+      if (existing) {
+        existing.slots += entitlement.slots;
+        if (entitlement.expiresAt > existing.currentPeriodEnd) {
+          existing.currentPeriodEnd = entitlement.expiresAt;
+        }
+      } else {
+        subscriptions.set(stripeSubscriptionId, {
+          stripePriceId,
+          subscriptionStatus: entitlement.subscriptionStatus ?? "active",
+          cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd ?? false,
+          slots: entitlement.slots,
+          currentPeriodEnd: entitlement.expiresAt,
+        });
+      }
+    }
+    signal.throwIfAborted();
+  }
+  for (const [stripeSubscriptionId, subscription] of subscriptions) {
+    await db.insert(orgConcurrencySubscriptions).values({
+      orgId,
+      stripeSubscriptionId,
+      stripePriceId: subscription.stripePriceId,
+      slots: subscription.slots,
+      subscriptionStatus: subscription.subscriptionStatus,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    });
+    signal.throwIfAborted();
+  }
+}
+
 export const seedBillingStatusOrg$ = command(
   async (
     { set },
@@ -134,6 +218,12 @@ export const seedBillingStatusOrg$ = command(
       values.expiresRecords,
       signal,
     );
+    await insertConcurrencyEntitlements(
+      writeDb,
+      orgId,
+      values.concurrencyEntitlements,
+      signal,
+    );
 
     return { orgId, userId, expiresRecordIds };
   },
@@ -149,6 +239,14 @@ export const deleteBillingStatusOrg$ = command(
     await writeDb
       .delete(creditExpiresRecord)
       .where(eq(creditExpiresRecord.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgConcurrencyEntitlements)
+      .where(eq(orgConcurrencyEntitlements.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgConcurrencySubscriptions)
+      .where(eq(orgConcurrencySubscriptions.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb
       .delete(orgMembersCache)

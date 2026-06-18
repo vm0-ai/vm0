@@ -16,6 +16,8 @@ import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -690,6 +692,12 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
+  await db
+    .delete(orgConcurrencyEntitlements)
+    .where(eq(orgConcurrencyEntitlements.orgId, orgId));
+  await db
+    .delete(orgConcurrencySubscriptions)
+    .where(eq(orgConcurrencySubscriptions.orgId, orgId));
   await db.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
   await db
     .delete(orgMembersMetadata)

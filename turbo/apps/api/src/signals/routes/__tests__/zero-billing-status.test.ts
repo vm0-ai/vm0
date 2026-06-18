@@ -202,6 +202,106 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.hasSubscription).toBeTruthy();
   });
 
+  it("includes active concurrency subscription slots", async () => {
+    const currentPeriodEnd = new Date("2099-04-20T00:00:00Z");
+    const concurrencySubscriptionId = `sub_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        {
+          credits: 120_000,
+          subscription: {
+            tier: "team",
+            status: "active",
+            currentPeriodEnd,
+            stripeCustomerId: `cus_${randomUUID()}`,
+            stripeSubscriptionId: `sub_${randomUUID()}`,
+          },
+          concurrencyEntitlements: [
+            {
+              stripeSubscriptionId: concurrencySubscriptionId,
+              slots: 2,
+              startsAt: new Date("2026-01-01T00:00:00Z"),
+              expiresAt: new Date("2099-05-20T00:00:00Z"),
+              cancelAtPeriodEnd: true,
+            },
+            {
+              stripeSubscriptionId: concurrencySubscriptionId,
+              slots: 1,
+              startsAt: new Date("2026-01-01T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
+            },
+            {
+              stripeSubscriptionId: concurrencySubscriptionId,
+              slots: 5,
+              startsAt: new Date("2025-01-01T00:00:00Z"),
+              expiresAt: new Date("2026-01-01T00:00:00Z"),
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.concurrencyLimit).toBe(13);
+    expect(response.body.concurrencySubscriptions).toStrictEqual([
+      {
+        id: concurrencySubscriptionId,
+        quantity: 3,
+        currentPeriodEnd: "2099-06-20T00:00:00.000Z",
+        cancelAtPeriodEnd: true,
+      },
+    ]);
+  });
+
+  it("excludes canceled concurrency subscriptions from status", async () => {
+    const currentPeriodEnd = new Date("2099-04-20T00:00:00Z");
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        {
+          credits: 120_000,
+          subscription: {
+            tier: "team",
+            status: "active",
+            currentPeriodEnd,
+            stripeCustomerId: `cus_${randomUUID()}`,
+            stripeSubscriptionId: `sub_${randomUUID()}`,
+          },
+          concurrencyEntitlements: [
+            {
+              stripeSubscriptionId: `sub_${randomUUID()}`,
+              slots: 2,
+              startsAt: new Date("2026-01-01T00:00:00Z"),
+              expiresAt: new Date("2099-05-20T00:00:00Z"),
+              subscriptionStatus: "canceled",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.concurrencyLimit).toBe(10);
+    expect(response.body.concurrencySubscriptions).toStrictEqual([]);
+  });
+
   it("returns onboarding payment pending state", async () => {
     const fixture = await track(
       store.set(

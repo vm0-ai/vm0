@@ -2,6 +2,7 @@ import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
@@ -34,6 +35,8 @@ function defaultBillingStatus(): BillingStatusResponse {
     },
     creditBreakdown: [],
     creditGrants: [],
+    concurrencyLimit: 0,
+    concurrencySubscriptions: [],
   };
 }
 
@@ -76,6 +79,50 @@ export const apiBillingHandlers = [
     ({ body, respond }) => {
       return respond(200, {
         url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.cancel,
+    ({ params, respond }) => {
+      mockBillingStatus.concurrencySubscriptions =
+        mockBillingStatus.concurrencySubscriptions.map((subscription) => {
+          if (subscription.id !== params.subscriptionId) {
+            return subscription;
+          }
+          return {
+            ...subscription,
+            cancelAtPeriodEnd: true,
+          };
+        });
+      const subscription = mockBillingStatus.concurrencySubscriptions.find(
+        (candidate) => {
+          return candidate.id === params.subscriptionId;
+        },
+      );
+      return respond(200, {
+        success: true,
+        currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.restore,
+    ({ params, respond }) => {
+      mockBillingStatus.concurrencySubscriptions =
+        mockBillingStatus.concurrencySubscriptions.map((subscription) => {
+          if (subscription.id !== params.subscriptionId) {
+            return subscription;
+          }
+          return {
+            ...subscription,
+            cancelAtPeriodEnd: false,
+          };
+        });
+      return respond(200, {
+        success: true,
       });
     },
   ),

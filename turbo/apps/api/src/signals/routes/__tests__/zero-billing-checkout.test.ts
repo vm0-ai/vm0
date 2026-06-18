@@ -3,10 +3,13 @@ import { randomUUID } from "node:crypto";
 import {
   zeroBillingCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
+import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
@@ -82,6 +85,12 @@ async function seedOrgRow(values?: {
 
 async function deleteOrgRow(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(orgConcurrencySubscriptions)
+    .where(eq(orgConcurrencySubscriptions.orgId, orgId));
+  await writeDb
+    .delete(orgConcurrencyEntitlements)
+    .where(eq(orgConcurrencyEntitlements.orgId, orgId));
   await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
@@ -1201,6 +1210,165 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         code: "BAD_REQUEST",
       },
     });
+  });
+
+  it("cancels an active concurrency subscription at period end", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscriptionId = `sub_${randomUUID()}`;
+    const periodEnd = new Date("2099-05-20T00:00:00Z");
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgConcurrencyEntitlements).values({
+      orgId: fixture.orgId,
+      stripeSubscriptionId: subscriptionId,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      stripeInvoiceLineId: `il_${randomUUID()}`,
+      stripePriceId: TEST_PRICE_CONCURRENCY,
+      slots: 2,
+      startsAt: new Date("2026-01-01T00:00:00Z"),
+      expiresAt: periodEnd,
+    });
+    await writeDb.insert(orgConcurrencySubscriptions).values({
+      orgId: fixture.orgId,
+      stripeSubscriptionId: subscriptionId,
+      stripePriceId: TEST_PRICE_CONCURRENCY,
+      slots: 2,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
+      id: subscriptionId,
+    });
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencySubscriptionContract,
+    );
+
+    const response = await accept(
+      client.cancel({
+        params: { subscriptionId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      currentPeriodEnd: periodEnd.toISOString(),
+    });
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subscriptionId,
+      { cancel_at_period_end: true },
+    );
+    const [storedSubscription] = await writeDb
+      .select({
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(storedSubscription?.cancelAtPeriodEnd).toBeTruthy();
+  });
+
+  it("restores an active concurrency subscription renewal", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscriptionId = `sub_${randomUUID()}`;
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgConcurrencyEntitlements).values({
+      orgId: fixture.orgId,
+      stripeSubscriptionId: subscriptionId,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      stripeInvoiceLineId: `il_${randomUUID()}`,
+      stripePriceId: TEST_PRICE_CONCURRENCY,
+      slots: 2,
+      startsAt: new Date("2026-01-01T00:00:00Z"),
+      expiresAt: new Date("2099-05-20T00:00:00Z"),
+    });
+    await writeDb.insert(orgConcurrencySubscriptions).values({
+      orgId: fixture.orgId,
+      stripeSubscriptionId: subscriptionId,
+      stripePriceId: TEST_PRICE_CONCURRENCY,
+      slots: 2,
+      subscriptionStatus: "active",
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
+      cancelAtPeriodEnd: true,
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
+      id: subscriptionId,
+    });
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencySubscriptionContract,
+    );
+
+    const response = await accept(
+      client.restore({
+        params: { subscriptionId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true });
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subscriptionId,
+      { cancel_at_period_end: false },
+    );
+    const [storedSubscription] = await writeDb
+      .select({
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(storedSubscription?.cancelAtPeriodEnd).toBeFalsy();
+  });
+
+  it("returns 404 when restoring a concurrency subscription outside the org", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencySubscriptionContract,
+    );
+
+    const response = await accept(
+      client.restore({
+        params: { subscriptionId: `sub_${randomUUID()}` },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when cancelling a concurrency subscription outside the org", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencySubscriptionContract,
+    );
+
+    const response = await accept(
+      client.cancel({
+        params: { subscriptionId: `sub_${randomUUID()}` },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 });
 

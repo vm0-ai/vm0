@@ -2,6 +2,7 @@ import type { Stripe } from "stripe";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
@@ -94,6 +95,8 @@ interface InvoiceInput {
   } | null;
 }
 
+type InvoiceLineInput = InvoiceInput["lines"]["data"][number];
+
 interface SubscriptionInput {
   readonly id: string;
   readonly customer?: string | { readonly id: string } | null;
@@ -106,6 +109,7 @@ interface SubscriptionInput {
   readonly items: {
     readonly data: readonly {
       readonly price: { readonly id: string };
+      readonly quantity?: number | null;
       readonly current_period_end?: number | null;
     }[];
   };
@@ -166,6 +170,35 @@ function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   return typeof periodEndUnix === "number"
     ? new Date(periodEndUnix * 1000)
     : null;
+}
+
+function concurrencySubscriptionItem(subscription: SubscriptionInput):
+  | {
+      readonly price: { readonly id: string };
+      readonly quantity?: number | null;
+      readonly current_period_end?: number | null;
+    }
+  | undefined {
+  return subscription.items.data.find((item) => {
+    return isConcurrencyPriceId(item.price.id);
+  });
+}
+
+function concurrencySubscriptionPeriodEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  const periodEndUnix =
+    concurrencySubscriptionItem(subscription)?.current_period_end;
+  return typeof periodEndUnix === "number"
+    ? new Date(periodEndUnix * 1000)
+    : null;
+}
+
+function concurrencySubscriptionSlots(
+  subscription: SubscriptionInput,
+): number | null {
+  const quantity = concurrencySubscriptionItem(subscription)?.quantity;
+  return typeof quantity === "number" && quantity > 0 ? quantity : null;
 }
 
 function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
@@ -1258,6 +1291,121 @@ async function invoicePaidOrgForCustomerOrMetadata(
   return bound ? await invoicePaidOrgForCustomer(db, args.customerId) : null;
 }
 
+interface ConcurrencyInvoiceEntitlementValue {
+  readonly orgId: string;
+  readonly stripeSubscriptionId: string;
+  readonly stripeInvoiceId: string;
+  readonly stripeInvoiceLineId: string;
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly startsAt: Date;
+  readonly expiresAt: Date;
+}
+
+function concurrencyInvoiceEntitlementValue(args: {
+  readonly invoice: InvoiceInput;
+  readonly line: InvoiceLineInput;
+  readonly index: number;
+  readonly orgId: string;
+  readonly subscriptionId: string;
+}): ConcurrencyInvoiceEntitlementValue | null {
+  const priceId = invoiceLinePriceId(args.line);
+  const startsAtUnix = args.line.period.start;
+  const expiresAtUnix = args.line.period.end;
+  const slots = invoiceLineQuantity(args.line);
+  if (
+    !priceId ||
+    typeof startsAtUnix !== "number" ||
+    typeof expiresAtUnix !== "number" ||
+    !slots
+  ) {
+    L.warn("concurrency invoice line missing price or period", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+      lineId: args.line.id ?? null,
+      hasPriceId: Boolean(priceId),
+      hasPeriodStart: typeof startsAtUnix === "number",
+      hasPeriodEnd: typeof expiresAtUnix === "number",
+      hasPositiveQuantity: slots !== null,
+    });
+    return null;
+  }
+
+  return {
+    orgId: args.orgId,
+    stripeSubscriptionId: args.subscriptionId,
+    stripeInvoiceId: args.invoice.id,
+    stripeInvoiceLineId: invoiceLineId(args.invoice, args.line, args.index),
+    stripePriceId: priceId,
+    slots,
+    startsAt: new Date(startsAtUnix * 1000),
+    expiresAt: new Date(expiresAtUnix * 1000),
+  };
+}
+
+function concurrencyInvoiceSubscriptionState(
+  values: readonly ConcurrencyInvoiceEntitlementValue[],
+): {
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly currentPeriodEnd: Date;
+} | null {
+  const firstValue = values[0];
+  if (!firstValue) {
+    return null;
+  }
+
+  return {
+    stripePriceId: firstValue.stripePriceId,
+    slots: values.reduce((sum, value) => {
+      return sum + value.slots;
+    }, 0),
+    currentPeriodEnd: values.reduce((latest, value) => {
+      return value.expiresAt > latest ? value.expiresAt : latest;
+    }, firstValue.expiresAt),
+  };
+}
+
+async function upsertConcurrencySubscriptionFromInvoice(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly subscriptionId: string;
+    readonly values: readonly ConcurrencyInvoiceEntitlementValue[];
+  },
+): Promise<void> {
+  const state = concurrencyInvoiceSubscriptionState(args.values);
+  if (!state) {
+    return;
+  }
+
+  const updatedAt = nowDate();
+  await tx
+    .insert(orgConcurrencySubscriptions)
+    .values({
+      orgId: args.orgId,
+      stripeSubscriptionId: args.subscriptionId,
+      stripePriceId: state.stripePriceId,
+      slots: state.slots,
+      subscriptionStatus: "active",
+      currentPeriodEnd: state.currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: orgConcurrencySubscriptions.stripeSubscriptionId,
+      set: {
+        orgId: args.orgId,
+        stripePriceId: state.stripePriceId,
+        slots: state.slots,
+        subscriptionStatus: "active",
+        currentPeriodEnd: state.currentPeriodEnd,
+        cancelAtPeriodEnd: false,
+        updatedAt,
+      },
+    });
+}
+
 async function handleConcurrencyInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
@@ -1299,33 +1447,14 @@ async function handleConcurrencyInvoicePaid(
   }
 
   const values = lines.flatMap(({ line, index }) => {
-    const priceId = invoiceLinePriceId(line);
-    const startsAtUnix = line.period.start;
-    const expiresAtUnix = line.period.end;
-    if (!priceId || !startsAtUnix || !expiresAtUnix) {
-      L.warn("concurrency invoice line missing price or period", {
-        invoiceId: invoice.id,
-        orgId: org.orgId,
-        lineId: line.id ?? null,
-        hasPriceId: Boolean(priceId),
-        hasPeriodStart: Boolean(startsAtUnix),
-        hasPeriodEnd: Boolean(expiresAtUnix),
-      });
-      return [];
-    }
-
-    return [
-      {
-        orgId: org.orgId,
-        stripeSubscriptionId: subscriptionId,
-        stripeInvoiceId: invoice.id,
-        stripeInvoiceLineId: invoiceLineId(invoice, line, index),
-        stripePriceId: priceId,
-        slots: invoiceLineQuantity(line),
-        startsAt: new Date(startsAtUnix * 1000),
-        expiresAt: new Date(expiresAtUnix * 1000),
-      },
-    ];
+    const value = concurrencyInvoiceEntitlementValue({
+      invoice,
+      line,
+      index,
+      orgId: org.orgId,
+      subscriptionId,
+    });
+    return value ? [value] : [];
   });
 
   if (values.length === 0) {
@@ -1338,11 +1467,17 @@ async function handleConcurrencyInvoicePaid(
   }
 
   const inserted = await db.transaction(async (tx) => {
-    return await tx
+    const insertedRows = await tx
       .insert(orgConcurrencyEntitlements)
       .values(values)
       .onConflictDoNothing()
       .returning({ slots: orgConcurrencyEntitlements.slots });
+    await upsertConcurrencySubscriptionFromInvoice(tx, {
+      orgId: org.orgId,
+      subscriptionId,
+      values,
+    });
+    return insertedRows;
   });
 
   const slots = inserted.reduce((sum, row) => {
@@ -1489,6 +1624,21 @@ function isReplaceableProSubscription(args: {
   );
 }
 
+function isStripeResourceMissingError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly raw?: { readonly code?: unknown };
+  };
+  return (
+    candidate.code === "resource_missing" ||
+    candidate.raw?.code === "resource_missing"
+  );
+}
+
 async function replacedProSubscriptionIdsForCustomer(args: {
   readonly orgId: string;
   readonly customerId: string;
@@ -1527,10 +1677,24 @@ async function cancelReplacedProSubscriptions(args: {
 }): Promise<void> {
   const stripe = getStripeClient();
   for (const oldSubscriptionId of new Set(args.oldSubscriptionIds)) {
-    await stripe.subscriptions.cancel(oldSubscriptionId, {
-      invoice_now: false,
-      prorate: false,
-    });
+    const cancelResult = await settle(
+      stripe.subscriptions.cancel(oldSubscriptionId, {
+        invoice_now: false,
+        prorate: false,
+      }),
+    );
+    if (!cancelResult.ok) {
+      if (!isStripeResourceMissingError(cancelResult.error)) {
+        throw cancelResult.error;
+      }
+      L.warn("replaced Pro subscription already absent during Team upgrade", {
+        orgId: args.orgId,
+        invoiceId: args.invoiceId,
+        oldSubscriptionId,
+        newSubscriptionId: args.newSubscriptionId,
+      });
+      continue;
+    }
     L.debug("canceled replaced Pro subscription after Team invoice paid", {
       orgId: args.orgId,
       invoiceId: args.invoiceId,
@@ -1582,8 +1746,6 @@ function customerIdFromInvoice(invoice: InvoiceInput): string | null {
     : (invoice.customer?.id ?? null);
 }
 
-type InvoiceLineInput = InvoiceInput["lines"]["data"][number];
-
 function invoiceLinePriceId(line: InvoiceLineInput): string | null {
   const pricingPrice = line.pricing?.price_details?.price;
   if (typeof pricingPrice === "string") {
@@ -1592,10 +1754,11 @@ function invoiceLinePriceId(line: InvoiceLineInput): string | null {
   return line.price?.id ?? pricingPrice?.id ?? null;
 }
 
-function invoiceLineQuantity(line: InvoiceLineInput): number {
-  return typeof line.quantity === "number" && line.quantity > 0
-    ? line.quantity
-    : 1;
+function invoiceLineQuantity(line: InvoiceLineInput): number | null {
+  if (line.quantity === undefined || line.quantity === null) {
+    return 1;
+  }
+  return line.quantity > 0 ? line.quantity : null;
 }
 
 function invoiceLineId(
@@ -2032,11 +2195,51 @@ async function handleInvoicePaid(
   return processed ? org.orgId : null;
 }
 
+async function handleConcurrencySubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const item = concurrencySubscriptionItem(subscription);
+  const currentPeriodEnd = concurrencySubscriptionPeriodEnd(subscription);
+  const slots = concurrencySubscriptionSlots(subscription);
+  const updates = {
+    subscriptionStatus: subscription.status,
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    updatedAt: nowDate(),
+    ...(item ? { stripePriceId: item.price.id } : {}),
+    ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
+    ...(slots ? { slots } : {}),
+  };
+
+  const rows = await db
+    .update(orgConcurrencySubscriptions)
+    .set(updates)
+    .where(
+      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+    )
+    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
 async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<readonly string[]> {
+  const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
+    db,
+    subscription,
+  );
+  if (concurrencyOrgIds.length > 0) {
+    return concurrencyOrgIds;
+  }
+  if (concurrencySubscriptionItem(subscription)) {
+    return [];
+  }
+
   const stripe = getStripeClient();
   const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
   const willCancel = subscriptionWillCancel(subscription) || periodEnd !== null;
@@ -2170,6 +2373,24 @@ async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
+  const concurrencyRows = await db
+    .update(orgConcurrencySubscriptions)
+    .set({
+      subscriptionStatus: "canceled",
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: nowDate(),
+      updatedAt: nowDate(),
+    })
+    .where(
+      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+    )
+    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+  if (concurrencyRows.length > 0) {
+    return concurrencyRows.map((row) => {
+      return row.orgId;
+    });
+  }
+
   const rows = await db
     .update(orgMetadata)
     .set({

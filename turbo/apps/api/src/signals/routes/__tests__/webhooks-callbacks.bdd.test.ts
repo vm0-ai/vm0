@@ -3,6 +3,7 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -2190,6 +2191,73 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(settled.body.concurrency.active).toBe(0);
   });
 
+  it("keeps a team upgrade when the replaced pro subscription is already absent", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+
+    const suffix = randomUUID().slice(0, 8);
+    const teamSubscriptionId = `sub_bdd_team_missing_${suffix}`;
+    const teamInvoiceId = `in_bdd_team_missing_${suffix}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: teamSubscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [{ price: { id: "price_bdd_team" } }] },
+    });
+    context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [],
+    });
+    context.mocks.stripe.subscriptions.cancel.mockRejectedValueOnce({
+      code: "resource_missing",
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: teamInvoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: teamSubscriptionId,
+            },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { invoice_now: false, prorate: false },
+    );
+    const upgraded = await billing.readBillingStatus(actor);
+    expect(upgraded.tier).toBe("team");
+    expect(upgraded.credits).toBe(140_000);
+    expect(upgraded.subscriptionStatus).toBe("active");
+    expect(upgraded.hasSubscription).toBeTruthy();
+    expect(upgraded.scheduledChange).toBeNull();
+
+    const db = store.set(writeDb$);
+    const [org] = await db
+      .select({ stripeSubscriptionId: orgMetadata.stripeSubscriptionId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+    expect(org?.stripeSubscriptionId).toBe(teamSubscriptionId);
+  });
+
   it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
@@ -2283,6 +2351,23 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         expiresAt: new Date(periodEnd * 1000),
       },
     ]);
+    const [subscription] = await db
+      .select({
+        stripeSubscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+        slots: orgConcurrencySubscriptions.slots,
+        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
+        currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(subscription).toStrictEqual({
+      stripeSubscriptionId: subscriptionId,
+      slots: 2,
+      subscriptionStatus: "active",
+      currentPeriodEnd: new Date(periodEnd * 1000),
+    });
 
     const after = await runs.readRunQueue(actor);
     expect(after.body.concurrency.limit).toBe(4);
@@ -2308,6 +2393,117 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       .from(orgConcurrencyEntitlements)
       .where(eq(orgConcurrencyEntitlements.orgId, orgId));
     expect(afterReplay).toHaveLength(1);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "past_due",
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_concurrency" },
+                quantity: 2,
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const [pastDueSubscription] = await db
+      .select({
+        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
+        slots: orgConcurrencySubscriptions.slots,
+        currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(pastDueSubscription).toStrictEqual({
+      subscriptionStatus: "past_due",
+      slots: 2,
+      currentPeriodEnd: new Date(periodEnd * 1000),
+    });
+    const afterPastDue = await runs.readRunQueue(actor);
+    expect(afterPastDue.body.concurrency.limit).toBe(4);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "active",
+          cancel_at_period_end: true,
+          items: { data: [] },
+        },
+      }),
+      [200],
+    );
+    const [cancelScheduledSubscription] = await db
+      .select({
+        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(cancelScheduledSubscription).toStrictEqual({
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: true,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [] },
+        },
+      }),
+      [200],
+    );
+    const [restoredSubscription] = await db
+      .select({
+        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(restoredSubscription).toStrictEqual({
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: false,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: {
+          id: subscriptionId,
+        },
+      }),
+      [200],
+    );
+    const [canceledSubscription] = await db
+      .select({
+        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      );
+    expect(canceledSubscription?.subscriptionStatus).toBe("canceled");
+    const afterDeleted = await runs.readRunQueue(actor);
+    expect(afterDeleted.body.concurrency.limit).toBe(2);
   });
 
   it("binds checkout and dashboard subscriptions to orgs without double-binding", async () => {

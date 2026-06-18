@@ -53,6 +53,7 @@ import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-prefe
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
 import * as orgConcurrencyEntitlementSchema from "./schema/org-concurrency-entitlement";
+import * as orgConcurrencySubscriptionSchema from "./schema/org-concurrency-subscription";
 import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersSchema from "./schema/org-members-metadata";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
@@ -139,6 +140,7 @@ export const schema = {
   ...agentphoneVerificationSendCooldownSchema,
   ...orgSchema,
   ...orgConcurrencyEntitlementSchema,
+  ...orgConcurrencySubscriptionSchema,
   ...orgCacheSchema,
   ...orgMembersSchema,
   ...orgMembersCacheSchema,
