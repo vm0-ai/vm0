@@ -263,11 +263,19 @@ interface ResolvedCompose {
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
-  readonly sessionId?: string;
+  readonly agentSessionId?: string;
   readonly resumedFromCheckpointId?: string;
-  readonly continuedFromSessionId?: string;
+  readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
+
+// Session naming in this service:
+// - agentSessionId is the vm0 application session (`agent_sessions.id`) used
+//   for product-level continuation and future correctness checks.
+// - cliAgentSessionId is the Claude/Codex CLI agent session stored on
+//   `conversations.cli_agent_session_id`; runner sandbox reuse is keyed by it.
+// Existing API/runner wire fields named `sessionId` are preserved for
+// compatibility and normalized to these semantic names at the boundary.
 
 interface RunRecord {
   readonly id: string;
@@ -731,7 +739,7 @@ function artifactsForRun(args: {
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation =
-    Boolean(args.resolved.sessionId) ||
+    Boolean(args.resolved.agentSessionId) ||
     Boolean(args.resolved.resumedFromCheckpointId);
   const composeContextArtifacts = isContinuation
     ? []
@@ -2608,7 +2616,7 @@ async function resolveByComposeId(
 
 function resolveBySessionId(
   db: Db,
-  sessionId: string,
+  agentSessionId: string,
   userId: string,
   orgId: string,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
@@ -2629,7 +2637,7 @@ function resolveBySessionId(
         )
         .where(
           and(
-            eq(agentSessions.id, sessionId),
+            eq(agentSessions.id, agentSessionId),
             eq(agentSessions.userId, userId),
             eq(agentSessions.orgId, orgId),
           ),
@@ -2661,8 +2669,8 @@ function resolveBySessionId(
         ...resolved,
         artifacts: session.artifacts ?? [],
         vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
-        sessionId: session.id,
-        continuedFromSessionId: session.id,
+        agentSessionId: session.id,
+        continuedFromAgentSessionId: session.id,
         resumeSession,
       };
     },
@@ -2761,8 +2769,9 @@ function loadResumeSession(
         return undefined;
       }
 
+      const cliAgentSessionId = conversation.cliAgentSessionId;
       return {
-        sessionId: conversation.cliAgentSessionId,
+        sessionId: cliAgentSessionId,
         sessionHistory,
       };
     },
@@ -2933,8 +2942,8 @@ async function insertRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const sessionId =
-    args.resolved.sessionId ??
+  const agentSessionId =
+    args.resolved.agentSessionId ??
     (
       await tx
         .insert(agentSessions)
@@ -2948,7 +2957,7 @@ async function insertRunRecord(
         .returning({ id: agentSessions.id })
     )[0]?.id;
 
-  if (!sessionId) {
+  if (!agentSessionId) {
     throw new Error("Failed to create agent session");
   }
 
@@ -2967,8 +2976,8 @@ async function insertRunRecord(
         ? [...args.additionalVolumes]
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
-      sessionId,
+      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
+      sessionId: agentSessionId,
       lastHeartbeatAt: nowDate(),
     })
     .returning({
@@ -3027,8 +3036,8 @@ async function insertQueuedRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const sessionId =
-    args.resolved.sessionId ??
+  const agentSessionId =
+    args.resolved.agentSessionId ??
     (
       await tx
         .insert(agentSessions)
@@ -3042,7 +3051,7 @@ async function insertQueuedRunRecord(
         .returning({ id: agentSessions.id })
     )[0]?.id;
 
-  if (!sessionId) {
+  if (!agentSessionId) {
     throw new Error("Failed to create queued agent session");
   }
 
@@ -3061,8 +3070,8 @@ async function insertQueuedRunRecord(
         ? [...args.additionalVolumes]
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
-      sessionId,
+      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
+      sessionId: agentSessionId,
       lastHeartbeatAt: nowDate(),
     })
     .returning({
@@ -3256,13 +3265,14 @@ function ingestRunContextSnapshot(args: {
     storedContext.environment,
     args.builtContext.secretValues,
   );
+  const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
   const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
     userId: args.userId,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
-    sessionId: storedContext.resumeSession?.sessionId ?? null,
+    sessionId: cliAgentSessionId,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: firewallSnapshots(storedContext.firewalls),
@@ -3490,11 +3500,11 @@ function buildRunnerJobPayload(
         builtContext,
       });
       const storedContext = builtContext.context;
-      const sessionId = storedContext.resumeSession?.sessionId ?? null;
+      const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
       return queuedRunnerJobPayload({
         runnerGroup: group,
         profile,
-        sessionId,
+        cliAgentSessionId,
         executionContext: storedContext,
       });
     },
@@ -3567,7 +3577,7 @@ function dispatchRun(
         runId: args.run.id,
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
-        sessionId: payload.sessionId,
+        cliAgentSessionId: payload.cliAgentSessionId,
         executionContext: payload.executionContext,
         expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
       });
@@ -3587,7 +3597,7 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
-        sessionId: payload.sessionId,
+        cliAgentSessionId: payload.cliAgentSessionId,
       });
     }
 

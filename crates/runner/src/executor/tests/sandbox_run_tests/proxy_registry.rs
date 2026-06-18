@@ -208,5 +208,5 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     );
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_some());
-    assert!(outcome.guest_session_id.is_none());
+    assert!(outcome.discovered_cli_agent_session_id.is_none());
 }

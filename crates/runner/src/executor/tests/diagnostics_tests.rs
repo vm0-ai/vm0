@@ -12,7 +12,7 @@ use super::super::diagnostics::{
     append_stdout_stream_diagnostics, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     copy_guest_logs, dmesg_indicates_oom, drain_stdout_to_file, guest_log_copy_failure_kind,
     host_dmesg_indicates_oom, parse_agent_abnormal_exit_resource_diagnostics,
-    read_guest_error_file, read_guest_failure_diagnostic_file, read_guest_session_id,
+    read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
 };
 use super::super::sandbox_run::post_job_cleanup;
 use super::super::{
@@ -297,11 +297,11 @@ async fn read_guest_error_file_returns_none_on_exec_error() {
 }
 
 #[tokio::test]
-async fn read_guest_session_id_returns_trimmed_content_from_runtime_path() {
+async fn read_guest_cli_agent_session_id_returns_trimmed_content_from_runtime_path() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_read_file_result(Ok(Some(b" session-abc \n".to_vec())));
 
-    let session_id = read_guest_session_id(&sandbox, RunId::nil()).await;
+    let session_id = read_guest_cli_agent_session_id(&sandbox, RunId::nil()).await;
 
     assert_eq!(session_id.as_deref(), Some("session-abc"));
     let calls = sandbox.read_file_calls();
@@ -318,36 +318,40 @@ async fn read_guest_session_id_returns_trimmed_content_from_runtime_path() {
 }
 
 #[tokio::test]
-async fn read_guest_session_id_returns_none_on_missing_or_empty_file() {
+async fn read_guest_cli_agent_session_id_returns_none_on_missing_or_empty_file() {
     let missing = MockSandbox::new("test");
     missing.push_read_file_result(Ok(None));
     assert!(
-        read_guest_session_id(&missing, RunId::nil())
+        read_guest_cli_agent_session_id(&missing, RunId::nil())
             .await
             .is_none()
     );
 
     let empty = MockSandbox::new("test");
     empty.push_read_file_result(Ok(Some(b" \n ".to_vec())));
-    assert!(read_guest_session_id(&empty, RunId::nil()).await.is_none());
+    assert!(
+        read_guest_cli_agent_session_id(&empty, RunId::nil())
+            .await
+            .is_none()
+    );
 }
 
 #[tokio::test]
-async fn read_guest_session_id_rejects_invalid_content() {
+async fn read_guest_cli_agent_session_id_rejects_invalid_content() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_read_file_result(Ok(Some(b" ../session \n".to_vec())));
 
-    let session_id = read_guest_session_id(&sandbox, RunId::nil()).await;
+    let session_id = read_guest_cli_agent_session_id(&sandbox, RunId::nil()).await;
 
     assert!(session_id.is_none());
 }
 
 #[tokio::test]
-async fn read_guest_session_id_rejects_overlong_content() {
+async fn read_guest_cli_agent_session_id_rejects_overlong_content() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_read_file_result(Ok(Some("a".repeat(129).into_bytes())));
 
-    let session_id = read_guest_session_id(&sandbox, RunId::nil()).await;
+    let session_id = read_guest_cli_agent_session_id(&sandbox, RunId::nil()).await;
 
     assert!(session_id.is_none());
 }

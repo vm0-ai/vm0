@@ -33,8 +33,9 @@ export const runnerJobQueue = pgTable(
       .notNull()
       .default("vm0/default"),
 
-    // Session ID for affinity routing (nullable for first-turn jobs)
-    sessionId: varchar("session_id", { length: 255 }),
+    // Claude/Codex CLI agent session id for affinity routing (nullable for
+    // first-turn jobs before the guest reports a CLI agent session).
+    cliAgentSessionId: varchar("session_id", { length: 255 }),
 
     // Claim status
     claimedAt: timestamp("claimed_at"),
@@ -54,7 +55,7 @@ export const runnerJobQueue = pgTable(
         .where(sql`claimed_at IS NULL`),
       // Index for session affinity routing on unclaimed jobs
       index("runner_job_queue_session_id_unclaimed_idx")
-        .on(table.sessionId)
+        .on(table.cliAgentSessionId)
         .where(sql`claimed_at IS NULL AND session_id IS NOT NULL`),
       // Index for TTL cleanup
       index("runner_job_queue_expires_at_idx").on(table.expiresAt),

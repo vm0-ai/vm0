@@ -436,7 +436,10 @@ pub(super) async fn read_guest_failure_diagnostic_file(
 /// The guest-agent writes the session ID to the guest runtime directory
 /// after the CLI emits its `system/init` event. On first runs (no
 /// `resume_session`), the runner uses this to park the VM for keep-alive.
-pub(super) async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
+pub(super) async fn read_guest_cli_agent_session_id(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+) -> Option<String> {
     let path = match guest_runtime_path(run_id, guest_contracts::runtime_paths::session_id_file) {
         Ok(path) => path,
         Err(e) => {

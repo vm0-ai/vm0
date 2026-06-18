@@ -402,8 +402,8 @@ pub fn append_system_prompt() -> &'static str {
 pub fn vercel_bypass() -> &'static str {
     &VERCEL_BYPASS
 }
-/// Claude/Codex resume session id from `VM0_RESUME_SESSION_ID`; empty string
-/// means a new session.
+/// Claude/Codex CLI agent session id from `VM0_RESUME_SESSION_ID`; empty
+/// string means a new session.
 pub fn resume_session_id() -> &'static str {
     &RESUME_SESSION_ID
 }

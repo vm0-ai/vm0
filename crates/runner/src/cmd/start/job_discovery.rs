@@ -11,7 +11,7 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_sessions::ActiveSessionGuard;
+use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::current_held_session_states;
 use super::idle_lifecycle::{
@@ -108,10 +108,10 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         cancel: job_cancel,
     } = admission;
     let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
-    let active_session_guard = ActiveSessionGuard::new(
-        ctx.spawn_ctx.active_sessions.clone(),
+    let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
+        ctx.spawn_ctx.active_cli_agent_sessions.clone(),
         if resume_session_valid {
-            claimed.context().session_id().map(str::to_owned)
+            claimed.context().cli_agent_session_id().map(str::to_owned)
         } else {
             None
         },
@@ -167,7 +167,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             job_profile,
             reuse_entry,
             reuse_result,
-            active_session_guard,
+            active_cli_agent_session_guard,
         },
         ctx.spawn_ctx,
         ctx.jobs,
@@ -283,16 +283,16 @@ async fn try_reuse_from_pool(
     if !resume_session_valid {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     }
-    let Some(session_id) = context.session_id() else {
+    let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     };
-    let session_fingerprint = diagnostic_session_fingerprint(session_id);
+    let session_fingerprint = diagnostic_session_fingerprint(cli_agent_session_id);
 
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
     let (taken, snapshot, held_session_states) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(session_id);
+        let taken = pool.take(cli_agent_session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
@@ -300,8 +300,8 @@ async fn try_reuse_from_pool(
     let held_session_states = current_held_session_states(
         held_session_states,
         ctx.spawn_ctx.exec_config.workspace_cache.as_ref(),
-        &ctx.spawn_ctx.active_sessions,
-        Some(session_id),
+        &ctx.spawn_ctx.active_cli_agent_sessions,
+        Some(cli_agent_session_id),
     )
     .await;
     ctx.spawn_ctx

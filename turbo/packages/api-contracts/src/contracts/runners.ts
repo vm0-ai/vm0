@@ -79,6 +79,8 @@ export const jobSchema = z.object({
 });
 
 export const heldSessionStateSchema = z.object({
+  // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
+  // session id used to route work toward a runner with a reusable sandbox.
   sessionId: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
 });
@@ -153,7 +155,8 @@ export const storageManifestSchema = z.object({
 });
 
 /**
- * Resume session information
+ * Resume session information. The compatibility wire field is `sessionId`, but
+ * its semantic name in API/runner code is `cliAgentSessionId`.
  */
 export const resumeSessionSchema = z.object({
   sessionId: z.string(),
