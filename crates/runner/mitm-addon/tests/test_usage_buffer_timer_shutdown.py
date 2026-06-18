@@ -324,6 +324,8 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
 
 
 def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+
     def fail_enqueue(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, payload, path, log_type
         raise OSError("shutdown failed")
@@ -331,6 +333,7 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     enqueue = RecordingEnqueue(side_effect=fail_enqueue)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
     proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -345,6 +348,13 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="shutdown-retained",
+    )
     retained_entries = [
         entry
         for entry in flush_log_entries(proxy_log_path)
@@ -364,6 +374,13 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-drained",
+    )
 
 
 def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
@@ -408,8 +425,10 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
 
 
 def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
+    pending_path = tmp_path / "usage-pending"
     enqueue = RecordingEnqueue(return_value=False)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -426,6 +445,13 @@ def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].started is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="timer-retained",
+    )
 
     enqueue.return_value = True
     enqueue.clear()
@@ -434,12 +460,21 @@ def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
     assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="timer-drained",
+    )
 
 
 def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(tmp_path):
+    pending_path = tmp_path / "usage-pending"
     enqueue = RecordingEnqueue(return_value=False)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
         "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
@@ -487,12 +522,26 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     assert len(timers) == 4
     assert timers[2].cancelled is True
     assert timers[3].started is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="priority-deferred",
+    )
 
     enqueue.clear()
     timers[3].callback()
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-2"
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="priority-drained",
+    )
 
 
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
