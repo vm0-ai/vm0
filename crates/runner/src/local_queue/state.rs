@@ -536,6 +536,7 @@ impl LocalQueue {
     fn fail_claimed_job_sync_with_claim(&self, run_id: RunId, claim_file: &Path, error: String) {
         if self.write_result_sync(run_id, 1, Some(&error)) {
             let _ = self.remove_job_files_if_present(run_id);
+            self.cleanup_active_inputs_sync(run_id);
         }
         let _ = std::fs::remove_file(claim_file);
     }
@@ -828,6 +829,30 @@ mod tests {
         queue.cleanup_active_inputs_sync(run_id);
         queue.cleanup_active_inputs_sync(run_id);
 
+        assert!(!super::super::run_inputs_dir(group_dir, run_id).exists());
+    }
+
+    #[test]
+    fn fail_claimed_job_sync_cleans_active_inputs_after_terminal_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let job_path = write_job_request(group_dir, run_id, profile);
+        queue
+            .write_active_input_sync(&ActiveInputEntry {
+                run_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
+
+        queue.fail_claimed_job_sync(run_id, "failed before execution".to_string());
+
+        assert!(queue.result_file_has_content(run_id));
+        assert!(!job_path.exists());
         assert!(!super::super::run_inputs_dir(group_dir, run_id).exists());
     }
 
