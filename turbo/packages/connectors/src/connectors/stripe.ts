@@ -48,6 +48,33 @@ export const stripe = {
         },
         revoke: { kind: "none" },
       },
+      "api-token": {
+        visible: false,
+        label: "API Key",
+        helpText:
+          "Connect with a Stripe secret or restricted API key. This auth method is retained for existing stored connector credentials.",
+        storage: {
+          secrets: ["STRIPE_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            STRIPE_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "sk_live_...",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
     },
   },
 } as const satisfies Record<string, ConnectorConfig>;

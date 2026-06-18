@@ -11,6 +11,9 @@ import {
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
+import { connectors } from "@vm0/db/schema/connector";
+import { secrets as secretTable } from "@vm0/db/schema/secret";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +21,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import {
   createBddApi,
@@ -35,6 +39,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -996,6 +1001,65 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, withHost.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("creates runs with legacy hidden Stripe API-token connectors", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    const writeDb = createStore().set(writeDb$);
+
+    await writeDb.insert(connectors).values({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      type: "stripe",
+      authMethod: "api-token",
+    });
+    await writeDb.insert(secretTable).values({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      name: "STRIPE_TOKEN",
+      encryptedValue: encryptSecretForTests("sk_test_bdd_legacy"),
+      type: "connector",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["stripe"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use legacy stripe api token",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("ignores stored connectors with removed auth methods when creating runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    const writeDb = createStore().set(writeDb$);
+
+    await writeDb.insert(connectors).values({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      type: "stripe",
+      authMethod: "cli",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["stripe"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "ignore removed stripe auth method",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("uses Figma personal access tokens in the X-Figma-Token firewall header", async () => {

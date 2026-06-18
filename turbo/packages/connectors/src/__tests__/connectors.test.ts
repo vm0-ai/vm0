@@ -339,7 +339,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual(["oauth"]);
     expect(
       getConnectorAuthMethodIdsForGrantKind("stripe", "manual"),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["api-token"]);
     expect(
       getConnectorAuthMethodIdsForGrantKind("stripe", "device-auth"),
     ).toStrictEqual([]);
@@ -348,7 +348,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual(["oauth"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("stripe", "static"),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["api-token"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("lark", "refresh-token"),
     ).toStrictEqual(["api-token"]);
@@ -360,7 +360,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual([]);
     expect(
       getConnectorAuthMethodIdsForRevokeKind("stripe", "none"),
-    ).toStrictEqual(["oauth"]);
+    ).toStrictEqual(["oauth", "api-token"]);
 
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "device-auth"),
@@ -2011,6 +2011,7 @@ describe("getConfiguredConnectorAuthMethodIds", () => {
   it("returns configured auth methods without feature filtering", () => {
     expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
       "oauth",
+      "api-token",
     ]);
   });
 });
@@ -2026,6 +2027,11 @@ describe("getAvailableConnectorAuthMethodIds", () => {
         [FeatureSwitchKey.StripeConnector]: true,
       }),
     ).toStrictEqual(["oauth"]);
+    expect(getConnectorAuthMethod("stripe", "api-token")).toMatchObject({
+      visible: false,
+      grant: { kind: "manual" },
+      access: { kind: "static" },
+    });
   });
 
   it("treats statically hidden auth methods as unavailable", () => {
@@ -2044,6 +2050,7 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     try {
       expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
         "oauth",
+        "api-token",
       ]);
       expect(
         getAvailableConnectorAuthMethodIds("stripe", {
@@ -2278,6 +2285,15 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       kind: "static",
       envBindings: {
         OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",
+      },
+      platformSecrets: [],
+    });
+    expect(
+      getConnectorAuthMethodAccessMetadata("stripe", "api-token"),
+    ).toStrictEqual({
+      kind: "static",
+      envBindings: {
+        STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
       },
       platformSecrets: [],
     });
@@ -2778,6 +2794,25 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           source: {
             kind: "connector-secret",
             name: "OPENAI_TOKEN",
+          },
+        },
+      ],
+    });
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("stripe", "api-token"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["STRIPE_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "STRIPE_TOKEN",
+          valueRef: "$secrets.STRIPE_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "STRIPE_TOKEN",
           },
         },
       ],

@@ -1483,6 +1483,9 @@ function hasRuntimeAvailableAuthMethod(
 ): boolean {
   for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const method = getConnectorAuthMethod(type, authMethod);
+    if (method?.visible === false) {
+      continue;
+    }
     switch (method?.grant.kind) {
       case "auth-code":
       case "external-code":

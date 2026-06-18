@@ -1782,6 +1782,10 @@ function allowedStoredConnectorRows(
     return (
       (!allowedConnectorTypes ||
         allowedConnectorTypes.includes(row.connectorType)) &&
+      getConnectorAuthMethodRuntimeMetadata(
+        row.connectorType,
+        row.authMethod,
+      ) !== undefined &&
       storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
