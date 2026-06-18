@@ -141,6 +141,7 @@ import { generate as generateMercury } from "./mercury";
 import { generate as generateMeshy } from "./meshy";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
+import { generate as generateMicrosoft365 } from "./microsoft-365";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
@@ -395,6 +396,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   meshy: generateMeshy,
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
+  "microsoft-365": generateMicrosoft365,
   minimax: generateMinimax,
   miro: generateMiro,
   mixpanel: generateMixpanel,

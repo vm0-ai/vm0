@@ -84,6 +84,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
+  [FeatureSwitchKey.Microsoft365Connector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Microsoft 365 connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",

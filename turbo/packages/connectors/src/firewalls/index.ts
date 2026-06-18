@@ -194,6 +194,7 @@ import { mercuryFirewall } from "./mercury.generated";
 import { meshyFirewall } from "./meshy.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
+import { microsoft365Firewall } from "./microsoft-365.generated";
 import { mossFirewall } from "./moss.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
@@ -479,6 +480,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   meshy: meshyFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
+  "microsoft-365": microsoft365Firewall,
   moss: mossFirewall,
   minimax: minimaxFirewall,
   miro: miroFirewall,

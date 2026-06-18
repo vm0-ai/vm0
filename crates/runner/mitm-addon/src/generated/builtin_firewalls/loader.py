@@ -607,6 +607,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import metabase_0
 
         return (metabase_0.JSON_PART,)
+    if name == "microsoft-365":
+        from . import microsoft_365_0
+
+        return (microsoft_365_0.JSON_PART,)
     if name == "minimax":
         from . import minimax_0
 

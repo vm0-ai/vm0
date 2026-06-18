@@ -85,6 +85,7 @@ import { larkProvider } from "./connectors/lark/provider";
 import { linearProvider } from "./connectors/linear/provider";
 import { mailchimpProvider } from "./connectors/mailchimp/provider";
 import { mercuryProvider } from "./connectors/mercury/provider";
+import { microsoft365Provider } from "./connectors/microsoft-365/provider";
 import { mondayProvider } from "./connectors/monday/provider";
 import { neonProvider } from "./connectors/neon/provider";
 import { notionProvider } from "./connectors/notion/provider";
@@ -493,6 +494,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   linear: { oauth: authCodeRefreshTokenRevokeProviderEntry(linearProvider) },
   mailchimp: { oauth: authCodeProviderEntry(mailchimpProvider) },
   mercury: { oauth: authCodeRefreshProviderEntry(mercuryProvider) },
+  "microsoft-365": {
+    oauth: authCodeRefreshProviderEntry(microsoft365Provider),
+  },
   monday: { oauth: authCodeRefreshProviderEntry(mondayProvider) },
   neon: { oauth: authCodeRefreshProviderEntry(neonProvider) },
   notion: { oauth: authCodeRefreshProviderEntry(notionProvider) },
