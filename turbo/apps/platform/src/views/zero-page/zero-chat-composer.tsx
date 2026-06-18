@@ -1357,7 +1357,7 @@ function presentationTemplateThemePreviewSwatches(
   const accents = theme.colors.slice(4, 8);
   return [
     { id: "background", color: background },
-    ...accents.map((accent, accentIndex) => {
+    ...accents.slice(0, 3).map((accent, accentIndex) => {
       return { id: `accent-${accentIndex + 1}`, color: accent };
     }),
   ];
@@ -1366,7 +1366,10 @@ function presentationTemplateThemePreviewSwatches(
 function presentationTemplateThemeAccentSwatches(
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
-  return presentationTemplateThemePreviewSwatches(theme);
+  return [
+    { id: "background", color: theme.colors[0] },
+    { id: "support-2", color: theme.colors[6] },
+  ];
 }
 
 function hexLuminance(hexColor: string): number {
