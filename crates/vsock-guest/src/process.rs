@@ -649,6 +649,10 @@ wait
         command.process_group(0);
 
         let mut child = Some(command.spawn().unwrap());
+        if !wait_for_path(&direct_pid_path, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("parent should publish same-group child pid before snapshot");
+        }
         if !wait_for_path(&child_ready, Duration::from_secs(2)) {
             kill_spawned_child(&mut child);
             panic!("same-group child should block on fifo before snapshot");
