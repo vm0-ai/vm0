@@ -73,6 +73,9 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("establish the deck's arc");
     expect(stdout).toContain("Vary slide forms across the deck");
     expect(stdout).toContain("Each slide carries one idea");
+    expect(stdout).toContain(
+      "Check that shapes, charts, images, or decorative graphics do not cover readable text",
+    );
   });
 
   it("should reject slide counts outside the supported range", async () => {
