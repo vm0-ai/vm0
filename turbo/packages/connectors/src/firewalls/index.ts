@@ -765,9 +765,39 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
+  | "archer"
+  | "ardent"
+  | "arga-labs"
+  | "armature"
+  | "bentolabs-ai"
+  | "bloom"
+  | "chert"
   | "daytona"
+  | "insforge"
+  | "interfaze"
+  | "inth"
+  | "keyframe-labs"
+  | "kugelaudio"
+  | "limrun"
+  | "minicor"
   | "modal"
-  | "test-oauth-device"; // internal provider capability test connector
+  | "netter"
+  | "oddpool"
+  | "primitive"
+  | "qomplement"
+  | "rentahuman"
+  | "replicas"
+  | "river-markets"
+  | "runtime"
+  | "salesgraph"
+  | "silmaril"
+  | "smol-machines"
+  | "stablebrowse"
+  | "testerarmy"
+  | "test-oauth-device" // internal provider capability test connector
+  | "totalis"
+  | "trellis"
+  | "voquill";
 
 /**
  * Compile-time exhaustiveness checks.

@@ -29,6 +29,36 @@ import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
 import { spotify } from "./connectors/spotify";
 import { agentmail } from "./connectors/agentmail";
+import { archer } from "./connectors/archer";
+import { ardent } from "./connectors/ardent";
+import { argaLabs } from "./connectors/arga-labs";
+import { armature } from "./connectors/armature";
+import { bentolabsAi } from "./connectors/bentolabs-ai";
+import { bloom } from "./connectors/bloom";
+import { chert } from "./connectors/chert";
+import { inth } from "./connectors/inth";
+import { insforge } from "./connectors/insforge";
+import { interfaze } from "./connectors/interfaze";
+import { keyframeLabs } from "./connectors/keyframe-labs";
+import { kugelAudio } from "./connectors/kugelaudio";
+import { limrun } from "./connectors/limrun";
+import { minicor } from "./connectors/minicor";
+import { netter } from "./connectors/netter";
+import { oddpool } from "./connectors/oddpool";
+import { primitive } from "./connectors/primitive";
+import { qomplement } from "./connectors/qomplement";
+import { rentahuman } from "./connectors/rentahuman";
+import { replicas } from "./connectors/replicas";
+import { riverMarkets } from "./connectors/river-markets";
+import { runtime } from "./connectors/runtime";
+import { salesgraph } from "./connectors/salesgraph";
+import { silmaril } from "./connectors/silmaril";
+import { smolMachines } from "./connectors/smol-machines";
+import { stablebrowse } from "./connectors/stablebrowse";
+import { testerarmy } from "./connectors/testerarmy";
+import { totalis } from "./connectors/totalis";
+import { trellis } from "./connectors/trellis";
+import { voquill } from "./connectors/voquill";
 import { agora } from "./connectors/agora";
 import { ahrefs } from "./connectors/ahrefs";
 import { adzuna } from "./connectors/adzuna";
@@ -1018,6 +1048,36 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...gumroad,
   ...spotify,
   ...agentmail,
+  ...archer,
+  ...ardent,
+  ...argaLabs,
+  ...armature,
+  ...bentolabsAi,
+  ...bloom,
+  ...chert,
+  ...inth,
+  ...insforge,
+  ...interfaze,
+  ...keyframeLabs,
+  ...kugelAudio,
+  ...limrun,
+  ...minicor,
+  ...netter,
+  ...oddpool,
+  ...primitive,
+  ...qomplement,
+  ...rentahuman,
+  ...replicas,
+  ...riverMarkets,
+  ...runtime,
+  ...salesgraph,
+  ...silmaril,
+  ...smolMachines,
+  ...stablebrowse,
+  ...testerarmy,
+  ...totalis,
+  ...trellis,
+  ...voquill,
   ...agora,
   ...ahrefs,
   ...adzuna,
