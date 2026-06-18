@@ -10,6 +10,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+  zeroAgentDraftContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatThreadsContract,
@@ -125,6 +126,19 @@ export const apiAgentsHandlers = [
       content: null,
       filename: null,
     });
+  }),
+
+  // GET /api/zero/agents/:id/draft
+  mockApi(zeroAgentDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftContent: null,
+      draftAttachments: null,
+    });
+  }),
+
+  // PATCH /api/zero/agents/:id/draft
+  mockApi(zeroAgentDraftContract.patch, ({ respond }) => {
+    return respond(204);
   }),
 
   // GET /api/zero/chat-threads

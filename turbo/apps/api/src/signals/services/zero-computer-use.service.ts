@@ -136,6 +136,9 @@ type CompleteComputerUseHostCommandResult =
   | { readonly status: "invalid_token" }
   | { readonly status: "not_found" }
   | { readonly status: "not_running" };
+type CompleteComputerUseHostCommandState =
+  | CompleteComputerUseHostCommandResult
+  | { readonly status: "running"; readonly host: ComputerUseHostRow };
 
 function hashSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -1446,6 +1449,52 @@ export const claimNextComputerUseHostCommand$ = command(
   },
 );
 
+async function computerUseHostCommandCompletionState(
+  tx: ComputerUseTx,
+  params: {
+    readonly hostToken: string;
+    readonly commandId: string;
+    readonly now: Date;
+  },
+  signal: AbortSignal,
+): Promise<CompleteComputerUseHostCommandState> {
+  const host = await hostFromToken(tx, params.hostToken, signal);
+  if (!host) {
+    return { status: "invalid_token" };
+  }
+
+  const [commandRow] = await tx
+    .select()
+    .from(computerUseCommands)
+    .where(
+      and(
+        eq(computerUseCommands.id, params.commandId),
+        eq(computerUseCommands.hostId, host.id),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!commandRow) {
+    return { status: "not_found" };
+  }
+  if (commandRow.status === "succeeded" || commandRow.status === "failed") {
+    await tx
+      .update(computerUseHosts)
+      .set({ status: "online", lastSeenAt: params.now, updatedAt: params.now })
+      .where(eq(computerUseHosts.id, host.id));
+    signal.throwIfAborted();
+
+    return { status: "completed" };
+  }
+  if (commandRow.status !== "running") {
+    return { status: "not_running" };
+  }
+
+  return { status: "running", host };
+}
+
 export const completeComputerUseHostCommand$ = command(
   async (
     { get, set },
@@ -1466,6 +1515,22 @@ export const completeComputerUseHostCommand$ = command(
   ): Promise<CompleteComputerUseHostCommandResult> => {
     const db = set(writeDb$);
     const now = nowDate();
+    const commandState = await db.transaction(async (tx) => {
+      return await computerUseHostCommandCompletionState(
+        tx,
+        {
+          hostToken: params.hostToken,
+          commandId: params.commandId,
+          now,
+        },
+        signal,
+      );
+    });
+    signal.throwIfAborted();
+    if (commandState.status !== "running") {
+      return commandState;
+    }
+
     const storedResult =
       params.status === "succeeded"
         ? await get(
@@ -1480,30 +1545,19 @@ export const completeComputerUseHostCommand$ = command(
             ),
           )
         : null;
+    const completedAt = nowDate();
     const result = await db.transaction(async (tx) => {
-      const host = await hostFromToken(tx, params.hostToken, signal);
-      if (!host) {
-        return { status: "invalid_token" as const };
-      }
-
-      const [commandRow] = await tx
-        .select()
-        .from(computerUseCommands)
-        .where(
-          and(
-            eq(computerUseCommands.id, params.commandId),
-            eq(computerUseCommands.hostId, host.id),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (!commandRow) {
-        return { status: "not_found" as const };
-      }
-      if (commandRow.status !== "running") {
-        return { status: "not_running" as const };
+      const currentState = await computerUseHostCommandCompletionState(
+        tx,
+        {
+          hostToken: params.hostToken,
+          commandId: params.commandId,
+          now: completedAt,
+        },
+        signal,
+      );
+      if (currentState.status !== "running") {
+        return currentState;
       }
 
       const commandResult =
@@ -1516,8 +1570,8 @@ export const completeComputerUseHostCommand$ = command(
           status: params.status,
           result: commandResult,
           error: params.status === "failed" ? params.error.code : null,
-          completedAt: now,
-          updatedAt: now,
+          completedAt,
+          updatedAt: completedAt,
         })
         .where(eq(computerUseCommands.id, params.commandId))
         .returning();
@@ -1532,14 +1586,18 @@ export const completeComputerUseHostCommand$ = command(
         event: "completed",
         result: params.status === "succeeded" ? params.result : null,
         error: params.status === "failed" ? params.error : null,
-        createdAt: now,
+        createdAt: completedAt,
       });
       signal.throwIfAborted();
 
       await tx
         .update(computerUseHosts)
-        .set({ status: "online", lastSeenAt: now, updatedAt: now })
-        .where(eq(computerUseHosts.id, host.id));
+        .set({
+          status: "online",
+          lastSeenAt: completedAt,
+          updatedAt: completedAt,
+        })
+        .where(eq(computerUseHosts.id, currentState.host.id));
       signal.throwIfAborted();
 
       return { status: "completed" as const };

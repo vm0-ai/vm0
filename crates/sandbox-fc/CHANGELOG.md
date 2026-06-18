@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.37.42](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.41...sandbox-fc-v0.37.42) (2026-06-18)
+
+
+### Refactoring
+
+* **sandbox-fc:** deduplicate create timing success logging ([#18180](https://github.com/vm0-ai/vm0/issues/18180)) ([0e2b75b](https://github.com/vm0-ai/vm0/commit/0e2b75b0c4d435adf33a7222e35edc81593a9689))
+
+## [0.37.41](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.40...sandbox-fc-v0.37.41) (2026-06-18)
+
 ## [0.37.40](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.39...sandbox-fc-v0.37.40) (2026-06-17)
 
 ## [0.37.39](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.38...sandbox-fc-v0.37.39) (2026-06-17)

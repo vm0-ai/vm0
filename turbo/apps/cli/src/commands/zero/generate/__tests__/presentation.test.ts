@@ -64,9 +64,46 @@ describe("zero generate presentation command", () => {
     );
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
+    expect(stdout).toContain("Produce exactly the requested slide count");
+    expect(stdout).toContain("make an internal slide plan");
+    expect(stdout).toContain("Adapt the selected template");
+    expect(stdout).toContain(
+      "Do not add decorative, duplicate, or empty filler slides",
+    );
     expect(stdout).toContain("establish the deck's arc");
     expect(stdout).toContain("Vary slide forms across the deck");
     expect(stdout).toContain("Each slide carries one idea");
+  });
+
+  it("should reject slide counts outside the supported range", async () => {
+    const mockStderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((() => {
+        return true;
+      }) as never);
+
+    try {
+      await expect(async () => {
+        await generateCommand.parseAsync([
+          "node",
+          "cli",
+          "presentation",
+          "--prompt",
+          "launch plan",
+          "--slides",
+          "3",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const stderr = mockStderrWrite.mock.calls
+        .map(([chunk]) => {
+          return String(chunk);
+        })
+        .join("");
+      expect(stderr).toContain("slides must be between 4 and 20");
+    } finally {
+      mockStderrWrite.mockRestore();
+    }
   });
 
   it("should expose only base artifact flags plus slides in help", () => {
@@ -161,7 +198,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "zero resource pull <resource-id> --dir ./generated/resources",
     );
-    expect(stdout).toContain('"skill:presentation-deck-tools"');
+    expect(stdout).toContain('"tool:presentation-deck-tools"');
     expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
     expect(stdout).toContain('"path": "presentation-template/aplocoto"');
     expect(stdout).toContain('"archive"');

@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
 import {
@@ -9,11 +9,12 @@ import {
 } from "@tabler/icons-react";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
+import { isFirewallMetadataConnectorType } from "@vm0/connectors/firewall-metadata";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
+import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
-  findPermission,
+  findPermissionInMetadata,
   permissionAllowAction$,
   permissionAllowActionParam$,
   permissionAllowAgent$,
@@ -67,7 +68,7 @@ function ConnectorPermissionCard({
   permission: Permission;
   action: "allow" | "deny";
 }) {
-  const connectorConfig = isFirewallConnectorType(connectorRef)
+  const connectorConfig = isFirewallMetadataConnectorType(connectorRef)
     ? CONNECTOR_TYPES[connectorRef]
     : undefined;
   const connectorLabel = connectorConfig?.label ?? connectorRef;
@@ -77,7 +78,7 @@ function ConnectorPermissionCard({
     <div className="w-full rounded-lg border border-border px-4 py-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
-          {isFirewallConnectorType(connectorRef) && (
+          {isFirewallMetadataConnectorType(connectorRef) && (
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
               <ConnectorIcon type={connectorRef} size={20} />
             </span>
@@ -331,11 +332,15 @@ function PermissionAllowDoctorPage({
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
+  const metadataLoadable = useLoadable(
+    firewallPermissionMetadataByConnector({ connectorType: ref }),
+  );
 
   if (
     agentLoadable.state === "loading" ||
     userLoadable.state === "loading" ||
-    grantsLoadable.state === "loading"
+    grantsLoadable.state === "loading" ||
+    metadataLoadable.state === "loading"
   ) {
     return <LoadingCard />;
   }
@@ -346,13 +351,20 @@ function PermissionAllowDoctorPage({
   if (grantsLoadable.state === "hasError") {
     return <ErrorMessage message="Failed to load permission grants" />;
   }
+  if (metadataLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load permission metadata" />;
+  }
 
   const agent = agentLoadable.data;
   if (!agent) {
     return <ErrorMessage message="Agent not found" />;
   }
+  const metadata = metadataLoadable.data;
+  if (!metadata) {
+    return <ErrorMessage message={`Unknown connector: ${ref}`} />;
+  }
 
-  const focusedPermission = findPermission(ref, permission);
+  const focusedPermission = findPermissionInMetadata(metadata, permission);
   if (!focusedPermission) {
     return <ErrorMessage message={`Unknown permission: ${permission}`} />;
   }
@@ -360,7 +372,7 @@ function PermissionAllowDoctorPage({
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
   const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
-    ref,
+    metadata,
     focusedPermission.name,
   );
   const explicitGrant = grants.find((grant) => {
@@ -419,7 +431,7 @@ export function PermissionAllowPage() {
     return <ErrorMessage message="Missing permission in URL parameters" />;
   }
 
-  if (!isFirewallConnectorType(ref)) {
+  if (!isFirewallMetadataConnectorType(ref)) {
     return <ErrorMessage message={`Unknown connector: ${ref}`} />;
   }
 

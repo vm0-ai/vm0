@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.352.0](https://github.com/vm0-ai/vm0/compare/core-v8.351.2...core-v8.352.0) (2026-06-18)
+
+
+### Features
+
+* add presentation template theme previews ([#18049](https://github.com/vm0-ai/vm0/issues/18049)) ([ae67bb4](https://github.com/vm0-ai/vm0/commit/ae67bb4bf811e8c07d2ae7df8f95afd7b7e4242d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.101.0
+    * @vm0/connectors bumped to 1.88.0
+
+## [8.351.2](https://github.com/vm0-ai/vm0/compare/core-v8.351.1...core-v8.351.2) (2026-06-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.3
+    * @vm0/connectors bumped to 1.87.1
+
 ## [8.351.1](https://github.com/vm0-ai/vm0/compare/core-v8.351.0...core-v8.351.1) (2026-06-18)
 
 

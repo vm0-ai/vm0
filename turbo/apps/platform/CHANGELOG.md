@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.468.0](https://github.com/vm0-ai/vm0/compare/app-v0.467.3...app-v0.468.0) (2026-06-18)
+
+
+### Features
+
+* add presentation template theme previews ([#18049](https://github.com/vm0-ai/vm0/issues/18049)) ([ae67bb4](https://github.com/vm0-ai/vm0/commit/ae67bb4bf811e8c07d2ae7df8f95afd7b7e4242d))
+
+
+### Bug Fixes
+
+* center scroll to bottom button ([#18175](https://github.com/vm0-ai/vm0/issues/18175)) ([ae0121d](https://github.com/vm0-ai/vm0/commit/ae0121dce3289777d2e9e0c7b137528cc3e730dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.101.0
+    * @vm0/connectors bumped to 1.88.0
+    * @vm0/core bumped to 8.352.0
+
+## [0.467.3](https://github.com/vm0-ai/vm0/compare/app-v0.467.2...app-v0.467.3) (2026-06-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.3
+    * @vm0/connectors bumped to 1.87.1
+    * @vm0/core bumped to 8.351.2
+
 ## [0.467.2](https://github.com/vm0-ai/vm0/compare/app-v0.467.1...app-v0.467.2) (2026-06-18)
 
 

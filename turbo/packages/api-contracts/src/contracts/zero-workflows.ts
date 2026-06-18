@@ -92,6 +92,29 @@ export const zeroWorkflowAgentSummarySchema = z.object({
   visibility: z.enum(["public", "private"]),
 });
 
+export const zeroWorkflowTriggerKindSchema = z.enum([
+  "schedule",
+  "event",
+  "webhook",
+]);
+export type ZeroWorkflowTriggerKind = z.infer<
+  typeof zeroWorkflowTriggerKindSchema
+>;
+
+export const zeroWorkflowTriggerSummarySchema = z.object({
+  id: z.string(),
+  name: z.string().max(256),
+  kind: zeroWorkflowTriggerKindSchema,
+  enabled: z.boolean(),
+  description: z.string().max(1024).nullable(),
+  chatThreadId: z.string().nullable(),
+  nextRunAt: z.string().datetime().nullable(),
+  lastRunAt: z.string().datetime().nullable(),
+});
+export type ZeroWorkflowTriggerSummary = z.infer<
+  typeof zeroWorkflowTriggerSummarySchema
+>;
+
 export const zeroWorkflowSummarySchema = z.object({
   name: zeroWorkflowNameSchema,
   displayName: z.string().max(256).nullable(),
@@ -112,6 +135,7 @@ export const zeroWorkflowContentResponseSchema =
 export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowContentResponseSchema.extend({
     fileContents: z.array(workflowFileEntrySchema).nullable(),
+    triggers: z.array(zeroWorkflowTriggerSummarySchema),
   });
 
 export const zeroWorkflowListResponseSchema = z.array(

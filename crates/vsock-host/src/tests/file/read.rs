@@ -9,6 +9,40 @@ use super::super::support::{
 };
 use super::support::expect_exec_start;
 
+async fn read_file_terminal_error(
+    termination: ExecTermination,
+    stderr: &'static [u8],
+    diagnostic: &'static str,
+) -> io::Error {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let read_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await })
+    };
+
+    let start = expect_exec_start(&mut guest).await;
+    let payload = vsock_proto::encode_exec_result(
+        termination,
+        12,
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: stderr,
+            truncated: false,
+        },
+        diagnostic,
+    )
+    .unwrap();
+    send_raw_exec_result(&mut guest, start.seq(), payload).await;
+
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(operation_count(&host), 0);
+    err
+}
+
 #[tokio::test]
 async fn read_file_returns_content_and_missing() {
     let (host, mut guest) = setup_host_and_guest().await;
@@ -53,6 +87,47 @@ async fn read_file_returns_content_and_missing() {
     .await;
     let missing = missing_task.await.unwrap().unwrap();
     assert_eq!(missing, None);
+}
+
+#[tokio::test]
+async fn read_file_dispatches_concurrent_results_by_seq() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let first_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/first.txt", 1024, 5000).await })
+    };
+    let first = expect_exec_start(&mut guest).await;
+
+    let second_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.read_file("/tmp/second.txt", 1024, 5000).await })
+    };
+    let second = expect_exec_start(&mut guest).await;
+
+    send_exec_result(
+        &mut guest,
+        second.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"second\n",
+        b"",
+    )
+    .await;
+    send_exec_result(
+        &mut guest,
+        first.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"first\n",
+        b"",
+    )
+    .await;
+
+    let first_content = first_task.await.unwrap().unwrap();
+    let second_content = second_task.await.unwrap().unwrap();
+    assert_eq!(first_content.as_deref(), Some(&b"first\n"[..]));
+    assert_eq!(second_content.as_deref(), Some(&b"second\n"[..]));
+    assert_eq!(operation_count(&host), 0);
 }
 
 #[tokio::test]
@@ -257,7 +332,52 @@ async fn read_file_preserves_truncated_stderr_on_nonzero_exit() {
 }
 
 #[tokio::test]
-async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
+async fn read_file_reports_terminal_timeout_as_timed_out() {
+    let err = read_file_terminal_error(
+        ExecTermination::TimedOut,
+        b"helper timed out",
+        "guest reported timeout",
+    )
+    .await;
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    let message = err.to_string();
+    assert!(message.contains("read_file timed out for /tmp/session.txt"));
+    assert!(message.contains("helper timed out"));
+    assert!(message.contains("guest reported timeout"));
+}
+
+#[tokio::test]
+async fn read_file_reports_non_exit_terminal_states() {
+    for (termination, expected, diagnostic) in [
+        (
+            ExecTermination::Cancelled,
+            "read_file was cancelled for /tmp/session.txt",
+            "cancelled by guest",
+        ),
+        (
+            ExecTermination::StartFailed,
+            "read_file exec start failed for /tmp/session.txt",
+            "spawn failed",
+        ),
+        (
+            ExecTermination::WaitFailed,
+            "read_file exec wait failed for /tmp/session.txt",
+            "wait failed",
+        ),
+    ] {
+        let err = read_file_terminal_error(termination, b"helper stderr", diagnostic).await;
+
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        let message = err.to_string();
+        assert!(message.contains(expected));
+        assert!(message.contains("helper stderr"));
+        assert!(message.contains(diagnostic));
+    }
+}
+
+#[tokio::test]
+async fn read_file_rejects_invalid_inputs_without_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
@@ -281,6 +401,14 @@ async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
 
     let err = host
         .read_file("/tmp/huge.txt", u64::from(u32::MAX) + 1, 5000)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(operation_count(&host), 0);
+
+    let err = host
+        .read_file("/tmp/timeout.txt", 1024, 0)
         .await
         .unwrap_err();
 

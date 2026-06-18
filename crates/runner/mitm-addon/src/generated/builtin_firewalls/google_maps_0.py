@@ -11,15 +11,6 @@ JSON_PART = r"""{
           "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
         }
       },
-      "base": "https://maps.googleapis.com",
-      "permissions": []
-    },
-    {
-      "auth": {
-        "headers": {
-          "Authorization": "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}"
-        }
-      },
       "base": "https://geocode.googleapis.com",
       "permissions": []
     },

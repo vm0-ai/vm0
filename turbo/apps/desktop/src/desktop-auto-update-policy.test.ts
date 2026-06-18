@@ -44,7 +44,6 @@ function hostState(
     lastError: null,
     recovery: null,
     errorLog: [],
-    recentAuditEvents: [],
     localCommandLog: [],
     ...overrides,
   };

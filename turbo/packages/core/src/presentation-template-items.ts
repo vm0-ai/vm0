@@ -6,6 +6,7 @@ export interface PresentationTemplateItem {
   readonly previewImage: string;
   readonly previewImages: readonly string[];
   readonly previewHtmls?: readonly string[];
+  readonly colorSystemId?: string;
   readonly designSystemId: string;
   readonly templateId: string;
 }
@@ -2129,6 +2130,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c933bfa2-6b60-40f5-bd6a-72a5ab92eea8/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
+      colorSystemId: "color-system:carnival",
       designSystemId: "design-system:playful-editorial",
       templateId: "template:html-ppt-playful-launch",
     },
@@ -2141,6 +2143,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/763fcebf-f68e-4709-a870-55519282db1a/botane-organic.html",
       previewImage: BOTANE_ORGANIC_PREVIEW_IMAGES[0],
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
+      colorSystemId: "color-system:mauve-dusk",
       designSystemId: "design-system:botane-organic",
       templateId: "template:html-ppt-botane-organic",
     },
@@ -2153,6 +2156,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3650eb44-eb5e-452e-800c-9de51b339aeb/business-data.html",
       previewImage: BUSINESS_DATA_CDN_PREVIEW_IMAGES[0],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
+      colorSystemId: "color-system:berry-pop",
       designSystemId: "design-system:business-data",
       templateId: "template:html-ppt-business-data",
     },
@@ -2162,10 +2166,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `crayon` and template `html-ppt-crayon`, create a 15-slide presentation for a playful education, kids product, creative workshop, or family program. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it bright, rounded, joyful, and crayon-like.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5bf26e6a-96b4-4d79-9380-48c17bba8715/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f5a34e2-8863-4d6d-b1ef-db4c92ebaed3/crayon.html",
       previewImage: CRAYON_PREVIEW_IMAGES[0],
       previewImages: CRAYON_PREVIEW_IMAGES,
       previewHtmls: CRAYON_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:crayon",
       templateId: "template:html-ppt-crayon",
     },
@@ -2175,10 +2180,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `creative-agency` and template `html-ppt-creative-agency`, create a 15-slide presentation for a design studio, creative agency, brand consultancy, or annual studio report. Include cover, agenda, about, vision, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it minimal, editorial, sharp, and agency-grade.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/270316a9-775f-4fb8-8ad4-2e282d4eeec9/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9620ec03-6533-4264-b1c1-fc99095a5bf6/creative-agency.html",
       previewImage: CREATIVE_AGENCY_PREVIEW_IMAGES[0],
       previewImages: CREATIVE_AGENCY_PREVIEW_IMAGES,
       previewHtmls: CREATIVE_AGENCY_PREVIEW_HTMLS,
+      colorSystemId: "color-system:coral-studio",
       designSystemId: "design-system:creative-agency",
       templateId: "template:html-ppt-creative-agency",
     },
@@ -2188,10 +2194,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `data-report` and template `html-ppt-data-report`, create a 15-slide presentation for a business data report, market analysis, annual review, product metrics readout, or research findings deck. Include cover, contents, context, trend, performance, segments, comparison, impact, forecast, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3d0288a-9d60-4127-bb3e-ce4d95950e9c/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/24d54414-4e8d-49ea-b58e-922e28259571/data-report.html",
       previewImage: DATA_REPORT_PREVIEW_IMAGES[0],
       previewImages: DATA_REPORT_PREVIEW_IMAGES,
       previewHtmls: DATA_REPORT_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:data-report",
       templateId: "template:html-ppt-data-report",
     },
@@ -2201,10 +2208,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `editorial-magazine` and template `html-ppt-editorial-magazine`, create a 15-slide presentation for an editorial brand, publication, culture report, portfolio magazine, or catalogue-style pitch. Include cover, agenda, about, vision, team, formats, process, gallery, impact, testimonials, pricing/table, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83d874b2-cf42-41e5-9f39-cb56486ee6a8/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3c3365de-9df3-420f-bd92-edf278daca38/editorial-magazine.html",
       previewImage: EDITORIAL_MAGAZINE_PREVIEW_IMAGES[0],
       previewImages: EDITORIAL_MAGAZINE_PREVIEW_IMAGES,
       previewHtmls: EDITORIAL_MAGAZINE_PREVIEW_HTMLS,
+      colorSystemId: "color-system:warm-sand",
       designSystemId: "design-system:editorial-magazine",
       templateId: "template:html-ppt-editorial-magazine",
     },
@@ -2214,10 +2222,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `landing-consulting` and template `html-ppt-landing-consulting`, create a 15-slide presentation for a consulting firm, advisory practice, SaaS services team, strategy landing page, or growth proposal. Include cover, agenda, about, mission, team, services, process, gallery, proof metrics, testimonials, pricing, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3b0dd6e7-0d78-4047-acff-77eaae02cb9a/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5ff664e-2ae3-45ac-b2aa-e7022ca73e19/landing-consulting.html",
       previewImage: LANDING_CONSULTING_PREVIEW_IMAGES[0],
       previewImages: LANDING_CONSULTING_PREVIEW_IMAGES,
       previewHtmls: LANDING_CONSULTING_PREVIEW_HTMLS,
+      colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:landing-consulting",
       templateId: "template:html-ppt-landing-consulting",
     },
@@ -2227,10 +2236,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `lumina` and template `html-ppt-lumina`, create a 15-slide presentation for a creative studio, photo agency, branding shop, design collective, or studio portfolio. Include cover, agenda, about, mission, team, services, process, gallery, impact metrics, testimonials, pricing, and contact. Make it bold, sticker-tagged, sharp, and creative-studio oriented.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fcdfe1d0-3d25-4c9c-b790-8657cba4d5d3/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dcf9c089-2d7e-4ad5-a1ac-0ba5b942c4bf/lumina-creative-studio.html",
       previewImage: LUMINA_PREVIEW_IMAGES[0],
       previewImages: LUMINA_PREVIEW_IMAGES,
       previewHtmls: LUMINA_PREVIEW_HTMLS,
+      colorSystemId: "color-system:prism",
       designSystemId: "design-system:lumina",
       templateId: "template:html-ppt-lumina",
     },
@@ -2240,10 +2250,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `mosaic-geometric` and template `html-ppt-mosaic-geometric`, create a 15-slide presentation for a geometric brand pitch, design system proposal, creative studio, culture product, or modular portfolio. Include cover, agenda, about, principles, team, services, process, gallery, impact, testimonials, pricing, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8aa49b66-de82-4774-a132-a5b8e39f2fbf/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/36edf840-9bd2-4e54-bdc2-4cf2bba1eec3/mosaic-geometric.html",
       previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
       previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
       previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
+      colorSystemId: "color-system:carnival",
       designSystemId: "design-system:mosaic-geometric",
       templateId: "template:html-ppt-mosaic-geometric",
     },
@@ -2253,10 +2264,11 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide presentation for a playful brand, creative product, studio campaign, community event, or youth-facing service pitch. Include cover, agenda, about, vision, team, offerings, process, gallery, metrics, testimonials, pricing, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30030f16-caf2-4bd4-bec9-b07b08d67a0b/example.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/28bc8d75-15d2-4479-93d1-976cd56712b2/playful-pop.html",
       previewImage: PLAYFUL_POP_PREVIEW_IMAGES[0],
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
+      colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:playful-pop",
       templateId: "template:html-ppt-playful-pop",
     },

@@ -24,6 +24,7 @@ export type GenerationOutputKind =
 
 type ResourceKind =
   | "skill"
+  | "tool"
   | "template"
   | "design-system"
   | "color-system"
@@ -98,7 +99,7 @@ export interface ResourceCandidateSlice {
 }
 
 export const PRESENTATION_REQUIRED_RESOURCE_IDS = [
-  "skill:presentation-deck-tools",
+  "tool:presentation-deck-tools",
 ] as const;
 
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
@@ -305,8 +306,8 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
-    id: "skill:presentation-deck-tools",
-    kind: "skill",
+    id: "tool:presentation-deck-tools",
+    kind: "tool",
     name: "Presentation Deck Tools",
     description:
       "Shared HTML presentation deck shell, device primitives, render scripts, and QA gate required for vm0 presentation generation.",
@@ -4035,6 +4036,16 @@ export function listSkills(): readonly RegistryEntry[] {
 
 export function findSkill(id: string): RegistryEntry | undefined {
   return listSkills().find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listTools(): readonly RegistryEntry[] {
+  return filterByKind("tool");
+}
+
+export function findTool(id: string): RegistryEntry | undefined {
+  return listTools().find((entry) => {
     return entry.id === id;
   });
 }

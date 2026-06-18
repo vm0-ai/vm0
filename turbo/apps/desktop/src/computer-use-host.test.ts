@@ -31,6 +31,24 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
+function hungResponseUntilAbort(
+  init: RequestInit | undefined,
+): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    if (!init?.signal) {
+      reject(new Error("Expected request abort signal"));
+      return;
+    }
+    init.signal.addEventListener(
+      "abort",
+      () => {
+        reject(new Error("aborted"));
+      },
+      { once: true },
+    );
+  });
+}
+
 function createRuntime(
   options: {
     readonly sessionFetch?: ComputerUseHostFetch;
@@ -43,10 +61,7 @@ function createRuntime(
 ) {
   const sessionFetch =
     options.sessionFetch ??
-    vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.includes("/api/zero/computer-use/audit-events")) {
-        return jsonResponse({ auditEvents: [] });
-      }
+    vi.fn<ComputerUseHostFetch>(async () => {
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
   const hostFetch =
@@ -144,10 +159,7 @@ describe("ComputerUseHostRuntime", () => {
 
   it("uses the host bearer token for polling after registration", async () => {
     vi.useFakeTimers();
-    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.includes("/api/zero/computer-use/audit-events")) {
-        return jsonResponse({ auditEvents: [] });
-      }
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
@@ -594,14 +606,115 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("keeps polling after command completion is already terminal on the server", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({
+              status: "command",
+              command: {
+                id: "cmd-1",
+                kind: "app.state",
+                payload: { app: "Chrome" },
+              },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return new Response("{}", { status: 409 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+    expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("retries hung command completion requests with a request timeout", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({
+              status: "command",
+              command: {
+                id: "cmd-1",
+                kind: "app.state",
+                payload: { app: "Chrome" },
+              },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return completeCalls === 1
+          ? await hungResponseUntilAbort(init)
+          : jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(1_999);
+
+    expect(completeCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(completeCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+    expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
+
+    await runtime.stop();
+  });
+
   it("retries transient start failures with recovery state", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
     let startCalls = 0;
-    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.includes("/api/zero/computer-use/audit-events")) {
-        return jsonResponse({ auditEvents: [] });
-      }
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
       startCalls++;
       return startCalls === 1
         ? new Response("{}", { status: 503 })
@@ -679,6 +792,104 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(heartbeatCalls).toBe(2);
     expect(nextCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("recovers hung heartbeat requests with a request timeout", async () => {
+    vi.useFakeTimers();
+    let heartbeatCalls = 0;
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        heartbeatCalls++;
+        if (heartbeatCalls === 1) {
+          return await hungResponseUntilAbort(init);
+        }
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(heartbeatCalls).toBe(1);
+    expect(nextCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use heartbeat timed out after 10000ms",
+      recovery: {
+        phase: "heartbeat",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(heartbeatCalls).toBe(2);
+    expect(nextCalls).toBeGreaterThan(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("backs off hung command claim requests with a request timeout", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? await hungResponseUntilAbort(init)
+          : jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use command poll timed out after 30000ms",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
     expect(runtime.getState()).toMatchObject({
       status: "online",
       lastError: null,
@@ -775,12 +986,12 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("keeps the runtime online when audit history refresh fails", async () => {
+  it("does not fetch audit history while refreshing heartbeats", async () => {
     vi.useFakeTimers();
     let heartbeatCalls = 0;
     const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
       if (url.includes("/api/zero/computer-use/audit-events")) {
-        return new Response("{}", { status: 503 });
+        throw new Error("Heartbeat must not depend on audit history refresh");
       }
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
@@ -803,16 +1014,16 @@ describe("ComputerUseHostRuntime", () => {
       status: "online",
       lastError: null,
       recovery: null,
-      errorLog: [
-        {
-          source: "audit",
-          message: "Computer Use audit history refresh failed: 503",
-        },
-      ],
+      errorLog: [],
     });
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(heartbeatCalls).toBe(2);
+    expect(
+      sessionFetch.mock.calls.some(([url]) => {
+        return url.includes("/api/zero/computer-use/audit-events");
+      }),
+    ).toBe(false);
 
     await runtime.stop();
   });

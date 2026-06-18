@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { persistedAttachmentSchema } from "./chat-threads";
 
 const c = initContract();
 
@@ -58,6 +59,16 @@ export const zeroAgentInstructionsResponseSchema = z.object({
  */
 export const zeroAgentInstructionsRequestSchema = z.object({
   content: z.string(),
+});
+
+export const zeroAgentDraftResponseSchema = z.object({
+  draftContent: z.string().nullable(),
+  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+});
+
+export const zeroAgentDraftRequestSchema = z.object({
+  draftContent: z.string().nullable().optional(),
+  draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
 });
 
 /**
@@ -197,6 +208,38 @@ export const zeroAgentInstructionsContract = c.router({
   },
 });
 
+export const zeroAgentDraftContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/agents/:id/draft",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: zeroAgentDraftResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get zero agent draft",
+  },
+  patch: {
+    method: "PATCH",
+    path: "/api/zero/agents/:id/draft",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: zeroAgentDraftRequestSchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update zero agent draft",
+  },
+});
+
 // Export types
 export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
 export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
@@ -209,8 +252,13 @@ export type ZeroAgentInstructionsResponse = z.infer<
 export type ZeroAgentInstructionsRequest = z.infer<
   typeof zeroAgentInstructionsRequestSchema
 >;
+export type ZeroAgentDraftResponse = z.infer<
+  typeof zeroAgentDraftResponseSchema
+>;
+export type ZeroAgentDraftRequest = z.infer<typeof zeroAgentDraftRequestSchema>;
 
 export type ZeroAgentsMainContract = typeof zeroAgentsMainContract;
 export type ZeroAgentsByIdContract = typeof zeroAgentsByIdContract;
 export type ZeroAgentInstructionsContract =
   typeof zeroAgentInstructionsContract;
+export type ZeroAgentDraftContract = typeof zeroAgentDraftContract;

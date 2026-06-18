@@ -1,4 +1,5 @@
 import {
+  findColorSystem,
   findDesignSystem,
   findImageStyle,
   findTemplate,
@@ -8,8 +9,10 @@ import {
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
   readonly selection: {
+    readonly colorSystemId?: string;
     readonly designSystemId: string;
     readonly templateId: string;
+    readonly previewUrl?: string;
   };
 }
 
@@ -107,6 +110,16 @@ function buildPresentationGenerationTemplatePrompt(
     };
   }
 
+  const colorSystem = generationTemplate.selection.colorSystemId
+    ? findColorSystem(generationTemplate.selection.colorSystemId)
+    : undefined;
+  if (generationTemplate.selection.colorSystemId && !colorSystem) {
+    return {
+      status: "invalid",
+      message: "Unknown generation template color system",
+    };
+  }
+
   return {
     status: "resolved",
     prompt: [
@@ -117,9 +130,23 @@ function buildPresentationGenerationTemplatePrompt(
       `- Design system description: ${designSystem.description}`,
       `- Template: ${template.name} (${template.id})`,
       `- Template description: ${template.description}`,
+      ...(colorSystem
+        ? [
+            `- Color system: ${colorSystem.name} (${colorSystem.id})`,
+            `- Color system description: ${colorSystem.description}`,
+          ]
+        : []),
+      ...(generationTemplate.selection.previewUrl
+        ? [`- Template preview URL: ${generationTemplate.selection.previewUrl}`]
+        : []),
       "",
       "When you produce a presentation from the user's request:",
       `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
+      ...(colorSystem
+        ? [
+            `- Apply the selected color system (${colorSystem.id}) when authoring the deck.`,
+          ]
+        : []),
       "- Follow the returned authoring packet. For a static HTML presentation, publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
       "- If a flag above no longer applies, run `zero generate presentation -h` to discover the current options.",
     ].join("\n"),
@@ -151,9 +178,10 @@ function buildVideoGenerationTemplatePrompt(
       `- Template source: ${templateSource}`,
       "",
       "When you produce a video from the user's request:",
-      `- Resolve the selected template source first: ${templateSource}`,
-      `- Run: zero generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
-      "- Follow the returned authoring packet. If a connector/provider is requested, follow connector guidance instead.",
+      `- Run once to fetch the locked video authoring packet: zero generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
+      `- The packet points back to the selected template source (${templateSource}); read its SKILL.md before final generation.`,
+      "- Then run final direct video generation from the resolved prompt and parameters without `--template`.",
+      "- If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
     ].join("\n"),
   };

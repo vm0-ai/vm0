@@ -6,6 +6,7 @@ import {
   findDesignSystem,
   findSkill,
   findTemplate,
+  findTool,
 } from "@vm0/core/resource-registry";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -24,9 +25,9 @@ const routeMocks = createZeroRouteMocks(context);
 
 const PRIVATE_ARCHIVE_FIXTURES = [
   {
-    id: "skill:presentation-deck-tools",
+    id: "tool:presentation-deck-tools",
     versionId:
-      "a11aab6b73aad5796a77875492564f269d8e4f62c7fbfbf302ab228d43fca5ff",
+      "b6ea3b108cb3d710306766fbd75eac537283b166a9a5c5345a0bb884f9af3606",
   },
   {
     id: "design-system:business-data",
@@ -242,6 +243,7 @@ function storageNameFor(id: string): string {
 function findArchiveSha256(id: string): string {
   const entry =
     findSkill(id) ??
+    findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findColorSystem(id);

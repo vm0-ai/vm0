@@ -87,6 +87,30 @@ export default [
             "Use now() from src/lib/time instead of Date.now() so tests can control the platform clock.",
         },
       ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@vm0/connectors/firewalls",
+              message:
+                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+            },
+            {
+              name: "@vm0/core/firewalls",
+              message:
+                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@vm0/connectors/firewalls/*", "@vm0/core/firewalls/*"],
+              message:
+                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

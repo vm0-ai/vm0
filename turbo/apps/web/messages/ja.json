@@ -145,6 +145,18 @@
       },
       "buttonText": "Teamで始める"
     },
+    "enterprise": {
+      "description": "高度なセキュリティ、専任サポート、組織に合わせたカスタム上限。",
+      "features": {
+        "credits": "カスタムクレジット容量",
+        "concurrentRuns": "カスタム同時実行数",
+        "unlimitedAgents": "エージェント数無制限",
+        "bringOwnLLM": "独自のLLMキーを利用可能",
+        "dedicatedSupport": "専任サポート・SLA",
+        "annualBilling": "ボリューム・年間請求"
+      },
+      "buttonText": "営業に問い合わせる"
+    },
     "needMoreCredits": "もっとクレジットが必要ですか？",
     "topUpDescription": "いつでもチャージ可能",
     "topUpRate": "1,000クレジットあたり$1",
@@ -204,7 +216,8 @@
       "120k": "120,000",
       "unlimited": "無制限",
       "oneMonth": "1ヶ月",
-      "allConnectors": "すべてのコネクター"
+      "allConnectors": "すべてのコネクター",
+      "custom": "カスタム"
     },
     "faq": {
       "title": "よくある質問",

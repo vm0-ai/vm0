@@ -50,6 +50,7 @@ describe("zero workflow delete command", () => {
             content: "# Workflow",
             files: [],
             fileContents: [],
+            triggers: [],
           });
         }),
         http.delete(
@@ -101,6 +102,7 @@ describe("zero workflow delete command", () => {
             content: "# Workflow",
             files: [],
             fileContents: [],
+            triggers: [],
           });
         }),
       );

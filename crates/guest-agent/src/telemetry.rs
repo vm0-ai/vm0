@@ -8,7 +8,8 @@
 //!
 //! Callers interact via [`Telemetry`]: spawn the task with
 //! [`Telemetry::spawn`], request uploads with [`Telemetry::flush`], and
-//! release with [`Telemetry::shutdown`].
+//! release with [`Telemetry::shutdown`] or
+//! [`Telemetry::final_flush_and_shutdown`].
 
 mod delta;
 
@@ -142,6 +143,10 @@ enum Cmd {
         mode: UploadMode,
         reply: oneshot::Sender<Result<(), AgentError>>,
     },
+    /// Perform the EOF-consuming final flush, then stop the loop.
+    FinalFlushAndShutdown {
+        reply: oneshot::Sender<Result<(), AgentError>>,
+    },
     /// Stop the loop. Any in-flight upload completes first.
     Shutdown,
 }
@@ -201,6 +206,26 @@ impl Telemetry {
         let _ = self.tx.send(Cmd::Shutdown).await;
         let _ = self.handle.await;
     }
+
+    /// Perform the final telemetry upload and stop the uploader task.
+    ///
+    /// Consumes `self`, so no later periodic `Live` tick or caller-driven
+    /// flush can run after the EOF-consuming final pass.
+    pub async fn final_flush_and_shutdown(self) -> Result<(), AgentError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        if self
+            .tx
+            .send(Cmd::FinalFlushAndShutdown { reply: reply_tx })
+            .await
+            .is_err()
+        {
+            let _ = self.handle.await;
+            return Err(AgentError::TelemetryUnavailable);
+        }
+        let result = reply_rx.await.map_err(|_| AgentError::TelemetryUnavailable);
+        let _ = self.handle.await;
+        result?
+    }
 }
 
 /// Single-writer task. Owns all pos-file mutations.
@@ -217,6 +242,10 @@ async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpC
             match cmd {
                 Cmd::Flush { reply, .. } => {
                     let _ = reply.send(Ok(()));
+                }
+                Cmd::FinalFlushAndShutdown { reply } => {
+                    let _ = reply.send(Ok(()));
+                    break;
                 }
                 Cmd::Shutdown => break,
             }
@@ -239,6 +268,11 @@ async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpC
                 Some(Cmd::Flush { mode, reply }) => {
                     let result = upload_telemetry(&http, &masker, mode).await;
                     let _ = reply.send(result);
+                }
+                Some(Cmd::FinalFlushAndShutdown { reply }) => {
+                    let result = upload_telemetry(&http, &masker, UploadMode::Final).await;
+                    let _ = reply.send(result);
+                    break;
                 }
                 Some(Cmd::Shutdown) | None => break,
             },

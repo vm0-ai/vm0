@@ -8,7 +8,6 @@ import type {
   ComputerUseHostRuntimeState,
   ComputerUseLocalCommandLogEntry,
   ComputerUsePermissionState,
-  ComputerUseRuntimeAuditEvent,
   ComputerUseRuntimeErrorLogEntry,
   ComputerUseRuntimeRecoveryPhase,
   ComputerUseRuntimeErrorSource,
@@ -22,6 +21,9 @@ const ONLINE_POLL_MS = 2_000;
 const RECOVERY_RETRY_BASE_MS = 2_000;
 const RECOVERY_RETRY_MAX_MS = 60_000;
 const RECOVERY_RETRY_AFTER_MAX_MS = 5 * 60_000;
+const HEARTBEAT_REQUEST_TIMEOUT_MS = 10_000;
+const COMMAND_POLL_REQUEST_TIMEOUT_MS = 30_000;
+const COMMAND_COMPLETION_REQUEST_TIMEOUT_MS = 60_000;
 const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
@@ -63,10 +65,6 @@ interface ComputerUseHostStartResponse {
   readonly hostToken: string;
 }
 
-interface ComputerUseAuditEventsResponse {
-  readonly auditEvents: readonly ComputerUseRuntimeAuditEvent[];
-}
-
 interface ComputerUseHostNextIdleResponse {
   readonly status: "idle";
 }
@@ -87,7 +85,6 @@ type RuntimeErrorStateUpdate = Partial<
     | "lastHeartbeatAt"
     | "lastCommandAt"
     | "recovery"
-    | "recentAuditEvents"
     | "localCommandLog"
   >
 >;
@@ -248,7 +245,6 @@ export class ComputerUseHostRuntime {
     lastError: null,
     recovery: null,
     errorLog: [],
-    recentAuditEvents: [],
     localCommandLog: [],
   };
 
@@ -716,10 +712,51 @@ export class ComputerUseHostRuntime {
     return response.ok;
   }
 
+  private async runHostRequestWithTimeout(args: {
+    readonly label: string;
+    readonly timeoutMs: number;
+    readonly request: (signal: AbortSignal) => Promise<Response>;
+  }): Promise<Response> {
+    const { label, timeoutMs, request } = args;
+    const timeoutMessage = () => {
+      return new Error(`Computer Use ${label} timed out after ${timeoutMs}ms`);
+    };
+    const controller = new AbortController();
+    const requestPromise = request(controller.signal).catch((error) => {
+      if (controller.signal.aborted) {
+        throw timeoutMessage();
+      }
+      throw error;
+    });
+    let timer: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timer = this.scheduleTimeout(() => {
+        controller.abort();
+        reject(timeoutMessage());
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([requestPromise, timeoutPromise]);
+    } finally {
+      if (timer) {
+        this.clearScheduledTimeout(timer);
+        timer = null;
+      }
+    }
+  }
+
   private async heartbeat(): Promise<boolean> {
-    const response = await this.hostFetch("/api/zero/computer-use/heartbeat", {
-      method: "POST",
-      body: JSON.stringify(await this.runtimeBody()),
+    const response = await this.runHostRequestWithTimeout({
+      label: "heartbeat",
+      timeoutMs: HEARTBEAT_REQUEST_TIMEOUT_MS,
+      request: async (signal) => {
+        return await this.hostFetch("/api/zero/computer-use/heartbeat", {
+          method: "POST",
+          body: JSON.stringify(await this.runtimeBody()),
+          signal,
+        });
+      },
     });
     if (response.status === 401) {
       this.deactivateInvalidHostToken("heartbeat");
@@ -750,51 +787,26 @@ export class ComputerUseHostRuntime {
       lastError: commandPollRecovery ? this.state.lastError : null,
       recovery: commandPollRecovery,
     });
-    await this.refreshAuditEvents();
     return true;
   }
 
-  private async refreshAuditEvents(): Promise<void> {
-    const hostId = this.state.hostId;
-    if (!hostId) {
-      return;
-    }
-
-    const url = new URL(
-      `${this.apiBaseUrl}/api/zero/computer-use/audit-events`,
-    );
-    url.searchParams.set("hostId", hostId);
-    url.searchParams.set("limit", "25");
-
-    const response = await this.sessionFetch(url.toString(), { method: "GET" });
-    if (response.status === 401 || response.status === 403) {
-      this.setState({ recentAuditEvents: [] });
-      return;
-    }
-    if (!response.ok) {
-      this.appendRuntimeErrorLog(
-        "audit",
-        `Computer Use audit history refresh failed: ${response.status}`,
-      );
-      return;
-    }
-
-    const body = (await response.json()) as ComputerUseAuditEventsResponse;
-    this.setState({
-      recentAuditEvents: body.auditEvents,
-    });
-  }
-
   private async claimAndExecuteCommand(): Promise<void> {
-    const next = await this.hostFetch(
-      "/api/zero/computer-use/host/commands/next",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
-        }),
+    const next = await this.runHostRequestWithTimeout({
+      label: "command poll",
+      timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
+      request: async (signal) => {
+        return await this.hostFetch(
+          "/api/zero/computer-use/host/commands/next",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
+            }),
+            signal,
+          },
+        );
       },
-    );
+    });
     if (next.status === 401) {
       this.deactivateInvalidHostToken("command_poll");
       return;
@@ -849,7 +861,6 @@ export class ComputerUseHostRuntime {
       lastError: null,
       recovery: null,
     });
-    await this.refreshAuditEvents();
   }
 
   private async completeCommandWithRetry(
@@ -863,18 +874,28 @@ export class ComputerUseHostRuntime {
       attempt++
     ) {
       try {
-        const response = await this.hostFetch(
-          `/api/zero/computer-use/host/commands/${commandId}/complete`,
-          {
-            method: "POST",
-            body: JSON.stringify(completed),
+        const response = await this.runHostRequestWithTimeout({
+          label: "command completion",
+          timeoutMs: COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
+          request: async (signal) => {
+            return await this.hostFetch(
+              `/api/zero/computer-use/host/commands/${commandId}/complete`,
+              {
+                method: "POST",
+                body: JSON.stringify(completed),
+                signal,
+              },
+            );
           },
-        );
+        });
         if (response.ok) {
           return;
         }
         if (response.status === 401) {
           this.deactivateInvalidHostToken("command_poll");
+          return;
+        }
+        if (response.status === 409) {
           return;
         }
         lastError = new ComputerUseHttpError(

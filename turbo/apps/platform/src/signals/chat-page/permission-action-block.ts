@@ -1,7 +1,7 @@
 import {
-  isFirewallConnectorType,
-  type FirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+  isFirewallMetadataConnectorType,
+  type FirewallMetadataConnectorType,
+} from "@vm0/connectors/firewall-metadata";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 
@@ -10,7 +10,7 @@ type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
 export interface PermissionActionDescriptor {
   agentId: string;
-  connectorRef: FirewallConnectorType;
+  connectorRef: FirewallMetadataConnectorType;
   permission: string;
   action: PermissionAction;
   method: string | null;
@@ -168,7 +168,7 @@ export function parsePermissionActionUrl(
   if (
     !agentId ||
     !connectorRef ||
-    !isFirewallConnectorType(connectorRef) ||
+    !isFirewallMetadataConnectorType(connectorRef) ||
     !permission ||
     !isPermissionAction(action)
   ) {

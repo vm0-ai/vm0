@@ -2807,6 +2807,19 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches only one segment for zero agent draft rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/draft",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/draft/extra",
+      ),
+    ).toBe(false);
+  });
+
   it("matches zero custom connectors root rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/custom-connectors")).toBe(
       true,

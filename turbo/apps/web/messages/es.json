@@ -145,6 +145,18 @@
       },
       "buttonText": "Comenzar con Team"
     },
+    "enterprise": {
+      "description": "Seguridad avanzada, soporte dedicado y límites personalizados para tu organización.",
+      "features": {
+        "credits": "Volumen de créditos personalizado",
+        "concurrentRuns": "Ejecuciones simultáneas personalizadas",
+        "unlimitedAgents": "Agentes totales ilimitados",
+        "bringOwnLLM": "Usa tus propias claves de LLM",
+        "dedicatedSupport": "Soporte dedicado y SLA",
+        "annualBilling": "Facturación por volumen y anual"
+      },
+      "buttonText": "Contactar con ventas"
+    },
     "needMoreCredits": "¿Necesitas más créditos?",
     "topUpDescription": "Recarga en cualquier momento a",
     "topUpRate": "1.000 créditos por $1",
@@ -204,7 +216,8 @@
       "120k": "120.000",
       "unlimited": "Ilimitado",
       "oneMonth": "1 mes",
-      "allConnectors": "Todos los conectores"
+      "allConnectors": "Todos los conectores",
+      "custom": "Personalizado"
     },
     "faq": {
       "title": "Preguntas frecuentes",

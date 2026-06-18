@@ -83,7 +83,6 @@ describe("resolveComputerUseStartupGate", () => {
         lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
         recovery: null,
         errorLog: [],
-        recentAuditEvents: [],
         localCommandLog: [],
       },
     });

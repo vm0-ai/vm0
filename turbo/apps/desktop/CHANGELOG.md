@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.1...desktop-v0.15.2) (2026-06-18)
+
+
+### Bug Fixes
+
+* recover from computer use completion conflicts ([#18173](https://github.com/vm0-ai/vm0/issues/18173)) ([2accc05](https://github.com/vm0-ai/vm0/commit/2accc05ae5901d55edc70357c12bc56b94533bb5))
+
+## [0.15.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.0...desktop-v0.15.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **desktop:** slow computer use tray animation ([#18149](https://github.com/vm0-ai/vm0/issues/18149)) ([9c12cd4](https://github.com/vm0-ai/vm0/commit/9c12cd48d8a7aa92ec0e4951202193952aee32c9))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.5...desktop-v0.15.0) (2026-06-17)
 
 

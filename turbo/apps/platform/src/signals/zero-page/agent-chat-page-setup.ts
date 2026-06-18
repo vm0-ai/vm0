@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { AgentChatPage } from "../../views/zero-page/agent-chat-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -16,12 +17,18 @@ import {
   rememberLastUsedAgentId$,
 } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
-import { talkDraft$ } from "./chat-draft.ts";
+import { createDraftSignals, setTalkDraft$, talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import {
   reloadTagline$,
   resetChatPageModelSelection$,
 } from "./zero-chat-page.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  ensureAgentDraft$,
+  loadAgentDraft$,
+  type EnsuredAgentDraft,
+} from "./agent-draft.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
@@ -33,16 +40,27 @@ export const setupAgentChatPage$ = command(
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
 
-    // Reset the talk draft on entrance
-    set(get(talkDraft$).clear$);
     set(resetChatPageModelSelection$);
     set(reloadUserModelPreference$);
+
+    const features = get(featureSwitch$);
+    const agentDraftsEnabled =
+      features[FeatureSwitchKey.AgentChatDrafts] ?? false;
+    const localDraft = agentDraftsEnabled ? undefined : createDraftSignals();
+    if (localDraft) {
+      set(setTalkDraft$, localDraft);
+    }
 
     // Read agent ID from URL immediately (synchronous) and update sidebar
     // highlight early so the UI responds without waiting for async data.
     const agentId = get(currentAgentId$);
+    let agentDraft: EnsuredAgentDraft | undefined;
     if (agentId) {
       set(setChatAgentId$, agentId);
+      if (agentDraftsEnabled) {
+        agentDraft = set(ensureAgentDraft$, agentId);
+        set(setTalkDraft$, agentDraft.draft);
+      }
     }
 
     await set(hideAppSkeleton$, signal);
@@ -83,8 +101,19 @@ export const setupAgentChatPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    if (agentDraftsEnabled && agentDraft && !prompt) {
+      await set(
+        loadAgentDraft$,
+        agentId,
+        agentDraft.draft,
+        agentDraft.isNew,
+        signal,
+      );
+    }
     if (prompt) {
-      set(get(talkDraft$).setInput$, prompt);
+      const targetDraft = agentDraft?.draft ?? localDraft ?? get(talkDraft$);
+      set(targetDraft.clear$);
+      set(targetDraft.setInput$, prompt);
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);

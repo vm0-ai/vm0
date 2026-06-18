@@ -71,10 +71,7 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
 
     let masker = Arc::new(SecretMasker::from_raw(""));
     let telemetry = guest_agent::telemetry::Telemetry::spawn(Arc::clone(&masker), http.clone());
-    telemetry
-        .flush(guest_agent::telemetry::UploadMode::Final)
-        .await?;
-    telemetry.shutdown().await;
+    telemetry.final_flush_and_shutdown().await?;
 
     let shutdown = CancellationToken::new();
     let heartbeat = tokio::spawn(guest_agent::heartbeat::heartbeat_loop(

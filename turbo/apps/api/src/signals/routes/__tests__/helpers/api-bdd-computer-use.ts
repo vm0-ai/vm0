@@ -106,7 +106,7 @@ const DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES = [
 const DEFAULT_WRITE_COMMAND_BODY = {
   kind: "app.open",
   app: "Safari",
-  timeoutMs: 15_000,
+  timeoutMs: 60_000,
 } as const satisfies ComputerUseWriteCommandBody;
 
 function hostHeaders(hostToken: string): RequiredAuthHeaders {
@@ -468,7 +468,7 @@ export function createComputerUseBddApi(context: TestContext) {
       const response = await accept(
         commandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 15_000, ...body },
+          body: { timeoutMs: 60_000, ...body },
         }),
         [200],
       );
@@ -483,7 +483,7 @@ export function createComputerUseBddApi(context: TestContext) {
       return await accept(
         commandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 15_000, ...body },
+          body: { timeoutMs: 60_000, ...body },
         }),
         statuses,
       );
@@ -496,7 +496,7 @@ export function createComputerUseBddApi(context: TestContext) {
       const response = await accept(
         writeCommandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 15_000, ...body },
+          body: { timeoutMs: 60_000, ...body },
         }),
         [200],
       );
@@ -511,7 +511,7 @@ export function createComputerUseBddApi(context: TestContext) {
       return await accept(
         writeCommandClient().create({
           headers: authenticate(auth),
-          body: { timeoutMs: 15_000, ...body },
+          body: { timeoutMs: 60_000, ...body },
         }),
         statuses,
       );

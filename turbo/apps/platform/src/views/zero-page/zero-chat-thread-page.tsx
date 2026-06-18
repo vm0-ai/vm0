@@ -45,6 +45,7 @@ import {
   IconX,
   IconClock,
   IconCoins,
+  IconHourglass,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -245,11 +246,13 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
-  findPermission,
+  findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
+import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
+import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -3018,18 +3021,28 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold className="-mx-2">
+    <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-2.5">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
+        className="mt-0.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <span className="flex items-center gap-2">
-          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-          <span aria-hidden className="h-px flex-1 bg-border/40" />
-        </span>
+        <IconHourglass
+          aria-hidden
+          size={14}
+          className="shrink-0 text-muted-foreground/70"
+        />
+        <span className="text-[13px]">{label}</span>
+        <IconChevronRight
+          aria-hidden
+          size={14}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
       </button>
     </div>
   );
@@ -3221,7 +3234,7 @@ function ScrollToBottomButton({
       onClick={() => {
         scrollToBottom();
       }}
-      className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+      className="absolute bottom-4 left-[calc((100%-var(--github-pr-tracking-content-inset,0px))/2)] z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
     >
       <IconArrowDown size={18} />
     </button>
@@ -4508,9 +4521,14 @@ function PermissionActionButton({
 
 function isPermissionActionLoading(params: {
   agentLoading: boolean;
+  permissionMetadataLoading: boolean;
   userGrantsLoading: boolean;
 }): boolean {
-  return params.agentLoading || params.userGrantsLoading;
+  return (
+    params.agentLoading ||
+    params.permissionMetadataLoading ||
+    params.userGrantsLoading
+  );
 }
 
 function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
@@ -4519,9 +4537,14 @@ function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
 
 function isPermissionActionLoadError(params: {
   agentError: boolean;
+  permissionMetadataError: boolean;
   userGrantsError: boolean;
 }): boolean {
-  return params.agentError || params.userGrantsError;
+  return (
+    params.agentError ||
+    params.permissionMetadataError ||
+    params.userGrantsError
+  );
 }
 
 function isPermissionActionAlreadyApplied(params: {
@@ -4547,23 +4570,25 @@ function isPermissionActionAlreadyApplied(params: {
   });
 }
 
-function findPermissionActionPermission(block: PermissionActionBlock) {
-  return findPermission(block.connectorRef, block.permission) ?? undefined;
+function findPermissionActionPermission(
+  block: PermissionActionBlock,
+  metadata: FirewallPermissionDetailMetadata | undefined,
+) {
+  return metadata
+    ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
+    : undefined;
 }
 
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionActionBlock,
+  metadata: FirewallPermissionDetailMetadata | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
-  if (!grants) {
+  if (!grants || !metadata) {
     return undefined;
   }
-  return resolveUserPermissionGrantPolicy(
-    grants,
-    block.connectorRef,
-    block.permission,
-  );
+  return resolveUserPermissionGrantPolicy(grants, metadata, block.permission);
 }
 
 function permissionActionUserGrant(
@@ -4627,19 +4652,31 @@ function createPermissionActionCardViewState(params: {
   block: PermissionActionBlock;
   hasAgent: boolean;
   agentLoadableState: string;
+  permissionMetadataLoadable: LoadableLike<FirewallPermissionDetailMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
   expirationAvailable: boolean;
   currentGrantExpiresAt: string | null | undefined;
 }) {
-  const focusedPermission = findPermissionActionPermission(params.block);
+  const permissionMetadata =
+    params.permissionMetadataLoadable.state === "hasData"
+      ? (params.permissionMetadataLoadable.data ?? undefined)
+      : undefined;
+  const focusedPermission = findPermissionActionPermission(
+    params.block,
+    permissionMetadata,
+  );
   const actionLabel = permissionActionVerb(params.block.action);
   const loading = isPermissionActionLoading({
     agentLoading: params.agentLoadableState === "loading",
+    permissionMetadataLoading:
+      params.permissionMetadataLoadable.state === "loading",
     userGrantsLoading: params.userGrantsLoadable.state === "loading",
   });
   const loadError = isPermissionActionLoadError({
     agentError: params.agentLoadableState === "hasError",
+    permissionMetadataError:
+      params.permissionMetadataLoadable.state === "hasError",
     userGrantsError: params.userGrantsLoadable.state === "hasError",
   });
   const saving = isPermissionActionSaving({
@@ -4648,6 +4685,7 @@ function createPermissionActionCardViewState(params: {
   const userGrantPolicy = permissionActionUserGrantPolicy(
     params.userGrantsLoadable,
     params.block,
+    permissionMetadata,
   );
   const alreadyApplied = isPermissionActionAlreadyApplied({
     hasAgent: params.hasAgent,
@@ -4819,6 +4857,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     block.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const permissionMetadataLoadable = useLoadable(
+    firewallPermissionMetadataByConnector({
+      connectorType: block.connectorRef,
+    }),
+  );
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
   );
@@ -4834,6 +4877,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     block,
     hasAgent,
     agentLoadableState: agentLoadable.state,
+    permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
     expirationAvailable,

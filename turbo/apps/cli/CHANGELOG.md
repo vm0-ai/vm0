@@ -1,5 +1,32 @@
 # Changelog
 
+## [9.197.3](https://github.com/vm0-ai/vm0/compare/cli-v9.197.2...cli-v9.197.3) (2026-06-18)
+
+
+### Bug Fixes
+
+* clarify video template prompt guidance ([#18167](https://github.com/vm0-ai/vm0/issues/18167)) ([de0fa42](https://github.com/vm0-ai/vm0/commit/de0fa4285d3b931115fcf79639419ee205cb470e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.101.0
+    * @vm0/connectors bumped to 1.88.0
+    * @vm0/core bumped to 8.352.0
+
+## [9.197.2](https://github.com/vm0-ai/vm0/compare/cli-v9.197.1...cli-v9.197.2) (2026-06-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.100.3
+    * @vm0/connectors bumped to 1.87.1
+    * @vm0/core bumped to 8.351.2
+
 ## [9.197.1](https://github.com/vm0-ai/vm0/compare/cli-v9.197.0...cli-v9.197.1) (2026-06-18)
 
 

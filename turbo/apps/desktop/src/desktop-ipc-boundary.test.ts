@@ -235,7 +235,6 @@ function createComputerUseState(): DesktopComputerUseState {
       lastError: null,
       recovery: null,
       errorLog: [],
-      recentAuditEvents: [],
       localCommandLog: [],
     },
     keepAwake: {

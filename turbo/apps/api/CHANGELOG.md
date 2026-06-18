@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.153.0](https://github.com/vm0-ai/vm0/compare/api-v1.152.3...api-v1.153.0) (2026-06-18)
+
+
+### Features
+
+* add presentation template theme previews ([#18049](https://github.com/vm0-ai/vm0/issues/18049)) ([ae67bb4](https://github.com/vm0-ai/vm0/commit/ae67bb4bf811e8c07d2ae7df8f95afd7b7e4242d))
+
+
+### Bug Fixes
+
+* clarify video template prompt guidance ([#18167](https://github.com/vm0-ai/vm0/issues/18167)) ([de0fa42](https://github.com/vm0-ai/vm0/commit/de0fa4285d3b931115fcf79639419ee205cb470e))
+* recover from computer use completion conflicts ([#18173](https://github.com/vm0-ai/vm0/issues/18173)) ([2accc05](https://github.com/vm0-ai/vm0/commit/2accc05ae5901d55edc70357c12bc56b94533bb5))
+
+
+### Refactoring
+
+* remove legacy internal callback URL fallback ([#18172](https://github.com/vm0-ai/vm0/issues/18172)) ([3ef9198](https://github.com/vm0-ai/vm0/commit/3ef9198aedbeb014959440e0dffb284bc4eaf87a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.101.0
+    * @vm0/connectors bumped to 1.88.0
+    * @vm0/core bumped to 8.352.0
+    * @vm0/db bumped to 1.56.0
+
+## [1.152.3](https://github.com/vm0-ai/vm0/compare/api-v1.152.2...api-v1.152.3) (2026-06-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.100.3
+    * @vm0/connectors bumped to 1.87.1
+    * @vm0/core bumped to 8.351.2
+    * @vm0/db bumped to 1.55.3
+
 ## [1.152.2](https://github.com/vm0-ai/vm0/compare/api-v1.152.1...api-v1.152.2) (2026-06-18)
 
 

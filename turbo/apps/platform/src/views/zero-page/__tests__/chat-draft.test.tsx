@@ -6,6 +6,12 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentDraftContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -78,6 +84,40 @@ function textarea(): HTMLTextAreaElement {
   return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
 }
 
+function mockAgentChatPage(agentId: string): void {
+  context.mocks.data.userModelPreference({
+    selectedModel: "claude-sonnet-4-6",
+    updatedAt: "2026-03-10T00:00:00Z",
+  });
+  context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+    return respond(200, [
+      {
+        id: agentId,
+        displayName: "Draft Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+  });
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    return respond(200, {
+      agentId: params.id,
+      ownerId: "test-user-123",
+      description: null,
+      displayName: "Draft Agent",
+      sound: null,
+      avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "public",
+    });
+  });
+}
+
 function chatClipboardHtml(payload: {
   text: string;
   attachments: {
@@ -106,6 +146,106 @@ async function navigateToThread(threadId: string): Promise<void> {
 }
 
 describe("chat drafts", () => {
+  it("restores a saved agent draft with attachments on first agent chat open", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000101";
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
+      return respond(200, {
+        draftContent: `Resume the ${params.id} launch notes`,
+        draftAttachments: [
+          {
+            id: "agent-draft-brief",
+            filename: "agent-brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/agent-brief.md",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: true },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue(`Resume the ${agentId} launch notes`);
+      expect(
+        screen.getByLabelText("Remove agent-brief.md"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("persists typed agent drafts through the agent draft endpoint", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000102";
+    const draftPatches: Record<string, unknown>[] = [];
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: null,
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: true },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+    await fill(textarea(), "agent-level draft");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "agent-level draft",
+        draftAttachments: null,
+      });
+    });
+  });
+
+  it("keeps persisted agent drafts disabled behind the feature switch", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000103";
+    let draftLoads = 0;
+    const draftPatches: Record<string, unknown>[] = [];
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      draftLoads += 1;
+      return respond(200, {
+        draftContent: "server draft should stay hidden",
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: false },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("");
+    });
+    expect(draftLoads).toBe(0);
+
+    await fill(textarea(), "local-only agent draft");
+
+    expect(draftLoads).toBe(0);
+    expect(draftPatches).toStrictEqual([]);
+  });
+
   it("preserves per-thread text drafts while navigating", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
