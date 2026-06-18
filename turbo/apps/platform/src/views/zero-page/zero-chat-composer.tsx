@@ -1319,12 +1319,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
   ];
 
-const PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS: readonly string[] = [
-  "playful-launch-presentation",
-  "crayon-learning-deck",
-  "mosaic-geometric-pitch",
-];
-
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
 ): string {
@@ -1354,6 +1348,14 @@ function presentationTemplateThemePreviewSwatches(
   ];
 }
 
+function isPresentationTemplateSupport2SwatchSlug(slug: string): boolean {
+  return (
+    slug === "playful-launch-presentation" ||
+    slug === "crayon-learning-deck" ||
+    slug === "mosaic-geometric-pitch"
+  );
+}
+
 function presentationTemplateAccentSwatchColor(
   item: PresentationTemplateItem,
   theme: PresentationTemplateThemeOption,
@@ -1361,7 +1363,7 @@ function presentationTemplateAccentSwatchColor(
   if (item.slug === "landing-consulting-deck") {
     return { id: "support-1", color: theme.colors[5] };
   }
-  if (PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS.includes(item.slug)) {
+  if (isPresentationTemplateSupport2SwatchSlug(item.slug)) {
     return { id: "support-2", color: theme.colors[6] };
   }
   return { id: "accent", color: theme.colors[4] };

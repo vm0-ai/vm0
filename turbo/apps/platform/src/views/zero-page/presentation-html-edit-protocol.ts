@@ -257,6 +257,14 @@ function sanitizePreviewTree(root: ParentNode): void {
   }
 }
 
+function isUnsafePreviewUrlProtocol(protocol: string): boolean {
+  return (
+    protocol === "data:" ||
+    protocol === "javascript:" ||
+    protocol === "vbscript:"
+  );
+}
+
 function hasUnsafePreviewUrlProtocol(value: string): boolean {
   // Strip ASCII control characters and whitespace to normalise obfuscated
   // schemes such as "j a v a s c r i p t:" or "java\x00script:".
@@ -282,9 +290,7 @@ function hasUnsafePreviewUrlProtocol(value: string): boolean {
     value,
     "https://vm0.invalid/",
   ).protocol.toLowerCase();
-  return UNSAFE_PREVIEW_URL_PROTOCOLS.includes(
-    protocol as (typeof UNSAFE_PREVIEW_URL_PROTOCOLS)[number],
-  );
+  return isUnsafePreviewUrlProtocol(protocol);
 }
 
 function sanitizePreviewDocument(doc: Document): void {
