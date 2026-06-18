@@ -431,6 +431,7 @@ impl SessionMetadataCapture {
                 paths::session_id_file()
             ),
         }
+        self.existing_session_id_seeded = true;
         session_metadata::write_session_history_marker(&history_path_payload);
     }
 
