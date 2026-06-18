@@ -2299,22 +2299,16 @@ function TemplatePreviewPage({
                             : "border-border hover:border-muted-foreground/60",
                         )}
                       >
-                        <span className="flex h-full">
-                          <span
-                            className="w-1/2"
-                            style={{ backgroundColor: swatches[0]?.color }}
-                          />
-                          <span className="flex w-1/2 flex-col">
-                            {swatches.slice(1).map((swatch) => {
-                              return (
-                                <span
-                                  key={`${theme.id}-${swatch.id}`}
-                                  className="flex-1"
-                                  style={{ backgroundColor: swatch.color }}
-                                />
-                              );
-                            })}
-                          </span>
+                        <span className="flex h-full flex-col">
+                          {swatches.map((swatch) => {
+                            return (
+                              <span
+                                key={`${theme.id}-${swatch.id}`}
+                                className="flex-1"
+                                style={{ backgroundColor: swatch.color }}
+                              />
+                            );
+                          })}
                         </span>
                       </button>
                     );
