@@ -8,6 +8,10 @@ import {
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
+import {
+  isComputerUsePermissionTarget,
+  printComputerUsePermissionGuidance,
+} from "./computer-use-guidance";
 
 const DEFAULT_PERMISSION_GRANT_DURATION: UserPermissionGrantExpiresIn = "1h";
 const PERMISSION_GRANT_DURATIONS = [
@@ -170,6 +174,7 @@ Examples:
   zero doctor permission-change github --permission contents:write --enable --duration 24h
   zero doctor permission-change slack --permission chat:write --disable
   zero doctor permission-change cloudflare --permission __unknown__ --disable
+  zero doctor permission-change computer-use --permission computer-use:write --enable
 
 Notes:
   - Outputs a platform URL for the user to adjust the permission
@@ -195,6 +200,16 @@ Notes:
         }
         if (opts.disable && opts.duration !== undefined) {
           throw new Error("--duration is only supported with --enable");
+        }
+
+        if (
+          isComputerUsePermissionTarget({
+            connectorRef,
+            permission: opts.permission,
+          })
+        ) {
+          printComputerUsePermissionGuidance();
+          return;
         }
 
         if (!isFirewallConnectorType(connectorRef)) {
