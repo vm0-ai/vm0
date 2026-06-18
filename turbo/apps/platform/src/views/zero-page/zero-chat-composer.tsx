@@ -994,9 +994,6 @@ interface PresentationTemplateThemeOption {
   readonly name: string;
   readonly group: "multi-accent" | "single-accent";
   readonly paletteName: string;
-  readonly fontName: string;
-  readonly displayFont: string;
-  readonly bodyFont: string;
   readonly colors: readonly [
     bg: string,
     surface: string,
@@ -1017,9 +1014,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Prism",
       group: "multi-accent",
       paletteName: "Prism",
-      fontName: "Poppins",
-      displayFont: "Poppins",
-      bodyFont: "Figtree",
       colors: [
         "#FFFFFF",
         "#F7F7FA",
@@ -1037,9 +1031,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Carnival",
       group: "multi-accent",
       paletteName: "Carnival",
-      fontName: "Archivo",
-      displayFont: "Archivo",
-      bodyFont: "Manrope",
       colors: [
         "#FFFDF7",
         "#FFFFFF",
@@ -1057,9 +1048,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Pop Art",
       group: "multi-accent",
       paletteName: "Pop Art",
-      fontName: "Sora",
-      displayFont: "Sora",
-      bodyFont: "Inter",
       colors: [
         "#111016",
         "#1B1A22",
@@ -1077,9 +1065,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Warm Sand",
       group: "single-accent",
       paletteName: "Warm Sand",
-      fontName: "Poppins",
-      displayFont: "Poppins",
-      bodyFont: "Figtree",
       colors: [
         "#FFFDF8",
         "#FFFFFF",
@@ -1097,9 +1082,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Bauhaus Primary",
       group: "single-accent",
       paletteName: "Bauhaus Primary",
-      fontName: "Space Grotesk",
-      displayFont: "Space Grotesk",
-      bodyFont: "Lexend",
       colors: [
         "#F5F1E6",
         "#FFFFFF",
@@ -1117,9 +1099,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Nordic Frost",
       group: "single-accent",
       paletteName: "Nordic Frost",
-      fontName: "Inter",
-      displayFont: "Sora",
-      bodyFont: "Inter",
       colors: [
         "#FBFCFD",
         "#FFFFFF",
@@ -1137,9 +1116,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Forest Editorial",
       group: "single-accent",
       paletteName: "Forest Editorial",
-      fontName: "Lora",
-      displayFont: "Montserrat",
-      bodyFont: "Lora",
       colors: [
         "#F7F6F1",
         "#FFFFFF",
@@ -1157,9 +1133,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Coral Studio",
       group: "single-accent",
       paletteName: "Coral Studio",
-      fontName: "Manrope",
-      displayFont: "Archivo",
-      bodyFont: "Manrope",
       colors: [
         "#FFF9F6",
         "#FFFFFF",
@@ -1177,9 +1150,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Slate Corporate",
       group: "single-accent",
       paletteName: "Slate Corporate",
-      fontName: "Inter",
-      displayFont: "Sora",
-      bodyFont: "Inter",
       colors: [
         "#FFFFFF",
         "#F6F8FB",
@@ -1197,9 +1167,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Terracotta Clay",
       group: "single-accent",
       paletteName: "Terracotta Clay",
-      fontName: "Lora",
-      displayFont: "Montserrat",
-      bodyFont: "Lora",
       colors: [
         "#FBF4EC",
         "#FFFFFF",
@@ -1217,9 +1184,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Berry Pop",
       group: "single-accent",
       paletteName: "Berry Pop",
-      fontName: "DM Sans",
-      displayFont: "DM Serif Display",
-      bodyFont: "DM Sans",
       colors: [
         "#FFFAFC",
         "#FFFFFF",
@@ -1237,9 +1201,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Citrus Fresh",
       group: "single-accent",
       paletteName: "Citrus Fresh",
-      fontName: "Archivo",
-      displayFont: "Archivo",
-      bodyFont: "Manrope",
       colors: [
         "#FFFFFB",
         "#FFFFFF",
@@ -1257,9 +1218,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Mauve Dusk",
       group: "single-accent",
       paletteName: "Mauve Dusk",
-      fontName: "Fraunces",
-      displayFont: "Fraunces",
-      bodyFont: "Work Sans",
       colors: [
         "#FAF7FB",
         "#FFFFFF",
@@ -1277,9 +1235,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Mono Ink",
       group: "single-accent",
       paletteName: "Mono Ink",
-      fontName: "Inter",
-      displayFont: "Sora",
-      bodyFont: "Inter",
       colors: [
         "#FFFFFF",
         "#FAFAFA",
@@ -1297,9 +1252,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Sunset Maroon",
       group: "single-accent",
       paletteName: "Sunset Maroon",
-      fontName: "Playfair",
-      displayFont: "Playfair Display",
-      bodyFont: "Inter",
       colors: [
         "#FFF7F2",
         "#FFFFFF",
@@ -1317,9 +1269,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Mint Tech",
       group: "single-accent",
       paletteName: "Mint Tech",
-      fontName: "Fraunces",
-      displayFont: "Fraunces",
-      bodyFont: "Work Sans",
       colors: [
         "#FBFFFD",
         "#FFFFFF",
@@ -1337,9 +1286,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Midnight Mono",
       group: "single-accent",
       paletteName: "Midnight Mono",
-      fontName: "Inter",
-      displayFont: "Sora",
-      bodyFont: "Inter",
       colors: [
         "#121316",
         "#1C1E22",
@@ -1357,9 +1303,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Ocean Deep",
       group: "single-accent",
       paletteName: "Ocean Deep",
-      fontName: "Lexend",
-      displayFont: "Space Grotesk",
-      bodyFont: "Lexend",
       colors: [
         "#0E2A33",
         "#143840",
@@ -1377,9 +1320,6 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
       name: "Gold Luxe",
       group: "single-accent",
       paletteName: "Gold Luxe",
-      fontName: "Playfair",
-      displayFont: "Playfair Display",
-      bodyFont: "Inter",
       colors: [
         "#16140F",
         "#211E16",
@@ -1534,8 +1474,6 @@ function presentationTemplateThemeCss(
       --k1:${contrastRatio(s1, bg) >= 4.5 ? s1 : ink};
       --k2:${contrastRatio(s2, bg) >= 4.5 ? s2 : ink};
       --k3:${contrastRatio(s3, bg) >= 4.5 ? s3 : ink};
-      --fd:'${theme.displayFont}';
-      --fb:'${theme.bodyFont}';
       ${accentVariables}
     }
     #sw {
