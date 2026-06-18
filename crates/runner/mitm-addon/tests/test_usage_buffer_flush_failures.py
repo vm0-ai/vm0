@@ -120,6 +120,7 @@ def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
     callbacks: list[DeliveryOutcomeCallback] = []
     attempted_runs: list[str] = []
     retry_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
     retrying = False
 
     def fail_second_batch(
@@ -144,6 +145,7 @@ def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
         raise OSError("second batch rejected")
 
     usage.reset_usage_buffer_for_tests(enqueue_webhook=fail_second_batch)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -164,13 +166,34 @@ def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
         usage.flush_usage_events(trigger="test")
 
     assert attempted_runs == ["run-1", "run-2"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="run-1-delivering-run-2-retained",
+    )
 
     callbacks[0]("success")
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="run-2-retained",
+    )
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert retry_runs == ["run-2"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="partial-drained",
+    )
 
 
 def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
@@ -685,6 +708,7 @@ def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_ca
 ):
     callbacks: list[DeliveryOutcomeCallback] = []
     retry_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
     retrying = False
 
     def enqueue_webhook(
@@ -705,6 +729,7 @@ def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_ca
         return True
 
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = tmp_path / "proxy.jsonl"
     for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
         usage.buffer_usage_events(
@@ -720,11 +745,25 @@ def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_ca
 
     callbacks[1]("retryable_failure")
     callbacks[0]("retryable_failure")
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="out-of-order-retained",
+    )
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="out-of-order-drained",
+    )
 
 
 def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
