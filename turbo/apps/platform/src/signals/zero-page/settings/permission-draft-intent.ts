@@ -536,12 +536,19 @@ export function setPermissionDraftExpiration({
 export function setPermissionDraftGroupExpiration({
   draft,
   category,
+  permissions,
   expiresIn,
 }: {
   readonly draft: PermissionDraftIntent;
   readonly category: string;
+  readonly permissions: readonly PermissionLike[];
   readonly expiresIn: UserPermissionGrantExpiresIn | null;
 }): PermissionDraftIntent {
+  const permissionNames = new Set(
+    permissions.map((permission) => {
+      return permission.name;
+    }),
+  );
   return {
     ...draft,
     groupExpirations:
@@ -552,6 +559,11 @@ export function setPermissionDraftGroupExpiration({
             [category]: expiresIn,
           },
     restoredGroups: omitKey(draft.restoredGroups, category),
+    permissionExpirations: omitKeys(
+      draft.permissionExpirations,
+      permissionNames,
+    ),
+    restoredPermissions: omitKeys(draft.restoredPermissions, permissionNames),
   };
 }
 

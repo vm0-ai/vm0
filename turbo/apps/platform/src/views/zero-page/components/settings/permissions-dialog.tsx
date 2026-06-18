@@ -476,6 +476,21 @@ function menuOptionExpiresIn(
   return value;
 }
 
+function groupMenuOptionExpiresIn(
+  value: UserPermissionGrantExpiresIn,
+  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>,
+  permissions: readonly ConnectorPermission[],
+): UserPermissionGrantExpiresIn | null {
+  if (value !== "always") {
+    return value;
+  }
+  const hasExpiringGrant = permissions.some((permission) => {
+    const grant = explicitGrants.get(permission.name);
+    return grant?.action === "allow" && Boolean(grant.expiresAt);
+  });
+  return hasExpiringGrant ? "always" : null;
+}
+
 function isDurationMenuOptionActive({
   allowAlwaysActive,
   selected,
@@ -769,6 +784,9 @@ function groupExpirationStatusExpiresAt({
     } else if (firstSelected !== selected) {
       return undefined;
     }
+    if (selected !== undefined) {
+      continue;
+    }
 
     const grant = explicitGrants.get(name);
     const expiresAt =
@@ -782,7 +800,7 @@ function groupExpirationStatusExpiresAt({
     }
   }
 
-  return firstExpiresAt ?? null;
+  return firstSelected !== undefined ? null : (firstExpiresAt ?? null);
 }
 
 function ShowMorePermissions({
@@ -842,6 +860,7 @@ function PermissionRows({
   ) => void;
   onGroupGrantExpirationChange: (
     category: string,
+    groupPerms: ConnectorPermission[],
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
   onResetPermission: (name: string) => void;
@@ -912,13 +931,36 @@ function PermissionRows({
               readOnly={readOnly}
               saving={saving}
               showCurrentExpirationStatus={groupExpirationStatus !== undefined}
+              onAllowClick={() => {
+                onSetGroupAll(group.category, group.permissions, "allow");
+                if (groupPolicy !== "allow") {
+                  onGroupGrantExpirationChange(
+                    group.category,
+                    group.permissions,
+                    groupMenuOptionExpiresIn(
+                      "always",
+                      explicitGrants,
+                      group.permissions,
+                    ),
+                  );
+                }
+              }}
               onClearExpiration={() => {
-                onGroupGrantExpirationChange(group.category, null);
+                onGroupGrantExpirationChange(
+                  group.category,
+                  group.permissions,
+                  null,
+                );
               }}
               onAllowDurationChange={(expiresIn) => {
                 onGroupGrantExpirationChange(
                   group.category,
-                  menuOptionExpiresIn(expiresIn, undefined),
+                  group.permissions,
+                  groupMenuOptionExpiresIn(
+                    expiresIn,
+                    explicitGrants,
+                    group.permissions,
+                  ),
                 );
               }}
               onPolicyChange={(p) => {
@@ -1315,12 +1357,14 @@ function LoadedPermissionsDrawerContent({
 
   const handleGroupGrantExpirationChange = (
     category: string,
+    groupPerms: ConnectorPermission[],
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => {
     setDraft(stateKey, (current) => {
       return setPermissionDraftGroupExpiration({
         draft: current,
         category,
+        permissions: groupPerms,
         expiresIn,
       });
     });

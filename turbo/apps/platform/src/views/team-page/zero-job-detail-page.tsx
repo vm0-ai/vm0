@@ -559,6 +559,9 @@ function addExpirationOnlyChanges({
     if (!expiresIn) {
       continue;
     }
+    if (expiresIn === "always" && !grant.expiresAt) {
+      continue;
+    }
     const currentPolicy =
       grant.permission === UNKNOWN_PERMISSION_GRANT
         ? current?.unknownPolicy
