@@ -232,6 +232,46 @@ describe("zero doctor permission-change command", () => {
     );
   });
 
+  it("explains selected-host token grants for computer-use permission changes", async () => {
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "computer-use",
+      "--permission",
+      "computer-use:write",
+      "--enable",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "Computer Use access is not managed as a connector permission.",
+    );
+    expect(logCalls).toContain("selected for the chat or thread");
+    expect(logCalls).toContain("Existing run tokens cannot be upgraded");
+    expect(logCalls).toContain("zero whoami");
+    expect(logCalls).not.toContain("[Manage");
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
+  it("recognizes computer-use:write even when the connector ref is wrong", async () => {
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "agent",
+      "--permission",
+      "computer-use:write",
+      "--enable",
+      "--duration",
+      "1h",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "Computer Use access is not managed as a connector permission.",
+    );
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
   it("exits with an error for an invalid permission name", async () => {
     await expect(async () => {
       await permissionChangeCommand.parseAsync([

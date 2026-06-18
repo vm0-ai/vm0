@@ -1768,12 +1768,38 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("navigates illustration variants by clicking the hero image halves and keeps the selected thumbnail in view", async () => {
+  it("scrolls illustration thumbnails only after clicking a variant thumbnail", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const scrollIntoView = vi.fn();
+    const scrollTo = vi.fn();
+    const rect = ({
+      left,
+      right,
+    }: {
+      left: number;
+      right: number;
+    }): DOMRect => {
+      return {
+        x: left,
+        y: 0,
+        top: 0,
+        left,
+        right,
+        bottom: 48,
+        width: right - left,
+        height: 48,
+        toJSON: () => {
+          return {};
+        },
+      };
+    };
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
     });
     Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
       configurable: true,
@@ -1826,26 +1852,78 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
 
-    // Clicking the right half advances to the next variant.
-    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 150 });
+    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    if (!card) {
+      throw new Error("Illustration card not found");
+    }
+
+    // Clicking a thumbnail scrolls within the thumbnail strip only.
+    const variant2Thumbnail = within(card).getByLabelText("Show variant 2");
+    const thumbnailStrip = variant2Thumbnail.parentElement;
+    if (!thumbnailStrip) {
+      throw new Error("Illustration thumbnail strip not found");
+    }
+    Object.defineProperty(thumbnailStrip, "scrollLeft", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(thumbnailStrip, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 0, right: 96 });
+      },
+    });
+    Object.defineProperty(variant2Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 72, right: 120 });
+      },
+    });
+    click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 24 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Switching the variant scrolls the now-selected thumbnail fully into view.
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: "nearest",
-      inline: "nearest",
+    // Clicking a left-clipped thumbnail nudges the strip back just enough.
+    scrollTo.mockClear();
+    const variant1Thumbnail = within(card).getByLabelText("Show variant 1");
+    Object.defineProperty(thumbnailStrip, "scrollLeft", {
+      configurable: true,
+      value: 64,
+      writable: true,
     });
-
-    // Clicking the left half goes back to the previous variant.
-    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
+    Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: -16, right: 32 });
+      },
+    });
+    click(variant1Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 48 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Clicking the left half from the first variant wraps to the last one.
+    // Switching away and back to Illustration remounts the active thumbnail but
+    // must not scroll the dialog.
+    scrollTo.mockClear();
+    scrollIntoView.mockClear();
+    click(tabByText("Presentation"));
+    click(tabByText("Illustration"));
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking the hero halves changes variants without scrolling thumbnails.
     fireEvent.click(screen.getByAltText(heroAlt), { clientX: 10 });
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute(
@@ -1853,6 +1931,16 @@ describe("chat composer templates", () => {
         heroSrc(lastIndex),
       );
     });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking the right half from the last variant wraps to the first one.
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 190 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("keeps historical illustration labels behind the template picker feature switch", async () => {
