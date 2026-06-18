@@ -9,6 +9,10 @@ export interface FirewallMetadataPolicyOverlay {
 
 export type FirewallMetadataPolicyListState = FirewallPolicyValue | "mixed";
 
+/**
+ * Resolves generated metadata defaults with an optional sparse policy overlay.
+ * Permission name validation belongs to callers; unknown endpoints use unknown().
+ */
 export interface FirewallMetadataPolicyResolver {
   permission(name: string): FirewallPolicyValue;
   unknown(): FirewallPolicyValue;
@@ -39,6 +43,16 @@ function buildMetadataOverrideLookup(
   return lookup;
 }
 
+function getOwnPermissionOverride(
+  overrides: Readonly<Record<string, FirewallPolicyValue>> | undefined,
+  name: string,
+): FirewallPolicyValue | undefined {
+  if (!overrides || !Object.prototype.hasOwnProperty.call(overrides, name)) {
+    return undefined;
+  }
+  return overrides[name];
+}
+
 export function createFirewallMetadataPolicyResolver(
   metadata: FirewallPermissionDetailMetadata,
   overlay?: FirewallMetadataPolicyOverlay,
@@ -52,9 +66,8 @@ export function createFirewallMetadataPolicyResolver(
   }
 
   function permission(name: string): FirewallPolicyValue {
-    // Permission validation is owned by callers; unknown endpoints use unknown().
     return (
-      overlay?.permissionOverrides?.[name] ??
+      getOwnPermissionOverride(overlay?.permissionOverrides, name) ??
       overlay?.permissionDefault ??
       metadataPermission(name)
     );

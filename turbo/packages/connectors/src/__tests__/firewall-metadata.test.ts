@@ -278,6 +278,15 @@ describe("firewall metadata", () => {
     expect(resolver.unknown()).toBe("ask");
   });
 
+  it("ignores inherited fields when resolving sparse overlay overrides", () => {
+    const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA, {
+      permissionOverrides: {},
+    });
+
+    expect(resolver.permission("toString")).toBe("allow");
+    expect(resolver.isPermissionOverridden("toString")).toBe(false);
+  });
+
   it("keeps metadata modules independent from runtime firewall modules", () => {
     const metadataRoot = path.resolve(
       import.meta.dirname,
