@@ -81,7 +81,7 @@ const computerUseRuntimeBodySchema = z.object({
 });
 
 const computerUseCommandTargetShape = {
-  timeoutMs: z.number().int().min(1_000).max(60_000).default(15_000),
+  timeoutMs: z.number().int().min(1_000).max(120_000).default(60_000),
 } as const;
 
 const computerUseCommandPayloadShape = {

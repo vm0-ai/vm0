@@ -669,6 +669,17 @@ describe("FILE-03 desktop computer-use runtime", () => {
       kind: "apps.list",
     });
 
+    const queuedComplete = await api.requestCompleteComputerUseCommand(
+      host.hostToken,
+      second.commandId,
+      { status: "succeeded", result: {} },
+      [409],
+    );
+    expectApiError(queuedComplete.body);
+    expect(queuedComplete.body.error.message).toBe(
+      "Computer-use command is not running",
+    );
+
     mockNow(base + 1500);
     const claimedSecond = await api.claimNextComputerUseCommand(host.hostToken);
     expect(claimedSecond.status).toBe("command");
@@ -697,16 +708,21 @@ describe("FILE-03 desktop computer-use runtime", () => {
       error: { code: "app_not_found", message: "Finder is not available" },
     });
 
-    const notRunning = await api.requestCompleteComputerUseCommand(
+    const duplicateComplete = await api.requestCompleteComputerUseCommand(
       host.hostToken,
       second.commandId,
       { status: "succeeded", result: {} },
-      [409],
+      [200],
     );
-    expectApiError(notRunning.body);
-    expect(notRunning.body.error.message).toBe(
-      "Computer-use command is not running",
+    expect(duplicateComplete.body).toStrictEqual({ ok: true });
+    const stillFailed = await api.readComputerUseCommand(
+      actor,
+      second.commandId,
     );
+    expect(stillFailed).toMatchObject({
+      status: "failed",
+      error: { code: "app_not_found", message: "Finder is not available" },
+    });
 
     const unknownComplete = await api.requestCompleteComputerUseCommand(
       host.hostToken,

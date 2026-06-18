@@ -606,6 +606,57 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("keeps polling after command completion is already terminal on the server", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({
+              status: "command",
+              command: {
+                id: "cmd-1",
+                kind: "app.state",
+                payload: { app: "Chrome" },
+              },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return new Response("{}", { status: 409 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+    expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
   it("retries hung command completion requests with a request timeout", async () => {
     vi.useFakeTimers();
     let nextCalls = 0;
