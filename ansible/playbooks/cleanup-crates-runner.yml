@@ -72,37 +72,9 @@
       command: systemctl stop vm0-runner-{{ job_ref }}-keepalive.service
       ignore_errors: true
 
-    - name: Find isolated keepalive transient services
-      shell: >
-        systemctl list-units 'vm0-runner-{{ job_ref }}-r*-a*-keepalive.service' --all --no-legend --plain
-        | awk '{print $1}'
-        | grep -E '^vm0-runner-{{ job_ref }}-r[0-9]+-a[0-9]+-keepalive\.service$' || true
-      register: isolated_keepalive_services
-      changed_when: false
-      ignore_errors: true
-
-    - name: Stop isolated keepalive transient services
-      command: systemctl stop {{ item }}
-      loop: "{{ isolated_keepalive_services.stdout_lines | default([]) }}"
-      ignore_errors: true
-
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       ignore_errors: true
-
-    - name: Find isolated keepalive runner directories
-      find:
-        paths: "{{ base_dir }}/runners"
-        file_type: directory
-        patterns: "{{ job_ref }}-r*-a*-keepalive"
-      register: isolated_keepalive_runner_dirs
-
-    - name: Find isolated keepalive group directories
-      find:
-        paths: "{{ base_dir }}/groups/vm0"
-        file_type: directory
-        patterns: "keepalive-{{ job_ref }}-r*-a*"
-      register: isolated_keepalive_group_dirs
 
     - name: Remove directories
       file:
@@ -125,9 +97,3 @@
         - "{{ base_dir }}/groups/vm0/benchmark-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/keepalive-{{ job_ref }}"
-
-    - name: Remove isolated keepalive directories
-      file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ (isolated_keepalive_runner_dirs.files | default([])) + (isolated_keepalive_group_dirs.files | default([])) }}"

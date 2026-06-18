@@ -1641,55 +1641,17 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          EVENT_NAME: ${{ github.event_name }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          KEEPALIVE_REF="${JOB_REF}-r${RUN_ID}-a${RUN_ATTEMPT}"
-          SVC="${KEEPALIVE_REF}-keepalive"
-          GROUP="vm0/keepalive-${KEEPALIVE_REF}"
+          SVC="${JOB_REF}-keepalive"
+          GROUP="vm0/keepalive-${JOB_REF}"
           RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
-          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${KEEPALIVE_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/keepalive-${JOB_REF}"
 
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "=== Cleaning previous isolated keep-alive attempts for this PR ==="
-            ssh "$REMOTE" bash -s -- "${JOB_REF}" "${SVC}" "keepalive-${KEEPALIVE_REF}" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          JOB_REF=$1; CURRENT_SVC=$2; CURRENT_GROUP_DIRNAME=$3
-
-          while read -r unit _; do
-            case "$unit" in
-              vm0-runner-${JOB_REF}-r*-a*-keepalive.service)
-                svc="${unit#vm0-runner-}"
-                svc="${svc%.service}"
-                if [ "$svc" != "$CURRENT_SVC" ]; then
-                  sudo systemctl stop "$unit" || true
-                  sudo systemctl reset-failed "$unit" || true
-                fi
-                ;;
-            esac
-          done < <(systemctl list-units "vm0-runner-${JOB_REF}-r*-a*-keepalive.service" --all --no-legend --plain || true)
-
-          if [ -d /var/lib/vm0-runner/runners ]; then
-            sudo find /var/lib/vm0-runner/runners \
-              -mindepth 1 -maxdepth 1 -type d \
-              -name "${JOB_REF}-r*-a*-keepalive" ! -name "$CURRENT_SVC" \
-              -exec rm -rf {} +
-          fi
-          if [ -d /var/lib/vm0-runner/groups/vm0 ]; then
-            sudo find /var/lib/vm0-runner/groups/vm0 \
-              -mindepth 1 -maxdepth 1 -type d \
-              -name "keepalive-${JOB_REF}-r*-a*" ! -name "$CURRENT_GROUP_DIRNAME" \
-              -exec rm -rf {} +
-          fi
-          REMOTE_SCRIPT
-          fi
-
-          echo "=== Cleaning existing keep-alive runner state for this run ==="
+          echo "=== Cleaning stale keep-alive runner state ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
           set -euo pipefail
           BIN_DIR=$1; SVC=$2; GROUP_DIR=$3; RUNNER_DIR=$4
