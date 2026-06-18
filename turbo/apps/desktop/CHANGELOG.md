@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.0...desktop-v0.15.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **desktop:** slow computer use tray animation ([#18149](https://github.com/vm0-ai/vm0/issues/18149)) ([9c12cd4](https://github.com/vm0-ai/vm0/commit/9c12cd48d8a7aa92ec0e4951202193952aee32c9))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.14.5...desktop-v0.15.0) (2026-06-17)
 
 
