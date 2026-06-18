@@ -332,6 +332,13 @@ function resetPresentationTemplateHtmlPreviewCache(): void {
   Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
 }
 
+function resetPresentationCardPreviewImageDecodeCache(): void {
+  Reflect.deleteProperty(
+    globalThis,
+    "vm0PresentationCardPreviewImageDecodeCache",
+  );
+}
+
 async function expectComposerModel(label: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
@@ -539,6 +546,7 @@ function workflowSummary({
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   resetPresentationTemplateHtmlPreviewCache();
+  resetPresentationCardPreviewImageDecodeCache();
 });
 
 describe("chat composer models", () => {
@@ -1704,6 +1712,77 @@ describe("chat composer templates", () => {
         { headers: { "Content-Type": "text/html" } },
       ),
     );
+    fireEvent.mouseLeave(preview);
+  });
+
+  it("keeps pending presentation card image decodes scoped to the latest scrub target", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const lastSlideIndex = template.previewImages.length - 1;
+    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return previewFetch.promise;
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+
+    const previewFrame = await screen.findByTestId(
+      `${template.title} card HTML preview`,
+    );
+    const preview = previewFrame.parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    fireEvent.mouseEnter(preview);
+    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+    fireEvent.mouseMove(preview, { clientX: 0, clientY: 80 });
+
+    expect(preview.dataset.targetSlideIndex).toBe("0");
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} card preview slide 1`),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(
+          template.cardPreviewImage ?? template.previewImages[0]!,
+          {
+            width: 480,
+            height: 270,
+          },
+        ),
+      );
+      expect(
+        screen.queryByTestId(
+          `${template.title} card preview slide ${String(lastSlideIndex + 1)}`,
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    previewFetch.resolve(new Response("<html><body></body></html>"));
     fireEvent.mouseLeave(preview);
   });
 

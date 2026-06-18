@@ -2289,27 +2289,29 @@ function TemplatePreview({
       scrubSlideCount - 1,
       Math.round((offsetX / rect.width) * (scrubSlideCount - 1)),
     );
-    if (nextIndex !== hoverSlideIndex) {
-      presentationTemplateHtmlPreviewCache().activeIndexes.set(
-        item.embedUrl,
-        nextIndex,
-      );
-      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
-      const imageUrl = presentationTemplateCardSlideImage(item, nextIndex);
-      if (presentationCardPreviewImageDecoded(imageUrl)) {
-        applySlideIndex(nextIndex);
-        return;
-      }
-      detach(
-        selectDecodedPresentationCardSlide({
-          imageUrl,
-          index: nextIndex,
-          preview: event.currentTarget,
-          onSlideChange: applySlideIndex,
-        }),
-        Reason.DomCallback,
-      );
+    presentationTemplateHtmlPreviewCache().activeIndexes.set(
+      item.embedUrl,
+      nextIndex,
+    );
+    event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
+    if (nextIndex === hoverSlideIndex) {
+      return;
     }
+
+    const imageUrl = presentationTemplateCardSlideImage(item, nextIndex);
+    if (presentationCardPreviewImageDecoded(imageUrl)) {
+      applySlideIndex(nextIndex);
+      return;
+    }
+    detach(
+      selectDecodedPresentationCardSlide({
+        imageUrl,
+        index: nextIndex,
+        preview: event.currentTarget,
+        onSlideChange: applySlideIndex,
+      }),
+      Reason.DomCallback,
+    );
   };
 
   return (
