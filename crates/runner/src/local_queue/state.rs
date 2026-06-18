@@ -257,6 +257,12 @@ impl LocalQueue {
     }
 
     pub(crate) fn write_active_input_sync(&self, entry: &ActiveInputEntry) -> std::io::Result<()> {
+        if entry.message_id.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "local active input message id must not be empty",
+            ));
+        }
         if entry.text.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -340,7 +346,11 @@ impl LocalQueue {
             let Ok(input) = serde_json::from_slice::<ActiveInputEntry>(&bytes) else {
                 continue;
             };
-            if input.run_id != run_id || input.sequence != sequence || input.text.is_empty() {
+            if input.run_id != run_id
+                || input.sequence != sequence
+                || input.message_id.is_empty()
+                || input.text.is_empty()
+            {
                 continue;
             }
             parsed.push(input);
@@ -807,8 +817,36 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
+        std::fs::write(
+            run_dir.join("00000000000000000005.json"),
+            serde_json::to_vec(&ActiveInputEntry {
+                run_id,
+                sequence: 5,
+                message_id: String::new(),
+                text: "empty message id".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
 
         assert_eq!(queue.read_active_input_entries_sync(run_id), vec![valid]);
+    }
+
+    #[test]
+    fn active_input_write_rejects_empty_message_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let queue = LocalQueue::new(dir.path().to_path_buf());
+
+        let error = queue
+            .write_active_input_sync(&ActiveInputEntry {
+                run_id: RunId::new_v4(),
+                sequence: 1,
+                message_id: String::new(),
+                text: "one".to_string(),
+            })
+            .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]
