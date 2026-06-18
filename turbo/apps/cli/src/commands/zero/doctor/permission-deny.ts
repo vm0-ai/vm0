@@ -7,6 +7,10 @@ import {
 } from "@vm0/connectors/firewalls";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
+import {
+  isComputerUsePermissionTarget,
+  printComputerUsePermissionGuidance,
+} from "./computer-use-guidance";
 
 function unknownPermissionChangeCommand(connectorRef: string): string {
   return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
@@ -33,6 +37,7 @@ export const permissionDenyCommand = new Command()
 Examples:
   zero doctor permission-deny github --method GET --path /repos/owner/repo/pulls
   zero doctor permission-deny slack --method POST --path /chat.postMessage
+  zero doctor permission-deny computer-use --method POST --path /computer-use/list-apps
 
 Notes:
   - Identifies which named permission covers a denied request
@@ -42,6 +47,11 @@ Notes:
   .action(
     withErrorHandler(
       async (connectorRef: string, opts: { method: string; path: string }) => {
+        if (isComputerUsePermissionTarget({ connectorRef, path: opts.path })) {
+          printComputerUsePermissionGuidance();
+          return;
+        }
+
         if (!isFirewallConnectorType(connectorRef)) {
           throw new Error(`Unknown connector type: ${connectorRef}`);
         }

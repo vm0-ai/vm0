@@ -30,9 +30,11 @@ import {
 } from "../computer-use-types";
 import {
   computerUseData$,
+  developerToolsData$,
   desktopAuthData$,
   hasDesktopAuthBridge,
   hasDesktopComputerUseBridge,
+  hasDesktopDeveloperToolsBridge,
   openAccessibilitySettings$,
   openDesktopOrgSelection$,
   openDesktopSignIn$,
@@ -67,6 +69,17 @@ const STATUS_LABELS = {
   needs_organization: "Select workspace",
   disabled: "Disabled",
   error: "Error",
+} as const satisfies Record<HostStatus, string>;
+
+const COMPUTER_USE_STATUS_COPY = {
+  offline: "Computer Use is stopped on this Mac.",
+  connecting: "Starting Computer Use on this Mac.",
+  online: "This Mac is available for Zero computer use.",
+  recovering: "Computer Use is reconnecting automatically.",
+  unauthenticated: "Sign in to Zero before starting Computer Use.",
+  needs_organization: "Select a workspace before starting Computer Use.",
+  disabled: "Computer Use is disabled for this Mac.",
+  error: "Computer Use needs attention before it can continue.",
 } as const satisfies Record<HostStatus, string>;
 
 const COMMAND_STATUS_LABELS = {
@@ -787,6 +800,70 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
+function ComputerUseStatusPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
+  const running =
+    state.host.status === "connecting" ||
+    state.host.status === "online" ||
+    state.host.status === "recovering";
+  const startDisabled =
+    running ||
+    state.host.status === "disabled" ||
+    startLoadable.state === "loading";
+  const stopDisabled =
+    (state.host.status !== "online" && state.host.status !== "recovering") ||
+    stopLoadable.state === "loading";
+
+  return (
+    <Panel title="Computer Use" icon={<IconActivityHeartbeat size={18} />}>
+      <div
+        className={`computer-use-status-card computer-use-status-${state.host.status}`}
+      >
+        <div className="computer-use-status-main">
+          <div className="computer-use-status-mark" aria-hidden="true">
+            <IconActivityHeartbeat size={26} />
+          </div>
+          <div className="computer-use-status-copy">
+            <span>Status</span>
+            <strong>{STATUS_LABELS[state.host.status]}</strong>
+            <p>{COMPUTER_USE_STATUS_COPY[state.host.status]}</p>
+          </div>
+        </div>
+        <div className="computer-use-status-action">
+          {running ? (
+            <IconButton
+              tone="danger"
+              icon={<IconPlayerStop size={15} />}
+              onClick={() => {
+                void stop();
+              }}
+              disabled={stopDisabled}
+            >
+              Stop
+            </IconButton>
+          ) : (
+            <IconButton
+              tone="primary"
+              icon={<IconPlayerPlay size={15} />}
+              onClick={() => {
+                void start();
+              }}
+              disabled={startDisabled}
+            >
+              Start
+            </IconButton>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function RuntimeRecoveryAlert({
   state,
 }: {
@@ -1282,10 +1359,12 @@ function StartupLoadingScreen() {
 function ComputerUseContent({
   authLoading,
   authState,
+  developerToolsEnabled,
   state,
 }: {
   readonly authLoading: boolean;
   readonly authState: DesktopAuthState | null;
+  readonly developerToolsEnabled: boolean;
   readonly state: DesktopComputerUseState;
 }) {
   const authReady = hasReadyDesktopAuth(authState);
@@ -1301,8 +1380,13 @@ function ComputerUseContent({
           <PermissionsStepCard authReady={authReady} state={state} />
           {authReady && permissionsReady && (
             <>
-              <RuntimePanel state={state} />
-              <CommandLogPanel state={state} />
+              <ComputerUseStatusPanel state={state} />
+              {developerToolsEnabled && (
+                <>
+                  <RuntimePanel state={state} />
+                  <CommandLogPanel state={state} />
+                </>
+              )}
             </>
           )}
         </>
@@ -1314,9 +1398,15 @@ function ComputerUseContent({
 function ComputerUsePage() {
   const loadable = useLastLoadable(computerUseData$);
   const authLoadable = useLastLoadable(desktopAuthData$);
+  const developerToolsLoadable = useLastLoadable(developerToolsData$);
   const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
   const authLoading = authLoadable.state === "loading";
   const authInitialLoading = authLoading && authState === null;
+  const developerToolsEnabled =
+    hasDesktopDeveloperToolsBridge() &&
+    developerToolsLoadable.state === "hasData" &&
+    developerToolsLoadable.data.available &&
+    developerToolsLoadable.data.enabled;
 
   if (!hasDesktopComputerUseBridge()) {
     return (
@@ -1335,6 +1425,7 @@ function ComputerUsePage() {
       <ComputerUseContent
         authLoading={authLoading}
         authState={authState}
+        developerToolsEnabled={developerToolsEnabled}
         state={loadable.data}
       />
     );

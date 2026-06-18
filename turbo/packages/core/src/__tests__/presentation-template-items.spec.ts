@@ -393,6 +393,30 @@ describe("presentation template items", () => {
     }
   });
 
+  it("registers non-picker presentation templates on private R2 sources", () => {
+    const entries = [
+      {
+        designSystemId: "design-system:nocturne",
+        templateId: "template:html-ppt-nocturne",
+        designSourcePath: "presentation-design-system/nocturne",
+        templateSourcePath: "presentation-template/nocturne",
+      },
+      {
+        designSystemId: "design-system:neo-brutalism",
+        templateId: "template:html-ppt-neo-brutalism",
+        designSourcePath: "presentation-design-system/neo-brutalism",
+        templateSourcePath: "presentation-template/neo-brutalism",
+      },
+    ] as const;
+
+    for (const entry of entries) {
+      expect(findDesignSystem(entry.designSystemId)).toBeDefined();
+      expect(findTemplate(entry.templateId)?.targets).toContain("presentation");
+      expectR2ArchiveSource(entry.designSystemId, entry.designSourcePath);
+      expectR2ArchiveSource(entry.templateId, entry.templateSourcePath);
+    }
+  });
+
   it("keeps the botane picker item aligned with CDN assets", () => {
     const botaneItem = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "botane-organic-deck";

@@ -5,7 +5,6 @@
  */
 
 import {
-  UNKNOWN_PERMISSION_GRANT,
   type FirewallConfig,
   type FirewallPolicy,
   type FirewallPolicies,
@@ -312,6 +311,11 @@ import { gongFirewall } from "./gong.generated";
 import { ironcladFirewall } from "./ironclad.generated";
 import { snowflakeFirewall } from "./snowflake.generated";
 
+export {
+  permissionGrantsToFirewallPolicies,
+  type FirewallPermissionGrant,
+  type FirewallPermissionGrantAction,
+} from "../firewall-metadata";
 export * from "../firewall-types";
 
 // ── Permission categories ───────────────────────────────────────────────
@@ -767,9 +771,39 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
+  | "archer"
+  | "ardent"
+  | "arga-labs"
+  | "armature"
+  | "bentolabs-ai"
+  | "bloom"
+  | "chert"
   | "daytona"
+  | "insforge"
+  | "interfaze"
+  | "inth"
+  | "keyframe-labs"
+  | "kugelaudio"
+  | "limrun"
+  | "minicor"
   | "modal"
-  | "test-oauth-device"; // internal provider capability test connector
+  | "netter"
+  | "oddpool"
+  | "primitive"
+  | "qomplement"
+  | "rentahuman"
+  | "replicas"
+  | "river-markets"
+  | "runtime"
+  | "salesgraph"
+  | "silmaril"
+  | "smol-machines"
+  | "stablebrowse"
+  | "testerarmy"
+  | "test-oauth-device" // internal provider capability test connector
+  | "totalis"
+  | "trellis"
+  | "voquill";
 
 /**
  * Compile-time exhaustiveness checks.
@@ -891,36 +925,6 @@ export function resolveFirewallPolicies(
     };
   }
   return resolved;
-}
-
-export type FirewallPermissionGrantAction = Extract<
-  FirewallPolicyValue,
-  "allow" | "deny"
->;
-
-export interface FirewallPermissionGrant {
-  readonly connectorRef: string;
-  readonly permission: string;
-  readonly action: FirewallPermissionGrantAction;
-}
-
-export function permissionGrantsToFirewallPolicies(
-  grants: readonly FirewallPermissionGrant[],
-): FirewallPolicies | null {
-  const policies: FirewallPolicies = {};
-  for (const grant of grants) {
-    const current = policies[grant.connectorRef] ?? { policies: {} };
-    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
-      policies[grant.connectorRef] = {
-        ...current,
-        unknownPolicy: grant.action,
-      };
-      continue;
-    }
-    current.policies[grant.permission] = grant.action;
-    policies[grant.connectorRef] = current;
-  }
-  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 /**

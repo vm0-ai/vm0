@@ -6,6 +6,7 @@ import {
   findImageStyle,
   findSkill,
   findTemplate,
+  findTool,
   findVideoTemplate,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
@@ -43,8 +44,8 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
-  "skill:presentation-deck-tools":
-    "a11aab6b73aad5796a77875492564f269d8e4f62c7fbfbf302ab228d43fca5ff",
+  "tool:presentation-deck-tools":
+    "b6ea3b108cb3d710306766fbd75eac537283b166a9a5c5345a0bb884f9af3606",
   "design-system:business-data":
     "c9f7a6246c31da8a50f8e0bedee769416af83fdea4047ec59ccf926b78f18fe9",
   "design-system:botane-organic":
@@ -67,6 +68,10 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "42850801add7bff2d66fa34434fa48c01b53aedbe4e14146c23e017659905dde",
   "design-system:playful-pop":
     "f54ec75c03c6f1a4722cc84429c521fe7758e15402de22f8cf842b6c715db524",
+  "design-system:nocturne":
+    "2344d4eeb97b8706148f6fabe7e73973a98a9d9929be31f7a4e531a3136bbb2b",
+  "design-system:neo-brutalism":
+    "929a4c72074e3fce2b64b16c5f53507707225dc71e5909d86b5f9a1bc43c2da0",
   "color-system:bauhaus-primary":
     "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
   "color-system:berry-pop":
@@ -127,6 +132,10 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "bd2ca98aba4e61281c7b431d1dd042fa26783b32196d993101861fbb2648a307",
   "template:html-ppt-playful-pop":
     "9e8d84ec293962f6162b4ce609d849d5c61645f4894240e2a1fa3f6d6e179aec",
+  "template:html-ppt-nocturne":
+    "975042cc63adf2ec5a6c7888a541807571579959e7da6af7681038c4352c4d7f",
+  "template:html-ppt-neo-brutalism":
+    "14216859630a1ba018c7e4c85b26452e450b10a187ac44d13b1e0d0b6407977f",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(
@@ -149,6 +158,7 @@ function privateRegistryResourceArchive(
 function findRegistryResource(id: string): PullableRegistryEntry | undefined {
   return (
     findSkill(id) ??
+    findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findColorSystem(id) ??

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.154.0](https://github.com/vm0-ai/vm0/compare/api-v1.153.0...api-v1.154.0) (2026-06-18)
+
+
+### Features
+
+* add agent chat draft persistence ([#18181](https://github.com/vm0-ai/vm0/issues/18181)) ([98ac2e3](https://github.com/vm0-ai/vm0/commit/98ac2e36e56725ca8b620d30782057973d2d03da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.0
+    * @vm0/connectors bumped to 1.89.0
+    * @vm0/core bumped to 8.353.0
+    * @vm0/db bumped to 1.57.0
+
 ## [1.153.0](https://github.com/vm0-ai/vm0/compare/api-v1.152.3...api-v1.153.0) (2026-06-18)
 
 

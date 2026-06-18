@@ -4,6 +4,7 @@ import type { DesktopComputerUseState } from "./computer-use-types";
 import { COMPUTER_USE_FEATURE_SWITCH_KEY } from "./computer-use-types";
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
+import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
 
 type IpcEvent = {
   readonly senderFrame?: {
@@ -128,6 +129,35 @@ describe("Desktop IPC boundary", () => {
     expect(api.completeSignIn).toHaveBeenCalledWith("desktop_token");
   });
 
+  it("protects developer tools handlers by renderer URL and validates payloads", async () => {
+    const { installDesktopDeveloperToolsIpc } =
+      await import("./desktop-developer-tools-electron");
+    const api = createDesktopDeveloperToolsApi();
+
+    installDesktopDeveloperToolsIpc(api, { rendererUrl });
+
+    await expect(
+      invokeIpc(DESKTOP_DEVELOPER_TOOLS_CHANNELS.getState, blockedAppUrl),
+    ).rejects.toThrow("Desktop developer tools are unavailable on this page");
+    await expect(
+      invokeIpc(
+        DESKTOP_DEVELOPER_TOOLS_CHANNELS.setEnabled,
+        rendererUrl,
+        "true",
+      ),
+    ).rejects.toThrow(
+      "Desktop developer tools enabled state must be a boolean",
+    );
+
+    await invokeIpc(
+      DESKTOP_DEVELOPER_TOOLS_CHANNELS.setEnabled,
+      rendererUrl,
+      true,
+    );
+
+    expect(api.setEnabled).toHaveBeenCalledWith(true);
+  });
+
   it("notifies only live windows when computer use state changes", async () => {
     const { notifyDesktopComputerUseChanged } =
       await import("./computer-use-electron");
@@ -154,6 +184,21 @@ describe("Desktop IPC boundary", () => {
 
     expect(liveWindow.webContents.send).toHaveBeenCalledWith(
       DESKTOP_AUTH_CHANNELS.changed,
+    );
+    expect(destroyedWindow.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it("notifies only live windows when developer tools state changes", async () => {
+    const { notifyDesktopDeveloperToolsChanged } =
+      await import("./desktop-developer-tools-electron");
+    const liveWindow = createMockWindow({ destroyed: false });
+    const destroyedWindow = createMockWindow({ destroyed: true });
+    electronMock.windows.push(liveWindow, destroyedWindow);
+
+    notifyDesktopDeveloperToolsChanged();
+
+    expect(liveWindow.webContents.send).toHaveBeenCalledWith(
+      DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
     );
     expect(destroyedWindow.webContents.send).not.toHaveBeenCalled();
   });
@@ -215,6 +260,30 @@ function createDesktopAuthApi(): {
     openOrgSelection: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
     completeSignIn: vi.fn(() => {}),
+  };
+}
+
+function createDesktopDeveloperToolsApi(): {
+  readonly getState: ReturnType<
+    typeof vi.fn<
+      () => { readonly available: boolean; readonly enabled: boolean }
+    >
+  >;
+  readonly setEnabled: ReturnType<
+    typeof vi.fn<
+      (enabled: boolean) => {
+        readonly available: boolean;
+        readonly enabled: boolean;
+      }
+    >
+  >;
+} {
+  const state = { available: true, enabled: false };
+  return {
+    getState: vi.fn(() => state),
+    setEnabled: vi.fn((enabled) => {
+      return { available: true, enabled };
+    }),
   };
 }
 

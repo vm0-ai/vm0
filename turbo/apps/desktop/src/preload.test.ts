@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
-import type { DesktopAuthApi, DesktopComputerUseApi } from "./desktop-bridge";
+import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
+import type {
+  DesktopAuthApi,
+  DesktopComputerUseApi,
+  DesktopDeveloperToolsApi,
+} from "./desktop-bridge";
 
 type ExposeInMainWorld = (key: string, api: unknown) => void;
 type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -64,17 +69,24 @@ beforeEach(() => {
 });
 
 describe("Desktop preload bridge", () => {
-  it("exposes the desktop auth and computer use APIs in the renderer", async () => {
+  it("exposes the desktop APIs in the renderer", async () => {
     await loadPreload();
 
     expect(
       electronMock.contextBridge.exposeInMainWorld.mock.calls.map(([key]) => {
         return key;
       }),
-    ).toStrictEqual(["vm0DesktopAuth", "vm0DesktopComputerUse"]);
+    ).toStrictEqual([
+      "vm0DesktopAuth",
+      "vm0DesktopComputerUse",
+      "vm0DesktopDeveloperTools",
+    ]);
     expect(exposedApi<DesktopAuthApi>("vm0DesktopAuth")).toBeTruthy();
     expect(
       exposedApi<DesktopComputerUseApi>("vm0DesktopComputerUse"),
+    ).toBeTruthy();
+    expect(
+      exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
     ).toBeTruthy();
   });
 
@@ -126,33 +138,65 @@ describe("Desktop preload bridge", () => {
     ]);
   });
 
-  it("cleans up auth and computer use IPC subscriptions", async () => {
+  it("routes developer tools API calls through IPC channels", async () => {
+    await loadPreload();
+    const developerTools = exposedApi<DesktopDeveloperToolsApi>(
+      "vm0DesktopDeveloperTools",
+    );
+
+    await developerTools.getState();
+    await developerTools.setEnabled(true);
+
+    expect(electronMock.ipcRenderer.invoke.mock.calls).toStrictEqual([
+      [DESKTOP_DEVELOPER_TOOLS_CHANNELS.getState],
+      [DESKTOP_DEVELOPER_TOOLS_CHANNELS.setEnabled, true],
+    ]);
+  });
+
+  it("cleans up auth, computer use, and developer tools IPC subscriptions", async () => {
     await loadPreload();
     const auth = exposedApi<DesktopAuthApi>("vm0DesktopAuth");
     const computerUse = exposedApi<DesktopComputerUseApi>(
       "vm0DesktopComputerUse",
     );
+    const developerTools = exposedApi<DesktopDeveloperToolsApi>(
+      "vm0DesktopDeveloperTools",
+    );
     const authChanged = vi.fn<() => void>();
     const computerUseChanged = vi.fn<() => void>();
+    const developerToolsChanged = vi.fn<() => void>();
 
     const unsubscribeAuth = auth.subscribe(authChanged);
     const unsubscribeComputerUse = computerUse.subscribe(computerUseChanged);
+    const unsubscribeDeveloperTools = developerTools.subscribe(
+      developerToolsChanged,
+    );
 
     electronMock.emit(DESKTOP_AUTH_CHANNELS.changed, { ignored: true });
     electronMock.emit(COMPUTER_USE_CHANNELS.changed, { ignored: true });
+    electronMock.emit(DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed, {
+      ignored: true,
+    });
 
     expect(authChanged).toHaveBeenCalledOnce();
     expect(computerUseChanged).toHaveBeenCalledOnce();
+    expect(developerToolsChanged).toHaveBeenCalledOnce();
 
     const authListener = listenerFor(DESKTOP_AUTH_CHANNELS.changed);
     const computerUseListener = listenerFor(COMPUTER_USE_CHANNELS.changed);
+    const developerToolsListener = listenerFor(
+      DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
+    );
     unsubscribeAuth();
     unsubscribeComputerUse();
+    unsubscribeDeveloperTools();
     electronMock.emit(DESKTOP_AUTH_CHANNELS.changed);
     electronMock.emit(COMPUTER_USE_CHANNELS.changed);
+    electronMock.emit(DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed);
 
     expect(authChanged).toHaveBeenCalledOnce();
     expect(computerUseChanged).toHaveBeenCalledOnce();
+    expect(developerToolsChanged).toHaveBeenCalledOnce();
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
       DESKTOP_AUTH_CHANNELS.changed,
       authListener,
@@ -160,6 +204,10 @@ describe("Desktop preload bridge", () => {
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
       COMPUTER_USE_CHANNELS.changed,
       computerUseListener,
+    );
+    expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
+      DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
+      developerToolsListener,
     );
   });
 });

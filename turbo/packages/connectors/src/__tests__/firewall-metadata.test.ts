@@ -7,8 +7,11 @@ import {
   expandFirewallMetadataDefaultPolicy,
   FIREWALL_PERMISSION_METADATA_SUMMARIES,
   getFirewallPermissionSummary,
+  groupFirewallMetadataPermissionsByCategory,
   isFirewallMetadataConnectorType,
   loadFirewallPermissionMetadata,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallMetadataPolicies,
 } from "../firewall-metadata";
 import type { FirewallPermissionMetadataPermission } from "../firewall-metadata";
 import type { FirewallConfig } from "../firewall-types";
@@ -16,6 +19,8 @@ import {
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
+  groupPermissionsByCategory,
+  resolveFirewallPolicies,
   type FirewallConnectorType,
 } from "../firewalls";
 
@@ -239,6 +244,21 @@ describe("firewall metadata", () => {
     }
   });
 
+  it("groups metadata permissions like runtime categories", async () => {
+    for (const [type, firewall] of runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      expect(
+        groupFirewallMetadataPermissionsByCategory(
+          detail!.permissions,
+          detail!,
+        ),
+      ).toStrictEqual(
+        groupPermissionsByCategory(collectRuntimePermissions(firewall), type),
+      );
+    }
+  });
+
   it("expands compact default policy metadata to runtime default policies", async () => {
     for (const [type] of runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
@@ -247,5 +267,44 @@ describe("firewall metadata", () => {
         getDefaultFirewallPolicies(type),
       );
     }
+  });
+
+  it("resolves stored policies with metadata defaults like runtime helpers", async () => {
+    for (const [type] of runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
+      const stored = {
+        [type]: {
+          policies: { __metadata_test__: "deny" as const },
+          unknownPolicy: "deny" as const,
+        },
+      };
+      expect(resolveFirewallMetadataPolicies(stored, [detail!])).toStrictEqual(
+        resolveFirewallPolicies(stored, [type]),
+      );
+    }
+  });
+
+  it("converts permission grants without runtime firewall data", () => {
+    expect(
+      permissionGrantsToFirewallPolicies([
+        {
+          connectorRef: "slack",
+          permission: "channels:read",
+          action: "allow",
+        },
+        {
+          connectorRef: "slack",
+          permission: "__unknown__",
+          action: "deny",
+        },
+      ]),
+    ).toStrictEqual({
+      slack: {
+        policies: { "channels:read": "allow" },
+        unknownPolicy: "deny",
+      },
+    });
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
   });
 });

@@ -3,11 +3,18 @@ import type {
   DesktopAuthApi,
   DesktopAuthState,
   DesktopComputerUseApi,
+  DesktopDeveloperToolsApi,
+  DesktopDeveloperToolsState,
 } from "../desktop-bridge";
 import type { DesktopComputerUseState } from "../computer-use-types";
 
+const DEFAULT_DEVELOPER_TOOLS_STATE: DesktopDeveloperToolsState = {
+  available: false,
+  enabled: false,
+};
 const reloadComputerUseState$ = state(0);
 const reloadDesktopAuthState$ = state(0);
+const reloadDeveloperToolsState$ = state(0);
 
 function desktopComputerUseApi(): DesktopComputerUseApi {
   const api = window.vm0DesktopComputerUse;
@@ -25,12 +32,20 @@ function desktopAuthApi(): DesktopAuthApi {
   return api;
 }
 
+function desktopDeveloperToolsApi(): DesktopDeveloperToolsApi | null {
+  return window.vm0DesktopDeveloperTools ?? null;
+}
+
 export function hasDesktopComputerUseBridge(): boolean {
   return Boolean(window.vm0DesktopComputerUse);
 }
 
 export function hasDesktopAuthBridge(): boolean {
   return Boolean(window.vm0DesktopAuth);
+}
+
+export function hasDesktopDeveloperToolsBridge(): boolean {
+  return Boolean(window.vm0DesktopDeveloperTools);
 }
 
 export const computerUseData$ = computed(
@@ -44,6 +59,16 @@ export const desktopAuthData$ = computed((get): Promise<DesktopAuthState> => {
   get(reloadDesktopAuthState$);
   return desktopAuthApi().getState();
 });
+
+export const developerToolsData$ = computed(
+  (get): Promise<DesktopDeveloperToolsState> => {
+    get(reloadDeveloperToolsState$);
+    return (
+      desktopDeveloperToolsApi()?.getState() ??
+      Promise.resolve(DEFAULT_DEVELOPER_TOOLS_STATE)
+    );
+  },
+);
 
 const reloadComputerUse$ = command(({ set }) => {
   set(reloadComputerUseState$, (count) => {
@@ -62,6 +87,12 @@ const refreshDesktopAuth$ = command(({ set }) => {
   });
 });
 
+const reloadDeveloperTools$ = command(({ set }) => {
+  set(reloadDeveloperToolsState$, (count) => {
+    return count + 1;
+  });
+});
+
 export const setupComputerUseBridge$ = command(
   ({ set }, signal: AbortSignal) => {
     const unsubscribeComputerUse = desktopComputerUseApi().subscribe(() => {
@@ -71,17 +102,24 @@ export const setupComputerUseBridge$ = command(
       set(refreshDesktopAuth$);
       set(reloadComputerUse$);
     });
+    const unsubscribeDeveloperTools = desktopDeveloperToolsApi()?.subscribe(
+      () => {
+        set(reloadDeveloperTools$);
+      },
+    );
 
     signal.addEventListener(
       "abort",
       () => {
         unsubscribeComputerUse();
         unsubscribeAuth?.();
+        unsubscribeDeveloperTools?.();
       },
       { once: true },
     );
     set(refreshDesktopAuth$);
     set(refreshComputerUse$);
+    set(reloadDeveloperTools$);
   },
 );
 

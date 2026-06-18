@@ -340,7 +340,7 @@ export function buildDesktopTrayMenuItems(
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
   return [
-    { label: "Show Main Window", click: actions.showMainWindow },
+    { label: "Open Computer Use", click: actions.showMainWindow },
     {
       label: authStatusLabel(state),
       submenu: buildAuthSubmenu(state, actions),

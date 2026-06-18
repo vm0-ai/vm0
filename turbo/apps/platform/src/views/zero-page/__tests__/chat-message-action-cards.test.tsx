@@ -9,7 +9,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -46,6 +49,38 @@ function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
     enabledTypes = body.enabledTypes;
     return respond(200, { enabledTypes });
   });
+}
+
+function buttonByText(text: string, container: ParentNode): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+async function waitForButtonByText(
+  text: string,
+  container: ParentNode,
+): Promise<HTMLElement> {
+  let button: HTMLElement | undefined;
+  await waitFor(() => {
+    button = buttonByText(text, container);
+    expect(button).toBeEnabled();
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+async function confirmPermissionAction(
+  user: ReturnType<typeof userEvent.setup>,
+  card: HTMLElement,
+): Promise<void> {
+  await user.click(await waitForButtonByText("Confirm", card));
 }
 
 describe("chat message action cards", () => {
@@ -105,7 +140,7 @@ describe("chat message action cards", () => {
     ).toBeInTheDocument();
     expect(within(permissionCard).getByText("24 hours")).toBeInTheDocument();
 
-    await user.click(within(permissionCard).getByText("Confirm"));
+    await confirmPermissionAction(user, permissionCard);
 
     await waitFor(() => {
       expect(
@@ -164,6 +199,7 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitForButtonByText("Confirm", permissionCard);
     await user.click(
       within(permissionCard).getByLabelText("Permission duration"),
     );
@@ -173,7 +209,7 @@ describe("chat message action cards", () => {
       expect(within(permissionCard).getByText("7 days")).toBeInTheDocument();
     });
 
-    await user.click(within(permissionCard).getByText("Confirm"));
+    await confirmPermissionAction(user, permissionCard);
 
     await waitFor(() => {
       expect(
@@ -246,7 +282,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
     ).toBeInTheDocument();
 
-    await user.click(within(permissionCard).getByText("Confirm"));
+    await confirmPermissionAction(user, permissionCard);
 
     await waitFor(() => {
       expect(
@@ -330,7 +366,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Deny admin.analytics:read"),
     ).toBeInTheDocument();
 
-    await user.click(within(permissionCard).getByText("Confirm"));
+    await confirmPermissionAction(user, permissionCard);
 
     await waitFor(() => {
       expect(

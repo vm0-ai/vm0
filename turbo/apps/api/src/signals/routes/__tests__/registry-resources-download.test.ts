@@ -6,6 +6,7 @@ import {
   findDesignSystem,
   findSkill,
   findTemplate,
+  findTool,
 } from "@vm0/core/resource-registry";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -24,9 +25,9 @@ const routeMocks = createZeroRouteMocks(context);
 
 const PRIVATE_ARCHIVE_FIXTURES = [
   {
-    id: "skill:presentation-deck-tools",
+    id: "tool:presentation-deck-tools",
     versionId:
-      "a11aab6b73aad5796a77875492564f269d8e4f62c7fbfbf302ab228d43fca5ff",
+      "b6ea3b108cb3d710306766fbd75eac537283b166a9a5c5345a0bb884f9af3606",
   },
   {
     id: "design-system:business-data",
@@ -132,6 +133,26 @@ const PRIVATE_ARCHIVE_FIXTURES = [
     id: "design-system:playful-pop",
     versionId:
       "f54ec75c03c6f1a4722cc84429c521fe7758e15402de22f8cf842b6c715db524",
+  },
+  {
+    id: "design-system:nocturne",
+    versionId:
+      "2344d4eeb97b8706148f6fabe7e73973a98a9d9929be31f7a4e531a3136bbb2b",
+  },
+  {
+    id: "template:html-ppt-nocturne",
+    versionId:
+      "975042cc63adf2ec5a6c7888a541807571579959e7da6af7681038c4352c4d7f",
+  },
+  {
+    id: "design-system:neo-brutalism",
+    versionId:
+      "929a4c72074e3fce2b64b16c5f53507707225dc71e5909d86b5f9a1bc43c2da0",
+  },
+  {
+    id: "template:html-ppt-neo-brutalism",
+    versionId:
+      "14216859630a1ba018c7e4c85b26452e450b10a187ac44d13b1e0d0b6407977f",
   },
   {
     id: "color-system:bauhaus-primary",
@@ -242,6 +263,7 @@ function storageNameFor(id: string): string {
 function findArchiveSha256(id: string): string {
   const entry =
     findSkill(id) ??
+    findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findColorSystem(id);

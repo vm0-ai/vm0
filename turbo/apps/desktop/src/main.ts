@@ -11,6 +11,7 @@ import {
   protocol,
   session,
   shell,
+  type MenuItemConstructorOptions,
 } from "electron";
 import {
   ComputerUseSnapshotStore,
@@ -64,6 +65,11 @@ import {
   notifyDesktopAuthChanged,
 } from "./desktop-auth-electron";
 import {
+  installDesktopDeveloperToolsIpc,
+  notifyDesktopDeveloperToolsChanged,
+} from "./desktop-developer-tools-electron";
+import type { DesktopDeveloperToolsState } from "./desktop-bridge";
+import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthSelectOrgUrl,
   buildDesktopAuthStartUrl,
@@ -103,6 +109,8 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
+const ZERO_DEBUG_FEATURE_SWITCH_KEY = "zeroDebug";
+const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
@@ -124,6 +132,10 @@ let computerUseManualStopRequested = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
+let developerToolsAvailable = false;
+let developerToolsEnabled = false;
+let developerToolsRefresh: Promise<void> | null = null;
+let developerToolsRefreshRequested = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
@@ -163,6 +175,92 @@ function notifyComputerUseChanged(): void {
 function notifyAuthChanged(): void {
   notifyDesktopAuthChanged();
   refreshDesktopTrayAuth();
+  refreshDeveloperToolsAvailabilityForState();
+}
+
+function notifyDeveloperToolsChanged(): void {
+  notifyDesktopDeveloperToolsChanged();
+  if (app.isReady()) {
+    applyApplicationMenu();
+  }
+}
+
+function getDesktopDeveloperToolsState(): DesktopDeveloperToolsState {
+  return {
+    available: developerToolsAvailable,
+    enabled: developerToolsAvailable && developerToolsEnabled,
+  };
+}
+
+function setDesktopDeveloperToolsEnabled(
+  enabled: boolean,
+): DesktopDeveloperToolsState {
+  const nextEnabled = developerToolsAvailable && enabled;
+  if (developerToolsEnabled !== nextEnabled) {
+    developerToolsEnabled = nextEnabled;
+    notifyDeveloperToolsChanged();
+  }
+  return getDesktopDeveloperToolsState();
+}
+
+function setDeveloperToolsAvailability(available: boolean): void {
+  const nextEnabled = available ? developerToolsEnabled : false;
+  if (
+    developerToolsAvailable === available &&
+    developerToolsEnabled === nextEnabled
+  ) {
+    return;
+  }
+  developerToolsAvailable = available;
+  developerToolsEnabled = nextEnabled;
+  notifyDeveloperToolsChanged();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function zeroDebugEnabledFromFeatureSwitches(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.switches)) {
+    return false;
+  }
+  return value.switches[ZERO_DEBUG_FEATURE_SWITCH_KEY] === true;
+}
+
+async function refreshDeveloperToolsAvailability(): Promise<void> {
+  const response = await getAuthSession().fetchWithSessionAuth(
+    new URL(ZERO_FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
+  );
+  if (response.status === 401) {
+    setDeveloperToolsAvailability(false);
+    return;
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Desktop developer tools feature switch failed: ${response.status}`,
+    );
+  }
+  const body: unknown = await response.json();
+  setDeveloperToolsAvailability(zeroDebugEnabledFromFeatureSwitches(body));
+}
+
+function refreshDeveloperToolsAvailabilityForState(): void {
+  if (developerToolsRefresh) {
+    developerToolsRefreshRequested = true;
+    return;
+  }
+  developerToolsRefresh = refreshDeveloperToolsAvailability()
+    .catch((error) => {
+      console.warn("Unable to refresh desktop developer tools state", error);
+      setDeveloperToolsAvailability(false);
+    })
+    .finally(() => {
+      developerToolsRefresh = null;
+      if (developerToolsRefreshRequested) {
+        developerToolsRefreshRequested = false;
+        refreshDeveloperToolsAvailabilityForState();
+      }
+    });
 }
 
 async function runAuthWindow(request: {
@@ -437,6 +535,16 @@ function installComputerUse(): void {
   );
 }
 
+function installDesktopDeveloperTools(): void {
+  installDesktopDeveloperToolsIpc(
+    {
+      getState: getDesktopDeveloperToolsState,
+      setEnabled: setDesktopDeveloperToolsEnabled,
+    },
+    { rendererUrl: localRendererUrl },
+  );
+}
+
 function refreshComputerUsePermissionsForState(): void {
   void refreshComputerUsePermissionState()
     .catch((error) => {
@@ -570,18 +678,31 @@ function requestDesktopQuit(): void {
 }
 
 function applyApplicationMenu(): void {
+  const appSubmenu: MenuItemConstructorOptions[] = [
+    { role: "about" },
+    { type: "separator" },
+  ];
+  if (developerToolsAvailable) {
+    appSubmenu.push({
+      label: "Developer Tools",
+      type: "checkbox",
+      checked: developerToolsEnabled,
+      click: () => {
+        setDesktopDeveloperToolsEnabled(!developerToolsEnabled);
+      },
+    });
+    appSubmenu.push({ type: "separator" });
+  }
+  appSubmenu.push({
+    label: `Quit ${config.identity.displayName}`,
+    accelerator: "CommandOrControl+Q",
+    click: requestDesktopQuit,
+  });
+
   const menu = Menu.buildFromTemplate([
     {
       label: config.identity.displayName,
-      submenu: [
-        { role: "about" },
-        { type: "separator" },
-        {
-          label: `Quit ${config.identity.displayName}`,
-          accelerator: "CommandOrControl+Q",
-          click: requestDesktopQuit,
-        },
-      ],
+      submenu: appSubmenu,
     },
     {
       label: "Edit",
@@ -1049,9 +1170,11 @@ if (!hasSingleInstanceLock) {
     });
     installKeepAwake();
     installComputerUse();
+    installDesktopDeveloperTools();
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
+    refreshDeveloperToolsAvailabilityForState();
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 

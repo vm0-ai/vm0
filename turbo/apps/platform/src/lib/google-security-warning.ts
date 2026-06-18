@@ -7,13 +7,6 @@ export function shouldShowGoogleSecurityWarningNotice(
   return isGoogleOAuthConnector(type);
 }
 
-export function shouldShowMetaAdsReviewNotice(type: ConnectorType): boolean {
-  return type === "meta-ads";
-}
-
 export function shouldShowConnectorConnectNotice(type: ConnectorType): boolean {
-  return (
-    shouldShowGoogleSecurityWarningNotice(type) ||
-    shouldShowMetaAdsReviewNotice(type)
-  );
+  return shouldShowGoogleSecurityWarningNotice(type);
 }

@@ -1,0 +1,713 @@
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use crate::error::{self, Result};
+use crate::pool;
+
+use super::connection::{
+    ConnectedDevice, disconnect_connected_if_owned_result_with_lease_critical_section,
+};
+use super::finalizer::{PooledCowFinalizer, run_finalizer};
+use super::{NbdCowDevice, remove_cow_files};
+
+/// Retry policy for clean COW device finalization.
+#[derive(Clone, Copy, Debug)]
+pub struct DestroyRetryPolicy {
+    /// Number of destroy attempts. Values below 1 are treated as 1 attempt.
+    pub attempts: u32,
+    /// Delay between attempts.
+    pub delay: Duration,
+}
+
+impl DestroyRetryPolicy {
+    fn attempts(self) -> u32 {
+        self.attempts.max(1)
+    }
+}
+
+/// Paths produced by a successful keep-COW finalizer.
+#[derive(Debug)]
+pub struct KeptCow {
+    /// Preserved COW file path.
+    pub cow_file: PathBuf,
+    /// Persisted dirty bitmap sidecar path.
+    pub bitmap_file: PathBuf,
+}
+
+/// Error returned by detailed pooled COW destroy finalizers.
+#[derive(Debug)]
+pub struct PooledDestroyError {
+    source: error::NbdCowError,
+    backing_files_safe_to_delete: bool,
+}
+
+impl PooledDestroyError {
+    fn device_cleanup(source: error::NbdCowError) -> Self {
+        Self {
+            source,
+            backing_files_safe_to_delete: false,
+        }
+    }
+
+    fn storage_cleanup(source: error::NbdCowError) -> Self {
+        Self {
+            source,
+            backing_files_safe_to_delete: true,
+        }
+    }
+
+    /// Whether the NBD device has been disconnected and backing files are no
+    /// longer referenced by this pooled device.
+    pub fn backing_files_safe_to_delete(&self) -> bool {
+        self.backing_files_safe_to_delete
+    }
+
+    /// Consume this detailed error and return the underlying `nbd-cow` error.
+    pub fn into_inner(self) -> error::NbdCowError {
+        self.source
+    }
+}
+
+impl std::fmt::Display for PooledDestroyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.fmt(f)
+    }
+}
+
+impl std::error::Error for PooledDestroyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+impl From<error::NbdCowError> for PooledDestroyError {
+    fn from(source: error::NbdCowError) -> Self {
+        Self::device_cleanup(source)
+    }
+}
+
+impl pool::DevicePoolHandle {
+    /// Create a pooled NBD COW device.
+    pub async fn create_cow_device(
+        &self,
+        base_image: &Path,
+        cow_file: &Path,
+        size: u64,
+    ) -> Result<PooledNbdCowDevice> {
+        let (device, lease) = NbdCowDevice::create_inner(base_image, cow_file, size, self).await?;
+        Ok(PooledNbdCowDevice {
+            device,
+            lease: LeaseGuard::new(lease, self.clone()),
+            pool: self.clone(),
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DestroyMode {
+    RemoveCow,
+    KeepCow,
+}
+
+enum DestroyAttemptError {
+    Device(error::NbdCowError),
+    Storage(error::NbdCowError),
+}
+
+/// A COW device whose NBD pool ownership is tied to the device lifecycle.
+pub struct PooledNbdCowDevice {
+    device: NbdCowDevice,
+    lease: LeaseGuard,
+    pool: pool::DevicePoolHandle,
+}
+
+pub(super) struct LeaseGuard {
+    lease: Option<pool::DeviceLease>,
+    pool: pool::DevicePoolHandle,
+}
+
+impl LeaseGuard {
+    pub(super) fn new(lease: pool::DeviceLease, pool: pool::DevicePoolHandle) -> Self {
+        Self {
+            lease: Some(lease),
+            pool,
+        }
+    }
+
+    fn take(&mut self) -> Option<pool::DeviceLease> {
+        self.lease.take()
+    }
+
+    fn restore(&mut self, lease: pool::DeviceLease) {
+        debug_assert!(self.lease.is_none(), "restoring duplicate pool lease");
+        self.lease = Some(lease);
+    }
+}
+
+impl Drop for LeaseGuard {
+    fn drop(&mut self) {
+        if let Some(lease) = self.lease.take() {
+            let device_index = lease.index();
+            tracing::warn!(
+                device_index,
+                "pooled NBD COW device dropped without finalizer; retiring pool lease as uncertain"
+            );
+            self.pool.retire_uncertain_detached(lease);
+        }
+    }
+}
+
+impl PooledNbdCowDevice {
+    /// NBD device index (N in `/dev/nbdN`), for diagnostics only.
+    pub fn device_index(&self) -> u32 {
+        self.device.device_index()
+    }
+
+    /// Path to the block device (e.g., `/dev/nbd0`).
+    pub fn device_path(&self) -> &Path {
+        self.device.device_path()
+    }
+
+    /// Path to the sparse COW file.
+    pub fn cow_file(&self) -> &Path {
+        self.device.cow_file()
+    }
+
+    /// Log COW device status for debugging.
+    pub async fn log_status(&self) {
+        self.device.log_status().await;
+    }
+
+    /// Destroy the device, removing the COW file and bitmap.
+    ///
+    /// Finalization starts immediately. Dropping the returned future does not
+    /// cancel cleanup; it continues in the background and logs its result.
+    /// Must be called from a Tokio runtime.
+    pub fn destroy_with_retries(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> impl std::future::Future<Output = Result<()>> + Send + 'static {
+        let finalizer = self.destroy_with_retries_detailed(policy);
+        async move { finalizer.await.map_err(PooledDestroyError::into_inner) }
+    }
+
+    /// Destroy the device and distinguish NBD shutdown failures from COW file
+    /// cleanup failures.
+    ///
+    /// Finalization starts immediately. When this returns an error with
+    /// [`PooledDestroyError::backing_files_safe_to_delete`] set, the NBD device
+    /// was released and callers may safely delete the containing workspace or
+    /// snapshot attempt directory.
+    pub fn destroy_with_retries_detailed(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> impl std::future::Future<Output = std::result::Result<(), PooledDestroyError>> + Send + 'static
+    {
+        // Once finalization starts, let it run to completion even if the caller's
+        // future is cancelled. Otherwise dropping the owned device mid-finalizer
+        // can disconnect best-effort but leave the pool lease in flight.
+        //
+        // This must spawn before returning the Future: an `async fn` body would
+        // not run if the returned future was dropped before its first poll.
+        Self::run_finalizer(async move { self.destroy_with_retries_detailed_inner(policy).await })
+    }
+
+    async fn destroy_with_retries_detailed_inner(
+        mut self,
+        policy: DestroyRetryPolicy,
+    ) -> std::result::Result<(), PooledDestroyError> {
+        let pool = self.pool.clone();
+        Self::destroy_with_mode(
+            &mut self.device,
+            &mut self.lease,
+            &pool,
+            policy,
+            DestroyMode::RemoveCow,
+        )
+        .await
+    }
+
+    /// Destroy the device while preserving COW data for snapshot persistence.
+    ///
+    /// Finalization starts immediately. Dropping the returned future does not
+    /// cancel cleanup; it continues in the background and logs its result.
+    /// Must be called from a Tokio runtime.
+    pub fn destroy_keep_cow_with_retries(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> impl std::future::Future<Output = Result<KeptCow>> + Send + 'static {
+        // See destroy_with_retries(): the COW file must either be finalized or
+        // abandoned with the lease retired even if the awaiting task is dropped.
+        Self::run_finalizer(async move { self.destroy_keep_cow_with_retries_inner(policy).await })
+    }
+
+    async fn destroy_keep_cow_with_retries_inner(
+        mut self,
+        policy: DestroyRetryPolicy,
+    ) -> Result<KeptCow> {
+        let pool = self.pool.clone();
+        let cow_file = self.device.cow_file().to_path_buf();
+        let bitmap_file = self.device.bitmap_path();
+        Self::destroy_with_mode(
+            &mut self.device,
+            &mut self.lease,
+            &pool,
+            policy,
+            DestroyMode::KeepCow,
+        )
+        .await
+        .map_err(PooledDestroyError::into_inner)?;
+
+        Ok(KeptCow {
+            cow_file,
+            bitmap_file,
+        })
+    }
+
+    async fn destroy_with_mode(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        policy: DestroyRetryPolicy,
+        mode: DestroyMode,
+    ) -> std::result::Result<(), PooledDestroyError> {
+        let attempts = policy.attempts();
+
+        let mut last_device_err = match Self::run_destroy_attempt(device, lease, pool, mode).await {
+            Ok(()) => {
+                Self::release_clean(pool, lease).await;
+                return Ok(());
+            }
+            Err(DestroyAttemptError::Storage(source)) => {
+                Self::release_clean(pool, lease).await;
+                return Err(PooledDestroyError::storage_cleanup(source));
+            }
+            Err(DestroyAttemptError::Device(source)) => source,
+        };
+
+        for _ in 1..attempts {
+            tokio::time::sleep(policy.delay).await;
+            match Self::run_destroy_attempt(device, lease, pool, mode).await {
+                Ok(()) => {
+                    Self::release_clean(pool, lease).await;
+                    return Ok(());
+                }
+                Err(DestroyAttemptError::Storage(source)) => {
+                    Self::release_clean(pool, lease).await;
+                    return Err(PooledDestroyError::storage_cleanup(source));
+                }
+                Err(DestroyAttemptError::Device(source)) => last_device_err = source,
+            }
+        }
+
+        device.abandon();
+        Self::retire_uncertain(pool, lease).await;
+        Err(PooledDestroyError::device_cleanup(last_device_err))
+    }
+
+    async fn run_destroy_attempt(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        mode: DestroyMode,
+    ) -> std::result::Result<(), DestroyAttemptError> {
+        match mode {
+            DestroyMode::RemoveCow => {
+                Self::shutdown_device_with_lease(device, lease, pool, false)
+                    .await
+                    .map_err(DestroyAttemptError::Device)?;
+                remove_cow_files(&device.cow_file).map_err(DestroyAttemptError::Storage)
+            }
+            DestroyMode::KeepCow => Self::shutdown_device_with_lease(device, lease, pool, true)
+                .await
+                .map_err(DestroyAttemptError::Device),
+        }
+    }
+
+    async fn shutdown_device_with_lease(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        save_bitmap: bool,
+    ) -> Result<()> {
+        device.prepare_shutdown(save_bitmap).await?;
+
+        if !device.disconnected {
+            let connected = ConnectedDevice {
+                index: device.device_index,
+                connect_tid: device.connect_tid,
+            };
+            let Some(device_lease) = lease.take() else {
+                return Err(error::NbdCowError::Io(std::io::Error::other(
+                    "pool lease missing during pooled NBD shutdown",
+                )));
+            };
+            let outcome = disconnect_connected_if_owned_result_with_lease_critical_section(
+                connected,
+                pool.clone(),
+                device_lease,
+            )
+            .await?;
+            let (device_lease, disconnect_result) = outcome.into_parts()?;
+            lease.restore(device_lease);
+            device.apply_owned_disconnect_state(disconnect_result?);
+        }
+
+        device.wait_for_kernel_release().await;
+        Ok(())
+    }
+
+    /// Mark the device as abandoned and retire the pool lease as uncertain.
+    ///
+    /// Must be called from a Tokio runtime.
+    pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let finalizer = Self::run_finalizer(async move {
+            self.abandon_inner().await;
+            Ok::<(), error::NbdCowError>(())
+        });
+        async move {
+            if let Err(e) = finalizer.await {
+                tracing::warn!(error = %e, "pooled NBD COW abandon finalizer failed");
+            }
+        }
+    }
+
+    async fn abandon_inner(mut self) {
+        let pool = self.pool.clone();
+        self.device.abandon();
+        Self::retire_uncertain(&pool, &mut self.lease).await;
+    }
+
+    pub(super) fn run_finalizer<T, E>(
+        future: impl std::future::Future<Output = std::result::Result<T, E>> + Send + 'static,
+    ) -> PooledCowFinalizer<T, E>
+    where
+        T: Send + 'static,
+        E: From<error::NbdCowError> + std::fmt::Display + Send + 'static,
+    {
+        run_finalizer(future)
+    }
+
+    async fn release_clean(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {
+        if let Some(lease) = lease.take() {
+            pool.release_clean(lease).await;
+        }
+    }
+
+    async fn retire_uncertain(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {
+        if let Some(lease) = lease.take() {
+            pool.retire_uncertain(lease).await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    use crate::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, cow, pool};
+    use tokio::sync::RwLock;
+    use tokio_util::sync::CancellationToken;
+
+    use super::*;
+
+    const TEST_DEVICE_INDEX: u32 = 1_000_000;
+
+    fn create_test_base_image(path: &Path) {
+        let file = std::fs::File::create(path).expect("create base image");
+        file.set_len(BLOCK_SIZE as u64).expect("size base image");
+    }
+
+    struct PooledDestroyHarness {
+        _tmp: tempfile::TempDir,
+        cow_file: PathBuf,
+        bitmap_file: PathBuf,
+        bitmap_tmp_path: PathBuf,
+        pool: pool::DevicePoolHandle,
+        device: PooledNbdCowDevice,
+    }
+
+    impl PooledDestroyHarness {
+        fn new() -> Self {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let base = tmp.path().join("base.img");
+            let cow_file = tmp.path().join("cow.img");
+            let bitmap_file = cow::bitmap_path_for(&cow_file);
+            let bitmap_tmp_path = cow::bitmap_tmp_path_for(&bitmap_file);
+            let lock_dir = tmp.path().join("locks");
+            std::fs::create_dir(&lock_dir).expect("create lock dir");
+            create_test_base_image(&base);
+            std::fs::write(&cow_file, b"cow").expect("write cow file");
+
+            let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+            let cow = cow::CowLayer::new(
+                &base,
+                &cow_file,
+                BLOCK_SIZE as u64,
+                BLOCK_SIZE,
+                DEFAULT_FLUSH_THRESHOLD,
+            )
+            .expect("create cow layer");
+            let device = PooledNbdCowDevice {
+                device: NbdCowDevice {
+                    device_index: TEST_DEVICE_INDEX,
+                    device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
+                    cow_file: cow_file.clone(),
+                    cow: Arc::new(RwLock::new(cow)),
+                    server_handles: Vec::new(),
+                    shutdown: CancellationToken::new(),
+                    disconnected: true,
+                    connect_tid: 0,
+                },
+                lease: LeaseGuard::new(
+                    pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, &lock_dir),
+                    pool.clone(),
+                ),
+                pool: pool.clone(),
+            };
+
+            Self {
+                _tmp: tmp,
+                cow_file,
+                bitmap_file,
+                bitmap_tmp_path,
+                pool,
+                device,
+            }
+        }
+
+        fn write_bitmap_sidecar(&self) {
+            std::fs::write(&self.bitmap_file, b"bitmap").expect("write bitmap file");
+        }
+
+        fn create_blocking_bitmap_tmp_dir(&self) {
+            std::fs::create_dir(&self.bitmap_tmp_path).expect("create bitmap tmp dir");
+        }
+
+        fn create_transient_bitmap_tmp_symlink(&self) {
+            std::os::unix::fs::symlink(
+                self.bitmap_file
+                    .parent()
+                    .expect("bitmap path parent")
+                    .join("missing-parent")
+                    .join("bitmap.tmp"),
+                &self.bitmap_tmp_path,
+            )
+            .expect("create broken bitmap tmp symlink");
+        }
+
+        fn replace_cow_file_with_directory(&self) {
+            std::fs::remove_file(&self.cow_file).expect("remove cow file");
+            std::fs::create_dir(&self.cow_file).expect("create cow directory");
+        }
+    }
+
+    fn zero_attempt_destroy_policy() -> DestroyRetryPolicy {
+        DestroyRetryPolicy {
+            attempts: 0,
+            delay: std::time::Duration::from_secs(60),
+        }
+    }
+
+    #[tokio::test]
+    async fn destroy_with_retries_zero_attempts_runs_once_and_removes_files() {
+        let harness = PooledDestroyHarness::new();
+        harness.write_bitmap_sidecar();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy");
+
+        assert!(!cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_with_retries_reports_cow_removal_failure() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before returning the first error");
+
+        let err = result.expect_err("destroy should report cow removal failure");
+        assert!(
+            err.to_string().contains("failed to remove"),
+            "unexpected error: {err}"
+        );
+        assert!(cow_file.is_dir());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn detailed_destroy_reports_storage_failure_as_safe_to_delete() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness { pool, device, .. } = harness;
+
+        let err = device
+            .destroy_with_retries_detailed(zero_attempt_destroy_policy())
+            .await
+            .expect_err("destroy should report cow removal failure");
+
+        assert!(
+            err.backing_files_safe_to_delete(),
+            "storage cleanup errors must not be treated as NBD ownership failures"
+        );
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn detailed_destroy_storage_failure_does_not_sleep_before_returning() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness { pool, device, .. } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries_detailed(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::from_secs(60),
+            }),
+        )
+        .await
+        .expect("storage cleanup failures should not wait for device retry delay");
+
+        let err = result.expect_err("destroy should report cow removal failure");
+        assert!(err.backing_files_safe_to_delete());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_preserved_paths() {
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = PooledDestroyHarness::new();
+
+        let kept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy keep cow");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_first_error_without_retry_sleep() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before returning the first error");
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_exhausts_retries_and_returns_error() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
+
+        let result = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        assert!(bitmap_tmp_path.is_dir());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_retries_after_first_error_and_returns_preserved_paths() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_transient_bitmap_tmp_symlink();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
+
+        let kept = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await
+            .expect("destroy keep cow should retry after tmp-file failure");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        assert!(!bitmap_tmp_path.exists());
+        pool.cleanup().await;
+    }
+}

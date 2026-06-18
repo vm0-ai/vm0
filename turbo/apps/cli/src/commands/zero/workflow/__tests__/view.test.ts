@@ -50,6 +50,7 @@ describe("zero workflow view command", () => {
             content: "# My Workflow\nDoes helpful things.",
             files: [],
             fileContents: [],
+            triggers: [],
           });
         }),
       );
