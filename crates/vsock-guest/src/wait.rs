@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::process::{
     ProcessTreeKillTarget, kill_and_reap_child_with_target, kill_process_tree_target,
-    process_tree_kill_target, refresh_process_tree_kill_target,
+    process_signal_pid, process_tree_kill_target, refresh_process_tree_kill_target,
 };
 use crate::threading::spawn_scoped_named;
 
@@ -237,8 +237,9 @@ fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> Watchdo
     let child_id = kill_target.child_id();
     // SAFETY: kill_target comes from a PID returned by Command::spawn.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
-    // SAFETY: child_id is a process id from Command::spawn.
-    let child_killed = unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    let child_killed = process_signal_pid(child_id)
+        // SAFETY: child_id is a process id from Command::spawn and was validated as pid_t.
+        .is_some_and(|pid| unsafe { libc::kill(pid, libc::SIGKILL) == 0 });
     let killed = tree_killed || child_killed;
     WatchdogKill { reason, killed }
 }
@@ -300,6 +301,23 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         path.exists()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn read_pid_file<T: std::str::FromStr>(path: &Path) -> Option<T> {
+        std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_for_pid_file<T: std::str::FromStr>(path: &Path, timeout: Duration) -> Option<T> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Some(pid) = read_pid_file(path) {
+                return Some(pid);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        read_pid_file(path)
     }
 
     #[cfg(target_os = "linux")]
@@ -479,24 +497,20 @@ mod tests {
             }
         }
 
-        if !wait_for_path(&child_pid_path, Duration::from_secs(2)) {
+        let child_pid: libc::pid_t =
+            match wait_for_pid_file(&child_pid_path, Duration::from_secs(2)) {
+                Some(pid) => pid,
+                None => {
+                    let child_pid_text =
+                        std::fs::read_to_string(&child_pid_path).unwrap_or_default();
+                    kill_spawned_child_with_watchdog(&mut child);
+                    panic!("failed to parse setsid child pid {child_pid_text:?}");
+                }
+            };
+        if child_pid <= 0 {
             kill_spawned_child_with_watchdog(&mut child);
-            panic!("setsid child should publish its pid before watchdog kill");
+            panic!("setsid child pid should be positive, got {child_pid}");
         }
-        let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child_with_watchdog(&mut child);
-                panic!("failed to read setsid child pid: {e}");
-            }
-        };
-        let child_pid: libc::pid_t = match child_pid_text.trim().parse() {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child_with_watchdog(&mut child);
-                panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
-            }
-        };
         let child_pidfd = match open_pidfd(child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
