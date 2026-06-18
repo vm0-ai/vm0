@@ -5,16 +5,21 @@ use serde_json::json;
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
         .map_err(|e| format!("write session id: {e}"))?;
-    let marker = guest_agent::session_metadata::resolve_history_marker_payload_for_diagnostics()
-        .map_err(|e| format!("derive Claude history marker: {e}"))?
-        .ok_or_else(|| "derive Claude history marker from session id".to_string())?;
-    let history_path = std::path::Path::new(&marker);
+    let project_name = guest_agent::paths::CANONICAL_WORKING_DIR
+        .strip_prefix('/')
+        .unwrap_or(guest_agent::paths::CANONICAL_WORKING_DIR)
+        .replace('/', "-");
+    let history_path = std::path::Path::new(guest_agent::env::home_dir())
+        .join(".claude")
+        .join("projects")
+        .join(format!("-{project_name}"))
+        .join(format!("{session_id}.jsonl"));
     let parent = history_path
         .parent()
         .ok_or_else(|| format!("history path has no parent: {}", history_path.display()))?;
     std::fs::create_dir_all(parent)
         .map_err(|e| format!("create history dir {}: {e}", parent.display()))?;
-    std::fs::write(history_path, history)
+    std::fs::write(&history_path, history)
         .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
     Ok(())
 }
