@@ -583,7 +583,11 @@ mod tests {
         assert!(status.success());
 
         // SAFETY: `target` came from the spawned shell before it exited.
-        assert!(unsafe { kill_process_tree_target(target) });
+        if !unsafe { kill_process_tree_target(target) } {
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("snapshotted target should signal at least one process group");
+        }
         match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
             Ok(true) => {}
             Ok(false) => {
@@ -732,7 +736,12 @@ wait
         };
 
         refresh_process_tree_kill_target(&mut target);
-        assert!(unsafe { kill_process_tree_target(target) });
+        if !unsafe { kill_process_tree_target(target) } {
+            kill_spawned_child(&mut child);
+            kill_pidfd_and_wait(&setsid_child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("refreshed target should signal at least one process group");
+        }
         let _ = child.take().unwrap().wait().unwrap();
 
         match wait_for_pidfd_exit(&setsid_child_pidfd, Duration::from_secs(2)) {
