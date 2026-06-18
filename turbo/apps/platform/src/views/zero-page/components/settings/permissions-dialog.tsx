@@ -128,6 +128,14 @@ interface InitialPermissionDrawerState {
   readonly initialPolicyKey: string;
 }
 
+type LoadedPermissionsDrawerContentProps = Pick<
+  PermissionsDrawerProps,
+  "initialPolicies" | "resetEnabled" | "readOnly" | "onApply" | "onClose"
+> & {
+  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly initialState: InitialPermissionDrawerState;
+};
+
 function buildInitialPermissionDrawerState({
   agentId,
   connectorType,
@@ -1252,10 +1260,7 @@ function LoadedPermissionsDrawerContent({
   onClose,
   metadata,
   initialState,
-}: PermissionsDrawerProps & {
-  readonly metadata: FirewallPermissionDetailMetadata;
-  readonly initialState: InitialPermissionDrawerState;
-}) {
+}: LoadedPermissionsDrawerContentProps) {
   const defaultPolicyState = buildDefaultPolicyState(metadata);
   const {
     ref,
