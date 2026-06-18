@@ -1652,7 +1652,17 @@ describe("chat composer templates", () => {
       "true",
     );
 
-    click(within(templateDialog).getByRole("button", { name: "Template" }));
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
     click(screen.getByLabelText(`View template ${template.title}`));
 
     await waitFor(() => {
