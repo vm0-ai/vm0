@@ -189,10 +189,15 @@ impl ActiveInputState {
         }
     }
 
-    fn remove_oldest_pending_if_written(&mut self) -> bool {
+    fn remove_oldest_pending_if_delivered(&mut self) -> bool {
         while let Some(uuid) = self.pending_uuid_order.front().cloned() {
             match self.pending_by_uuid.get(&uuid) {
-                Some(input) if matches!(input.state, PendingState::Written) => {
+                Some(input)
+                    if matches!(
+                        input.state,
+                        PendingState::WritingWithUuidlessReplay | PendingState::Written
+                    ) =>
+                {
                     return self.remove_pending_by_uuid(&uuid);
                 }
                 Some(_) => return false,
@@ -474,7 +479,7 @@ impl ActiveInputController {
             // Claude should replay stdin user frames before the follow-up
             // result. If replay is missing, a later result can prove progress
             // for the oldest writer-owned input, not for every queued follow-up.
-            if !state.remove_oldest_pending_if_written() {
+            if !state.remove_oldest_pending_if_delivered() {
                 return false;
             }
             if !state.pending_by_uuid.is_empty() {
@@ -988,6 +993,36 @@ mod tests {
         }
 
         assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn followup_result_can_close_after_uuidless_replay_before_mark_written() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        assert!(!controller.close_for_result_if_idle());
+
+        controller.mark_writing(&active_uuid);
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+
+        assert!(controller.close_for_result_if_idle());
+        controller.mark_written(&active_uuid);
+        assert!(matches!(
+            controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
+            ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
+        ));
     }
 
     #[test]
