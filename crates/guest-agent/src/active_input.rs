@@ -152,10 +152,11 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
 }
 
 fn user_message_role_allows_replay(event: &Value) -> bool {
-    !matches!(
-        event.pointer("/message/role").and_then(Value::as_str),
-        Some(role) if role != "user"
-    )
+    match event.pointer("/message/role") {
+        Some(Value::String(role)) => role == "user",
+        Some(_) => false,
+        None => true,
+    }
 }
 
 fn prompt_like_user_content(event: &Value) -> Option<String> {
@@ -852,6 +853,38 @@ mod tests {
             "type": "user",
             "uuid": active_uuid,
             "message": {"role": "assistant", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&malformed),
+            ReplayUserEventAction::External
+        );
+
+        let replay = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&replay),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_keeps_non_string_role_events_external() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+
+        let malformed = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "message": {"role": 123, "content": "follow-up"}
         });
         assert_eq!(
             controller.replay_user_event_action(&malformed),
