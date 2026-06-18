@@ -36,6 +36,7 @@ import {
   stripeAdditionalApiDocUrlsForResource,
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
+import { PERMISSIONS_DOC_URL as SENTRY_PERMISSIONS_DOC_URL } from "./sentry";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -348,6 +349,7 @@ const UPDATERS: Updater[] = [
   staticUpdater("notion", ["https://developers.notion.com/openapi.json"]),
   staticUpdater("sentry", [
     "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json",
+    SENTRY_PERMISSIONS_DOC_URL,
   ]),
   staticUpdater("strava", [
     "https://developers.strava.com/swagger/swagger.json",
