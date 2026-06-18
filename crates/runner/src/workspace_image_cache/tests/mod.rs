@@ -1665,6 +1665,38 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
 }
 
 #[tokio::test]
+async fn maintenance_gc_preserves_valid_group_scoped_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    tokio::fs::create_dir_all(home.workspace_image_cache_dir().parent().unwrap())
+        .await
+        .unwrap();
+    let runner = RunnerPaths::new(dir.path().join("runner"));
+    let maintenance_runner = RunnerPaths::new(dir.path().join("maintenance-runner"));
+    tokio::fs::create_dir_all(runner.base_dir()).await.unwrap();
+    tokio::fs::create_dir_all(maintenance_runner.base_dir())
+        .await
+        .unwrap();
+    let cache = SessionWorkspaceCache::shared(runner.clone(), &home, "group-a");
+    let maintenance_cache = SessionWorkspaceCache::shared(maintenance_runner, &home, "");
+    let key = promote_current_cache_entry(
+        &cache,
+        &runner,
+        "sess-1",
+        b"image",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let current = cache.session_workspace_cache_current_image(&key);
+    let metadata = cache.session_workspace_cache_metadata(&key);
+
+    maintenance_cache.gc(false).await.unwrap();
+
+    assert!(current.exists());
+    assert!(metadata.exists());
+}
+
+#[tokio::test]
 async fn global_gc_candidates_include_other_group_cache_entries() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().join("home"));
