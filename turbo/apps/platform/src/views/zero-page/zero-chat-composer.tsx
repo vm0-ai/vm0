@@ -17,7 +17,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconCheck,
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
@@ -1368,7 +1367,9 @@ function presentationTemplateThemeAccentSwatches(
 ): readonly { readonly color: string; readonly id: string }[] {
   return [
     { id: "background", color: theme.colors[0] },
+    { id: "support-1", color: theme.colors[5] },
     { id: "support-2", color: theme.colors[6] },
+    { id: "support-3", color: theme.colors[7] },
   ];
 }
 
@@ -2268,11 +2269,6 @@ function TemplatePreviewPage({
                             },
                           )}
                         </span>
-                        {active ? (
-                          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm backdrop-blur">
-                            <IconCheck size={11} stroke={2.3} />
-                          </span>
-                        ) : null}
                       </button>
                     );
                   })}
@@ -2304,21 +2300,22 @@ function TemplatePreviewPage({
                         )}
                       >
                         <span className="flex h-full">
-                          {swatches.map((swatch) => {
-                            return (
-                              <span
-                                key={`${theme.id}-${swatch.id}`}
-                                className="flex-1"
-                                style={{ backgroundColor: swatch.color }}
-                              />
-                            );
-                          })}
-                        </span>
-                        {active ? (
-                          <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm backdrop-blur">
-                            <IconCheck size={11} stroke={2.3} />
+                          <span
+                            className="w-1/2"
+                            style={{ backgroundColor: swatches[0]?.color }}
+                          />
+                          <span className="flex w-1/2 flex-col">
+                            {swatches.slice(1).map((swatch) => {
+                              return (
+                                <span
+                                  key={`${theme.id}-${swatch.id}`}
+                                  className="flex-1"
+                                  style={{ backgroundColor: swatch.color }}
+                                />
+                              );
+                            })}
                           </span>
-                        ) : null}
+                        </span>
                       </button>
                     );
                   })}
