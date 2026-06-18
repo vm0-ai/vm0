@@ -1,17 +1,121 @@
 """Tests for response streaming parser setup."""
 
 import gzip
+import zlib
 
 import pytest
+from mitmproxy import http
 from mitmproxy.test import tutils
 
 import mitm_addon
 import response_streaming
-from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.x_flow_helpers import make_x_response_flow
 
 _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
+
+
+class TestResponseStreamBuffer:
+    """Tests for generic response stream buffering behavior."""
+
+    def _json_response_flow(self, real_flow, *, host: str = "api.example.com") -> http.HTTPFlow:
+        flow = real_flow(with_response=False, host=host)
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        return flow
+
+    def test_stream_callback_buffers_chunks(self, real_flow):
+        flow = self._json_response_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        assert callback(b"hello ") == b"hello "
+        assert callback(b"world") == b"world"
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello world"
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+    def test_stream_callback_stops_buffering_at_limit(self, real_flow):
+        flow = self._json_response_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        chunk = b"x" * STREAM_BUFFER_LIMIT
+        assert callback(chunk) == chunk
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        assert callback(b"overflow") == b"overflow"
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_large_single_chunk(self, real_flow):
+        flow = self._json_response_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        big_chunk = b"A" * (STREAM_BUFFER_LIMIT + 1000)
+        assert callback(big_chunk) == big_chunk
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_partial_fill_then_overflow(self, real_flow):
+        flow = self._json_response_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        half = STREAM_BUFFER_LIMIT // 2
+        callback(b"A" * half)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        callback(b"B" * STREAM_BUFFER_LIMIT)
+        remaining = STREAM_BUFFER_LIMIT - half
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
+        assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_empty_chunk(self, real_flow):
+        flow = self._json_response_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        assert callback(b"") == b""
+        assert len(flow.metadata["stream_buffer"]) == 0
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        callback(b"hello")
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello"
+
+    def test_non_model_provider_buffer_truncated(self, real_flow):
+        flow = self._json_response_flow(real_flow, host="api.github.com")
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow):
+        flow = self._json_response_flow(real_flow, host="api.gamma.example")
+        flow.metadata["firewall_name"] = "gamma"
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(b"g" * (STREAM_BUFFER_LIMIT + 1000))
+
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
 
 class TestNdjsonExtractor:
@@ -41,6 +145,41 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 2
         assert state["includes"] == {"users": 3}
         assert state["lines_parsed"] == 2
+
+    def test_forensic_buffer_truncation_does_not_stop_parser(self, real_flow):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+
+        parse(b'{"data":{"id":"1"}}\n' + b"x" * (200 * 1024))
+
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert state["data_count"] == 1
+        assert "connector_response_finish" in flow.metadata
+
+    def test_decompresses_gzip_stream_before_parsing(self, real_flow):
+        ndjson_body = (
+            b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n'
+            b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n'
+            b'{"data":{"id":"3"},"includes":{"users":[{"id":"u3"}]}}\n'
+        )
+        compressed = gzip.compress(ndjson_body)
+        flow = make_x_response_flow(
+            real_flow,
+            path="/2/tweets/search/stream",
+            content_encoding="gzip",
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        mid = len(compressed) // 2
+        response_stream(flow)(compressed[:mid])
+        response_stream(flow)(compressed[mid:])
+        state = flow.metadata["x_ndjson_state"]
+        assert state["data_count"] == 3
+        assert state["includes"] == {"users": 3}
+        assert "connector_response_finish" in flow.metadata
 
     def test_chunked_line_split_mid_json(self, real_flow):
         parse, state = self._stream_parser(real_flow)
@@ -293,6 +432,70 @@ class TestXJsonFinalize:
 
         response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata["x_json_state"] == state
+
+    def test_forensic_buffer_truncation_does_not_stop_x_json_parser(self, real_flow):
+        flow = make_x_response_flow(
+            real_flow,
+            path="/2/users/by",
+            original_url="https://api.x.com/2/users/by?ids=1,2,3",
+        )
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        callback(b'{"data":[{"id":"1","text":"')
+        callback(b"x" * (200 * 1024))
+        callback(b'"}],"includes":{"users":[{"id":"u1"}]}}')
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert "x_ndjson_state" not in flow.metadata
+        state = flow.metadata["x_json_state"]
+        assert state["body_parsed"] is True
+        assert state["response_data_count"] == 1
+        assert state["response_includes"] == {"users": 1}
+
+    def test_decompresses_gzip_x_json_before_parsing(self, real_flow):
+        body = (
+            b'{"data":[{"id":"1"},{"id":"2"}],'
+            b'"includes":{"users":[{"id":"u1"}]},'
+            b'"meta":{"result_count":2,"total_tweet_count":3}}'
+        )
+        flow = make_x_response_flow(real_flow, content_encoding="gzip")
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(gzip.compress(body))
+        response_streaming.finalize_connector_response_state(flow)
+        state = flow.metadata["x_json_state"]
+        assert state["response_data_count"] == 2
+        assert state["response_includes"] == {"users": 1}
+        assert state["response_result_count"] == 2
+        assert state["response_total_tweet_count"] == 3
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_x_json_feeds_later_members(self, real_flow, encoding):
+        body = (
+            b'{"data":[{"id":"1"},{"id":"2"}],'
+            b'"includes":{"users":[{"id":"u1"}]},'
+            b'"meta":{"result_count":2,"total_tweet_count":3}}'
+        )
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(body)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(body)
+        flow = make_x_response_flow(real_flow, content_encoding=encoding)
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+        response_streaming.finalize_connector_response_state(flow)
+
+        state = flow.metadata["x_json_state"]
+        assert state["body_parsed"] is True
+        assert state["response_data_count"] == 2
+        assert state["response_includes"] == {"users": 1}
+        assert state["response_result_count"] == 2
+        assert state["response_total_tweet_count"] == 3
 
     def test_finalizes_x_json_parse_error(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
