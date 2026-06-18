@@ -74,6 +74,7 @@ setTimeout(() => {
   console.log("   Web:       https://www.vm7.ai:8443");
   console.log("   App:       https://app.vm7.ai:8443");
   console.log("   API:       https://api.vm7.ai:8443");
+  console.log("   SO:        https://so.vm7.ai:8443");
   console.log("\n💡 Make sure your applications are running:");
   console.log("   Web:       pnpm --filter web dev (port 3000)");
   console.log("   App:       pnpm --filter @vm0/app dev (port 3002)");

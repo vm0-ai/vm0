@@ -29,8 +29,8 @@ vi.mock("@clerk/clerk-js", () => {
 vi.hoisted(() => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
-  vi.stubEnv("VITE_PAID_ONBOARDING_URL", "https://so.vm7.ai:8441");
-  vi.stubEnv("VITE_PAID_ONBOARDING_DOMAIN", "pr-123-api.vm6.ai");
+  vi.stubEnv("VITE_PAID_ONBOARDING_URL", "https://so.vm7.ai:8443");
+  vi.stubEnv("VITE_PAID_ONBOARDING_DOMAIN", "api.vm7.ai:8443");
   vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.vm7.io");
 });
 

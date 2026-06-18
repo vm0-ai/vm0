@@ -1620,7 +1620,9 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const credit = await screen.findByLabelText("Credit usage 24,234");
+    const credit = await waitFor(() => {
+      return buttonByLabel("Credit usage 24,234");
+    });
     const actions = credit.closest('[data-testid="chat-message-actions"]');
     expect(actions).not.toBeNull();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
@@ -1629,9 +1631,6 @@ describe("chat lifecycle", () => {
     ).toBeTruthy();
 
     click(credit);
-    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
-
-    fireEvent.pointerEnter(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1650,11 +1649,13 @@ describe("chat lifecycle", () => {
       expect(screen.queryByText("moonshot")).not.toBeInTheDocument();
     });
 
-    fireEvent.pointerDown(credit, { button: 0 });
-    expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
-      1,
-    );
-    fireEvent.click(credit);
+    click(credit);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+    });
+
+    click(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1663,15 +1664,6 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
     });
-
-    fireEvent.pointerLeave(credit);
-
-    await waitFor(() => {
-      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
-    });
-
-    click(credit);
-    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
   });
 
   it("shows generation usage with model names only", async () => {
@@ -1733,7 +1725,7 @@ describe("chat lifecycle", () => {
     });
 
     const credit = await screen.findByLabelText("Credit usage 1,976");
-    fireEvent.pointerEnter(credit);
+    click(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1901,7 +1893,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
 
     const connectorCredit = await screen.findByLabelText("Credit usage 108");
-    fireEvent.pointerEnter(connectorCredit);
+    click(connectorCredit);
 
     await waitFor(() => {
       expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
@@ -2004,7 +1996,7 @@ describe("chat lifecycle", () => {
     ).resolves.toBeInTheDocument();
     const connectorCredit = await screen.findByLabelText("Credit usage 108");
 
-    fireEvent.pointerEnter(connectorCredit);
+    click(connectorCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
