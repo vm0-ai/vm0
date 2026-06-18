@@ -163,6 +163,7 @@ import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
 import { hunterFirewall } from "./hunter.generated";
 import { imgurFirewall } from "./imgur.generated";
+import { insforgeFirewall } from "./insforge.generated";
 import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
@@ -447,6 +448,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,
   imgur: imgurFirewall,
+  insforge: insforgeFirewall,
   instagram: instagramFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
@@ -779,7 +781,6 @@ export type NonFirewallConnectorType =
   | "bloom"
   | "chert"
   | "daytona"
-  | "insforge"
   | "interfaze"
   | "inth"
   | "keyframe-labs"
