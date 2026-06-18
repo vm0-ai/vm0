@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.471.0](https://github.com/vm0-ai/vm0/compare/app-v0.470.0...app-v0.471.0) (2026-06-18)
+
+
+### Features
+
+* roll out chat draft + double-click rename switches, drop automation sidebar switch ([#18234](https://github.com/vm0-ai/vm0/issues/18234)) ([b799861](https://github.com/vm0-ai/vm0/commit/b7998617982e6a542d8f15125d8db82b532e4163))
+
+
+### Bug Fixes
+
+* dismiss inline feedback toolbar when a click clears the selection ([#18231](https://github.com/vm0-ai/vm0/issues/18231)) ([47e9960](https://github.com/vm0-ai/vm0/commit/47e9960d104a9f07736356f87ad2faafb4c7f2c7)), closes [#18230](https://github.com/vm0-ai/vm0/issues/18230)
+* soften template picker card shadow to match chat composer ([#18141](https://github.com/vm0-ai/vm0/issues/18141)) ([ba5b79e](https://github.com/vm0-ai/vm0/commit/ba5b79e5e78b0fd28603eb9f71ddfcb1788ab7ad)), closes [#18140](https://github.com/vm0-ai/vm0/issues/18140)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+    * @vm0/core bumped to 8.355.0
+
 ## [0.470.0](https://github.com/vm0-ai/vm0/compare/app-v0.469.0...app-v0.470.0) (2026-06-18)
 
 

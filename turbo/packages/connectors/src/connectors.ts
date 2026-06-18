@@ -304,6 +304,18 @@ export interface ConnectorManualGrantFieldConfig {
   placeholder?: string;
   /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
   storage?: "secret" | "variable";
+  /**
+   * Optional normalization applied to the user-entered value before it is
+   * persisted.
+   *
+   * - `"host"`: strip the URL scheme, userinfo, path, query, fragment, and
+   *   trailing slash, leaving only `host[:port]`. Use this for fields templated
+   *   into a firewall base URL's authority position (`https://${{ vars.X }}`),
+   *   where the firewall validator rejects values that introduce URL structure
+   *   (`/`, `?`, `#`, `@`). Lets a user paste a full backend URL
+   *   (e.g. `https://my-project.example.app/`) without breaking the connection.
+   */
+  normalize?: "host";
 }
 
 export type ConnectorAuthClientConfig =

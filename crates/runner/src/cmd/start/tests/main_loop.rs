@@ -868,11 +868,12 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
     release_tx
         .send(())
         .expect("runner should still be waiting for prefetch release");
-    let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
-        .await
-        .expect("run should finish after memory prefetch drains")
-        .expect("task should not panic");
-    assert!(result.is_ok());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should finish after memory prefetch drains",
+    )
+    .await;
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
@@ -931,11 +932,12 @@ async fn drain_then_resume_keeps_jobs_running() {
     // Tear down hard — the shared gate would otherwise block the
     // second job's natural completion during Draining.
     env.trigger_stopping().await;
-    let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
-        .await
-        .expect("run should exit within 5s after hard shutdown")
-        .expect("task should not panic");
-    assert!(result.is_ok());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should exit within 5s after hard shutdown",
+    )
+    .await;
 }
 
 /// Regression guard for the unified reactor's Draining-entry state.
@@ -1055,7 +1057,12 @@ async fn heartbeat_fires_while_draining() {
 
     // Tear down hard — the gate would block natural completion.
     env.trigger_stopping().await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s after Draining heartbeat check",
+    )
+    .await;
 }
 
 /// Invariant: heartbeat ticks must fire while the unified reactor is
@@ -1426,7 +1433,12 @@ async fn claim_after_stopping_sent_cancels_new_job() {
         *v = RunnerMode::Stopping;
     });
     env.cancel.cancel();
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should exit within 5s after Stopping notification",
+    )
+    .await;
 }
 
 /// SIGUSR2 received while Stopping is committed is ignored — the
@@ -1626,7 +1638,12 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
 
     // Tear down cleanly.
     env.trigger_stopping().await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s after concurrent resume race",
+    )
+    .await;
 }
 
 // -----------------------------------------------------------------------
