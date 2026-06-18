@@ -448,7 +448,7 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
         // this connection.
         return Ok(total);
     }
-    if status.is_success() {
+    if status == StatusCode::OK {
         // 200: server ignored Range. Fall back to Content-Length.
         let total = resp
             .headers()
@@ -1042,6 +1042,21 @@ mod tests {
         );
     }
 
+    fn assert_storage_cache_skipped_reason_contains(
+        ops: &[(String, bool, Option<String>)],
+        expected: &str,
+    ) {
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(
+            reason.contains(expected),
+            "expected storage_cache_skipped_head_failed reason to contain {expected:?} in {ops:?}"
+        );
+    }
+
     #[tokio::test]
     async fn hit_path_reads_from_disk_and_rewrites_url() {
         let temp = tempfile::tempdir().unwrap();
@@ -1548,6 +1563,56 @@ mod tests {
             !matches!(result, Ok(SizeProbe::Known(_))),
             "malformed Content-Length must not become a known size: {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn probe_non_ok_success_status_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/no-content.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(204).header("content-length", "0");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/no-content.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(tarball_bytes());
+            })
+            .await;
+
+        let original = server.url("/no-content.tar.gz");
+        let name = "no-content";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_reason_contains(&ops, "204");
     }
 
     #[tokio::test]
