@@ -95,17 +95,14 @@ def test_wait_for_event_raises_worker_failure_even_when_event_is_set():
     assert not thread.is_alive()
 
 
-def test_join_and_raise_propagates_base_exception_subclasses():
-    class WorkerAbort(BaseException):
-        pass
+def test_join_and_raise_propagates_pytest_outcome_failures():
+    def fail_worker() -> None:
+        pytest.fail("worker pytest failure")
 
-    def abort_worker() -> None:
-        raise WorkerAbort("abort")
-
-    thread = ThreadUnderTest(target=abort_worker)
+    thread = ThreadUnderTest(target=fail_worker)
     thread.start()
 
-    with pytest.raises(WorkerAbort, match="abort"):
+    with pytest.raises(pytest.fail.Exception, match="worker pytest failure"):
         thread.join_and_raise(timeout=1)
 
     assert not thread.is_alive()

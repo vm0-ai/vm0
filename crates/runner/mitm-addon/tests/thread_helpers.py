@@ -6,6 +6,8 @@ import threading
 from collections.abc import Callable, Sequence
 from types import TracebackType
 
+import pytest
+
 
 class ThreadUnderTest:
     """Run a short-lived test target and re-raise worker failures on demand."""
@@ -55,7 +57,14 @@ class ThreadUnderTest:
     def _run(self) -> None:
         try:
             self._target()
-        except BaseException as exc:
+        # Pytest outcome exceptions inherit directly from BaseException, so
+        # include them explicitly without catching interpreter control flow.
+        except (
+            Exception,
+            pytest.fail.Exception,
+            pytest.skip.Exception,
+            pytest.xfail.Exception,
+        ) as exc:
             self._failure = (exc, exc.__traceback__)
 
     def _raise_if_not_started(self) -> None:
