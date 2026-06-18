@@ -159,6 +159,10 @@ fn user_message_role_allows_replay(event: &Value) -> bool {
     }
 }
 
+fn parent_tool_use_allows_replay(event: &Value) -> bool {
+    matches!(event.get("parent_tool_use_id"), Some(Value::Null) | None)
+}
+
 fn prompt_like_user_content(event: &Value) -> Option<String> {
     let content = event.pointer("/message/content")?;
     if let Some(text) = content.as_str() {
@@ -359,6 +363,9 @@ impl ActiveInputController {
             return ReplayUserEventAction::External;
         }
         if !user_message_role_allows_replay(event) {
+            return ReplayUserEventAction::External;
+        }
+        if !parent_tool_use_allows_replay(event) {
             return ReplayUserEventAction::External;
         }
 
@@ -894,6 +901,40 @@ mod tests {
         let replay = json!({
             "type": "user",
             "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&replay),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_keeps_child_user_events_external() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+
+        let child = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "parent_tool_use_id": "tool-1",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&child),
+            ReplayUserEventAction::External
+        );
+
+        let replay = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "parent_tool_use_id": null,
             "message": {"role": "user", "content": "follow-up"}
         });
         assert_eq!(
