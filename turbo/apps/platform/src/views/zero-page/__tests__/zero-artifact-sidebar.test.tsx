@@ -936,6 +936,8 @@ ${openFencedHostedSiteUrl}`,
     await waitFor(() => {
       expect(screen.getByText("Table keeps URLs as text")).toBeInTheDocument();
       expect(screen.getByText(videoUrl)).toBeInTheDocument();
+      expect(screen.getByText(fencedHostedSiteUrl)).toBeInTheDocument();
+      expect(screen.getByText(openFencedHostedSiteUrl)).toBeInTheDocument();
       expect(screen.getByAltText("chart.png")).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-markdown")).toHaveAttribute(
@@ -963,8 +965,8 @@ ${openFencedHostedSiteUrl}`,
         "Open html preview for Launch site",
       );
       expect(screen.getByText("Customer Launch")).toBeInTheDocument();
-      expect(screen.getByText("Deck Summary")).toBeInTheDocument();
-      expect(screen.getByText("Page Content Pack")).toBeInTheDocument();
+      expect(screen.queryByText("Deck Summary")).not.toBeInTheDocument();
+      expect(screen.queryByText("Page Content Pack")).not.toBeInTheDocument();
       const customerLaunchFrame = document.querySelector(
         'iframe[title="Site preview for Customer Launch"]',
       );
@@ -974,13 +976,10 @@ ${openFencedHostedSiteUrl}`,
         "allow-same-origin allow-scripts",
       );
       expect(
-        document.querySelector('iframe[title="Site preview for Deck Summary"]'),
-      ).toBeInTheDocument();
-      expect(
         document.querySelector(
           'iframe[title="Site preview for Page Content Pack"]',
         ),
-      ).toBeInTheDocument();
+      ).not.toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-file")).toHaveAttribute(
         "aria-label",
         "Download archive.bin",
