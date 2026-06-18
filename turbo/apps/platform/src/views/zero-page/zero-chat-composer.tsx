@@ -4073,7 +4073,7 @@ function ComputerUseDownloadDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md gap-5">
+      <DialogContent className="max-w-md gap-5 pt-4">
         <DialogHeader>
           <div className="flex items-start gap-4 pr-8">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-gray-50 text-muted-foreground">
