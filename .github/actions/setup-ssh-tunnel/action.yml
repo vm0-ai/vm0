@@ -14,7 +14,7 @@ inputs:
   cloudflared-version:
     description: "cloudflared version to install"
     required: false
-    default: "2026.2.0"
+    default: "2026.6.0"
 
 runs:
   using: "composite"
