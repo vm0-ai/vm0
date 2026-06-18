@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.37](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.36...vsock-host-v0.17.37) (2026-06-18)
+
+
+### Refactoring
+
+* classify chunked write helper exec results ([#18208](https://github.com/vm0-ai/vm0/issues/18208)) ([2d84e93](https://github.com/vm0-ai/vm0/commit/2d84e93b92e93c7edfed7c2ba0f8ba64fc4f67ff))
+
 ## [0.17.36](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.35...vsock-host-v0.17.36) (2026-06-18)
 
 

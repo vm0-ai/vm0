@@ -237,6 +237,28 @@ function sanitizeManualGrantValue(value: string): string {
   return value.replace(/\s+/gu, "");
 }
 
+/**
+ * Normalize a host/domain field value to bare `host[:port]`.
+ *
+ * Strips the URL scheme, userinfo, path, query, fragment, and any trailing
+ * slash, so a user can paste a full backend URL (e.g.
+ * `https://my-project.example.app/`) into a field that is templated into a
+ * firewall base URL's authority position (`https://${{ vars.X }}`), where the
+ * firewall validator rejects values that introduce URL structure.
+ */
+function normalizeManualGrantHost(value: string): string {
+  // Strip a leading scheme (e.g. "https://").
+  let host = value.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u, "");
+  // Keep only the authority: drop path, query, and fragment.
+  host = host.split(/[/?#]/u)[0] ?? host;
+  // Drop userinfo ("user@host" -> "host").
+  const atIndex = host.lastIndexOf("@");
+  if (atIndex !== -1) {
+    host = host.slice(atIndex + 1);
+  }
+  return host;
+}
+
 function formatManualGrantFieldList(names: readonly string[]): string {
   return [...names].sort().join(", ");
 }
@@ -313,7 +335,11 @@ function prepareManualGrantConnect(
       configuredSecretNames.push(name);
     }
 
-    const value = sanitizedValues.get(name) ?? "";
+    const sanitized = sanitizedValues.get(name) ?? "";
+    const value =
+      sanitized && config.normalize === "host"
+        ? normalizeManualGrantHost(sanitized)
+        : sanitized;
     if (!value) {
       if (config.required) {
         missingRequiredNames.push(name);

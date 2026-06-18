@@ -35,11 +35,16 @@ pub(in super::super) async fn assert_run_exits_within(
     timeout: Duration,
     timeout_msg: &str,
 ) {
-    match tokio::time::timeout(timeout, run_handle).await {
+    let mut run_handle = run_handle;
+    match tokio::time::timeout(timeout, &mut run_handle).await {
         Ok(Ok(Ok(()))) => {}
         Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
         Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("{timeout_msg}"),
+        Err(_) => {
+            run_handle.abort();
+            let _ = tokio::time::timeout(Duration::from_secs(1), run_handle).await;
+            panic!("{timeout_msg}");
+        }
     }
 }
 

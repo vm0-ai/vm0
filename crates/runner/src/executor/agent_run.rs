@@ -18,7 +18,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{fix_guest_clock, reseed_guest_entropy, sync_guest_timezone};
 use super::session_restore::restore_session;
-use super::storage::{download_storages, filter_unchanged_storages};
+use super::storage::{download_storages, filter_unchanged_storages, guest_download_has_work};
 use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
@@ -166,11 +166,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
             None => guest_manifest,
         };
-        // Short-circuit: skip the vsock exec if every entry was filtered out
-        // and there are no paths to clean up.
-        let has_work = effective.storages.iter().any(|s| s.archive_url.is_some())
-            || effective.artifacts.iter().any(|a| a.archive_url.is_some())
-            || !effective.cleanup_paths.is_empty();
+        // Short-circuit: skip the vsock exec if no downloads, cleanup, or
+        // guest-side instruction normalization remain.
+        let has_work = guest_download_has_work(&effective);
         if !has_work {
             info!(run_id = %context.run_id, "all storages unchanged, skipping download");
         }

@@ -134,6 +134,7 @@
     "generate:hume": "tsx src/index.ts hume",
     "generate:imgur": "tsx src/index.ts imgur",
     "generate:infisical": "tsx src/index.ts infisical",
+    "generate:insforge": "tsx src/index.ts insforge",
     "generate:instagram": "tsx src/index.ts instagram",
     "generate:instantly": "tsx src/index.ts instantly",
     "generate:intercom": "tsx src/index.ts intercom",
