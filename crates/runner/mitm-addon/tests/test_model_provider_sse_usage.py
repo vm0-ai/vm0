@@ -345,7 +345,9 @@ class TestModelProviderSseUsage:
         assert webhook.request_count == 0
         assert _model_sse_parse_warnings(flow) == []
 
-    def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(self, tmp_path, real_flow):
+    def test_full_pipeline_openai_eventless_incomplete_terminal_sse_warns(
+        self, tmp_path, real_flow
+    ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
@@ -355,7 +357,11 @@ class TestModelProviderSseUsage:
         webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
-        assert _model_sse_parse_warnings(flow) == []
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="response.completed",
+        )
 
     def test_full_pipeline_openai_non_terminal_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow

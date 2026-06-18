@@ -368,13 +368,18 @@ class _OpenAIResponsesSseUsageHandler:
                 data_event_type=data_event_type,
             )
             return
+        event_type = event_name
+        if event_type is None:
+            data_type = extractor.observed_scalar_for_diagnostics(("type",))
+            if isinstance(data_type, str):
+                event_type = data_type
         if (
-            event_name is not None
-            and event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
+            event_type is not None
+            and event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
             and result.error
             and self._on_parse_error is not None
         ):
-            self._on_parse_error(event_name, result.error)
+            self._on_parse_error(event_type, result.error)
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._reset_event_state()
