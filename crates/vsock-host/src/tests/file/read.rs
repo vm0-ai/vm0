@@ -360,6 +360,14 @@ async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
+
+    let err = host
+        .read_file("/tmp/timeout.txt", 1024, 0)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(operation_count(&host), 0);
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
