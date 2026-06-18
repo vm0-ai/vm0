@@ -277,28 +277,27 @@ impl ActiveInputController {
         if event.get("type").and_then(Value::as_str) != Some("user") {
             return ReplayUserEventAction::External;
         }
+
+        if let Some(uuid) = event.get("uuid").and_then(Value::as_str) {
+            if uuid == self.inner.initial_prompt_uuid {
+                return ReplayUserEventAction::InternalInitialPrompt;
+            }
+
+            let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.pending_by_uuid.remove(uuid).is_some() {
+                return ReplayUserEventAction::InternalActiveInput;
+            }
+        }
+
         if event
             .pointer("/message/content")
             .and_then(Value::as_str)
-            .is_none()
+            .is_some()
         {
-            return ReplayUserEventAction::External;
-        }
-
-        let Some(uuid) = event.get("uuid").and_then(Value::as_str) else {
             return ReplayUserEventAction::UnknownPromptUser;
-        };
-
-        if uuid == self.inner.initial_prompt_uuid {
-            return ReplayUserEventAction::InternalInitialPrompt;
         }
 
-        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.pending_by_uuid.remove(uuid).is_some() {
-            return ReplayUserEventAction::InternalActiveInput;
-        }
-
-        ReplayUserEventAction::UnknownPromptUser
+        ReplayUserEventAction::External
     }
 }
 
@@ -472,5 +471,43 @@ mod tests {
             runtime.controller().replay_user_event_action(&event),
             ReplayUserEventAction::External
         );
+    }
+
+    #[test]
+    fn replay_filter_consumes_matching_uuid_even_with_non_string_content() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"hello"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+
+        let initial = json!({
+            "type": "user",
+            "uuid": claude_initial_prompt_uuid("run-1"),
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "initial"}]
+            }
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&initial),
+            ReplayUserEventAction::InternalInitialPrompt
+        );
+
+        let active = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "follow-up"}]
+            }
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&active),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
     }
 }
