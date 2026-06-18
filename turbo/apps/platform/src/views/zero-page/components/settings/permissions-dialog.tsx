@@ -1576,6 +1576,7 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
             {...props}
             metadata={loadedMetadata}
             initialState={loadedInitialState}
+            onClose={handleClose}
           />
         ) : (
           <>
