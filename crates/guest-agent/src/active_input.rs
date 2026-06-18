@@ -76,6 +76,7 @@ struct ActiveInputState {
     next_input_sequence: u64,
     seen_message_ids: HashSet<String>,
     seen_message_id_order: VecDeque<String>,
+    pending_uuid_order: VecDeque<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
 }
 
@@ -88,6 +89,7 @@ impl Default for ActiveInputState {
             next_input_sequence: 0,
             seen_message_ids: HashSet::new(),
             seen_message_id_order: VecDeque::new(),
+            pending_uuid_order: VecDeque::new(),
             pending_by_uuid: HashMap::new(),
         }
     }
@@ -130,8 +132,23 @@ impl ActiveInputState {
         claude_active_input_uuid(run_id, sequence, message_id)
     }
 
+    fn insert_pending(&mut self, uuid: String, input: PendingInput) {
+        self.pending_uuid_order.push_back(uuid.clone());
+        self.pending_by_uuid.insert(uuid, input);
+    }
+
     fn remove_pending_by_uuid(&mut self, uuid: &str) -> bool {
-        self.pending_by_uuid.remove(uuid).is_some()
+        if self.pending_by_uuid.remove(uuid).is_none() {
+            return false;
+        }
+        if let Some(index) = self
+            .pending_uuid_order
+            .iter()
+            .position(|pending_uuid| pending_uuid == uuid)
+        {
+            self.pending_uuid_order.remove(index);
+        }
+        true
     }
 
     fn remove_replayable_pending_by_text(&mut self, text: &str) -> bool {
@@ -140,23 +157,34 @@ impl ActiveInputState {
         }
 
         let uuid = self
-            .pending_by_uuid
+            .pending_uuid_order
             .iter()
-            .find(|(_, input)| matches!(input.state, PendingState::Written) && input.text == text)
-            .map(|(uuid, _)| uuid.clone());
+            .find(|uuid| {
+                self.pending_by_uuid.get(*uuid).is_some_and(|input| {
+                    matches!(input.state, PendingState::Written) && input.text == text
+                })
+            })
+            .cloned();
         let Some(uuid) = uuid else {
             return false;
         };
 
-        self.pending_by_uuid.remove(&uuid).is_some()
+        self.remove_pending_by_uuid(&uuid)
     }
 
-    fn pending_inputs_are_written_to_stdin(&self) -> bool {
-        !self.pending_by_uuid.is_empty()
-            && self
-                .pending_by_uuid
-                .values()
-                .all(|input| matches!(input.state, PendingState::Written))
+    fn remove_oldest_pending_if_written(&mut self) -> bool {
+        while let Some(uuid) = self.pending_uuid_order.front().cloned() {
+            match self.pending_by_uuid.get(&uuid) {
+                Some(input) if matches!(input.state, PendingState::Written) => {
+                    return self.remove_pending_by_uuid(&uuid);
+                }
+                Some(_) => return false,
+                None => {
+                    self.pending_uuid_order.pop_front();
+                }
+            }
+        }
+        false
     }
 }
 
@@ -364,7 +392,7 @@ impl ActiveInputController {
             text: text.clone(),
         };
         state.remember_message_id(message_id.to_owned());
-        state.pending_by_uuid.insert(
+        state.insert_pending(
             uuid.clone(),
             PendingInput {
                 state: PendingState::Accepted,
@@ -376,14 +404,14 @@ impl ActiveInputController {
             Ok(()) => ActiveInputControlOutcome::Accepted,
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 state.forget_message_id(&frame.message_id);
-                state.pending_by_uuid.remove(&frame.uuid);
+                state.remove_pending_by_uuid(&frame.uuid);
                 ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input queue is full",
                 }
             }
             Err(mpsc::error::TrySendError::Closed(frame)) => {
                 state.forget_message_id(&frame.message_id);
-                state.pending_by_uuid.remove(&frame.uuid);
+                state.remove_pending_by_uuid(&frame.uuid);
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input is closed",
@@ -415,13 +443,18 @@ impl ActiveInputController {
         let had_observed_result = state.observed_result;
         state.observed_result = true;
         if !state.pending_by_uuid.is_empty() {
-            if !had_observed_result || !state.pending_inputs_are_written_to_stdin() {
+            if !had_observed_result {
                 return false;
             }
-            // Claude should replay stdin user frames before the follow-up result.
-            // If that replay is missing, a later result still proves the CLI
-            // made progress after the writer took ownership of the frame.
-            state.pending_by_uuid.clear();
+            // Claude should replay stdin user frames before the follow-up
+            // result. If replay is missing, a later result can prove progress
+            // for the oldest writer-owned input, not for every queued follow-up.
+            if !state.remove_oldest_pending_if_written() {
+                return false;
+            }
+            if !state.pending_by_uuid.is_empty() {
+                return false;
+            }
         }
         match state.lifecycle {
             Lifecycle::Open => {
@@ -818,6 +851,51 @@ mod tests {
     }
 
     #[test]
+    fn replay_filter_consumes_oldest_uuidless_text_match() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+
+        for message_id in ["msg-1", "msg-2"] {
+            assert_eq!(
+                controller.handle_control_payload(
+                    message_id,
+                    br#"{"type":"active-input","text":"same-text"}"#
+                ),
+                ActiveInputControlOutcome::Accepted
+            );
+        }
+        let first_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        let second_uuid = claude_active_input_uuid("run-1", 1, "msg-2");
+        controller.mark_written(&first_uuid);
+        controller.mark_written(&second_uuid);
+        assert!(!controller.close_for_result_if_idle());
+
+        let event = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "same-text"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        {
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(!state.pending_by_uuid.contains_key(&first_uuid));
+            assert!(state.pending_by_uuid.contains_key(&second_uuid));
+        }
+
+        assert_eq!(
+            controller.replay_user_event_action(&event),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
     fn replay_filter_does_not_consume_uuidless_text_match_while_writing() {
         let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
@@ -909,6 +987,74 @@ mod tests {
             controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
             ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
         ));
+    }
+
+    #[test]
+    fn followup_result_without_replay_completes_one_written_pending_input_at_a_time() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+
+        for message_id in ["msg-1", "msg-2"] {
+            assert_eq!(
+                controller.handle_control_payload(
+                    message_id,
+                    br#"{"type":"active-input","text":"follow-up"}"#
+                ),
+                ActiveInputControlOutcome::Accepted
+            );
+        }
+        let first_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        let second_uuid = claude_active_input_uuid("run-1", 1, "msg-2");
+        controller.mark_written(&first_uuid);
+        controller.mark_written(&second_uuid);
+
+        assert!(!controller.close_for_result_if_idle());
+        assert!(!controller.close_for_result_if_idle());
+        {
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(!state.pending_by_uuid.contains_key(&first_uuid));
+            assert!(state.pending_by_uuid.contains_key(&second_uuid));
+        }
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn followup_result_without_replay_keeps_later_unwritten_pending_input_open() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+
+        for message_id in ["msg-1", "msg-2"] {
+            assert_eq!(
+                controller.handle_control_payload(
+                    message_id,
+                    br#"{"type":"active-input","text":"follow-up"}"#
+                ),
+                ActiveInputControlOutcome::Accepted
+            );
+        }
+        let first_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        let second_uuid = claude_active_input_uuid("run-1", 1, "msg-2");
+        controller.mark_written(&first_uuid);
+
+        assert!(!controller.close_for_result_if_idle());
+        assert!(!controller.close_for_result_if_idle());
+        {
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(!state.pending_by_uuid.contains_key(&first_uuid));
+            assert!(state.pending_by_uuid.contains_key(&second_uuid));
+        }
+        assert!(!controller.close_for_result_if_idle());
+
+        controller.mark_written(&second_uuid);
+        assert!(controller.close_for_result_if_idle());
     }
 
     #[test]
