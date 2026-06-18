@@ -217,11 +217,15 @@ describe("zero generate video command", () => {
     expect(stdout).toContain('"videoTemplates": [');
     expect(stdout).toContain('"id": "video-template:epic-grandeur"');
     expect(stdout).toContain("vm0-ai/vm0-skills");
+    expect(stdout).not.toContain("nexu-io/open-design");
+    expect(stdout).not.toContain("skill:presentation-deck-tools");
+    expect(stdout).not.toContain("image-style:");
     expect(stdout).not.toContain("previewVideo");
     expect(stdout).not.toContain(".mp4");
     expect(stdout).toContain(
-      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+      "safe for all audiences, nonviolent, no explicit content",
     );
+    expect(stdout).not.toContain("positive and uplifting");
   });
 
   it("should describe video generation models in help", () => {
