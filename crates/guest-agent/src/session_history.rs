@@ -9,8 +9,10 @@
 //!   CLI only writes the session file out at turn-completion time, so we
 //!   defer resolution until checkpoint time when the file is on disk.
 //!
-//! `read_session_history` is the single entry point used by `checkpoint.rs`.
-//! It returns the history bytes, decompressing legacy `.zst` files when needed.
+//! `read_session_history` is the file-backed entry point. Checkpoint resolves
+//! missing marker payloads first, then calls `read_session_history_from_payload`.
+//! Both paths return history bytes, decompressing legacy `.zst` files when
+//! needed.
 //!
 //! See parent epic #11386, sub-issue #11419 for the design rationale.
 //!
