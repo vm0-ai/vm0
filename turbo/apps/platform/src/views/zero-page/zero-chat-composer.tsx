@@ -4083,7 +4083,7 @@ function ComputerUseDownloadDialog({
               <DialogTitle className="text-xl leading-7">
                 Connect your computer
               </DialogTitle>
-              <DialogDescription className="mt-2 leading-6">
+              <DialogDescription className="mt-3 leading-6">
                 Download Zero Computer Use for macOS, then open it to let Zero
                 use your desktop.
               </DialogDescription>
