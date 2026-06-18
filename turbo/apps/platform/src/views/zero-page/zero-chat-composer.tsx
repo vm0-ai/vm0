@@ -4073,22 +4073,24 @@ function ComputerUseDownloadDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md gap-5 pt-4">
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
-              <IconDeviceDesktop size={18} stroke={1.5} />
+          <div className="flex items-start gap-4 pr-8">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={20} stroke={1.5} />
             </div>
-            <div className="min-w-0 space-y-1 text-left">
-              <DialogTitle>Connect your computer</DialogTitle>
-              <DialogDescription>
+            <div className="min-w-0 text-left">
+              <DialogTitle className="text-xl leading-7">
+                Connect your computer
+              </DialogTitle>
+              <DialogDescription className="mt-3 leading-6">
                 Download Zero Computer Use for macOS, then open it to let Zero
                 use your desktop.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
-        <Button asChild className="mt-2 w-full">
+        <Button asChild size="lg" className="w-full">
           <a
             href={downloadUrl}
             target="_blank"
