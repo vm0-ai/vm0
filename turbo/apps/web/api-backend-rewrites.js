@@ -264,6 +264,8 @@ const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/instructions$/;
+const ZERO_AGENT_DRAFT_REWRITE_SOURCE = "/api/zero/agents/:id/draft";
+const ZERO_AGENT_DRAFT_PATH_RE = /^\/api\/zero\/agents\/[^/]+\/draft$/;
 const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
 const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPOSES_REWRITE_SOURCE = "/api/zero/composes";
@@ -881,6 +883,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE,
     "/api/zero/agents/:id/user-connectors",
     ZERO_AGENT_USER_CONNECTORS_PATH_RE,
+  ],
+  [
+    ZERO_AGENT_DRAFT_REWRITE_SOURCE,
+    "/api/zero/agents/:id/draft",
+    ZERO_AGENT_DRAFT_PATH_RE,
   ],
   [
     ZERO_CUSTOM_CONNECTORS_REWRITE_SOURCE,

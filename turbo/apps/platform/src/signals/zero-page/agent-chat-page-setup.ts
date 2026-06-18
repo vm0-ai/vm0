@@ -16,12 +16,17 @@ import {
   rememberLastUsedAgentId$,
 } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
-import { talkDraft$ } from "./chat-draft.ts";
+import { setTalkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import {
   reloadTagline$,
   resetChatPageModelSelection$,
 } from "./zero-chat-page.ts";
+import {
+  ensureAgentDraft$,
+  loadAgentDraft$,
+  type EnsuredAgentDraft,
+} from "./agent-draft.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
@@ -33,16 +38,17 @@ export const setupAgentChatPage$ = command(
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
 
-    // Reset the talk draft on entrance
-    set(get(talkDraft$).clear$);
     set(resetChatPageModelSelection$);
     set(reloadUserModelPreference$);
 
     // Read agent ID from URL immediately (synchronous) and update sidebar
     // highlight early so the UI responds without waiting for async data.
     const agentId = get(currentAgentId$);
+    let agentDraft: EnsuredAgentDraft | undefined;
     if (agentId) {
       set(setChatAgentId$, agentId);
+      agentDraft = set(ensureAgentDraft$, agentId);
+      set(setTalkDraft$, agentDraft.draft);
     }
 
     await set(hideAppSkeleton$, signal);
@@ -83,8 +89,20 @@ export const setupAgentChatPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    if (agentDraft && !prompt) {
+      await set(
+        loadAgentDraft$,
+        agentId,
+        agentDraft.draft,
+        agentDraft.isNew,
+        signal,
+      );
+    }
     if (prompt) {
-      set(get(talkDraft$).setInput$, prompt);
+      if (agentDraft) {
+        set(agentDraft.draft.clear$);
+        set(agentDraft.draft.setInput$, prompt);
+      }
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);

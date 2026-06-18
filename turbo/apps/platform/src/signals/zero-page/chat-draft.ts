@@ -375,6 +375,10 @@ export const talkDraft$ = computed((get) => {
   return get(internalTalkDraft$);
 });
 
+export const setTalkDraft$ = command(({ set }, draft: DraftSignals) => {
+  set(internalTalkDraft$, draft);
+});
+
 /**
  * The current draft for the active route.
  * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),

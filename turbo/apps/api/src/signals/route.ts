@@ -56,6 +56,7 @@ import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
+import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
@@ -236,6 +237,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...deviceTokenRoutes,
   ...emailUnsubscribeRoutes,
   ...generateImageRoutes,
+  ...zeroAgentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,

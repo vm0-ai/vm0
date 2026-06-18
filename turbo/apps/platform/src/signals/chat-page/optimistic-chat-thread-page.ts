@@ -4,6 +4,7 @@ import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
+  type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadListItem,
   type ModelSelectionRequest,
@@ -24,6 +25,7 @@ import {
   talkDraft$,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
+import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -103,8 +105,44 @@ interface SendNewThreadMessageResult {
   runId: string | null;
 }
 
+interface PreparedNewThreadPayload {
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  hasTextContent: boolean;
+}
+
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+function newThreadSendBody({
+  agentId,
+  threadId,
+  clientMessageId,
+  prepared,
+  modelSelection,
+  generationTemplate,
+  computerUseHostId,
+}: {
+  agentId: string;
+  threadId: string;
+  clientMessageId: string;
+  prepared: PreparedNewThreadPayload;
+  modelSelection: ModelSelectionRequest | null;
+  generationTemplate: GenerationTemplateRequest | undefined;
+  computerUseHostId?: string | null;
+}) {
+  return {
+    agentId,
+    prompt: prepared.prompt,
+    clientThreadId: threadId,
+    hasTextContent: prepared.hasTextContent,
+    clientMessageId,
+    modelSelection,
+    generationTemplate,
+    ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+    attachFiles: prepared.attachFiles,
+  };
 }
 
 function hasVisualDraftAttachments(
@@ -546,6 +584,7 @@ const sendNewThreadMessage$ = command(
       signal,
     );
     set(draft.clear$);
+    const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
     const client = createClient(chatMessagesContract);
     const queuedOptimisticMessages$ =
@@ -555,23 +594,24 @@ const sendNewThreadMessage$ = command(
       clientMessageId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
-      const result = await accept(
-        client.send({
-          body: {
-            agentId,
-            prompt: prepared.prompt,
-            clientThreadId: threadId,
-            hasTextContent: prepared.hasTextContent,
-            clientMessageId,
-            modelSelection,
-            generationTemplate,
-            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
-            attachFiles: prepared.attachFiles,
-          },
-          fetchOptions: { signal },
-        }),
-        [201],
-      );
+      const [, result] = await Promise.all([
+        clearDraftResult,
+        accept(
+          client.send({
+            body: newThreadSendBody({
+              agentId,
+              threadId,
+              clientMessageId,
+              prepared,
+              modelSelection,
+              generationTemplate,
+              computerUseHostId,
+            }),
+            fetchOptions: { signal },
+          }),
+          [201],
+        ),
+      ]);
       signal.throwIfAborted();
       L.debug("sendNewThreadMessage$ POST chat/messages 201", {
         threadId: result.body.threadId,
