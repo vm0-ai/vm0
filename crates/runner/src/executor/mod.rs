@@ -530,7 +530,7 @@ pub async fn execute_job_reuse(
                 run_id,
                 sandbox_id,
                 profile_name: &params.profile_name,
-                session_id: context.session_id(),
+                session_id: context.cli_agent_session_id(),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                 workspace_drive_available: true,

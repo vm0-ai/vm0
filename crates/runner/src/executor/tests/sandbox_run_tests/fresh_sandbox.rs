@@ -368,7 +368,7 @@ async fn execute_inner_with_resume_session() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-abc-123".into(),
+        cli_agent_session_id: "sess-abc-123".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())

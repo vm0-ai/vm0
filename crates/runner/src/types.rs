@@ -283,18 +283,21 @@ impl From<&StorageManifest> for GuestDownloadManifest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeSession {
-    pub session_id: String,
+    #[serde(rename = "sessionId")]
+    pub cli_agent_session_id: String,
     pub session_history: String,
 }
 
 impl ExecutionContext {
-    /// Extract the session ID from `resume_session` for sandbox reuse.
+    /// Extract the Claude/Codex CLI agent session id from `resume_session`.
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
-    /// `None`; the executor reads the CLI-generated session ID from the
+    /// `None`; the executor reads the CLI-generated session id from the
     /// guest filesystem post-execution (see `read_guest_session_id`).
-    pub fn session_id(&self) -> Option<&str> {
-        self.resume_session.as_ref().map(|r| r.session_id.as_str())
+    pub fn cli_agent_session_id(&self) -> Option<&str> {
+        self.resume_session
+            .as_ref()
+            .map(|r| r.cli_agent_session_id.as_str())
     }
 }
 
@@ -306,6 +309,8 @@ impl ExecutionContext {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HeldSessionState {
+    /// Compatibility wire name is `sessionId`; semantically this is the
+    /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
     pub session_id: String,
     pub last_completed_at: String,
 }
@@ -501,7 +506,10 @@ mod tests {
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
         assert_eq!(ctx.vars.as_ref().unwrap()["API_KEY"], "secret");
         assert_eq!(ctx.environment.as_ref().unwrap()["NODE_ENV"], "production");
-        assert_eq!(ctx.resume_session.as_ref().unwrap().session_id, "sess-1");
+        assert_eq!(
+            ctx.resume_session.as_ref().unwrap().cli_agent_session_id,
+            "sess-1"
+        );
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
         assert!(ctx.local_secret_env_keys.is_none());
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
@@ -718,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn session_id_returns_none_without_resume() {
+    fn cli_agent_session_id_returns_none_without_resume() {
         let json = json!({
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
@@ -727,11 +735,11 @@ mod tests {
             "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(ctx.session_id().is_none());
+        assert!(ctx.cli_agent_session_id().is_none());
     }
 
     #[test]
-    fn session_id_returns_id_from_resume_session() {
+    fn cli_agent_session_id_returns_id_from_resume_session() {
         let json = json!({
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
@@ -744,7 +752,7 @@ mod tests {
             "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert_eq!(ctx.session_id(), Some("sess-abc-123"));
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-abc-123"));
     }
 
     #[test]

@@ -12,7 +12,7 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-cache-hit".into(),
+        cli_agent_session_id: "sess-cache-hit".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -76,7 +76,7 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-cache-default".into(),
+        cli_agent_session_id: "sess-cache-default".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -130,7 +130,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-register-fail".into(),
+        cli_agent_session_id: "sess-register-fail".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -210,7 +210,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -253,7 +253,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -309,7 +309,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -368,7 +368,7 @@ async fn unconfigured_cache_reuse_stops_when_required_cache_invalidation_lock_is
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -416,7 +416,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     ctx.environment = Some(HashMap::from([(
@@ -474,7 +474,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     let raw_session_id = "../invalid-resume";
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: raw_session_id.into(),
+        cli_agent_session_id: raw_session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 

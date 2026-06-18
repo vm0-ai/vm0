@@ -82,7 +82,7 @@ interface RunnerNotification {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
-  readonly sessionId: string | null;
+  readonly cliAgentSessionId: string | null;
 }
 
 type PromoteQueuedCandidateResult =
@@ -129,7 +129,7 @@ async function insertPromotedRunnerJob(
     runId: args.runId,
     runnerGroup: args.payload.runnerGroup,
     profile: args.payload.profile,
-    sessionId: args.payload.sessionId,
+    cliAgentSessionId: args.payload.cliAgentSessionId,
     executionContext: {
       ...args.payload.executionContext,
       apiStartTime: promotedAt,
@@ -321,7 +321,7 @@ async function promoteQueuedCandidate(
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
-        sessionId: args.payload.sessionId,
+        cliAgentSessionId: args.payload.cliAgentSessionId,
       },
     };
   });

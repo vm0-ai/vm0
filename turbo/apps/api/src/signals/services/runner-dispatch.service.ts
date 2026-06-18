@@ -16,11 +16,11 @@ const STALE_THRESHOLD_MS = 60_000;
 
 function newestHeldSessionAt(
   states: readonly RunnerHeldSessionState[],
-  sessionId: string,
+  cliAgentSessionId: string,
 ): string | null {
   let newest: string | null = null;
   for (const state of states) {
-    if (state.sessionId !== sessionId) {
+    if (state.sessionId !== cliAgentSessionId) {
       continue;
     }
     if (!newest || state.lastCompletedAt > newest) {
@@ -34,9 +34,9 @@ async function findBestRunner(
   db: ReadonlyDb,
   group: string,
   profile: string,
-  sessionId: string | null,
+  cliAgentSessionId: string | null,
 ): Promise<{ readonly runnerId: string } | null> {
-  if (!sessionId) {
+  if (!cliAgentSessionId) {
     return null;
   }
 
@@ -71,7 +71,7 @@ async function findBestRunner(
   for (const runner of candidates) {
     const lastCompletedAt = newestHeldSessionAt(
       runner.heldSessionStates,
-      sessionId,
+      cliAgentSessionId,
     );
     if (!lastCompletedAt) {
       continue;
@@ -90,11 +90,11 @@ export async function notifyRunnerJob(
     readonly runnerGroup: string;
     readonly runId: string;
     readonly profile: string;
-    readonly sessionId: string | null;
+    readonly cliAgentSessionId: string | null;
   },
 ): Promise<boolean> {
   const target = await settle(
-    findBestRunner(db, args.runnerGroup, args.profile, args.sessionId),
+    findBestRunner(db, args.runnerGroup, args.profile, args.cliAgentSessionId),
   );
   const targetRunnerId = target.ok ? (target.value?.runnerId ?? null) : null;
   if (!target.ok) {

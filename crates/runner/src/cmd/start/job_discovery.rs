@@ -111,7 +111,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     let active_session_guard = ActiveSessionGuard::new(
         ctx.spawn_ctx.active_sessions.clone(),
         if resume_session_valid {
-            claimed.context().session_id().map(str::to_owned)
+            claimed.context().cli_agent_session_id().map(str::to_owned)
         } else {
             None
         },
@@ -283,7 +283,7 @@ async fn try_reuse_from_pool(
     if !resume_session_valid {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     }
-    let Some(session_id) = context.session_id() else {
+    let Some(session_id) = context.cli_agent_session_id() else {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     };
     let session_fingerprint = diagnostic_session_fingerprint(session_id);

@@ -119,7 +119,7 @@ async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image
     let raw_session_id = "../bad-session";
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: raw_session_id.into(),
+        cli_agent_session_id: raw_session_id.into(),
         session_history: "{}".into(),
     });
 
@@ -181,10 +181,10 @@ async fn execute_job_reuse_with_session_context() {
     // First turn: execute with resume_session
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "test-session-abc".into(),
+        cli_agent_session_id: "test-session-abc".into(),
         session_history: r#"{"type":"human","text":"hello"}"#.into(),
     });
-    assert_eq!(ctx.session_id(), Some("test-session-abc"));
+    assert_eq!(ctx.cli_agent_session_id(), Some("test-session-abc"));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, _telemetry) = execute_job(
@@ -205,7 +205,7 @@ async fn execute_job_reuse_with_session_context() {
     // Second turn: reuse with new session history
     let mut ctx2 = minimal_context();
     ctx2.resume_session = Some(ResumeSession {
-        session_id: "test-session-abc".into(),
+        cli_agent_session_id: "test-session-abc".into(),
         session_history: r#"{"type":"human","text":"hello"}
 {"type":"assistant","text":"hi"}
 {"type":"human","text":"do something"}"#
@@ -343,7 +343,7 @@ async fn execute_job_reuse_session_restore_failure_returns_sandbox() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-abc".into(),
+        cli_agent_session_id: "sess-abc".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 

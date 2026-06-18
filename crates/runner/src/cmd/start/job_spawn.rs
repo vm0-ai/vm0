@@ -433,7 +433,7 @@ pub(super) fn spawn_job(
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
     let session_id = if executor::validate_resume_session_id(&context).is_ok() {
-        context.session_id().map(String::from)
+        context.cli_agent_session_id().map(String::from)
     } else {
         None
     };

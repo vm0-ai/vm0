@@ -211,7 +211,7 @@ pub(super) async fn prepare_workspace_image(
             run_id: context.run_id,
             sandbox_id,
             profile_name,
-            session_id: context.session_id(),
+            session_id: context.cli_agent_session_id(),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -226,8 +226,9 @@ pub(super) fn workspace_image_promotable(
     context: &ExecutionContext,
     guest_session_id: Option<&str>,
 ) -> bool {
-    workspace_image
-        .is_some_and(|image| image.can_attempt_promotion(context.session_id().or(guest_session_id)))
+    workspace_image.is_some_and(|image| {
+        image.can_attempt_promotion(context.cli_agent_session_id().or(guest_session_id))
+    })
 }
 
 async fn create_started_sandbox(
@@ -518,21 +519,22 @@ pub(super) async fn execute_prepared_sandbox_run(
     }
 
     // Read CLI-generated session ID for first-run parking.
-    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
-        let id = read_guest_session_id(sandbox.as_ref(), context.run_id)
-            .await
-            .and_then(|id| normalize_guest_session_id_for_parking(context, id));
-        if let Some(ref sid) = id {
-            info!(
-                run_id = %context.run_id,
-                session_fingerprint = %diagnostic_session_fingerprint(sid),
-                "read guest session ID for parking"
-            );
-        }
-        id
-    } else {
-        None
-    };
+    let guest_session_id =
+        if agent_result.exit_code() == 0 && context.cli_agent_session_id().is_none() {
+            let id = read_guest_session_id(sandbox.as_ref(), context.run_id)
+                .await
+                .and_then(|id| normalize_guest_session_id_for_parking(context, id));
+            if let Some(ref sid) = id {
+                info!(
+                    run_id = %context.run_id,
+                    session_fingerprint = %diagnostic_session_fingerprint(sid),
+                    "read guest session ID for parking"
+                );
+            }
+            id
+        } else {
+            None
+        };
 
     ExecuteOutcome {
         failure: agent_result.failure,
