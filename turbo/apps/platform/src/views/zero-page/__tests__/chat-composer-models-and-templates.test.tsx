@@ -1657,11 +1657,13 @@ describe("chat composer templates", () => {
       screen.getByTestId(`${template.title} card preview slide 1`),
     ).toHaveAttribute(
       "src",
-      template.cardPreviewImage ??
-        r2ImageTransformUrl(template.previewImages[0]!, {
+      r2ImageTransformUrl(
+        template.cardPreviewImage ?? template.previewImages[0]!,
+        {
           width: 480,
           height: 270,
-        }),
+        },
+      ),
     );
     expect(previewFrame).not.toHaveAttribute("src");
 
@@ -1703,6 +1705,56 @@ describe("chat composer templates", () => {
       ),
     );
     fireEvent.mouseLeave(preview);
+  });
+
+  it("falls back to slide image when presentation template card image fails", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.cardPreviewImage !== undefined;
+    });
+    if (template === undefined) {
+      throw new Error("Presentation template with card preview not found");
+    }
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+
+    const previewImage = await screen.findByTestId(
+      `${template.title} card preview slide 1`,
+    );
+    expect(previewImage).toHaveAttribute(
+      "src",
+      r2ImageTransformUrl(template.cardPreviewImage!, {
+        width: 480,
+        height: 270,
+      }),
+    );
+
+    fireEvent.error(previewImage);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} card preview slide 1`),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(template.previewImages[0]!, {
+          width: 480,
+          height: 270,
+        }),
+      );
+    });
   });
 
   it("navigates presentation template detail previews from the main preview", async () => {
@@ -1788,7 +1840,11 @@ describe("chat composer templates", () => {
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
       if (index === 0 && illustrationTemplate.cardPreviewImage) {
-        return illustrationTemplate.cardPreviewImage;
+        return r2ImageTransformUrl(illustrationTemplate.cardPreviewImage, {
+          width: 512,
+          height: 512,
+          quality: 72,
+        });
       }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
         width: 512,
@@ -1932,7 +1988,11 @@ describe("chat composer templates", () => {
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
       if (index === 0 && illustrationTemplate.cardPreviewImage) {
-        return illustrationTemplate.cardPreviewImage;
+        return r2ImageTransformUrl(illustrationTemplate.cardPreviewImage, {
+          width: 512,
+          height: 512,
+          quality: 72,
+        });
       }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
         width: 512,
@@ -2103,12 +2163,13 @@ describe("chat composer templates", () => {
         expect(
           screen.getByLabelText(`Select video template ${videoStyle.title}`),
         ).toBeInTheDocument();
-        const posterUrl =
-          videoStyle.cardPreviewImage ??
-          r2ImageTransformUrl(videoStyle.previewImage, {
+        const posterUrl = r2ImageTransformUrl(
+          videoStyle.cardPreviewImage ?? videoStyle.previewImage,
+          {
             width: 480,
             height: 270,
-          });
+          },
+        );
         const previewVideo = Array.from(
           document.querySelectorAll("video"),
         ).find((video) => {

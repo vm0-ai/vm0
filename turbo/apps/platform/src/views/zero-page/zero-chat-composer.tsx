@@ -174,6 +174,8 @@ import {
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  templateCardFailedImageUrls$,
+  setTemplateCardFailedImageUrl$,
   templateCardDefaultHtmlPreviews$,
   setTemplateCardDefaultHtmlPreview$,
   templateCardHtmlPreview$,
@@ -348,7 +350,13 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
-const TEMPLATE_EAGER_IMAGE_COUNT = TEMPLATE_PREWARM_IMAGE_COUNT;
+const PRESENTATION_EAGER_IMAGE_COUNT = 6;
+const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
+const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
+const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
+const ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT = 24;
+const TEMPLATE_IDLE_PREWARM_TIMEOUT_MS = 350;
+const TEMPLATE_IDLE_PREWARM_STAGGER_MS = 500;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
   width: 512,
   height: 512,
@@ -859,7 +867,10 @@ function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
 
 function videoTemplatePosterImage(item: VideoTemplateItem): string {
   if (item.cardPreviewImage !== undefined) {
-    return item.cardPreviewImage;
+    return r2ImageTransformUrl(
+      item.cardPreviewImage,
+      TEMPLATE_CARD_PREVIEW_SIZE,
+    );
   }
   return r2ImageTransformUrl(item.previewImage, TEMPLATE_CARD_PREVIEW_SIZE);
 }
@@ -990,8 +1001,18 @@ function presentationTemplateCardSlideImage(
   index: number,
 ): string {
   if (index === 0 && item.cardPreviewImage !== undefined) {
-    return item.cardPreviewImage;
+    return r2ImageTransformUrl(
+      item.cardPreviewImage,
+      TEMPLATE_CARD_PREVIEW_SIZE,
+    );
   }
+  return presentationTemplateFallbackSlideImage(item, index);
+}
+
+function presentationTemplateFallbackSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
   const slideImages = presentationTemplateSlideImages(item);
   const safeIndex = Math.max(0, Math.min(index, slideImages.length - 1));
   const image = slideImages[safeIndex] ?? item.previewImage;
@@ -1055,10 +1076,131 @@ function uniqueTemplatePreviewImageUrls(
   return uniqueUrls;
 }
 
-function prewarmTemplatePreviewImages(imageUrls: readonly string[]): void {
+function prewarmTemplatePreviewImages(
+  imageUrls: readonly string[],
+  count = TEMPLATE_PREWARM_IMAGE_COUNT,
+): void {
   const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
-  for (const imageUrl of uniqueUrls.slice(0, TEMPLATE_PREWARM_IMAGE_COUNT)) {
+  for (const imageUrl of uniqueUrls.slice(0, count)) {
     prewarmTemplatePreviewImage(imageUrl);
+  }
+}
+
+interface TemplatePreviewIdlePrewarmParams {
+  readonly category: string;
+  readonly hasIllustrationTab: boolean;
+  readonly hasPptTab: boolean;
+  readonly hasVideoTab: boolean;
+}
+
+function templatePreviewIdlePrewarmKeys(): Set<string> {
+  const cacheKey = "vm0TemplatePreviewIdlePrewarmKeys";
+  const existing = Reflect.get(globalThis, cacheKey) as Set<string> | undefined;
+  if (existing !== undefined) {
+    return existing;
+  }
+  const keys = new Set<string>();
+  Reflect.set(globalThis, cacheKey, keys);
+  return keys;
+}
+
+function templatePreviewIdlePrewarmKey({
+  category,
+  hasIllustrationTab,
+  hasPptTab,
+  hasVideoTab,
+}: TemplatePreviewIdlePrewarmParams): string {
+  return [
+    category,
+    hasPptTab ? "ppt" : "",
+    hasIllustrationTab ? "illustration" : "",
+    hasVideoTab ? "video" : "",
+  ].join(":");
+}
+
+function templatePreviewIdlePrewarmCategories({
+  category,
+  hasIllustrationTab,
+  hasPptTab,
+  hasVideoTab,
+}: TemplatePreviewIdlePrewarmParams): string[] {
+  const categories: string[] = [];
+  if (hasPptTab) {
+    categories.push("slides");
+  }
+  if (hasIllustrationTab) {
+    categories.push("illustration");
+  }
+  if (hasVideoTab) {
+    categories.push("video");
+  }
+  const selectedCategory = categories.includes(category)
+    ? category
+    : categories[0];
+  return [
+    ...(selectedCategory !== undefined ? [selectedCategory] : []),
+    ...categories.filter((candidate) => {
+      return candidate !== selectedCategory;
+    }),
+  ];
+}
+
+function scheduleIdleTemplatePreviewPrewarmCategory(
+  node: HTMLElement | null,
+  params: TemplatePreviewIdlePrewarmParams,
+  delayMs: number,
+): void {
+  if (node === null || typeof window === "undefined") {
+    return;
+  }
+
+  const keys = templatePreviewIdlePrewarmKeys();
+  const key = templatePreviewIdlePrewarmKey(params);
+  if (keys.has(key)) {
+    return;
+  }
+  keys.add(key);
+
+  const prewarm = () => {
+    if (!node.isConnected) {
+      keys.delete(key);
+      return;
+    }
+    prewarmTemplatePreviewImages(
+      initialTemplatePreviewImageUrlsForCategory(params),
+      templatePreviewPrewarmImageCountForCategory(params.category),
+    );
+  };
+
+  const requestPrewarm = () => {
+    if (window.requestIdleCallback !== undefined) {
+      window.requestIdleCallback(prewarm, {
+        timeout: TEMPLATE_IDLE_PREWARM_TIMEOUT_MS,
+      });
+      return;
+    }
+
+    window.setTimeout(prewarm, 0);
+  };
+
+  if (delayMs > 0) {
+    window.setTimeout(requestPrewarm, delayMs);
+  } else {
+    requestPrewarm();
+  }
+}
+
+function scheduleIdleTemplatePreviewPrewarm(
+  node: HTMLElement | null,
+  params: TemplatePreviewIdlePrewarmParams,
+): void {
+  const categories = templatePreviewIdlePrewarmCategories(params);
+  for (const [index, category] of categories.entries()) {
+    scheduleIdleTemplatePreviewPrewarmCategory(
+      node,
+      { ...params, category },
+      index * TEMPLATE_IDLE_PREWARM_STAGGER_MS,
+    );
   }
 }
 
@@ -1124,6 +1266,68 @@ function initialTemplatePreviewImageUrlsForCategory({
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
   }
   return [];
+}
+
+function templatePreviewPrewarmImageCountForCategory(category: string): number {
+  if (category === "illustration") {
+    return ILLUSTRATION_PREWARM_IMAGE_COUNT;
+  }
+  return TEMPLATE_PREWARM_IMAGE_COUNT;
+}
+
+function prewarmIllustrationPreviewImagesNearScroll({
+  items,
+  scrollContainer,
+  variantIndexBySlug,
+}: {
+  items: readonly IllustrationTemplateItem[];
+  scrollContainer: HTMLElement;
+  variantIndexBySlug: Readonly<Record<string, number>>;
+}): void {
+  const scrollableHeight =
+    scrollContainer.scrollHeight - scrollContainer.clientHeight;
+  if (items.length === 0 || scrollableHeight <= 0) {
+    return;
+  }
+
+  const progress = Math.min(
+    1,
+    Math.max(0, scrollContainer.scrollTop / scrollableHeight),
+  );
+  const lookaheadIndex =
+    Math.floor(progress * items.length) +
+    ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT;
+  const bucket = Math.floor(
+    lookaheadIndex / ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+  );
+  const startIndex = Math.min(
+    items.length,
+    Math.max(
+      ILLUSTRATION_PREWARM_IMAGE_COUNT,
+      bucket * ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+    ),
+  );
+  const firstPrewarmItem = items[startIndex];
+  const key = [
+    String(items.length),
+    String(bucket),
+    firstPrewarmItem?.slug ?? "",
+  ].join(":");
+  if (scrollContainer.dataset.illustrationPreviewPrewarmBucket === key) {
+    return;
+  }
+  scrollContainer.dataset.illustrationPreviewPrewarmBucket = key;
+
+  prewarmTemplatePreviewImages(
+    illustrationPreviewImageUrlsForItems({
+      items: items.slice(
+        startIndex,
+        startIndex + ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+      ),
+      variantIndexBySlug,
+    }),
+    ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT,
+  );
 }
 
 interface PresentationCardPreviewImageCache {
@@ -1929,14 +2133,18 @@ function createPresentationTemplateHtmlPreviewState(params: {
 function TemplatePreview({
   item,
   onPreview,
+  priority = false,
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
+  priority?: boolean;
 }) {
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
+  const failedImageUrls = useGet(templateCardFailedImageUrls$);
+  const setFailedImageUrl = useSet(setTemplateCardFailedImageUrl$);
   const slideImages = presentationTemplateSlideImages(item);
   const fallbackSlideCount = Math.max(slideImages.length, 1);
   const hoverSlideIndex = Math.max(
@@ -1955,10 +2163,14 @@ function TemplatePreview({
     defaultPresentationTemplateThemeId(item),
   );
   const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
-  const staticPreviewImage = presentationTemplateCardSlideImage(
+  const preferredStaticPreviewImage = presentationTemplateCardSlideImage(
     item,
     hoverSlideIndex,
   );
+  const staticPreviewImage =
+    failedImageUrls[preferredStaticPreviewImage] === true
+      ? presentationTemplateFallbackSlideImage(item, hoverSlideIndex)
+      : preferredStaticPreviewImage;
 
   const startHtmlPreviewLoad = () => {
     const cache = presentationTemplateHtmlPreviewCache();
@@ -2133,9 +2345,9 @@ function TemplatePreview({
         src={staticPreviewImage}
         alt={`${item.title} slide ${String(hoverSlideIndex + 1)} preview`}
         className="absolute inset-0 h-full w-full object-cover"
-        loading="lazy"
+        loading={priority ? "eager" : "lazy"}
         decoding="async"
-        fetchPriority="low"
+        fetchPriority={priority ? "high" : "low"}
         onLoad={(event) => {
           detach(
             markPresentationCardPreviewImageLoaded(
@@ -2144,6 +2356,16 @@ function TemplatePreview({
             ),
             Reason.DomCallback,
           );
+        }}
+        onError={() => {
+          const fallbackImageUrl = presentationTemplateFallbackSlideImage(
+            item,
+            hoverSlideIndex,
+          );
+          if (staticPreviewImage === fallbackImageUrl) {
+            return;
+          }
+          setFailedImageUrl(staticPreviewImage);
         }}
       />
       <iframe
@@ -2642,11 +2864,13 @@ function PptCard({
   selected,
   onSelect,
   onPreview,
+  priority = false,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem) => void;
+  priority?: boolean;
 }) {
   return (
     <div
@@ -2655,7 +2879,7 @@ function PptCard({
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <TemplatePreview item={item} onPreview={onPreview} />
+      <TemplatePreview item={item} onPreview={onPreview} priority={priority} />
       <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <TooltipProvider delayDuration={300}>
@@ -2813,7 +3037,7 @@ function illustrationHeroImageUrlForItem(
     item.cardPreviewImage !== undefined &&
     source === (item.previewImages[0] ?? item.previewImage)
   ) {
-    return item.cardPreviewImage;
+    return illustrationHeroImageUrl(item.cardPreviewImage);
   }
   return illustrationHeroImageUrl(source);
 }
@@ -3276,7 +3500,7 @@ function IllustrationTemplateGrid({
             item={item}
             selected={isSelectedIllustrationTemplate(item, value)}
             activeIndex={variantIndexBySlug[item.slug] ?? 0}
-            priority={index < TEMPLATE_EAGER_IMAGE_COUNT}
+            priority={index < ILLUSTRATION_EAGER_IMAGE_COUNT}
             onSelect={onSelect}
             onVariantChange={onVariantChange}
           />
@@ -3299,7 +3523,7 @@ function PptTemplateGrid({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
+      {items.map((item, index) => {
         return (
           <PptCard
             key={item.slug}
@@ -3307,6 +3531,7 @@ function PptTemplateGrid({
             selected={isSelectedPresentationTemplate(item, value)}
             onSelect={onSelect}
             onPreview={onPreview}
+            priority={index < PRESENTATION_EAGER_IMAGE_COUNT}
           />
         );
       })}
@@ -3417,6 +3642,7 @@ function TemplatePickerDialog({
   ) => {
     prewarmTemplatePreviewImages(
       previewImageUrlsForCategory(targetCategory, query),
+      templatePreviewPrewarmImageCountForCategory(targetCategory),
     );
   };
 
@@ -3539,6 +3765,13 @@ function TemplatePickerDialog({
               <div
                 data-illustration-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+                onScroll={(event) => {
+                  prewarmIllustrationPreviewImagesNearScroll({
+                    items: filteredIllustrationItems,
+                    scrollContainer: event.currentTarget,
+                    variantIndexBySlug: illustrationVariantIndex,
+                  });
+                }}
               >
                 {filteredIllustrationItems.length > 0 ? (
                   <IllustrationTemplateGrid
@@ -3857,6 +4090,7 @@ function SelectedTemplateChipSlot({
         hasIllustrationTab: true,
         hasVideoTab: true,
       }),
+      templatePreviewPrewarmImageCountForCategory(category),
     );
     setSearch("");
     setPreviewSlug(null);
@@ -3946,6 +4180,7 @@ function TemplatePickerButton({
         hasIllustrationTab,
         hasVideoTab,
       }),
+      templatePreviewPrewarmImageCountForCategory(selectedCategory),
     );
   };
 
@@ -3955,6 +4190,14 @@ function TemplatePickerButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              ref={(node) => {
+                scheduleIdleTemplatePreviewPrewarm(node, {
+                  category: selectedCategory,
+                  hasIllustrationTab,
+                  hasPptTab,
+                  hasVideoTab,
+                });
+              }}
               type="button"
               className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",

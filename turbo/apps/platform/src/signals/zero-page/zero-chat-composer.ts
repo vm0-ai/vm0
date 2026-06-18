@@ -200,6 +200,25 @@ export const setTemplateCardHover$ = command(
   },
 );
 
+const internalTemplateCardFailedImageUrls$ = state<
+  Readonly<Record<string, true>>
+>({});
+export const templateCardFailedImageUrls$ = computed((get) => {
+  return get(internalTemplateCardFailedImageUrls$);
+});
+export const setTemplateCardFailedImageUrl$ = command(
+  ({ get, set }, url: string) => {
+    const current = get(internalTemplateCardFailedImageUrls$);
+    if (current[url] === true) {
+      return;
+    }
+    set(internalTemplateCardFailedImageUrls$, {
+      ...current,
+      [url]: true,
+    });
+  },
+);
+
 export interface TemplateCardHtmlPreviewState {
   readonly slug: string;
   readonly embedUrl: string;
