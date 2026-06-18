@@ -31,8 +31,7 @@ class ThreadUnderTest:
             self._thread.join(timeout=timeout)
 
     def join_and_raise(self, timeout: float | None = None) -> None:
-        if not self._started:
-            raise AssertionError("thread was not started")
+        self._raise_if_not_started()
         self.join(timeout=timeout)
         if self.is_alive():
             self.raise_if_failed()
@@ -40,6 +39,7 @@ class ThreadUnderTest:
         self.raise_if_failed()
 
     def raise_if_failed(self) -> None:
+        self._raise_if_not_started()
         failure = self._failure
         if failure is None:
             return
@@ -57,6 +57,10 @@ class ThreadUnderTest:
             self._target()
         except BaseException as exc:
             self._failure = (exc, exc.__traceback__)
+
+    def _raise_if_not_started(self) -> None:
+        if not self._started:
+            raise AssertionError("thread was not started")
 
 
 def wait_for_event(

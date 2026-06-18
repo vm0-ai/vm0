@@ -139,3 +139,17 @@ def test_join_and_raise_fails_when_thread_was_not_started():
 
     with pytest.raises(AssertionError, match="thread was not started"):
         thread.join_and_raise(timeout=1)
+
+
+def test_wait_for_event_fails_when_worker_thread_was_not_started():
+    event = threading.Event()
+    thread = ThreadUnderTest(target=lambda: None)
+    event.set()
+
+    with pytest.raises(AssertionError, match="thread was not started"):
+        wait_for_event(
+            event,
+            timeout=1,
+            threads=(thread,),
+            message="event was not signaled",
+        )
