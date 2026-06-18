@@ -53,7 +53,7 @@ pub(crate) fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
     stderr.extend_from_slice(diagnostic.as_bytes());
 }
 
-fn result_to_exec_result(result: ExecOperationResult) -> io::Result<ExecResult> {
+fn operation_result_to_legacy_exec_result(result: ExecOperationResult) -> io::Result<ExecResult> {
     if result.stream_overflowed {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -387,6 +387,20 @@ pub(crate) async fn exec_operation_capture_on_shared(
     handle.wait(request.wait_timeout).await
 }
 
+pub(crate) async fn exec_operation_capture_on_shared_with_write_observer(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    write_observer: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking(
+        shared,
+        request,
+        ExecOperationTracking::Tracked,
+        write_observer,
+    )
+    .await
+}
+
 async fn exec_operation_capture_on_shared_with_tracking(
     shared: &Arc<Shared>,
     request: ExecCaptureRequest<'_>,
@@ -531,7 +545,7 @@ pub(crate) async fn exec_cleanup_untracked_on_shared_with_write_observer(
         write_observer,
     )
     .await?;
-    result_to_exec_result(result)
+    operation_result_to_legacy_exec_result(result)
 }
 
 pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
@@ -561,7 +575,7 @@ pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
         write_observer,
     )
     .await?;
-    result_to_exec_result(result)
+    operation_result_to_legacy_exec_result(result)
 }
 
 pub(crate) async fn exec_capture_with_composite_on_shared_and_observer(
@@ -577,7 +591,7 @@ pub(crate) async fn exec_capture_with_composite_on_shared_and_observer(
         write_observer,
     )
     .await?;
-    result_to_exec_result(result)
+    operation_result_to_legacy_exec_result(result)
 }
 
 pub(crate) async fn exec_capture_on_shared(
@@ -598,12 +612,8 @@ pub(crate) async fn exec_capture_on_shared_with_write_observer(
             "exec requires a positive timeout; use supervised exec for unbounded commands",
         ));
     }
-    let result = exec_operation_capture_on_shared_with_tracking(
-        shared,
-        request,
-        ExecOperationTracking::Tracked,
-        write_observer,
-    )
-    .await?;
-    result_to_exec_result(result)
+    let result =
+        exec_operation_capture_on_shared_with_write_observer(shared, request, write_observer)
+            .await?;
+    operation_result_to_legacy_exec_result(result)
 }

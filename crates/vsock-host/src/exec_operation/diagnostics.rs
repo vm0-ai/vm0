@@ -131,37 +131,28 @@ impl ExecOperationDiagnostic {
             return;
         };
 
+        macro_rules! emit_terminal_result_log {
+            ($level:expr) => {
+                tracing::event!(
+                    $level,
+                    seq = self.seq,
+                    label = %self.label_log,
+                    elapsed_ms,
+                    guest_duration_ms = result.duration_ms,
+                    termination = ?result.termination,
+                    stream_overflowed,
+                    stdout_truncated,
+                    stderr_truncated,
+                    diagnostic_present,
+                    host_cancel_requested,
+                    "exec operation terminal result"
+                )
+            };
+        }
+
         match severity {
-            ExecTerminalLogSeverity::Info => {
-                tracing::info!(
-                    seq = self.seq,
-                    label = %self.label_log,
-                    elapsed_ms,
-                    guest_duration_ms = result.duration_ms,
-                    termination = ?result.termination,
-                    stream_overflowed,
-                    stdout_truncated,
-                    stderr_truncated,
-                    diagnostic_present,
-                    host_cancel_requested,
-                    "exec operation terminal result"
-                );
-            }
-            ExecTerminalLogSeverity::Warn => {
-                tracing::warn!(
-                    seq = self.seq,
-                    label = %self.label_log,
-                    elapsed_ms,
-                    guest_duration_ms = result.duration_ms,
-                    termination = ?result.termination,
-                    stream_overflowed,
-                    stdout_truncated,
-                    stderr_truncated,
-                    diagnostic_present,
-                    host_cancel_requested,
-                    "exec operation terminal result"
-                );
-            }
+            ExecTerminalLogSeverity::Info => emit_terminal_result_log!(tracing::Level::INFO),
+            ExecTerminalLogSeverity::Warn => emit_terminal_result_log!(tracing::Level::WARN),
         }
     }
 

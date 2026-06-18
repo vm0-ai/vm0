@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.431.5](https://github.com/vm0-ai/vm0/compare/web-v12.431.4...web-v12.431.5) (2026-06-18)
+
+
+### Bug Fixes
+
+* **web:** hide monthly rankings change column ([#18171](https://github.com/vm0-ai/vm0/issues/18171)) ([33be0d2](https://github.com/vm0-ai/vm0/commit/33be0d2b28d2716685a1601a790d227989f18bfd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.101.0
+    * @vm0/core bumped to 8.352.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.88.0
+
 ## [12.431.4](https://github.com/vm0-ai/vm0/compare/web-v12.431.3...web-v12.431.4) (2026-06-18)
 
 

@@ -97,7 +97,7 @@ async fn flush_is_incremental_between_calls() {
 }
 
 #[tokio::test]
-async fn final_flush_uploads_log_emitted_immediately_before_it() {
+async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
@@ -120,11 +120,9 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
 
     guest_common::log_warn!("sandbox:guest-agent", "{marker}");
     telemetry
-        .flush(guest_agent::telemetry::UploadMode::Final)
+        .final_flush_and_shutdown()
         .await
-        .expect("final flush should upload just-emitted log");
-
-    telemetry.shutdown().await;
+        .expect("final flush and shutdown should upload just-emitted log");
     drop(system_log_guard);
 
     upload_mock.assert_calls_async(1).await;

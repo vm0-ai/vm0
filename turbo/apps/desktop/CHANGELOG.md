@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.1...desktop-v0.15.2) (2026-06-18)
+
+
+### Bug Fixes
+
+* recover from computer use completion conflicts ([#18173](https://github.com/vm0-ai/vm0/issues/18173)) ([2accc05](https://github.com/vm0-ai/vm0/commit/2accc05ae5901d55edc70357c12bc56b94533bb5))
+
 ## [0.15.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.0...desktop-v0.15.1) (2026-06-18)
 
 
