@@ -348,6 +348,46 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage == {}
         assert parse_errors == []
 
+    def test_eventless_incomplete_terminal_after_prefix_bound_reports_parse_error(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.completed","response":{"model":"gpt'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert len(parse_errors) == 1
+        event, error = parse_errors[0]
+        assert event == "response.completed"
+        assert isinstance(error, str)
+        assert error
+
+    def test_eventless_incomplete_duplicate_type_does_not_use_stale_terminal_type(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"type":"response.completed","type":"response.output_text.delta","delta":"hello'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
     def test_eventless_type_after_prefix_bound_falls_back_to_full_extraction(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
