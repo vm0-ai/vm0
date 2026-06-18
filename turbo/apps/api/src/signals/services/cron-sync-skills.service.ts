@@ -31,7 +31,11 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { deleteS3Objects, listS3Objects, putS3Object } from "../external/s3";
+import {
+  deleteS3Objects,
+  listS3ObjectsUnderPrefix,
+  putS3Object,
+} from "../external/s3";
 import { settle } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 
@@ -600,7 +604,9 @@ function removeOrphanedSkills(
     for (const storage of orphanStorages) {
       const cleanupResult = await settle(
         (async () => {
-          const objects = await get(listS3Objects(bucket, storage.s3Prefix));
+          const objects = await get(
+            listS3ObjectsUnderPrefix(bucket, storage.s3Prefix),
+          );
           signal.throwIfAborted();
           if (objects.length > 0) {
             await get(

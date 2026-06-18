@@ -127,9 +127,6 @@ const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/youtube.force-ssl",
   "https://www.googleapis.com/auth/youtube.readonly",
   "https://www.googleapis.com/auth/youtube.upload",
-  "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
-  "https://www.googleapis.com/auth/youtubepartner",
-  "https://www.googleapis.com/auth/youtubepartner-channel-audit",
   "https://www.googleapis.com/auth/userinfo.email",
 ] as const;
 
@@ -4158,7 +4155,7 @@ describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
 });
 
 describe("getConnectorAuthMethodGrantScopes - youtube scopes", () => {
-  it("uses the official YouTube Data API OAuth scopes", () => {
+  it("uses the configured YouTube Data API OAuth scopes", () => {
     const grant = getConnectorAuthMethodAuthCodeGrantConfig("youtube", "oauth");
     const scopes = getConnectorAuthMethodGrantScopes("youtube", "oauth");
 

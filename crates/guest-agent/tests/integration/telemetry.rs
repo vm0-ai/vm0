@@ -38,8 +38,8 @@ fn ensure_parent_dir(path: &str) {
 
 #[tokio::test]
 async fn flush_is_incremental_between_calls() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     // Reset per-run telemetry state so this test drives sandbox_ops
     // deterministically (other tests in this file don't record sandbox_ops,
@@ -98,8 +98,8 @@ async fn flush_is_incremental_between_calls() {
 
 #[tokio::test]
 async fn final_flush_uploads_log_emitted_immediately_before_it() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let system_log = guest_agent::paths::system_log_file();
     let pos_file = guest_agent::paths::telemetry_system_log_pos_file();
@@ -135,8 +135,8 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
 
 #[tokio::test]
 async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     remove_telemetry_files();
     let _session_files = SessionCheckpointFilesGuard::new();
 
@@ -214,8 +214,8 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
 /// HTTP traffic (2).
 #[tokio::test]
 async fn concurrent_flushes_do_not_regress_pos_file() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let ops_file = guest_common::telemetry::sandbox_ops_log();
     let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
@@ -274,8 +274,8 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
 ///    HTTP recovers).
 #[tokio::test]
 async fn flush_propagates_error_then_loop_recovers() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let ops_file = guest_common::telemetry::sandbox_ops_log();
     let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
@@ -334,8 +334,8 @@ async fn flush_propagates_error_then_loop_recovers() {
 
 #[tokio::test]
 async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     remove_telemetry_files();
 
     let metrics_file = guest_agent::paths::metrics_log_file();
@@ -375,8 +375,8 @@ async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload
 
 #[tokio::test]
 async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     remove_telemetry_files();
 
     let system_log = guest_agent::paths::system_log_file();

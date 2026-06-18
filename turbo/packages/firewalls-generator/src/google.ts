@@ -106,9 +106,11 @@ function buildGroups(
   discovery: DiscoveryDocument,
   stripPrefix: string,
   uploadOnly?: boolean,
+  excludedScopes: readonly string[] = [],
 ): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const strip = stripPrefix ? `${stripPrefix}/` : "";
+  const excludedScopeSet = new Set(excludedScopes);
 
   // servicePath is non-empty for APIs with relative paths (Drive, Calendar).
   // Extract just the version part (e.g. "drive/v3/" → "v3/") to prepend.
@@ -145,6 +147,11 @@ function buildGroups(
       continue;
     }
 
+    const includedScopes = scopes.filter(
+      (scope) => !excludedScopeSet.has(scope),
+    );
+    if (includedScopes.length === 0) continue;
+
     // For APIs with servicePath (Drive, Calendar): paths are relative,
     // prepend version prefix. e.g. "about" → "v3/about"
     // For APIs without servicePath (Gmail, Docs, Sheets): paths include
@@ -159,7 +166,7 @@ function buildGroups(
     }
 
     const rule = `${httpMethod.toUpperCase()} /${rulePath}`;
-    for (const scope of scopes) {
+    for (const scope of includedScopes) {
       const scopeName = shortScope(scope);
       let ruleSet = groups.get(scopeName);
       if (!ruleSet) {
@@ -323,6 +330,8 @@ interface GoogleFirewallConfig {
       addRules?: string[];
     }
   >;
+  /** Full OAuth scope URLs to exclude from generated permission groups. */
+  excludedScopes?: string[];
   /**
    * Default allowed permissions export.
    * Generates a typed const array (e.g. gmailDefaultAllowed).
@@ -377,11 +386,16 @@ async function generateGoogleFirewall(
 
     mergePermissions(
       allPermissions,
-      buildGroups(discovery, config.stripPrefix),
+      buildGroups(discovery, config.stripPrefix, false, config.excludedScopes),
     );
 
     // Build upload-specific permissions (only methods with supportsMediaUpload)
-    const uploadGroups = buildGroups(discovery, config.stripPrefix, true);
+    const uploadGroups = buildGroups(
+      discovery,
+      config.stripPrefix,
+      true,
+      config.excludedScopes,
+    );
     if (uploadGroups.length > 0) {
       hasUpload = true;
       mergePermissions(uploadPermissions, uploadGroups);
@@ -657,6 +671,11 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderKey: "YOUTUBE_TOKEN",
     placeholderValue: OAUTH_PLACEHOLDER,
     auth: bearerAuth("YOUTUBE_TOKEN"),
+    excludedScopes: [
+      "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
+      "https://www.googleapis.com/auth/youtubepartner",
+      "https://www.googleapis.com/auth/youtubepartner-channel-audit",
+    ],
   },
 };
 

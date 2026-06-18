@@ -9,6 +9,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 import { downloadS3Buffer, downloadManifest } from "../external/s3";
+import { settle } from "../utils";
 import { env } from "../../lib/env";
 import { extractFilesFromTarGz } from "../../lib/tar";
 import {
@@ -33,6 +34,22 @@ function emptyWorkflowContent(): WorkflowContentResult {
     files: null,
     fileContents: null,
   };
+}
+
+function isMissingS3ObjectError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly Code?: string;
+    readonly code?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  const code = candidate.Code ?? candidate.code ?? candidate.name;
+  return (
+    code === "NoSuchKey" ||
+    code === "NotFound" ||
+    (candidate.name === "NotFound" &&
+      candidate.$metadata?.httpStatusCode === 404)
+  );
 }
 
 export function zeroWorkflowDetail(args: {
@@ -103,7 +120,16 @@ async function loadWorkflowContent(
     return emptyWorkflowContent();
   }
 
-  const manifest = await get(downloadManifest(bucket, version.s3Key));
+  const manifestResult = await settle(
+    get(downloadManifest(bucket, version.s3Key)),
+  );
+  if (!manifestResult.ok) {
+    if (isMissingS3ObjectError(manifestResult.error)) {
+      return emptyWorkflowContent();
+    }
+    throw manifestResult.error;
+  }
+  const manifest = manifestResult.value;
   const normalize = (p: string): string => {
     return p.replace(/^\.\//, "");
   };
@@ -116,7 +142,14 @@ async function loadWorkflowContent(
   });
 
   const archiveKey = `${version.s3Key}/archive.tar.gz`;
-  const archiveBuffer = await get(downloadS3Buffer(bucket, archiveKey));
+  const archiveResult = await settle(get(downloadS3Buffer(bucket, archiveKey)));
+  if (!archiveResult.ok) {
+    if (isMissingS3ObjectError(archiveResult.error)) {
+      return emptyWorkflowContent();
+    }
+    throw archiveResult.error;
+  }
+  const archiveBuffer = archiveResult.value;
   const fileContents = extractFilesFromTarGz(
     archiveBuffer,
     filesList.map((file) => {

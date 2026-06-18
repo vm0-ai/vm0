@@ -1,9 +1,66 @@
 use std::io;
 use std::time::Duration;
 
-use crate::{ExecCaptureRequest, FrameWriteObserver, VsockHost, exec_operation};
+use crate::{ExecCaptureRequest, ExecResult, FrameWriteObserver, VsockHost, exec_operation};
 
-use super::{read_regular_file_command, validate_guest_file_path};
+use super::{
+    MISSING_FILE_EXIT_CODE, normalize_file_exec_stderr, read_regular_file_command,
+    validate_guest_file_path,
+};
+
+fn validate_read_exec_result(
+    path: &str,
+    max_bytes: u64,
+    result: ExecResult,
+) -> io::Result<Option<Vec<u8>>> {
+    if result.exit_code == MISSING_FILE_EXIT_CODE {
+        if result.stdout_truncated || !result.stdout.is_empty() {
+            let stdout_detail = if result.stdout_truncated {
+                "stdout truncated"
+            } else {
+                "stdout"
+            };
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("read_file missing result for {path} included {stdout_detail}"),
+            ));
+        }
+        let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
+        if !stderr.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "read_file missing result for {path} included stderr: {}",
+                    String::from_utf8_lossy(&stderr)
+                ),
+            ));
+        }
+        return Ok(None);
+    }
+    if result.exit_code != 0 {
+        let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
+        return Err(io::Error::other(format!(
+            "failed to read file {path}: {}",
+            String::from_utf8_lossy(&stderr)
+        )));
+    }
+    if result.stdout_truncated {
+        return Err(io::Error::other(format!(
+            "file {path} exceeded {max_bytes} bytes"
+        )));
+    }
+    let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
+    if !stderr.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "read_file result for {path} included stderr: {}",
+                String::from_utf8_lossy(&stderr)
+            ),
+        ));
+    }
+    Ok(Some(result.stdout))
+}
 
 impl VsockHost {
     /// Read a small file from the guest through exec capture.
@@ -53,7 +110,6 @@ impl VsockHost {
             ));
         }
 
-        const MISSING_FILE_EXIT_CODE: i32 = 66;
         let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
         let result = self
             .exec_capture_with_write_observer(
@@ -72,61 +128,6 @@ impl VsockHost {
                 write_observer,
             )
             .await?;
-        if result.exit_code == MISSING_FILE_EXIT_CODE {
-            if result.stdout_truncated || !result.stdout.is_empty() {
-                let stdout_detail = if result.stdout_truncated {
-                    "stdout truncated"
-                } else {
-                    "stdout"
-                };
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("read_file missing result for {path} included {stdout_detail}"),
-                ));
-            }
-            let mut stderr = result.stderr;
-            if result.stderr_truncated {
-                exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
-            }
-            if !stderr.is_empty() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "read_file missing result for {path} included stderr: {}",
-                        String::from_utf8_lossy(&stderr)
-                    ),
-                ));
-            }
-            return Ok(None);
-        }
-        if result.exit_code != 0 {
-            let mut stderr = result.stderr;
-            if result.stderr_truncated {
-                exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
-            }
-            return Err(io::Error::other(format!(
-                "failed to read file {path}: {}",
-                String::from_utf8_lossy(&stderr)
-            )));
-        }
-        if result.stdout_truncated {
-            return Err(io::Error::other(format!(
-                "file {path} exceeded {max_bytes} bytes"
-            )));
-        }
-        let mut stderr = result.stderr;
-        if result.stderr_truncated {
-            exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
-        }
-        if !stderr.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "read_file result for {path} included stderr: {}",
-                    String::from_utf8_lossy(&stderr)
-                ),
-            ));
-        }
-        Ok(Some(result.stdout))
+        validate_read_exec_result(path, max_bytes, result)
     }
 }

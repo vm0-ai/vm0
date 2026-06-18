@@ -10,8 +10,8 @@ use serde_json::json;
 
 #[tokio::test]
 async fn send_event_correct_payload() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -27,13 +27,12 @@ async fn send_event_correct_payload() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_masks_secrets() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -51,13 +50,12 @@ async fn send_event_masks_secrets() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_masks_lowercase_percent_encoded_secret() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -75,13 +73,12 @@ async fn send_event_masks_lowercase_percent_encoded_secret() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_captures_session_metadata_before_masking() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
     let tmp = tempfile::tempdir().unwrap();
     let system_log_path = tmp.path().join("system.log");
@@ -141,14 +138,11 @@ async fn send_event_captures_session_metadata_before_masking() {
         !system_log.contains(&history),
         "system log must not contain the full session history marker payload, got: {system_log}"
     );
-
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn prepare_event_does_not_capture_session_metadata() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let _server = &*MOCK_SERVER;
+    let _api = SharedApiMock::new().await;
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -176,8 +170,8 @@ async fn prepare_event_does_not_capture_session_metadata() {
 
 #[tokio::test]
 async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -210,14 +204,12 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
         !std::path::Path::new(hist_file).exists(),
         "invalid session id must not create a history marker"
     );
-
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_keeps_existing_session_metadata() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -254,14 +246,12 @@ async fn send_event_keeps_existing_session_metadata() {
     );
     assert_eq!(masker.mask_string("first-session"), "***");
     assert_eq!(masker.mask_string("second-session"), "***");
-
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -305,7 +295,6 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
     }
 
     mock.assert_calls_async(2).await;
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -314,8 +303,8 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
 
 #[tokio::test]
 async fn send_event_extracts_claude_session_id() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -353,14 +342,12 @@ async fn send_event_extracts_claude_session_id() {
         history.ends_with(".jsonl"),
         "claude-code history path should end with .jsonl, got: {history}"
     );
-
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_rejects_unsafe_claude_session_id() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -396,13 +383,12 @@ async fn send_event_rejects_unsafe_claude_session_id() {
     }
 
     mock.assert_calls_async(invalid_session_ids.len()).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn send_event_skips_session_id_for_non_init() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
@@ -423,8 +409,6 @@ async fn send_event_skips_session_id_for_non_init() {
         !std::path::Path::new(sid_file).exists(),
         "session ID file should NOT be written for non-init events"
     );
-
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -433,13 +417,13 @@ async fn send_event_skips_session_id_for_non_init() {
 
 #[tokio::test]
 async fn send_event_failure_writes_error_flag() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let flag_path = guest_agent::paths::event_error_flag();
     let _ = std::fs::remove_file(flag_path);
 
-    let mock = server.mock(|when, then| {
+    let _mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
         then.status(500);
     });
@@ -453,7 +437,6 @@ async fn send_event_failure_writes_error_flag() {
         std::path::Path::new(flag_path).exists(),
         "event error flag should be written on failure"
     );
-    mock.delete_async().await;
 
     // Clean up
     let _ = std::fs::remove_file(flag_path);

@@ -38,7 +38,7 @@ interface DesktopTrayControllerOptions {
 type DesktopTrayIconFrame = "disabled" | "online" | "running";
 type DesktopTrayIconMode = "disabled" | "online" | "running";
 
-const RUNNING_TRAY_ICON_FRAME_MS = 280;
+const RUNNING_TRAY_ICON_FRAME_MS = 500;
 const RUNNING_TRAY_ACTIVITY_LINGER_MS = 15_000;
 const RUNNING_TRAY_ICON_FRAME_COUNT = 4;
 

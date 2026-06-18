@@ -12,8 +12,8 @@ use std::sync::{
 
 #[tokio::test]
 async fn put_presigned_success() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT)
@@ -22,7 +22,7 @@ async fn put_presigned_success() {
         then.status(200);
     });
 
-    let url = format!("{}/test/put-success", server.base_url());
+    let url = api.url("/test/put-success");
     let data = Bytes::from_static(b"test data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -30,7 +30,6 @@ async fn put_presigned_success() {
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
@@ -58,8 +57,8 @@ async fn transport_only_client_can_send_presigned_upload_without_api_config()
 
 #[tokio::test]
 async fn put_presigned_does_not_send_api_headers() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-no-api-headers");
@@ -74,7 +73,7 @@ async fn put_presigned_does_not_send_api_headers() {
         });
     });
 
-    let url = format!("{}/test/put-no-api-headers", server.base_url());
+    let url = api.url("/test/put-no-api-headers");
     let data = Bytes::from_static(b"test data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -82,20 +81,19 @@ async fn put_presigned_does_not_send_api_headers() {
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_retry_then_succeed() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-retry");
         then.respond_with(retry_then_response(1, http_status(200)));
     });
 
-    let url = format!("{}/test/put-retry", server.base_url());
+    let url = api.url("/test/put-retry");
     let data = Bytes::from_static(b"retry data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -103,7 +101,6 @@ async fn put_presigned_retry_then_succeed() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(2).await;
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -112,15 +109,15 @@ async fn put_presigned_retry_then_succeed() {
 
 #[tokio::test]
 async fn put_presigned_4xx_returns_immediately_no_retry() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-403");
         then.status(403);
     });
 
-    let url = format!("{}/test/put-403", server.base_url());
+    let url = api.url("/test/put-403");
     let data = Bytes::from_static(b"forbidden data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -129,20 +126,19 @@ async fn put_presigned_4xx_returns_immediately_no_retry() {
     // Should fail immediately — only 1 call, no retries.
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_429_retries() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-429");
         then.status(429);
     });
 
-    let url = format!("{}/test/put-429", server.base_url());
+    let url = api.url("/test/put-429");
     let data = Bytes::from_static(b"rate limited data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -151,12 +147,11 @@ async fn put_presigned_429_retries() {
     // 429 is retriable — should exhaust all retries.
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_transport_error_does_not_log_presigned_url() {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _api = SharedApiMock::new().await;
 
     let tmp = tempfile::tempdir().unwrap();
     let system_log_path = tmp.path().join("system.log");
@@ -199,8 +194,8 @@ async fn put_presigned_transport_error_does_not_log_presigned_url() {
 
 #[tokio::test]
 async fn put_presigned_file_success() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("test.bin");
@@ -214,20 +209,19 @@ async fn put_presigned_file_success() {
         then.status(200);
     });
 
-    let url = format!("{}/test/put-file-success", server.base_url());
+    let url = api.url("/test/put-file-success");
     let result = http_client!()
         .put_presigned_file(&url, &file_path, "application/gzip")
         .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_sets_content_length() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("sized.bin");
@@ -241,20 +235,19 @@ async fn put_presigned_file_sets_content_length() {
         then.status(200);
     });
 
-    let url = format!("{}/test/put-file-content-length", server.base_url());
+    let url = api.url("/test/put-file-content-length");
     let result = http_client!()
         .put_presigned_file(&url, &file_path, "application/gzip")
         .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_retry_then_succeed() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("retry.bin");
@@ -272,7 +265,7 @@ async fn put_presigned_file_retry_then_succeed() {
         });
     });
 
-    let url = format!("{}/test/put-file-retry", server.base_url());
+    let url = api.url("/test/put-file-retry");
     let path = file_path.clone();
     let result = http_client!()
         .put_presigned_file(&url, &path, "application/gzip")
@@ -280,13 +273,12 @@ async fn put_presigned_file_retry_then_succeed() {
 
     assert!(result.is_ok());
     mock.assert_calls_async(2).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_retry_fails_if_source_shrinks() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("retry-shrunk.bin");
@@ -311,7 +303,7 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
         });
     });
 
-    let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
+    let url = api.url("/test/put-file-retry-shrunk");
     let path = file_path.clone();
     let result = http_client!()
         .put_presigned_file(&url, &path, "application/gzip")
@@ -321,13 +313,12 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
     assert!(result.is_err());
     let calls = mock.calls_async().await;
     assert_eq!(calls, 1);
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("retry-grown.bin");
@@ -352,7 +343,7 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
         });
     });
 
-    let url = format!("{}/test/put-file-retry-grown", server.base_url());
+    let url = api.url("/test/put-file-retry-grown");
     let path = file_path.clone();
     let result = http_client!()
         .put_presigned_file(&url, &path, "application/gzip")
@@ -361,13 +352,12 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
     assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_ok());
     mock.assert_calls_async(2).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("retry-replaced.bin");
@@ -395,7 +385,7 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
         });
     });
 
-    let url = format!("{}/test/put-file-retry-replaced", server.base_url());
+    let url = api.url("/test/put-file-retry-replaced");
     let path = file_path.clone();
     let result = http_client!()
         .put_presigned_file(&url, &path, "application/gzip")
@@ -404,13 +394,12 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
     assert!(mutation_done.load(Ordering::SeqCst));
     assert!(result.is_ok());
     mock.assert_calls_async(2).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_large_multi_chunk() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("large.bin");
@@ -425,20 +414,19 @@ async fn put_presigned_file_large_multi_chunk() {
         then.status(200);
     });
 
-    let url = format!("{}/test/put-file-large", server.base_url());
+    let url = api.url("/test/put-file-large");
     let result = http_client!()
         .put_presigned_file(&url, &file_path, "application/gzip")
         .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn put_presigned_file_4xx_no_retry() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("forbidden.bin");
@@ -449,14 +437,13 @@ async fn put_presigned_file_4xx_no_retry() {
         then.status(403);
     });
 
-    let url = format!("{}/test/put-file-403", server.base_url());
+    let url = api.url("/test/put-file-403");
     let result = http_client!()
         .put_presigned_file(&url, &file_path, "application/gzip")
         .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }
 
 // =========================================================================
@@ -465,15 +452,15 @@ async fn put_presigned_file_4xx_no_retry() {
 
 #[tokio::test]
 async fn put_presigned_retry_exhausted() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-exhaust");
         then.status(500);
     });
 
-    let url = format!("{}/test/put-exhaust", server.base_url());
+    let url = api.url("/test/put-exhaust");
     let data = Bytes::from_static(b"exhaust data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -481,5 +468,4 @@ async fn put_presigned_retry_exhausted() {
 
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
-    mock.delete_async().await;
 }

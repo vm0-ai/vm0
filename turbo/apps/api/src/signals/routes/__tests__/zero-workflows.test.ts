@@ -5,6 +5,7 @@ import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import {
   zeroWorkflowAgents,
   zeroWorkflows,
@@ -16,6 +17,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import {
   deleteWorkflowsForFixture$,
+  mockMissingWorkflowContent,
   mockWorkflowContent,
   seedAgentForInstructions$,
   seedWorkflow$,
@@ -46,6 +48,38 @@ function detailClient() {
 
 function agentsClient() {
   return setupApp({ context })(zeroWorkflowAgentsContract);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function commandName(command: unknown): string {
+  if (!isRecord(command)) {
+    return "";
+  }
+  return command.constructor.name;
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (!isRecord(command) || !isRecord(command.input)) {
+    return {};
+  }
+  return command.input;
+}
+
+function deleteObjectKeys(command: unknown): string[] {
+  const input = commandInput(command);
+  const deletePayload = input.Delete;
+  if (!isRecord(deletePayload) || !Array.isArray(deletePayload.Objects)) {
+    return [];
+  }
+  return deletePayload.Objects.flatMap((object) => {
+    if (!isRecord(object) || typeof object.Key !== "string") {
+      return [];
+    }
+    return [object.Key];
+  });
 }
 
 function workflowFiles(content: string) {
@@ -361,6 +395,166 @@ describe("zero workflows", () => {
         { path: "notes.md", content: "details" },
       ],
     });
+  });
+
+  it("returns workflow metadata when backing storage objects are missing", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const workflowName = "dangling-workflow";
+    const s3Key = "test-workflows/dangling-workflow";
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: workflowName,
+        displayName: "Dangling Workflow",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflowStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        workflowName,
+        s3Key,
+        headVersionId: randomUUID(),
+      },
+      context.signal,
+    );
+    mockMissingWorkflowContent(context, { s3Key });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { name: workflowName },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      name: workflowName,
+      displayName: "Dangling Workflow",
+      content: null,
+      files: null,
+      fileContents: null,
+    });
+  });
+
+  it("deletes workflow storage using a slash-bounded prefix", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const deletedWorkflowName = "posthog";
+    const keptWorkflowName = "posthog-tracking";
+    const deletedPrefix = `orgs/${fixture.orgId}/${getCustomSkillStorageName(
+      deletedWorkflowName,
+    )}`;
+    const keptPrefix = `orgs/${fixture.orgId}/${getCustomSkillStorageName(
+      keptWorkflowName,
+    )}`;
+    const deletedKeys = [
+      `${deletedPrefix}/version/archive.tar.gz`,
+      `${deletedPrefix}/version/manifest.json`,
+    ];
+    const allKeys = [
+      ...deletedKeys,
+      `${keptPrefix}/version/archive.tar.gz`,
+      `${keptPrefix}/version/manifest.json`,
+    ];
+
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: deletedWorkflowName,
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: keptWorkflowName,
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflowStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        workflowName: deletedWorkflowName,
+        s3Key: `${deletedPrefix}/version`,
+        headVersionId: randomUUID(),
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflowStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        workflowName: keptWorkflowName,
+        s3Key: `${keptPrefix}/version`,
+        headVersionId: randomUUID(),
+      },
+      context.signal,
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (commandName(command) === "ListObjectsV2Command") {
+        const prefix = commandInput(command).Prefix;
+        if (typeof prefix !== "string") {
+          return Promise.resolve({ Contents: [] });
+        }
+        return Promise.resolve({
+          Contents: allKeys
+            .filter((key) => {
+              return key.startsWith(prefix);
+            })
+            .map((key) => {
+              return {
+                Key: key,
+                Size: 1,
+                LastModified: new Date("2026-06-18T00:00:00.000Z"),
+              };
+            }),
+        });
+      }
+      return Promise.resolve({});
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    await accept(
+      detailClient().delete({
+        headers: authHeaders(),
+        params: { name: deletedWorkflowName },
+      }),
+      [204],
+    );
+
+    const listCommand = context.mocks.s3.send.mock.calls
+      .map((call) => {
+        return call[0];
+      })
+      .find((command) => {
+        return commandName(command) === "ListObjectsV2Command";
+      });
+    expect(commandInput(listCommand).Prefix).toBe(`${deletedPrefix}/`);
+
+    const deleteCommand = context.mocks.s3.send.mock.calls
+      .map((call) => {
+        return call[0];
+      })
+      .find((command) => {
+        return commandName(command) === "DeleteObjectsCommand";
+      });
+    expect(deleteObjectKeys(deleteCommand)).toStrictEqual(deletedKeys);
   });
 
   it("deletes workflows and cascades agent attachments", async () => {

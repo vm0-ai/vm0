@@ -33,6 +33,8 @@
 //! # }
 //! ```
 
+#![deny(missing_docs)]
+
 mod connection;
 #[doc(hidden)]
 pub mod protocol;
