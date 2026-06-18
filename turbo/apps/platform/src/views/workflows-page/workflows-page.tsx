@@ -3,6 +3,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   ZeroWorkflowAgentSummary,
   ZeroWorkflowDetailResponse,
+  ZeroWorkflowSchedule,
+  ZeroWorkflowScheduleType,
   ZeroWorkflowSummary,
   ZeroWorkflowTriggerSummary,
   WorkflowFileMetadata,
@@ -37,8 +39,12 @@ import {
 
 import {
   attachSelectedWorkflowAgent$,
+  createWorkflowScheduleTrigger$,
+  deleteWorkflowScheduleTrigger$,
   detachSelectedWorkflowAgent$,
   filteredOrgWorkflows$,
+  runWorkflowScheduleTrigger$,
+  setWorkflowTriggerEnabled$,
   selectedWorkflowAgentId$,
   selectedWorkflowDetail$,
   selectedWorkflowFilePath$,
@@ -55,6 +61,7 @@ import {
   type WorkflowAttachmentFilter,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { user$ } from "../../signals/auth.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -545,7 +552,7 @@ function WorkflowViewer({
         </div>
         <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
           <AttachedAgentsPanel workflow={detail} />
-          <WorkflowTriggersPanel triggers={detail.triggers} />
+          <WorkflowTriggersPanel workflow={detail} />
           <WorkflowFiles
             files={files}
             selectedPath={selectedFilePath}
@@ -585,11 +592,163 @@ function triggerKindLabel(kind: ZeroWorkflowTriggerSummary["kind"]): string {
   return "Event trigger";
 }
 
-function WorkflowTriggersPanel({
-  triggers,
+const TRIGGER_TIMEZONE = "UTC";
+
+function buildTriggerSchedule(
+  type: ZeroWorkflowScheduleType,
+  fields: {
+    readonly cronExpression: string;
+    readonly intervalSeconds: string;
+    readonly atTime: string;
+  },
+): ZeroWorkflowSchedule | null {
+  if (type === "cron") {
+    const cronExpression = fields.cronExpression.trim();
+    return cronExpression
+      ? { type: "cron", cronExpression, timezone: TRIGGER_TIMEZONE }
+      : null;
+  }
+  if (type === "loop") {
+    const intervalSeconds = Number(fields.intervalSeconds);
+    return Number.isInteger(intervalSeconds) && intervalSeconds > 0
+      ? { type: "loop", intervalSeconds }
+      : null;
+  }
+  if (!fields.atTime) {
+    return null;
+  }
+  const atTime = new Date(fields.atTime);
+  return Number.isNaN(atTime.getTime())
+    ? null
+    : {
+        type: "once",
+        atTime: atTime.toISOString(),
+        timezone: TRIGGER_TIMEZONE,
+      };
+}
+
+const TRIGGER_FIELD_CLASS =
+  "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
+
+function CreateWorkflowTriggerForm({
+  agents,
 }: {
-  readonly triggers: readonly ZeroWorkflowTriggerSummary[];
+  readonly agents: readonly ZeroWorkflowAgentSummary[];
 }) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createTrigger] = useLoadableSet(
+    createWorkflowScheduleTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  // Uncontrolled form (the platform forbids React local state): the fields are
+  // read from FormData on submit, and all three schedule inputs are shown so the
+  // user fills the one matching the selected type.
+  return (
+    <form
+      aria-label="Create schedule trigger"
+      className="flex flex-col gap-1.5 px-2 pb-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const agentId = String(form.get("agentId") ?? "");
+        const scheduleType = String(
+          form.get("scheduleType") ?? "cron",
+        ) as ZeroWorkflowScheduleType;
+        const schedule = buildTriggerSchedule(scheduleType, {
+          cronExpression: String(form.get("cronExpression") ?? ""),
+          intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+          atTime: String(form.get("atTime") ?? ""),
+        });
+        if (!schedule || agentId === "") {
+          return;
+        }
+        detach(
+          createTrigger({ agentId, schedule }, pageSignal),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <select
+        name="agentId"
+        aria-label="Trigger agent"
+        defaultValue={agents[0]?.agentId}
+        disabled={creating}
+        className={TRIGGER_FIELD_CLASS}
+      >
+        {agents.map((agent) => {
+          return (
+            <option key={agent.agentId} value={agent.agentId}>
+              {agentTitle(agent)}
+            </option>
+          );
+        })}
+      </select>
+      <select
+        name="scheduleType"
+        aria-label="Schedule type"
+        defaultValue="cron"
+        disabled={creating}
+        className={TRIGGER_FIELD_CLASS}
+      >
+        <option value="cron">Repeat (cron)</option>
+        <option value="loop">Loop (interval)</option>
+        <option value="once">Once</option>
+      </select>
+      <input
+        name="cronExpression"
+        aria-label="Cron expression"
+        defaultValue="0 9 * * *"
+        disabled={creating}
+        placeholder="cron, e.g. 0 9 * * *"
+        className={TRIGGER_FIELD_CLASS}
+      />
+      <input
+        name="intervalSeconds"
+        aria-label="Interval seconds"
+        type="number"
+        min="1"
+        defaultValue="3600"
+        disabled={creating}
+        placeholder="loop interval seconds"
+        className={TRIGGER_FIELD_CLASS}
+      />
+      <input
+        name="atTime"
+        aria-label="Run at"
+        type="datetime-local"
+        disabled={creating}
+        className={TRIGGER_FIELD_CLASS}
+      />
+      <button
+        type="submit"
+        disabled={creating}
+        className={cn(
+          "zero-btn-morandi inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+          creating ? "cursor-not-allowed opacity-60" : "",
+        )}
+      >
+        {creating ? (
+          <IconLoader2 size={13} className="animate-spin" />
+        ) : (
+          <IconPlus size={13} stroke={1.5} />
+        )}
+        <span>Add trigger</span>
+      </button>
+    </form>
+  );
+}
+
+function WorkflowTriggersPanel({
+  workflow,
+}: {
+  readonly workflow: ZeroWorkflowDetailResponse;
+}) {
+  const userLoadable = useLoadable(user$);
+  const currentUserId =
+    userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
+  const triggers = workflow.triggers;
+
   return (
     <div className="border-b border-border/70">
       <div className="flex h-9 items-center justify-between px-3">
@@ -598,11 +757,20 @@ function WorkflowTriggersPanel({
         </span>
         <span className="text-xs text-muted-foreground">{triggers.length}</span>
       </div>
-      <div className="max-h-[180px] overflow-auto px-2 pb-2">
+      {workflow.attachedAgents.length > 0 ? (
+        <CreateWorkflowTriggerForm agents={workflow.attachedAgents} />
+      ) : null}
+      <div className="max-h-[260px] overflow-auto px-2 pb-2">
         {triggers.length > 0 ? (
           <div className="flex flex-col gap-1">
             {triggers.map((trigger) => {
-              return <WorkflowTriggerRow key={trigger.id} trigger={trigger} />;
+              return (
+                <WorkflowTriggerRow
+                  key={trigger.id}
+                  trigger={trigger}
+                  canManage={trigger.ownerUserId === currentUserId}
+                />
+              );
             })}
           </div>
         ) : (
@@ -617,10 +785,28 @@ function WorkflowTriggersPanel({
 
 function WorkflowTriggerRow({
   trigger,
+  canManage,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly canManage: boolean;
 }) {
+  const pageSignal = useGet(pageSignal$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const [deleteLoadable, deleteTrigger] = useLoadableSet(
+    deleteWorkflowScheduleTrigger$,
+  );
+  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowScheduleTrigger$);
+  const busy =
+    enabledLoadable.state === "loading" ||
+    deleteLoadable.state === "loading" ||
+    runLoadable.state === "loading";
   const Icon = trigger.kind === "schedule" ? IconClock : IconGitBranch;
+  const reassignNeeded = trigger.agentId === null;
+  const secondaryLabel = reassignNeeded
+    ? "Agent deleted — reassign an agent"
+    : triggerKindLabel(trigger.kind);
 
   return (
     <div className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5">
@@ -644,7 +830,7 @@ function WorkflowTriggerRow({
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {triggerKindLabel(trigger.kind)}
+          {secondaryLabel}
         </p>
         {trigger.chatThreadId ? (
           <Link
@@ -654,6 +840,49 @@ function WorkflowTriggerRow({
           >
             Open thread
           </Link>
+        ) : null}
+        {canManage ? (
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+              onClick={() => {
+                detach(runTrigger(trigger.id, pageSignal), Reason.DomCallback);
+              }}
+            >
+              Test run
+            </button>
+            <button
+              type="button"
+              disabled={busy || reassignNeeded}
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+              onClick={() => {
+                detach(
+                  setEnabled(
+                    { triggerId: trigger.id, enabled: !trigger.enabled },
+                    pageSignal,
+                  ),
+                  Reason.DomCallback,
+                );
+              }}
+            >
+              {trigger.enabled ? "Pause" : "Resume"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="text-xs text-destructive/80 transition-colors hover:text-destructive disabled:opacity-60"
+              onClick={() => {
+                detach(
+                  deleteTrigger(trigger.id, pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
+            >
+              Delete
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

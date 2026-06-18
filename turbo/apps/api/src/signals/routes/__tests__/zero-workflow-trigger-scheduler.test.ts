@@ -27,7 +27,10 @@ import {
 import { writeDb$, type Db } from "../../external/db";
 import { executeDueWorkflowTriggers$ } from "../../services/zero-workflow-trigger-poller.service";
 import { handleWorkflowTriggerInternalCallback } from "../../services/zero-workflow-trigger-run-callback.service";
-import { disableTriggersForDetachedAgent } from "../../services/zero-workflow-trigger.service";
+import {
+  disableTriggersForDetachedAgent,
+  testRunWorkflowTrigger$,
+} from "../../services/zero-workflow-trigger.service";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -340,6 +343,61 @@ describe("zero workflow trigger scheduler", () => {
     expect(trigger?.consecutiveFailures).toBe(3);
     expect(trigger?.enabled).toBeFalsy();
     expect(trigger?.nextRunAt).toBeNull();
+  });
+
+  it("test-run fires a run into the thread without advancing the schedule", async () => {
+    const scenario = await setup();
+    const future = new Date(now() + 3_600_000);
+    const { triggerId, threadId } = await seedTrigger(scenario, {
+      scheduleType: "cron",
+      cronExpression: "0 9 * * *",
+      nextRunAt: future,
+    });
+
+    const result = await store.set(
+      testRunWorkflowTrigger$,
+      {
+        orgId: scenario.fixture.orgId,
+        member: { userId: scenario.fixture.userId, role: "member" },
+        triggerId,
+      },
+      context.signal,
+    );
+    expect(result.kind).toBe("ok");
+
+    const db = store.set(writeDb$);
+    const runs = await db
+      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.triggerSource).toBe("workflow-schedule");
+
+    // A test run must not advance or claim the schedule.
+    const trigger = await loadTrigger(db, triggerId);
+    expect(trigger?.nextRunAt?.getTime()).toBe(future.getTime());
+    expect(trigger?.lastRunId).toBeNull();
+
+    // Only the chat callback is attached — no recurrence callback.
+    const callbacks = await db
+      .select({ internalKind: agentRunCallbacks.internalKind })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, runs[0]!.id));
+    const kinds = callbacks.map((c) => {
+      return c.internalKind;
+    });
+    expect(kinds).toContain("chat");
+    expect(kinds).not.toContain("workflow-trigger:cron");
+
+    const messages = await db
+      .select({ content: chatMessages.content })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, threadId));
+    expect(
+      messages.some((m) => {
+        return m.content === `/${WORKFLOW_NAME}`;
+      }),
+    ).toBeTruthy();
   });
 
   it("disables triggers when the workflow is detached from the agent", async () => {
