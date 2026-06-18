@@ -4,13 +4,17 @@ export function getAppUrl(): string {
   return env().NEXT_PUBLIC_APP_URL;
 }
 
+export function getPaidOnboardingUrl(): string | undefined {
+  return env().NEXT_PUBLIC_PAID_ONBOARDING_URL;
+}
+
 // Origins Clerk is allowed to redirect back to after sign-in/sign-up. Always
 // includes the app; optionally includes the paid-onboarding origin (so.vm0.ai)
 // when configured per environment, so a paid onboarding flow hosted on a
 // sibling *.vm0.ai subdomain can run auth on www and return to itself.
 export function getAllowedRedirectOrigins(): string[] {
   const appUrl = getAppUrl();
-  const paidOnboardingUrl = env().NEXT_PUBLIC_PAID_ONBOARDING_URL;
+  const paidOnboardingUrl = getPaidOnboardingUrl();
   const origins = paidOnboardingUrl ? [appUrl, paidOnboardingUrl] : [appUrl];
 
   // Any vm6.ai app/web preview is staging-only. Allow the whole *.vm6.ai

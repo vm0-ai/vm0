@@ -638,7 +638,7 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 
   it("accepts successUrl on the configured paid-onboarding origin", async () => {
-    mockEnv("PAID_ONBOARDING_URL", "https://so.vm7.ai:8441");
+    mockEnv("PAID_ONBOARDING_URL", "https://so.vm7.ai:8443");
 
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -656,8 +656,8 @@ describe("POST /api/zero/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://so.vm7.ai:8441/onboarding?billing=pro",
-          cancelUrl: "https://so.vm7.ai:8441/onboarding?billing=canceled",
+          successUrl: "https://so.vm7.ai:8443/onboarding?billing=pro",
+          cancelUrl: "https://so.vm7.ai:8443/onboarding?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),

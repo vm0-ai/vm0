@@ -58,8 +58,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -6158,46 +6158,20 @@ function UsageChip({
 }) {
   const total = formatCredits(usage.totalCredits);
   const displayRows = buildRunUsageDisplayRows(usage);
-  const showTooltip = () => {
-    setOpen(true);
-  };
-  const hideTooltip = () => {
-    setOpen(false);
-  };
 
   return (
-    <Popover open={open}>
-      <PopoverAnchor asChild>
-        <span
-          tabIndex={0}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
-          onFocus={showTooltip}
-          onBlur={hideTooltip}
-          onPointerDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-          }}
-          onMouseEnter={showTooltip}
-          onMouseLeave={hideTooltip}
-          onPointerEnter={showTooltip}
-          onPointerLeave={hideTooltip}
         >
           <IconCoins size={17} stroke={1.5} />
           <span>{total}</span>
-        </span>
-      </PopoverAnchor>
-      <PopoverContent
-        side="bottom"
-        align={contentAlign}
-        className="w-72 p-3"
-        onPointerEnter={showTooltip}
-        onPointerLeave={hideTooltip}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align={contentAlign} className="w-72 p-3">
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
           <span>{title}</span>
           <span>{total}</span>
