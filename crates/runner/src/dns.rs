@@ -29,6 +29,8 @@ use crate::network_log_drain::{
 };
 use crate::network_log_manager::NetworkLogManager;
 
+const DNSMASQ_VM_INTERFACE_PATTERN: &str = "vm0-ve*";
+
 /// Handle to the dnsmasq process and its log monitor.
 pub struct DnsProxy {
     cancel: CancellationToken,
@@ -175,21 +177,8 @@ pub async fn start(network_log_manager: NetworkLogManager) -> std::io::Result<Dn
 
 /// Try to start dnsmasq on the given port. Returns the proxy handle on success.
 async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io::Result<DnsProxy> {
-    let port_str = port.to_string();
-
     let mut child = tokio::process::Command::new("dnsmasq")
-        .args([
-            "--no-daemon",
-            "--no-resolv",
-            "--port",
-            &port_str,
-            "--server",
-            "8.8.8.8",
-            "--server",
-            "8.8.4.4",
-            "--log-queries=extra",
-            "--log-facility=-",
-        ])
+        .args(dnsmasq_args(port))
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -521,6 +510,23 @@ fn network_log_row(entry: &DnsLogEntry<'_>, timestamp: DateTime<Utc>) -> serde_j
     }
 
     json
+}
+
+fn dnsmasq_args(port: u16) -> Vec<String> {
+    vec![
+        "--no-daemon".into(),
+        "--no-resolv".into(),
+        "--port".into(),
+        port.to_string(),
+        format!("--interface={DNSMASQ_VM_INTERFACE_PATTERN}"),
+        "--bind-dynamic".into(),
+        "--server".into(),
+        "8.8.8.8".into(),
+        "--server".into(),
+        "8.8.4.4".into(),
+        "--log-queries=extra".into(),
+        "--log-facility=-".into(),
+    ]
 }
 
 #[cfg(test)]
@@ -974,6 +980,37 @@ mod tests {
         }
 
         fn consume(self: Pin<&mut Self>, _amt: usize) {}
+    }
+
+    #[test]
+    fn dnsmasq_args_restrict_listener_to_vm_interfaces() {
+        let args = dnsmasq_args(5353);
+
+        assert!(args.contains(&"--interface=vm0-ve*".to_string()));
+        assert!(args.contains(&"--bind-dynamic".to_string()));
+    }
+
+    #[test]
+    fn dnsmasq_args_preserve_port_upstream_and_logging_config() {
+        let args = dnsmasq_args(5353);
+
+        assert_eq!(
+            args,
+            vec![
+                "--no-daemon",
+                "--no-resolv",
+                "--port",
+                "5353",
+                "--interface=vm0-ve*",
+                "--bind-dynamic",
+                "--server",
+                "8.8.8.8",
+                "--server",
+                "8.8.4.4",
+                "--log-queries=extra",
+                "--log-facility=-",
+            ]
+        );
     }
 
     #[test]
