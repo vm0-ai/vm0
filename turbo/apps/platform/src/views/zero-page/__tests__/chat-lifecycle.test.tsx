@@ -3666,6 +3666,10 @@ describe("chat lifecycle", () => {
 
     await user.click(await screen.findByLabelText("Template"));
     await user.click(
+      await screen.findByLabelText(`View template ${template.title}`),
+    );
+    await user.click(await screen.findByLabelText("Select style Gold Luxe"));
+    await user.click(
       await screen.findByLabelText(`Select template ${template.title}`),
     );
     await waitFor(() => {
@@ -3724,6 +3728,7 @@ describe("chat lifecycle", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
+            colorSystemId: "color-system:gold-luxe",
             designSystemId: template.designSystemId,
             templateId: template.templateId,
             previewUrl: template.embedUrl,
