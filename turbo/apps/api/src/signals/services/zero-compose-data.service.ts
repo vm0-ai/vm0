@@ -14,7 +14,7 @@ import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
-import { deleteS3Objects, listS3Objects } from "../external/s3";
+import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { conflict, notFound } from "../../lib/error";
@@ -271,7 +271,9 @@ export const deleteCompose$ = command(
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(listS3Objects(bucket, result.s3Prefix));
+      const objects = await get(
+        listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+      );
       signal.throwIfAborted();
       await get(
         deleteS3Objects(
@@ -370,7 +372,9 @@ export const deleteComposeById$ = command(
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(listS3Objects(bucket, result.s3Prefix));
+      const objects = await get(
+        listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+      );
       signal.throwIfAborted();
       await get(
         deleteS3Objects(

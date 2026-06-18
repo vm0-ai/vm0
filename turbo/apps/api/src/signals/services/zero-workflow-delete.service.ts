@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
-import { deleteS3Objects, listS3Objects } from "../external/s3";
+import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 
 interface DeleteZeroWorkflowInput {
   readonly orgId: string;
@@ -73,7 +73,9 @@ export const deleteZeroWorkflow$ = command(
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(listS3Objects(bucket, result.s3Prefix));
+      const objects = await get(
+        listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+      );
       signal.throwIfAborted();
       await get(
         deleteS3Objects(
