@@ -161,16 +161,13 @@ function dialogForElement(element: HTMLElement): HTMLElement {
   return dialog;
 }
 
-async function findLoadedPermissionsDialog(
-  title: string,
-): Promise<HTMLElement> {
-  const dialog = await screen.findByRole("dialog");
-  await within(dialog).findByText(
-    title,
+async function findLoadedPermissionsDialog(): Promise<HTMLElement> {
+  const unknownEndpoints = await screen.findByText(
+    "Other endpoints",
     {},
     { timeout: PERMISSION_METADATA_TIMEOUT_MS },
   );
-  return dialog;
+  return dialogForElement(unknownEndpoints);
 }
 
 async function connectorCategoryLabel(
@@ -618,8 +615,7 @@ describe("team page navigation", () => {
 
       click(screen.getByLabelText("Manage Axiom permissions"));
 
-      const permissionsDialog =
-        await findLoadedPermissionsDialog("Axiom permissions");
+      const permissionsDialog = await findLoadedPermissionsDialog();
       expect(
         within(permissionsDialog).getByText("for Research Agent"),
       ).toBeInTheDocument();
@@ -692,9 +688,7 @@ describe("team page navigation", () => {
 
       click(screen.getByLabelText("Manage Cloudflare permissions"));
 
-      const permissionsDialog = await findLoadedPermissionsDialog(
-        "Cloudflare permissions",
-      );
+      const permissionsDialog = await findLoadedPermissionsDialog();
 
       const unknownRow = await unknownEndpointsRow(permissionsDialog);
       const loadedPermissionsDialog = dialogForElement(unknownRow);
