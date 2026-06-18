@@ -2250,7 +2250,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `mosaic-geometric` and template `html-ppt-mosaic-geometric`, create a 15-slide presentation for a geometric brand pitch, design system proposal, creative studio, culture product, or modular portfolio. Include cover, agenda, about, principles, team, services, process, gallery, impact, testimonials, pricing, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5f0f09fb-1c75-4158-ac62-6fba5a4ed361/mosaic-geometric.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d6a7348-5ed7-40a0-a482-aced65491923/mosaic-geometric-hidden.html",
       previewImage: MOSAIC_GEOMETRIC_PREVIEW_IMAGES[0],
       previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
       previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
