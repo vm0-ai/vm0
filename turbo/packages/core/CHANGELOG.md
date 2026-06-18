@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.357.0](https://github.com/vm0-ai/vm0/compare/core-v8.356.0...core-v8.357.0) (2026-06-18)
+
+
+### Features
+
+* **api:** add workflow schedule trigger persistence and management endpoints ([#18272](https://github.com/vm0-ai/vm0/issues/18272)) ([7e86c2d](https://github.com/vm0-ai/vm0/commit/7e86c2db0526fac21abc6704371406bb56ad7e32))
+
+
+### Bug Fixes
+
+* lazy load presentation template card previews ([#18222](https://github.com/vm0-ai/vm0/issues/18222)) ([bd0d00e](https://github.com/vm0-ai/vm0/commit/bd0d00ec81680a8d97ad7766b08b100837955b6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.104.0
+
 ## [8.356.0](https://github.com/vm0-ai/vm0/compare/core-v8.355.1...core-v8.356.0) (2026-06-18)
 
 
