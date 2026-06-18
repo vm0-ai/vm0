@@ -5313,118 +5313,6 @@ function attachmentIdFromUrl(url: string): string | null {
   return match?.[1] ?? null;
 }
 
-function inferAttachmentContentType(filename: string, kind: string): string {
-  const contentTypesByExtension: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
-    bmp: "image/bmp",
-    avif: "image/avif",
-    heic: "image/heic",
-    heif: "image/heif",
-    tif: "image/tiff",
-    tiff: "image/tiff",
-    psd: "image/vnd.adobe.photoshop",
-    mp4: "video/mp4",
-    webm: "video/webm",
-    mov: "video/quicktime",
-    mp3: "audio/mpeg",
-    mpga: "audio/mpeg",
-    wav: "audio/wav",
-    wave: "audio/wave",
-    m4a: "audio/mp4",
-    aac: "audio/aac",
-    ogg: "audio/ogg",
-    oga: "audio/ogg",
-    opus: "audio/opus",
-    flac: "audio/flac",
-    pdf: "application/pdf",
-    txt: "text/plain",
-    log: "text/plain",
-    csv: "text/csv",
-    md: "text/markdown",
-    html: "text/html",
-    htm: "text/html",
-    json: "application/json",
-    xml: "application/xml",
-    yaml: "application/yaml",
-    yml: "application/yaml",
-    tsv: "text/tab-separated-values",
-    doc: "application/msword",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    docm: "application/vnd.ms-word.document.macroenabled.12",
-    dotm: "application/vnd.ms-word.template.macroenabled.12",
-    dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
-    odt: "application/vnd.oasis.opendocument.text",
-    rtf: "application/rtf",
-    xls: "application/vnd.ms-excel",
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    xlsb: "application/vnd.ms-excel.sheet.binary.macroenabled.12",
-    xlsm: "application/vnd.ms-excel.sheet.macroenabled.12",
-    xltm: "application/vnd.ms-excel.template.macroenabled.12",
-    xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
-    ods: "application/vnd.oasis.opendocument.spreadsheet",
-    ppt: "application/vnd.ms-powerpoint",
-    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    potm: "application/vnd.ms-powerpoint.template.macroenabled.12",
-    potx: "application/vnd.openxmlformats-officedocument.presentationml.template",
-    odp: "application/vnd.oasis.opendocument.presentation",
-    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
-    ppsm: "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
-    pptm: "application/vnd.ms-powerpoint.presentation.macroenabled.12",
-    zip: "application/zip",
-    rar: "application/vnd.rar",
-    "7z": "application/x-7z-compressed",
-    tar: "application/x-tar",
-    gz: "application/gzip",
-    tgz: "application/gzip",
-    bz2: "application/x-bzip2",
-    xz: "application/x-xz",
-    pages: "application/vnd.apple.pages",
-    numbers: "application/vnd.apple.numbers",
-    key: "application/vnd.apple.keynote",
-    parquet: "application/vnd.apache.parquet",
-    sqlite: "application/vnd.sqlite3",
-    sqlite3: "application/vnd.sqlite3",
-    db: "application/vnd.sqlite3",
-    epub: "application/epub+zip",
-    ai: "application/postscript",
-  };
-  const lower = filename.toLowerCase();
-  const extension = lower.includes(".") ? lower.split(".").pop() : undefined;
-  const contentType =
-    extension === undefined ? undefined : contentTypesByExtension[extension];
-  if (contentType !== undefined) {
-    return contentType;
-  }
-  switch (kind) {
-    case "markdown": {
-      return "text/markdown";
-    }
-    case "text": {
-      return "text/plain";
-    }
-    case "json": {
-      return "application/json";
-    }
-    case "csv": {
-      return "text/csv";
-    }
-    case "pdf": {
-      return "application/pdf";
-    }
-    case "html": {
-      return "text/html";
-    }
-    default: {
-      return "application/octet-stream";
-    }
-  }
-}
-
 function clipboardAttachmentsFromMessage(
   message: PagedChatMessage,
   parsed: { filename: string; url: string }[],
@@ -5450,7 +5338,7 @@ function clipboardAttachmentsFromMessage(
           : attachmentIdFromUrl(f.url),
       filename: f.filename,
       url: f.url,
-      contentType: contentType ?? inferAttachmentContentType(f.filename, kind),
+      contentType: contentType ?? contentTypeForBodyPreviewKind(kind),
       size: "size" in f && typeof f.size === "number" ? f.size : 0,
     };
   });

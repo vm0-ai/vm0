@@ -97,6 +97,56 @@ interface TestServiceWorkerContainer {
   readonly register: () => Promise<TestServiceWorkerRegistration>;
 }
 
+async function readSingleRichClipboardWrite(clipboard: {
+  readonly writes: ClipboardItem[][];
+}): Promise<ClipboardItem> {
+  await waitFor(() => {
+    expect(clipboard.writes).toHaveLength(1);
+    expect(clipboard.writes[0]).toHaveLength(1);
+  });
+  const item = clipboard.writes[0]?.[0];
+  if (!item) {
+    throw new Error("clipboard item not found");
+  }
+  return item;
+}
+
+async function readClipboardItemText(
+  item: ClipboardItem,
+  type: string,
+): Promise<string> {
+  const blob = await item.getType(type);
+  return await blob.text();
+}
+
+function parseChatClipboardPayload(html: string): {
+  text: string;
+  attachments: {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+} {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const encoded = doc.querySelector<HTMLElement>("[data-vm0-chat-message]")
+    ?.dataset.vm0ChatMessage;
+  if (!encoded) {
+    throw new Error("chat clipboard payload not found");
+  }
+  return JSON.parse(decodeURIComponent(encoded)) as {
+    text: string;
+    attachments: {
+      id: string | null;
+      url: string;
+      filename: string;
+      contentType: string;
+      size: number;
+    }[];
+  };
+}
+
 function mockPushBrowserSupport(): PushBrowserMock {
   vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "AQIDBA");
   vi.stubGlobal("PushManager", class TestPushManager {});
@@ -3387,9 +3437,90 @@ describe("chat lifecycle", () => {
 
     click(screen.getByLabelText("Copy message"));
 
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const plainText = await readClipboardItemText(item, "text/plain");
+    expect(plainText).toBe(
+      [
+        "Review the launch assets",
+        "",
+        "Attachments:",
+        `- chart.png: ${imageUrl}`,
+        `- demo.mp4: ${videoUrl}`,
+        `- briefing.mp3: ${audioUrl}`,
+        `- notes.md: ${markdownUrl}`,
+      ].join("\n"),
+    );
+    const html = await readClipboardItemText(item, "text/html");
+    expect(html).toContain("data-vm0-chat-message");
+    expect(html).toContain(`<a href="${imageUrl}"`);
+    expect(html).not.toContain("<img");
+    const payload = parseChatClipboardPayload(html);
+    expect(payload.text).toBe("Review the launch assets");
+    expect(payload.attachments).toHaveLength(4);
+    expect(payload.attachments[0]).toStrictEqual({
+      id: "attachment-chart",
+      filename: "chart.png",
+      url: imageUrl,
+      contentType: "image/*",
+      size: 0,
+    });
+  });
+
+  it("copies text and links for a user message with image attachments from chat history", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const threadId = "image-attachment-copy";
+    const messageText = "Review this image";
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-image-attachment-copy",
+          role: "user",
+          content: messageText,
+          attachFiles: [
+            {
+              id: "attachment-photo",
+              filename: "photo.png",
+              contentType: "image/png",
+              size: 2048,
+              url: imageUrl,
+            },
+          ],
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
     await waitFor(() => {
-      expect(clipboard.writes).toHaveLength(1);
-      expect(clipboard.writes[0]).toHaveLength(1);
+      expect(screen.getByText(messageText)).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview photo.png")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const plainText = await readClipboardItemText(item, "text/plain");
+    expect(plainText).toBe(
+      [messageText, "", "Attachments:", `- photo.png: ${imageUrl}`].join("\n"),
+    );
+    const html = await readClipboardItemText(item, "text/html");
+    expect(html).toContain("data-vm0-chat-message");
+    expect(html).toContain(`<a href="${imageUrl}"`);
+    expect(html).not.toContain("<img");
+    expect(parseChatClipboardPayload(html)).toStrictEqual({
+      text: messageText,
+      attachments: [
+        {
+          id: "attachment-photo",
+          filename: "photo.png",
+          url: imageUrl,
+          contentType: "image/png",
+          size: 2048,
+        },
+      ],
     });
   });
 
