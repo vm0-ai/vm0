@@ -1708,6 +1708,14 @@ mod tests {
         std::fs::write(&queue.job, b"{}").unwrap();
         std::fs::write(&queue.cancel, b"").unwrap();
         std::fs::write(&queue.claim, b"").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
 
         queue.abandon("timed out");
         let response: JobResponse =
@@ -1724,6 +1732,10 @@ mod tests {
             "abandoned cleanup must not delete files while a runner owns the claim"
         );
         assert!(queue.claim.exists());
+        assert!(
+            local_queue::run_inputs_dir(group_dir, job_id).exists(),
+            "abandoned cleanup must leave active inputs for claimed jobs"
+        );
     }
 
     #[test]
@@ -1738,6 +1750,14 @@ mod tests {
 
         std::fs::write(&queue.job, b"{}").unwrap();
         std::fs::write(&queue.cancel, b"").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
 
         queue.abandon("timed out");
 
@@ -1747,6 +1767,10 @@ mod tests {
         assert!(
             !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
+        );
+        assert!(
+            !local_queue::run_inputs_dir(group_dir, job_id).exists(),
+            "abandoned cleanup should remove active inputs for unclaimed jobs"
         );
     }
 
