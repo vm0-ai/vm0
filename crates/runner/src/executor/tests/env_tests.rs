@@ -4,11 +4,13 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
-use sandbox::SandboxId;
+use sandbox::{ExecResult, ProcessTerminationKind, SandboxId};
+use sandbox_mock::MockSandbox;
 
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
     validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
+    write_user_env_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -826,6 +828,33 @@ fn build_env_json_user_vars_cannot_override_system() {
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
     assert!(!user_env.contains_key("VM0_PROMPT"));
+}
+
+#[tokio::test]
+async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ProcessTerminationKind::Cancelled,
+        exit_code: 0,
+        stdout: Vec::new(),
+        stderr: b"cancelled".to_vec(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+    let run_id = RunId::nil();
+    let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
+
+    let err = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+
+    assert!(
+        message
+            .contains("user env directory creation failed (cancelled; compatibility exit code 0)"),
+        "got: {message}"
+    );
+    assert!(sandbox.write_file_calls().is_empty());
 }
 
 #[test]

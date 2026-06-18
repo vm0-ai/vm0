@@ -27,6 +27,7 @@ use super::{
     agent_exit_failure_message, job_terminal_wait_timeout, normalize_failure_exit_code,
     normalize_timeout_failure_exit_code,
 };
+use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
@@ -455,7 +456,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
         match sandbox.exec(&dmesg_req).await {
-            Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
+            Ok(dmesg)
+                if helper_exec_succeeded(&dmesg)
+                    && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) =>
+            {
                 warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
                 // Return exit code 1 with descriptive message instead of raw 137,
                 // so callers see a clear error rather than an opaque signal code.
@@ -467,6 +471,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
+            }
+            Ok(dmesg) if !helper_exec_succeeded(&dmesg) => {
+                warn!(
+                    run_id = %context.run_id,
+                    termination = helper_exec_termination_label(&dmesg),
+                    exit_code = dmesg.exit_code,
+                    "dmesg OOM check helper failed"
+                );
             }
             _ => {}
         }

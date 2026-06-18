@@ -126,6 +126,11 @@ pub struct ExecMatcher {
     pub stderr: Vec<u8>,
 }
 
+struct ExecMatcherResult {
+    pattern: String,
+    result: ExecResult,
+}
+
 /// Captured `exec` request fields recorded for test assertions.
 ///
 /// The record intentionally keeps environment variable names but not their
@@ -450,7 +455,7 @@ enum BlockingGate {
 pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
-    exec_matchers: Mutex<Vec<ExecMatcher>>,
+    exec_matchers: Mutex<Vec<ExecMatcherResult>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     exec_calls: Mutex<Vec<ExecCall>>,
     /// Recorded write_file calls across all sandboxes built from this override set.
@@ -625,7 +630,32 @@ impl MockSandboxOverrides {
 
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
-        self.exec_matchers.lock_ignoring_poison().push(matcher);
+        self.exec_matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherResult {
+                pattern: matcher.pattern,
+                result: ExecResult {
+                    termination: ProcessTerminationKind::Exited,
+                    exit_code: matcher.exit_code,
+                    stdout: matcher.stdout,
+                    stderr: matcher.stderr,
+                    stdout_truncated: false,
+                    stderr_truncated: false,
+                },
+            });
+    }
+
+    /// Register a pattern matcher that returns the supplied full exec result.
+    ///
+    /// Use this when a test needs a non-ordinary terminal state such as timeout,
+    /// cancel, start failure, or wait failure.
+    pub fn add_exec_result_matcher(&self, pattern: impl Into<String>, result: ExecResult) {
+        self.exec_matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherResult {
+                pattern: pattern.into(),
+                result,
+            });
     }
 
     /// Return recorded exec calls across all sandboxes built from this
@@ -1187,15 +1217,7 @@ impl Sandbox for MockSandbox {
                 .iter()
                 .position(|m| request.cmd.contains(&m.pattern))
             {
-                let m = matchers.remove(idx);
-                Ok(ExecResult {
-                    termination: ProcessTerminationKind::Exited,
-                    exit_code: m.exit_code,
-                    stdout: m.stdout,
-                    stderr: m.stderr,
-                    stdout_truncated: false,
-                    stderr_truncated: false,
-                })
+                Ok(matchers.remove(idx).result)
             } else {
                 self.exec_results
                     .lock_ignoring_poison()

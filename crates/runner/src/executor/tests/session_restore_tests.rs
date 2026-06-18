@@ -396,6 +396,50 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
 }
 
 #[tokio::test]
+async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let session_id_no_dashes = session_id.replace('-', "");
+    let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+    let session = ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        session_history: format!(
+            "{}\n",
+            serde_json::json!({
+                "timestamp": "2026-06-04T07:18:08.001Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": session_id,
+                    "timestamp": "2026-06-04T07:18:08.000Z",
+                },
+            }),
+        ),
+    };
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: sandbox::ProcessTerminationKind::WaitFailed,
+        exit_code: 0,
+        stdout: format!("stdout includes {session_id_no_dashes}").into_bytes(),
+        stderr: format!("find: {session_path}: Permission denied").into_bytes(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("codex session cleanup failed (wait failed; compatibility exit code 0)")
+    );
+    assert!(message.contains("[redacted-session-path]"));
+    assert!(message.contains("[redacted-session-id]"));
+    assert!(!message.contains(session_id));
+    assert!(!message.contains(&session_id_no_dashes));
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn restore_session_redacts_claude_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();

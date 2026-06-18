@@ -4,11 +4,11 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
 use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
-use super::storage::format_guest_exec_failure;
 use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
     RunnerResult, guest_runtime_dir, guest_runtime_path,
 };
+use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
@@ -270,8 +270,8 @@ pub(super) async fn write_user_env_file(
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
-    if mkdir_result.exit_code != 0 {
-        return Err(RunnerError::Internal(format_guest_exec_failure(
+    if !helper_exec_succeeded(&mkdir_result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
             "user env directory creation",
             &mkdir_result,
         )));
@@ -291,8 +291,8 @@ pub(super) async fn write_user_env_file(
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
-    if chmod_result.exit_code != 0 {
-        return Err(RunnerError::Internal(format_guest_exec_failure(
+    if !helper_exec_succeeded(&chmod_result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
             "user env file permission update",
             &chmod_result,
         )));
