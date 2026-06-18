@@ -9,6 +9,35 @@ use super::super::support::{
 };
 use super::support::expect_exec_start;
 
+async fn read_file_terminal_error(
+    termination: ExecTermination,
+    stderr: &'static [u8],
+    diagnostic: &'static str,
+) -> io::Error {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let read_task =
+        tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await });
+
+    let start = expect_exec_start(&mut guest).await;
+    let payload = vsock_proto::encode_exec_result(
+        termination,
+        12,
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: stderr,
+            truncated: false,
+        },
+        diagnostic,
+    )
+    .unwrap();
+    send_raw_exec_result(&mut guest, start.seq(), payload).await;
+
+    read_task.await.unwrap().unwrap_err()
+}
+
 #[tokio::test]
 async fn read_file_returns_content_and_missing() {
     let (host, mut guest) = setup_host_and_guest().await;
@@ -254,6 +283,51 @@ async fn read_file_preserves_truncated_stderr_on_nonzero_exit() {
     let err = read_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Other);
     assert!(err.to_string().contains("stderr truncated"));
+}
+
+#[tokio::test]
+async fn read_file_reports_terminal_timeout_as_timed_out() {
+    let err = read_file_terminal_error(
+        ExecTermination::TimedOut,
+        b"helper timed out",
+        "guest reported timeout",
+    )
+    .await;
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    let message = err.to_string();
+    assert!(message.contains("read_file timed out for /tmp/session.txt"));
+    assert!(message.contains("helper timed out"));
+    assert!(message.contains("guest reported timeout"));
+}
+
+#[tokio::test]
+async fn read_file_reports_non_exit_terminal_states() {
+    for (termination, expected, diagnostic) in [
+        (
+            ExecTermination::Cancelled,
+            "read_file was cancelled for /tmp/session.txt",
+            "cancelled by guest",
+        ),
+        (
+            ExecTermination::StartFailed,
+            "read_file exec start failed for /tmp/session.txt",
+            "spawn failed",
+        ),
+        (
+            ExecTermination::WaitFailed,
+            "read_file exec wait failed for /tmp/session.txt",
+            "wait failed",
+        ),
+    ] {
+        let err = read_file_terminal_error(termination, b"helper stderr", diagnostic).await;
+
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        let message = err.to_string();
+        assert!(message.contains(expected));
+        assert!(message.contains("helper stderr"));
+        assert!(message.contains(diagnostic));
+    }
 }
 
 #[tokio::test]

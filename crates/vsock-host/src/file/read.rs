@@ -1,21 +1,76 @@
 use std::io;
 use std::time::Duration;
 
-use crate::{ExecCaptureRequest, ExecResult, FrameWriteObserver, VsockHost, exec_operation};
+use vsock_proto::ExecTermination;
+
+use crate::{
+    ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput, FrameWriteObserver,
+    VsockHost, exec_operation,
+};
 
 use super::{
     MISSING_FILE_EXIT_CODE, normalize_file_exec_stderr, read_regular_file_command,
     validate_guest_file_path,
 };
 
+fn read_exec_output(
+    path: &str,
+    name: &str,
+    output: ExecOwnedCapturedOutput,
+) -> io::Result<(Vec<u8>, bool)> {
+    match output {
+        ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
+        ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("read_file result for {path} discarded {name} capture"),
+        )),
+    }
+}
+
+fn read_terminal_error_message(prefix: String, stderr: &[u8], diagnostic: &str) -> String {
+    let mut details = Vec::new();
+    if !stderr.is_empty() {
+        details.push(format!("stderr: {}", String::from_utf8_lossy(stderr)));
+    }
+    if !diagnostic.is_empty() {
+        details.push(format!("diagnostic: {diagnostic}"));
+    }
+    if details.is_empty() {
+        prefix
+    } else {
+        format!("{prefix}: {}", details.join("; "))
+    }
+}
+
 fn validate_read_exec_result(
     path: &str,
     max_bytes: u64,
-    result: ExecResult,
+    result: ExecOperationResult,
 ) -> io::Result<Option<Vec<u8>>> {
-    if result.exit_code == MISSING_FILE_EXIT_CODE {
-        if result.stdout_truncated || !result.stdout.is_empty() {
-            let stdout_detail = if result.stdout_truncated {
+    if result.stream_overflowed {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read_file exec operation unexpectedly overflowed a stream queue",
+        ));
+    }
+
+    let ExecOperationResult {
+        termination,
+        stdout,
+        stderr,
+        diagnostic,
+        ..
+    } = result;
+    let (stdout, stdout_truncated) = read_exec_output(path, "stdout", stdout)?;
+    let (stderr, stderr_truncated) = read_exec_output(path, "stderr", stderr)?;
+
+    if termination
+        == (ExecTermination::Exited {
+            exit_code: MISSING_FILE_EXIT_CODE,
+        })
+    {
+        if stdout_truncated || !stdout.is_empty() {
+            let stdout_detail = if stdout_truncated {
                 "stdout truncated"
             } else {
                 "stdout"
@@ -25,7 +80,7 @@ fn validate_read_exec_result(
                 format!("read_file missing result for {path} included {stdout_detail}"),
             ));
         }
-        let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
+        let stderr = normalize_file_exec_stderr(stderr, stderr_truncated);
         if !stderr.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -37,29 +92,54 @@ fn validate_read_exec_result(
         }
         return Ok(None);
     }
-    if result.exit_code != 0 {
-        let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
-        return Err(io::Error::other(format!(
+
+    let stderr = normalize_file_exec_stderr(stderr, stderr_truncated);
+    match termination {
+        ExecTermination::Exited { exit_code: 0 } => {
+            if stdout_truncated {
+                return Err(io::Error::other(format!(
+                    "file {path} exceeded {max_bytes} bytes"
+                )));
+            }
+            if !stderr.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "read_file result for {path} included stderr: {}",
+                        String::from_utf8_lossy(&stderr)
+                    ),
+                ));
+            }
+            Ok(Some(stdout))
+        }
+        ExecTermination::Exited { exit_code: _ } => Err(io::Error::other(format!(
             "failed to read file {path}: {}",
             String::from_utf8_lossy(&stderr)
-        )));
-    }
-    if result.stdout_truncated {
-        return Err(io::Error::other(format!(
-            "file {path} exceeded {max_bytes} bytes"
-        )));
-    }
-    let stderr = normalize_file_exec_stderr(result.stderr, result.stderr_truncated);
-    if !stderr.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "read_file result for {path} included stderr: {}",
-                String::from_utf8_lossy(&stderr)
+        ))),
+        ExecTermination::TimedOut => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            read_terminal_error_message(
+                format!("read_file timed out for {path}"),
+                &stderr,
+                &diagnostic,
             ),
-        ));
+        )),
+        ExecTermination::Cancelled => Err(io::Error::other(read_terminal_error_message(
+            format!("read_file was cancelled for {path}"),
+            &stderr,
+            &diagnostic,
+        ))),
+        ExecTermination::StartFailed => Err(io::Error::other(read_terminal_error_message(
+            format!("read_file exec start failed for {path}"),
+            &stderr,
+            &diagnostic,
+        ))),
+        ExecTermination::WaitFailed => Err(io::Error::other(read_terminal_error_message(
+            format!("read_file exec wait failed for {path}"),
+            &stderr,
+            &diagnostic,
+        ))),
     }
-    Ok(Some(result.stdout))
 }
 
 impl VsockHost {
@@ -111,23 +191,23 @@ impl VsockHost {
         }
 
         let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
-        let result = self
-            .exec_capture_with_write_observer(
-                ExecCaptureRequest {
-                    timeout_ms,
-                    command: &command,
-                    env: &[],
-                    sudo: false,
-                    label: "read-file",
-                    stdout_limit_bytes,
-                    stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-                    expected_exit_codes: &[MISSING_FILE_EXIT_CODE],
-                    stdin_bytes: None,
-                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-                },
-                write_observer,
-            )
-            .await?;
+        let result = exec_operation::exec_operation_capture_on_shared_with_write_observer(
+            &self.shared,
+            ExecCaptureRequest {
+                timeout_ms,
+                command: &command,
+                env: &[],
+                sudo: false,
+                label: "read-file",
+                stdout_limit_bytes,
+                stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[MISSING_FILE_EXIT_CODE],
+                stdin_bytes: None,
+                wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+            },
+            write_observer,
+        )
+        .await?;
         validate_read_exec_result(path, max_bytes, result)
     }
 }
