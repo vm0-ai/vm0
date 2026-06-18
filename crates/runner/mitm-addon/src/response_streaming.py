@@ -362,17 +362,16 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             usage_sources[message_id] = usage_target
         usage.merge_openai_responses_usage_result(usage_target, usage_result)
         run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-        release_source = usage.report_model_provider_usage_source(
+        source_disposition = usage.report_model_provider_usage_source(
             flow,
             run_id,
             message_id,
             usage_target,
         )
-        # The accepted OpenAI Responses WebSocket events are final for a logical
-        # response id. Once that source reaches the source-preserving buffer,
-        # later same-id frames are duplicates under source/category idempotency
-        # and terminal end/error hooks do not need to retain it on the flow.
-        if release_source:
+        # Retain only sources that may still become reportable on a later
+        # same-response-id frame. Buffered or permanently unreportable sources
+        # do not need to stay in per-flow metadata until websocket_end/error.
+        if source_disposition == "release":
             usage_sources.pop(message_id, None)
         return
 
