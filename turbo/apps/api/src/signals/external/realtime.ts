@@ -110,6 +110,15 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
 
+export async function publishChatThreadRunFinished(args: {
+  readonly userId: string;
+  readonly threadId: string;
+}): Promise<void> {
+  await publishUserSignal([args.userId], "chatThreadRunFinished", {
+    threadId: args.threadId,
+  });
+}
+
 /**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu

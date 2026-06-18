@@ -18,6 +18,10 @@ import {
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
 import {
+  MAC_AUTOMATION_SETTINGS_URL,
+  createAutomationPermissionDeniedPrompt,
+} from "./desktop-automation-permission";
+import {
   installComputerUseIpc,
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
@@ -84,6 +88,7 @@ import {
   type DesktopAuthCallback,
 } from "./desktop-auth";
 import {
+  buildDesktopMainWindowSizeOptions,
   hideDockForHiddenMainWindow,
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
@@ -144,6 +149,22 @@ const computerUseNativeBackend = createComputerUseNativeBackend({
   onRuntimeError: captureDesktopNativeHelperError,
 });
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const automationPermissionPrompt = createAutomationPermissionDeniedPrompt({
+  sourceLabel: config.identity.displayName,
+  showDialog: async (options) => {
+    const window = currentDialogWindow();
+    const result = window
+      ? await dialog.showMessageBox(window, options)
+      : await dialog.showMessageBox(options);
+    return result.response;
+  },
+  openAutomationSettings: () => {
+    openExternal(MAC_AUTOMATION_SETTINGS_URL);
+  },
+  onError: (error) => {
+    console.error("Automation permission prompt failed", error);
+  },
+});
 const computerUseAutoStart = new DesktopComputerUseAutoStartSupervisor({
   getState: getComputerUseBridgeState,
   start: async () => {
@@ -485,6 +506,7 @@ async function startComputerUseRuntime(
           snapshotStore: computerUseSnapshotStore,
         });
       },
+      onCommandFailure: automationPermissionPrompt,
       onChange: notifyComputerUseChanged,
     });
   }
@@ -724,14 +746,17 @@ function applyApplicationMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+function currentDialogWindow(): BrowserWindow | undefined {
+  return mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+    ? mainWindow
+    : undefined;
+}
+
 async function confirmDesktopQuit(): Promise<boolean> {
   const options = buildDesktopQuitConfirmationOptions(
     config.identity.displayName,
   );
-  const window =
-    mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
-      ? mainWindow
-      : undefined;
+  const window = currentDialogWindow();
   const result = window
     ? await dialog.showMessageBox(window, options)
     : await dialog.showMessageBox(options);
@@ -886,10 +911,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   await showDockForActiveMainWindow();
   const window = new BrowserWindow({
     ...browserWindowOptions(),
-    width: 1280,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 700,
+    ...buildDesktopMainWindowSizeOptions(),
   });
 
   mainWindow = window;
@@ -943,15 +965,18 @@ function waitForAuthConsumeWindow(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let closed = false;
     const timeout = setTimeout(() => {
       rejectAuth(new Error("Desktop auth consume timed out"));
     }, 30_000);
 
     const cleanup = (): void => {
       clearTimeout(timeout);
-      window.webContents.off("did-navigate", handleNavigation);
-      window.webContents.off("did-fail-load", handleLoadFailure);
-      window.off("closed", handleClosed);
+      if (!closed && !window.isDestroyed()) {
+        window.webContents.off("did-navigate", handleNavigation);
+        window.webContents.off("did-fail-load", handleLoadFailure);
+        window.off("closed", handleClosed);
+      }
     };
 
     const resolveAuth = (): void => {
@@ -1019,6 +1044,7 @@ function waitForAuthConsumeWindow(
     };
 
     const handleClosed = (): void => {
+      closed = true;
       rejectAuth(new Error("Desktop auth consume window closed"));
     };
 

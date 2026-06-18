@@ -83,6 +83,7 @@ import { bfl } from "./connectors/bfl";
 import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
 import { bland } from "./connectors/bland";
+import { box } from "./connectors/box";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
 import { brevo } from "./connectors/brevo";
@@ -188,6 +189,7 @@ import { mercury } from "./connectors/mercury";
 import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
+import { microsoft365 } from "./connectors/microsoft-365";
 import { tiktokAds } from "./connectors/tiktok-ads";
 import { minimax } from "./connectors/minimax";
 import { minio } from "./connectors/minio";
@@ -230,6 +232,7 @@ import { profound } from "./connectors/profound";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
+import { quickbooks } from "./connectors/quickbooks";
 import { qiita } from "./connectors/qiita";
 import { railway } from "./connectors/railway";
 import { railwayProject } from "./connectors/railway-project";
@@ -237,6 +240,7 @@ import { reap } from "./connectors/reap";
 import { reddit } from "./connectors/reddit";
 import { reducto } from "./connectors/reducto";
 import { recraft } from "./connectors/recraft";
+import { render } from "./connectors/render";
 import { replicate } from "./connectors/replicate";
 import { reportei } from "./connectors/reportei";
 import { resend } from "./connectors/resend";
@@ -302,6 +306,18 @@ export interface ConnectorManualGrantFieldConfig {
   placeholder?: string;
   /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
   storage?: "secret" | "variable";
+  /**
+   * Optional normalization applied to the user-entered value before it is
+   * persisted.
+   *
+   * - `"host"`: strip the URL scheme, userinfo, path, query, fragment, and
+   *   trailing slash, leaving only `host[:port]`. Use this for fields templated
+   *   into a firewall base URL's authority position (`https://${{ vars.X }}`),
+   *   where the firewall validator rejects values that introduce URL structure
+   *   (`/`, `?`, `#`, `@`). Lets a user paste a full backend URL
+   *   (e.g. `https://my-project.example.app/`) without breaking the connection.
+   */
+  normalize?: "host";
 }
 
 export type ConnectorAuthClientConfig =
@@ -1102,6 +1118,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...bitrefill,
   ...bitrix,
   ...bland,
+  ...box,
   ...braveSearch,
   ...brex,
   ...brevo,
@@ -1207,6 +1224,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...meshy,
   ...metaAds,
   ...metabase,
+  ...microsoft365,
   ...tiktokAds,
   ...minimax,
   ...minio,
@@ -1249,6 +1267,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...productlane,
   ...pushinator,
   ...qdrant,
+  ...quickbooks,
   ...qiita,
   ...railway,
   ...railwayProject,
@@ -1256,6 +1275,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...reddit,
   ...reducto,
   ...recraft,
+  ...render,
   ...replicate,
   ...reportei,
   ...resend,

@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.471.1](https://github.com/vm0-ai/vm0/compare/app-v0.471.0...app-v0.471.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* escape html in user chat messages ([#18288](https://github.com/vm0-ai/vm0/issues/18288)) ([ab0b43c](https://github.com/vm0-ai/vm0/commit/ab0b43cf89ee69246e83571a248edad935db49b3))
+* render fenced hosted site links as previews ([#18281](https://github.com/vm0-ai/vm0/issues/18281)) ([d13702b](https://github.com/vm0-ai/vm0/commit/d13702bcd0ac839054a5ae6fef350d84e3afe999))
+* show user image attachments before text ([#18289](https://github.com/vm0-ai/vm0/issues/18289)) ([eeba508](https://github.com/vm0-ai/vm0/commit/eeba5087754e0d2560ecf66f1dc1d2d8108b220c))
+
+
+### Refactoring
+
+* remove paid onboarding redirect switch ([#18253](https://github.com/vm0-ai/vm0/issues/18253)) ([1cb8858](https://github.com/vm0-ai/vm0/commit/1cb88584d30a882541de87e535ebfdf99056097f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/connectors bumped to 1.92.0
+    * @vm0/core bumped to 8.355.1
+
+## [0.471.0](https://github.com/vm0-ai/vm0/compare/app-v0.470.0...app-v0.471.0) (2026-06-18)
+
+
+### Features
+
+* roll out chat draft + double-click rename switches, drop automation sidebar switch ([#18234](https://github.com/vm0-ai/vm0/issues/18234)) ([b799861](https://github.com/vm0-ai/vm0/commit/b7998617982e6a542d8f15125d8db82b532e4163))
+
+
+### Bug Fixes
+
+* dismiss inline feedback toolbar when a click clears the selection ([#18231](https://github.com/vm0-ai/vm0/issues/18231)) ([47e9960](https://github.com/vm0-ai/vm0/commit/47e9960d104a9f07736356f87ad2faafb4c7f2c7)), closes [#18230](https://github.com/vm0-ai/vm0/issues/18230)
+* soften template picker card shadow to match chat composer ([#18141](https://github.com/vm0-ai/vm0/issues/18141)) ([ba5b79e](https://github.com/vm0-ai/vm0/commit/ba5b79e5e78b0fd28603eb9f71ddfcb1788ab7ad)), closes [#18140](https://github.com/vm0-ai/vm0/issues/18140)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+    * @vm0/core bumped to 8.355.0
+
+## [0.470.0](https://github.com/vm0-ai/vm0/compare/app-v0.469.0...app-v0.470.0) (2026-06-18)
+
+
+### Features
+
+* add Render connector ([#18202](https://github.com/vm0-ai/vm0/issues/18202)) ([d391830](https://github.com/vm0-ai/vm0/commit/d391830ac2006f8c6c9281f3aeeddce2fed14e96))
+
+
+### Bug Fixes
+
+* equalize work-fold header spacing in zero chat ([#18215](https://github.com/vm0-ai/vm0/issues/18215)) ([8128acf](https://github.com/vm0-ai/vm0/commit/8128acf05d2624f2b010087b27edee1a5189aa1c))
+* simplify presentation template detail title ([#18204](https://github.com/vm0-ai/vm0/issues/18204)) ([7a005eb](https://github.com/vm0-ai/vm0/commit/7a005ebb102bad2d50ffd7a1c3368aca07fcc8c3))
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+    * @vm0/core bumped to 8.354.0
+
 ## [0.469.0](https://github.com/vm0-ai/vm0/compare/app-v0.468.0...app-v0.469.0) (2026-06-18)
 
 

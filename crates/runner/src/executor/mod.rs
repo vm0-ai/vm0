@@ -192,7 +192,7 @@ pub struct ExecuteOutcome {
     pub workspace_promotable: bool,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
-    pub guest_session_id: Option<String>,
+    pub discovered_cli_agent_session_id: Option<String>,
 }
 
 impl ExecuteOutcome {
@@ -407,7 +407,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             network_log_session: None,
             workspace_image: None,
             workspace_promotable: false,
-            guest_session_id: None,
+            discovered_cli_agent_session_id: None,
         }
     } else {
         match execute_new_sandbox_with_prepared_notifier(
@@ -432,7 +432,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 network_log_session: None,
                 workspace_image: None,
                 workspace_promotable: false,
-                guest_session_id: None,
+                discovered_cli_agent_session_id: None,
             },
         }
     };
@@ -463,7 +463,7 @@ pub async fn execute_job_reuse(
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let idle_parts = idle_sandbox.into_parts();
-    let idle_session_id = idle_parts.session_id;
+    let idle_cli_agent_session_id = idle_parts.cli_agent_session_id;
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
     let workspace_promotion = idle_parts.workspace_promotion;
@@ -476,7 +476,7 @@ pub async fn execute_job_reuse(
                     run_id,
                     sandbox_id,
                     profile_name: &params.profile_name,
-                    session_id: Some(idle_session_id.as_str()),
+                    cli_agent_session_id: Some(idle_cli_agent_session_id.as_str()),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                     workspace_drive_available: true,
@@ -499,7 +499,7 @@ pub async fn execute_job_reuse(
                             network_log_session: None,
                             workspace_image: None,
                             workspace_promotable: false,
-                            guest_session_id: None,
+                            discovered_cli_agent_session_id: None,
                         },
                         telemetry,
                     );
@@ -507,9 +507,9 @@ pub async fn execute_job_reuse(
                 None
             }
         };
-        let workspace_promotable = workspace_image
-            .as_ref()
-            .is_some_and(|image| image.can_attempt_promotion(Some(idle_session_id.as_str())));
+        let workspace_promotable = workspace_image.as_ref().is_some_and(|image| {
+            image.can_attempt_promotion(Some(idle_cli_agent_session_id.as_str()))
+        });
         return (
             ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(error)),
@@ -518,7 +518,7 @@ pub async fn execute_job_reuse(
                 network_log_session: None,
                 workspace_image,
                 workspace_promotable,
-                guest_session_id: None,
+                discovered_cli_agent_session_id: None,
             },
             telemetry,
         );
@@ -530,7 +530,7 @@ pub async fn execute_job_reuse(
                 run_id,
                 sandbox_id,
                 profile_name: &params.profile_name,
-                session_id: context.session_id(),
+                cli_agent_session_id: context.cli_agent_session_id(),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                 workspace_drive_available: true,
@@ -557,7 +557,7 @@ pub async fn execute_job_reuse(
                         network_log_session: None,
                         workspace_image: None,
                         workspace_promotable: false,
-                        guest_session_id: None,
+                        discovered_cli_agent_session_id: None,
                     },
                     telemetry,
                 );
@@ -586,7 +586,7 @@ pub async fn execute_job_reuse(
                 None,
             ),
             workspace_image,
-            guest_session_id: None,
+            discovered_cli_agent_session_id: None,
         }
     } else {
         let mut outcome = execute_reused_sandbox(
@@ -602,7 +602,7 @@ pub async fn execute_job_reuse(
         outcome.workspace_promotable = workspace_image_promotable(
             workspace_image.as_ref(),
             &context,
-            outcome.guest_session_id.as_deref(),
+            outcome.discovered_cli_agent_session_id.as_deref(),
         );
         outcome.workspace_image = workspace_image;
         outcome

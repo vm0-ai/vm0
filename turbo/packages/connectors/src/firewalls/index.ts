@@ -67,6 +67,7 @@ import { bflFirewall } from "./bfl.generated";
 import { bitrefillFirewall } from "./bitrefill.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { blandFirewall } from "./bland.generated";
+import { boxFirewall } from "./box.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brexFirewall } from "./brex.generated";
 import { brevoFirewall } from "./brevo.generated";
@@ -163,6 +164,7 @@ import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
 import { hunterFirewall } from "./hunter.generated";
 import { imgurFirewall } from "./imgur.generated";
+import { insforgeFirewall } from "./insforge.generated";
 import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
@@ -192,6 +194,7 @@ import { mercuryFirewall } from "./mercury.generated";
 import { meshyFirewall } from "./meshy.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
+import { microsoft365Firewall } from "./microsoft-365.generated";
 import { mossFirewall } from "./moss.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
@@ -231,6 +234,7 @@ import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { profoundFirewall } from "./profound.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qdrantFirewall } from "./qdrant.generated";
+import { quickbooksFirewall } from "./quickbooks.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { railwayFirewall } from "./railway.generated";
 import { railwayProjectFirewall } from "./railway-project.generated";
@@ -238,6 +242,7 @@ import { redditFirewall } from "./reddit.generated";
 import { reapFirewall } from "./reap.generated";
 import { reductoFirewall } from "./reducto.generated";
 import { recraftFirewall } from "./recraft.generated";
+import { renderFirewall } from "./render.generated";
 import { reporteiFirewall } from "./reportei.generated";
 import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
@@ -363,6 +368,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   bitrefill: bitrefillFirewall,
   bitrix: bitrixFirewall,
   bland: blandFirewall,
+  box: boxFirewall,
   "brave-search": braveSearchFirewall,
   brex: brexFirewall,
   brevo: brevoFirewall,
@@ -446,6 +452,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,
   imgur: imgurFirewall,
+  insforge: insforgeFirewall,
   instagram: instagramFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
@@ -473,6 +480,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   meshy: meshyFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
+  "microsoft-365": microsoft365Firewall,
   moss: mossFirewall,
   minimax: minimaxFirewall,
   miro: miroFirewall,
@@ -509,12 +517,14 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qdrant: qdrantFirewall,
+  quickbooks: quickbooksFirewall,
   qiita: qiitaFirewall,
   railway: railwayFirewall,
   "railway-project": railwayProjectFirewall,
   reddit: redditFirewall,
   reap: reapFirewall,
   recraft: recraftFirewall,
+  render: renderFirewall,
   reportei: reporteiFirewall,
   replicate: replicateFirewall,
   resend: resendFirewall,
@@ -777,7 +787,6 @@ export type NonFirewallConnectorType =
   | "bloom"
   | "chert"
   | "daytona"
-  | "insforge"
   | "interfaze"
   | "inth"
   | "keyframe-labs"

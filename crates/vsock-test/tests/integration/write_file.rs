@@ -1,4 +1,5 @@
 use crate::support::{Harness, shell_quote};
+use std::fs;
 
 #[test]
 fn shell_quote_escapes_single_quotes() {
@@ -163,6 +164,39 @@ async fn test_write_file_chunked() {
         .flatten()
         .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
     assert!(!temp_remains, "temp file was not cleaned up");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_write_file_chunked_directory_target_fails() {
+    let h = Harness::new().await;
+
+    let target_dir = h.dir.join("chunked-target-dir");
+    fs::create_dir(&target_dir).expect("create target directory");
+    let target_dir_str = target_dir.to_string_lossy().to_string();
+    let content = vec![0xCD; 16 * 1024 * 1024];
+
+    h.host()
+        .write_file(&target_dir_str, &content, false)
+        .await
+        .expect_err("chunked write_file should fail when target is a directory");
+
+    assert!(target_dir.is_dir());
+    let nested_entries = fs::read_dir(&target_dir)
+        .expect("read target directory")
+        .count();
+    assert_eq!(
+        nested_entries, 0,
+        "temp file must not be moved into target directory"
+    );
+
+    let temp_prefix = format!("{target_dir_str}.vm0tmp-");
+    let sibling_temp_remains = fs::read_dir(target_dir.parent().unwrap())
+        .expect("read parent directory")
+        .flatten()
+        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
+    assert!(!sibling_temp_remains, "temp file was not cleaned up");
+
     h.finish();
 }
 

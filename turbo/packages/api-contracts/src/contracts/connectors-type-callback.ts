@@ -14,6 +14,7 @@ export const connectorsTypeCallbackContract = c.router({
       code: z.string().optional(),
       auth_code: z.string().optional(),
       state: z.string().optional(),
+      realmId: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     }),

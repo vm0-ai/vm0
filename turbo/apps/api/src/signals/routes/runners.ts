@@ -121,8 +121,9 @@ function canonicalizeHeldSessionStates(
   states: readonly HeldSessionState[] | undefined,
 ): HeldSessionState[] | undefined {
   return states?.map((state) => {
+    const cliAgentSessionId = state.sessionId;
     return {
-      sessionId: state.sessionId,
+      sessionId: cliAgentSessionId,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
     };
   });
@@ -202,7 +203,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const pollBody$ = bodyResultOf(runnersPollContract.poll);
 
-function heldSessionIds(
+function uniqueHeldCliAgentSessionIds(
   states: readonly HeldSessionState[] | undefined,
 ): string[] {
   return [
@@ -231,7 +232,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const heldSessionStates = canonicalizeHeldSessionStates(
     body.data.heldSessionStates,
   );
-  const heldSessions = heldSessionIds(heldSessionStates);
+  const heldCliAgentSessionIds =
+    uniqueHeldCliAgentSessionIds(heldSessionStates);
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -255,11 +257,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const orderClauses =
-    heldSessions.length > 0
+    heldCliAgentSessionIds.length > 0
       ? [
-          sql`CASE WHEN ${runnerJobQueue.sessionId} IN (${sql.join(
-            heldSessions.map((sessionId) => {
-              return sql`${sessionId}`;
+          sql`CASE WHEN ${runnerJobQueue.cliAgentSessionId} IN (${sql.join(
+            heldCliAgentSessionIds.map((cliAgentSessionId) => {
+              return sql`${cliAgentSessionId}`;
             }),
             sql`, `,
           )}) THEN 0 ELSE 1 END`,

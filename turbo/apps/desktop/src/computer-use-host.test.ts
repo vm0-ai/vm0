@@ -7,6 +7,7 @@ import {
 } from "./computer-use-host";
 import type {
   ComputerUseCommand,
+  ComputerUseCommandFailure,
   ComputerUseCommandExecutionResult,
 } from "./computer-use-accessibility";
 import type { ComputerUsePermissionState } from "./computer-use-types";
@@ -57,6 +58,10 @@ function createRuntime(
       command: ComputerUseCommand,
       permissions: ComputerUsePermissionState,
     ) => Promise<ComputerUseCommandExecutionResult>;
+    readonly onCommandFailure?: (args: {
+      readonly command: ComputerUseCommand;
+      readonly failure: ComputerUseCommandFailure;
+    }) => void;
   } = {},
 ) {
   const sessionFetch =
@@ -88,6 +93,9 @@ function createRuntime(
       }
       return { status: "succeeded", result: {} };
     },
+    ...(options.onCommandFailure
+      ? { onCommandFailure: options.onCommandFailure }
+      : {}),
   });
   return { runtime, sessionFetch, hostFetch };
 }
@@ -497,6 +505,73 @@ describe("ComputerUseHostRuntime", () => {
     expect(entries).toHaveLength(20);
     expect(entries[0]?.commandId).toBe("cmd-25");
     expect(entries.at(-1)?.commandId).toBe("cmd-6");
+
+    await runtime.stop();
+  });
+
+  it("notifies command failures without moving the runtime offline", async () => {
+    vi.useFakeTimers();
+    const command: ComputerUseCommand = {
+      id: "cmd-1",
+      kind: "element.set_value",
+      payload: { app: "com.google.Chrome", value: "https://example.com" },
+    };
+    const failure: ComputerUseCommandFailure = {
+      status: "failed",
+      error: {
+        code: "automation_permission_denied",
+        message:
+          "Not authorized to send Apple events to Google Chrome. (-1743)",
+      },
+    };
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({ status: "command", command })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => failure);
+    const onCommandFailure =
+      vi.fn<
+        (args: {
+          readonly command: ComputerUseCommand;
+          readonly failure: ComputerUseCommandFailure;
+        }) => void
+      >();
+    const { runtime } = createRuntime({
+      hostFetch,
+      executeCommand,
+      onCommandFailure,
+    });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(onCommandFailure).toHaveBeenCalledWith({ command, failure });
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+    expect(runtime.getState().localCommandLog[0]).toMatchObject({
+      commandId: "cmd-1",
+      status: "failed",
+      error: failure.error,
+    });
 
     await runtime.stop();
   });

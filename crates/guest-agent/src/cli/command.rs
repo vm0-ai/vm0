@@ -12,14 +12,18 @@ use super::LOG_TAG;
 
 /// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    build_cli_command_for_framework(env::Framework::from_env())
+    build_cli_command_for_framework(env::Framework::from_env(), false)
 }
 
 pub(super) fn build_cli_command_for_framework(
     framework: env::Framework,
+    replay_user_messages: bool,
 ) -> Result<Vec<String>, AgentError> {
     match framework {
-        env::Framework::ClaudeCode => Ok(build_claude_command(env::use_mock_claude())),
+        env::Framework::ClaudeCode => Ok(build_claude_command(
+            env::use_mock_claude(),
+            replay_user_messages,
+        )),
         env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
     }
 }
@@ -47,6 +51,7 @@ struct ClaudeArgsConfig<'a> {
     disallowed_tools: &'a str,
     tools: &'a str,
     settings: &'a str,
+    replay_user_messages: bool,
 }
 
 fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
@@ -59,6 +64,9 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         "stream-json".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
+    if config.replay_user_messages {
+        args.push("--replay-user-messages".to_string());
+    }
 
     if !config.resume_id.is_empty() {
         log_info!(LOG_TAG, "Resuming session");
@@ -84,13 +92,14 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
     args
 }
 
-fn build_claude_command(use_mock: bool) -> Vec<String> {
+fn build_claude_command(use_mock: bool, replay_user_messages: bool) -> Vec<String> {
     let args = build_claude_args(ClaudeArgsConfig {
         resume_id: env::resume_session_id(),
         append_system_prompt: env::append_system_prompt(),
         disallowed_tools: env::disallowed_tools(),
         tools: env::tools(),
         settings: env::settings(),
+        replay_user_messages,
     });
 
     let bin = if use_mock {
@@ -239,6 +248,24 @@ mod tests {
         tools: &str,
         settings: &str,
     ) -> Vec<String> {
+        build_claude_args_for_test_with_replay(
+            resume_id,
+            append_system_prompt,
+            disallowed_tools,
+            tools,
+            settings,
+            true,
+        )
+    }
+
+    fn build_claude_args_for_test_with_replay(
+        resume_id: &str,
+        append_system_prompt: &str,
+        disallowed_tools: &str,
+        tools: &str,
+        settings: &str,
+        replay_user_messages: bool,
+    ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
@@ -247,13 +274,14 @@ mod tests {
             disallowed_tools,
             tools,
             settings,
+            replay_user_messages,
         })
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_claude_command(use_mock)
+        build_claude_command(use_mock, true)
     }
 
     fn assert_claude_prompt_is_not_positional(args: &[String], prompt: &str) {
@@ -275,9 +303,15 @@ mod tests {
         assert_eq!(args[input_idx + 1], "stream-json");
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_claude_prompt_is_not_positional(&args, "hello world");
-        assert!(!args.contains(&"--replay-user-messages".to_string()));
+        assert!(args.contains(&"--replay-user-messages".to_string()));
         assert!(!args.contains(&"--append-system-prompt".to_string()));
         assert!(!args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_omits_replay_user_messages_when_disabled() {
+        let args = build_claude_args_for_test_with_replay("", "", "", "", "", false);
+        assert!(!args.contains(&"--replay-user-messages".to_string()));
     }
 
     #[test]
@@ -310,6 +344,7 @@ mod tests {
             disallowed_tools: "",
             tools: "",
             settings: "",
+            replay_user_messages: true,
         });
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();

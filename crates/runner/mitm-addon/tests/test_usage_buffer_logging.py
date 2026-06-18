@@ -81,7 +81,6 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
     assert entries[1]["retained_source_event_count"] == 1
     assert entries[1]["webhook_batch_count"] == 1
     assert "secret-token" not in json.dumps(entries)
-    assert usage.counters._buffered_usage_events == 1
 
 
 def test_flush_logs_delivery_retry_retained_counts(tmp_path):
@@ -126,7 +125,6 @@ def test_flush_logs_delivery_retry_retained_counts(tmp_path):
     assert retained_entry["retained_webhook_batch_count"] == 1
     assert retained_entry["retained_source_event_count"] == 2
     assert "secret-token" not in json.dumps(entries)
-    assert usage.counters._buffered_usage_events == 2
 
 
 def test_flush_logs_failure_without_token(tmp_path):
@@ -164,4 +162,3 @@ def test_flush_logs_failure_without_token(tmp_path):
     assert isinstance(entries[1]["duration_ms"], int)
     assert entries[1]["duration_ms"] >= 0
     assert "secret-token" not in json.dumps(entries)
-    assert usage.counters._buffered_usage_events == 1

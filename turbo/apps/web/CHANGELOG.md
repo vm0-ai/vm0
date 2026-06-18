@@ -1,5 +1,51 @@
 # Changelog
 
+## [12.432.3](https://github.com/vm0-ai/vm0/compare/web-v12.432.2...web-v12.432.3) (2026-06-18)
+
+
+### Refactoring
+
+* remove paid onboarding redirect switch ([#18253](https://github.com/vm0-ai/vm0/issues/18253)) ([1cb8858](https://github.com/vm0-ai/vm0/commit/1cb88584d30a882541de87e535ebfdf99056097f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/core bumped to 8.355.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.92.0
+
+## [12.432.2](https://github.com/vm0-ai/vm0/compare/web-v12.432.1...web-v12.432.2) (2026-06-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/core bumped to 8.355.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.91.0
+
+## [12.432.1](https://github.com/vm0-ai/vm0/compare/web-v12.432.0...web-v12.432.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/core bumped to 8.354.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.90.0
+
 ## [12.432.0](https://github.com/vm0-ai/vm0/compare/web-v12.431.5...web-v12.432.0) (2026-06-18)
 
 

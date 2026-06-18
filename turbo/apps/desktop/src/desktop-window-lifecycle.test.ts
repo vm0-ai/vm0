@@ -1,4 +1,5 @@
 import {
+  buildDesktopMainWindowSizeOptions,
   hideDockForHiddenMainWindow,
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
@@ -7,6 +8,18 @@ import {
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 
 describe("desktop window lifecycle", () => {
+  it("uses a fixed main window size", () => {
+    expect(buildDesktopMainWindowSizeOptions()).toStrictEqual({
+      width: 1024,
+      height: 700,
+      minWidth: 1024,
+      minHeight: 700,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+    });
+  });
+
   it("uses integrated macOS window chrome", () => {
     expect(buildDesktopWindowChromeOptions("darwin")).toStrictEqual({
       titleBarStyle: "hiddenInset",

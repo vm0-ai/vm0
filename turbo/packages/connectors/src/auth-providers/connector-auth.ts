@@ -58,6 +58,7 @@ import { airtableProvider } from "./connectors/airtable/provider";
 import { asanaProvider } from "./connectors/asana/provider";
 import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
+import { boxProvider } from "./connectors/box/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
 import { cloudflareProvider } from "./connectors/cloudflare/provider";
@@ -84,6 +85,7 @@ import { larkProvider } from "./connectors/lark/provider";
 import { linearProvider } from "./connectors/linear/provider";
 import { mailchimpProvider } from "./connectors/mailchimp/provider";
 import { mercuryProvider } from "./connectors/mercury/provider";
+import { microsoft365Provider } from "./connectors/microsoft-365/provider";
 import { mondayProvider } from "./connectors/monday/provider";
 import { neonProvider } from "./connectors/neon/provider";
 import { notionProvider } from "./connectors/notion/provider";
@@ -95,16 +97,14 @@ import { sentryProvider } from "./connectors/sentry/provider";
 import { slackProvider } from "./connectors/slack/provider";
 import { slockProvider } from "./connectors/slock/provider";
 import { stravaProvider } from "./connectors/strava/provider";
-import {
-  stripeCliProvider,
-  stripeProvider,
-} from "./connectors/stripe/provider";
+import { stripeProvider } from "./connectors/stripe/provider";
 import { todoistProvider } from "./connectors/todoist/provider";
 import { vercelProvider } from "./connectors/vercel/provider";
 import { webflowProvider } from "./connectors/webflow/provider";
 import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
+import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
 import { xProvider } from "./connectors/x/provider";
@@ -442,6 +442,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   asana: { oauth: authCodeRefreshProviderEntry(asanaProvider) },
   aws: { cli: externalCodeRefreshProviderEntry(awsProvider) },
   base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
+  box: { oauth: authCodeRefreshProviderEntry(boxProvider) },
   canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
   close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
   cloudflare: {
@@ -493,6 +494,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   linear: { oauth: authCodeRefreshTokenRevokeProviderEntry(linearProvider) },
   mailchimp: { oauth: authCodeProviderEntry(mailchimpProvider) },
   mercury: { oauth: authCodeRefreshProviderEntry(mercuryProvider) },
+  "microsoft-365": {
+    oauth: authCodeRefreshProviderEntry(microsoft365Provider),
+  },
   monday: { oauth: authCodeRefreshProviderEntry(mondayProvider) },
   neon: { oauth: authCodeRefreshProviderEntry(neonProvider) },
   notion: { oauth: authCodeRefreshProviderEntry(notionProvider) },
@@ -503,6 +507,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
     oauth: authCodeRefreshProviderEntry(outlookMailProvider),
   },
   posthog: { oauth: authCodeRefreshProviderEntry(posthogProvider) },
+  quickbooks: { oauth: authCodeRefreshProviderEntry(quickbooksProvider) },
   reddit: { oauth: authCodeRefreshProviderEntry(redditProvider) },
   sentry: { oauth: authCodeRefreshProviderEntry(sentryProvider) },
   slack: { oauth: authCodeTokenRevokeProviderEntry(slackProvider) },
@@ -511,7 +516,6 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   strava: { oauth: authCodeRefreshProviderEntry(stravaProvider) },
   stripe: {
     oauth: authCodeRefreshProviderEntry(stripeProvider),
-    cli: deviceAuthProviderEntry(stripeCliProvider),
   },
   supabase: { oauth: authCodeRefreshProviderEntry(supabaseProvider) },
   "test-oauth": {

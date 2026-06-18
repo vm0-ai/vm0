@@ -390,24 +390,22 @@ function GoogleDriveMenuItem({
   }
 
   return (
-    <div className="group/google-drive-connect relative">
-      <ArtifactDownloadMenuItem
-        className="text-muted-foreground"
-        onClick={syncOrConnect}
-      >
-        <IconBrandGoogleDrive size={14} stroke={1.5} />
-        Connect Google Drive
-      </ArtifactDownloadMenuItem>
-      <div
-        role="tooltip"
-        className={cn(
-          "pointer-events-none absolute right-full top-1/2 z-[10001] mr-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md border border-border/70 bg-popover px-2 py-1 text-xs text-popover-foreground opacity-0 shadow-md transition-[opacity,transform] duration-[180ms] ease",
-          "group-hover/google-drive-connect:translate-x-0 group-hover/google-drive-connect:opacity-100 group-focus-within/google-drive-connect:translate-x-0 group-focus-within/google-drive-connect:opacity-100",
-        )}
-      >
-        {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
-      </div>
-    </div>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ArtifactDownloadMenuItem
+            className="text-muted-foreground"
+            onClick={syncOrConnect}
+          >
+            <IconBrandGoogleDrive size={14} stroke={1.5} />
+            Connect Google Drive
+          </ArtifactDownloadMenuItem>
+        </TooltipTrigger>
+        <TooltipContent side="left" className={ARTIFACT_FLOATING_LAYER_CLASS}>
+          {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

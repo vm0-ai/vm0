@@ -141,7 +141,7 @@ describe("runner dispatch affinity", () => {
       runnerGroup: "vm0/test",
       runId,
       profile: "vm0/default",
-      sessionId: "session-a",
+      cliAgentSessionId: "session-a",
     });
 
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("job", {
@@ -181,7 +181,7 @@ describe("runner dispatch affinity", () => {
       runnerGroup: "vm0/test",
       runId,
       profile: "vm0/default",
-      sessionId: "session-a",
+      cliAgentSessionId: "session-a",
     });
 
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("job", {
@@ -224,7 +224,7 @@ describe("runner dispatch affinity", () => {
       runnerGroup: "vm0/test",
       runId,
       profile: "vm0/default",
-      sessionId: "session-a",
+      cliAgentSessionId: "session-a",
     });
 
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("job", {
@@ -304,7 +304,7 @@ describe("runner dispatch affinity", () => {
       runnerGroup: "vm0/test",
       runId,
       profile: "vm0/default",
-      sessionId: "session-a",
+      cliAgentSessionId: "session-a",
     });
 
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("job", {

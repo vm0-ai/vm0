@@ -187,6 +187,53 @@ const BATCH_PRESENTATION_PICKER_ITEMS = [
   },
 ] as const;
 
+const PICKER_PROMPT_SCENARIOS = [
+  {
+    slug: "playful-launch-presentation",
+    expectedSnippets: ["SproutPop", "people and culture leaders"],
+  },
+  {
+    slug: "botane-organic-deck",
+    expectedSnippets: ["Moss & Moon", "hospitality partners"],
+  },
+  {
+    slug: "business-data-presentation",
+    expectedSnippets: ["HarborCart", "leadership team"],
+  },
+  {
+    slug: "crayon-learning-deck",
+    expectedSnippets: ["Rainbow Lab", "families"],
+  },
+  {
+    slug: "creative-agency-presentation",
+    expectedSnippets: ["Northstar Studio", "client board"],
+  },
+  {
+    slug: "data-report-presentation",
+    expectedSnippets: ["MetroPulse", "urban planning stakeholders"],
+  },
+  {
+    slug: "editorial-magazine-deck",
+    expectedSnippets: ["Field Notes Quarterly", "premium sponsors"],
+  },
+  {
+    slug: "landing-consulting-deck",
+    expectedSnippets: ["ScaleBridge", "revenue leadership team"],
+  },
+  {
+    slug: "lumina-creative-studio",
+    expectedSnippets: ["LensLab Studio", "beauty brand's global campaign"],
+  },
+  {
+    slug: "mosaic-geometric-pitch",
+    expectedSnippets: ["CivicLink", "city innovation leaders"],
+  },
+  {
+    slug: "playful-pop-deck",
+    expectedSnippets: ["FizzPop", "retail and student ambassador partners"],
+  },
+] as const;
+
 function expectOpenDesignSource(
   id: string,
   sourcePathPrefix: "design-systems/" | "design-templates/",
@@ -261,6 +308,29 @@ describe("presentation template items", () => {
 
       expect(item.prompt).toContain(`design system \`${promptDesignSystem}\``);
       expect(item.prompt).toContain(`template \`${promptTemplate}\``);
+    }
+  });
+
+  it("keeps picker prompts tied to concrete demo scenarios", () => {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
+      expect(item.prompt, item.slug).not.toMatch(
+        /\bcreate a 15-slide presentation for\b/i,
+      );
+    }
+
+    for (const scenario of PICKER_PROMPT_SCENARIOS) {
+      const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+        return candidate.slug === scenario.slug;
+      });
+
+      expect(item, scenario.slug).toBeDefined();
+      if (!item) {
+        throw new Error(`missing ${scenario.slug} picker item`);
+      }
+
+      for (const snippet of scenario.expectedSnippets) {
+        expect(item.prompt, scenario.slug).toContain(snippet);
+      }
     }
   });
 
@@ -402,6 +472,30 @@ describe("presentation template items", () => {
       expect(findTemplate(item.templateId)?.targets).toContain("presentation");
       expectR2ArchiveSource(item.designSystemId, expected.designSourcePath);
       expectR2ArchiveSource(item.templateId, expected.templateSourcePath);
+    }
+  });
+
+  it("registers non-picker presentation templates on private R2 sources", () => {
+    const entries = [
+      {
+        designSystemId: "design-system:nocturne",
+        templateId: "template:html-ppt-nocturne",
+        designSourcePath: "presentation-design-system/nocturne",
+        templateSourcePath: "presentation-template/nocturne",
+      },
+      {
+        designSystemId: "design-system:neo-brutalism",
+        templateId: "template:html-ppt-neo-brutalism",
+        designSourcePath: "presentation-design-system/neo-brutalism",
+        templateSourcePath: "presentation-template/neo-brutalism",
+      },
+    ] as const;
+
+    for (const entry of entries) {
+      expect(findDesignSystem(entry.designSystemId)).toBeDefined();
+      expect(findTemplate(entry.templateId)?.targets).toContain("presentation");
+      expectR2ArchiveSource(entry.designSystemId, entry.designSourcePath);
+      expectR2ArchiveSource(entry.templateId, entry.templateSourcePath);
     }
   });
 

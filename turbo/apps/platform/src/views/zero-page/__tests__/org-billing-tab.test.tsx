@@ -1,6 +1,8 @@
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
+  zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingDowngradeContract,
   zeroBillingPortalContract,
@@ -63,6 +65,8 @@ function activeProBillingStatus(): BillingStatusResponse {
       },
     ],
     creditGrants: [],
+    concurrencyLimit: 2,
+    concurrencySubscriptions: [],
   };
 }
 
@@ -72,6 +76,7 @@ function activeTeamBillingStatus(): BillingStatusResponse {
     tier: "team",
     credits: 130_000,
     currentPeriodEnd: "2026-05-01T00:00:00Z",
+    concurrencyLimit: 10,
     creditBreakdown: [
       {
         category: "plan",
@@ -105,6 +110,8 @@ function noActiveBillingStatus(): BillingStatusResponse {
     },
     creditBreakdown: [],
     creditGrants: [],
+    concurrencyLimit: 0,
+    concurrencySubscriptions: [],
   };
 }
 
@@ -261,6 +268,148 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(window.location.href).toBe(
         "https://billing.stripe.com/customer-portal/test-org",
+      );
+    });
+  });
+
+  it("shows team concurrency add-on and starts checkout for more slots", async () => {
+    let requestedQuantity: number | null = null;
+    let canceledSubscriptionId: string | null = null;
+    let restoredSubscriptionId: string | null = null;
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      concurrencyLimit: 12,
+      concurrencySubscriptions: [
+        {
+          id: "sub_concurrency_12345678",
+          quantity: 2,
+          currentPeriodEnd: "2026-06-01T00:00:00Z",
+          cancelAtPeriodEnd: false,
+        },
+      ],
+    };
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "team-concurrency-org",
+      name: "Team Concurrency Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus);
+    });
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.cancel,
+      ({ params, respond }) => {
+        canceledSubscriptionId = params.subscriptionId;
+        billingStatus = {
+          ...billingStatus,
+          concurrencySubscriptions: billingStatus.concurrencySubscriptions.map(
+            (subscription) => {
+              if (subscription.id !== params.subscriptionId) {
+                return subscription;
+              }
+              return { ...subscription, cancelAtPeriodEnd: true };
+            },
+          ),
+        };
+        return respond(200, {
+          success: true,
+          currentPeriodEnd: "2026-06-01T00:00:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.restore,
+      ({ params, respond }) => {
+        restoredSubscriptionId = params.subscriptionId;
+        billingStatus = {
+          ...billingStatus,
+          concurrencySubscriptions: billingStatus.concurrencySubscriptions.map(
+            (subscription) => {
+              if (subscription.id !== params.subscriptionId) {
+                return subscription;
+              }
+              return { ...subscription, cancelAtPeriodEnd: false };
+            },
+          ),
+        };
+        return respond(200, { success: true });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        requestedQuantity = body.quantity;
+        return respond(200, {
+          url: `https://checkout.stripe.com/concurrency?quantity=${body.quantity}`,
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("12 concurrent runs")).toBeInTheDocument();
+      expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Cancel"));
+    const cancelDialog = await screen.findByRole("dialog", {
+      name: "Cancel concurrency subscription?",
+    });
+    expect(canceledSubscriptionId).toBeNull();
+    click(buttonByText("Cancel subscription", cancelDialog));
+
+    await waitFor(() => {
+      expect(canceledSubscriptionId).toBe("sub_concurrency_12345678");
+      expect(
+        screen.getByText(
+          "Concurrency subscription canceled. Slots stay active until Jun 1, 2026.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Active until Jun 1, 2026")).toBeInTheDocument();
+      expect(buttonByText("Restore")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Restore"));
+    const restoreDialog = await screen.findByRole("dialog", {
+      name: "Restore concurrency subscription?",
+    });
+    expect(restoredSubscriptionId).toBeNull();
+    click(buttonByText("Restore subscription", restoreDialog));
+
+    await waitFor(() => {
+      expect(restoredSubscriptionId).toBe("sub_concurrency_12345678");
+      expect(
+        screen.getByText("Concurrency subscription restored."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Buy concurrent"));
+
+    const purchaseDialog = await screen.findByRole("dialog", {
+      name: "Buy concurrency",
+    });
+    click(
+      within(purchaseDialog).getByLabelText(
+        "Increase additional concurrency quantity",
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(purchaseDialog).getByText("Buy $20/month"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Buy $20/month", purchaseDialog));
+
+    await waitFor(() => {
+      expect(requestedQuantity).toBe(2);
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/concurrency?quantity=2",
       );
     });
   });

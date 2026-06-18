@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.42](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.41...nbd-cow-v0.4.42) (2026-06-18)
+
+
+### Refactoring
+
+* **nbd-cow:** split device lifecycle internals ([#18214](https://github.com/vm0-ai/vm0/issues/18214)) ([11d7c56](https://github.com/vm0-ai/vm0/commit/11d7c567192a25e8ae27ca87f8722682dedd1631))
+
 ## [0.4.41](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.40...nbd-cow-v0.4.41) (2026-06-18)
 
 

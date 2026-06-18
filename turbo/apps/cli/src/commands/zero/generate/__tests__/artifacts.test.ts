@@ -88,6 +88,9 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
       );
+      expect(stdout).toContain(
+        "Check that shapes, charts, images, or decorative graphics do not cover readable text",
+      );
     },
   );
 

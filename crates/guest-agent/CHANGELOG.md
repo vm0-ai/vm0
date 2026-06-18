@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.38.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.0...guest-agent-v0.38.1) (2026-06-18)
+
+## [0.38.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.5...guest-agent-v0.38.0) (2026-06-18)
+
+
+### Features
+
+* **guest-agent:** add claude active input support ([#18124](https://github.com/vm0-ai/vm0/issues/18124)) ([a62e604](https://github.com/vm0-ai/vm0/commit/a62e60404961eea9a1034c0abf6f82b25364cea0))
+
+
+### Refactoring
+
+* clarify agent and cli session ids ([#18232](https://github.com/vm0-ai/vm0/issues/18232)) ([18fa8d6](https://github.com/vm0-ai/vm0/commit/18fa8d6e5740b7121b3985a19b5082a637f9d39b))
+
+## [0.37.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.4...guest-agent-v0.37.5) (2026-06-18)
+
 ## [0.37.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.3...guest-agent-v0.37.4) (2026-06-18)
 
 ## [0.37.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.2...guest-agent-v0.37.3) (2026-06-18)

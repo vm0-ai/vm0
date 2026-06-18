@@ -145,13 +145,13 @@ export function submitDiagnosticBundle(
   return computed(async (get): Promise<DiagnosticBundleResult> => {
     const { title, description, userId, orgId, runId, run } = params;
     const reference = `${params.referencePrefix}-${randomUUID().slice(0, 8)}`;
-    const sessionId = run.continuedFromSessionId;
+    const agentSessionId = run.continuedFromSessionId;
     const db = get(db$);
 
     const [connectors, agentConfig, sessionRuns] = await Promise.all([
       get(collectConnectors(orgId, userId)),
       collectAgentConfig(db, run.agentComposeVersionId),
-      collectSessionRuns(db, runId, sessionId),
+      collectSessionRuns(db, runId, agentSessionId),
     ]);
 
     const sessionRunIds = sessionRuns.map((sessionRun) => {
@@ -180,7 +180,7 @@ export function submitDiagnosticBundle(
       userId,
       orgId,
       runId,
-      sessionId,
+      sessionId: agentSessionId,
       title,
       description,
       chatHistory,
@@ -503,16 +503,16 @@ function sessionRunSelect() {
 function collectSessionRuns(
   db: ServiceDb,
   runId: string,
-  sessionId: string | null,
+  agentSessionId: string | null,
 ): Promise<DiagnosticRunRecord[]> {
-  if (sessionId) {
+  if (agentSessionId) {
     return db
       .select(sessionRunSelect())
       .from(agentRuns)
       .where(
         or(
-          eq(agentRuns.continuedFromSessionId, sessionId),
-          sql`${agentRuns.result}->>'agentSessionId' = ${sessionId}`,
+          eq(agentRuns.continuedFromSessionId, agentSessionId),
+          sql`${agentRuns.result}->>'agentSessionId' = ${agentSessionId}`,
         ),
       )
       .orderBy(agentRuns.createdAt);

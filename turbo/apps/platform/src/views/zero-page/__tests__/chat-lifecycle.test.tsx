@@ -1010,6 +1010,33 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders user html-like text literally", async () => {
+    const threadId = "thread-user-html-like-text";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          role: "user",
+          content: "<span> 123 </span>",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const userBubble = await waitFor(() => {
+      const bubble = document.querySelector(".zero-chat-bubble-user");
+      expect(bubble).toBeInstanceOf(HTMLElement);
+      expect(
+        within(bubble as HTMLElement).getByText("<span> 123 </span>"),
+      ).toBeInTheDocument();
+      return bubble as HTMLElement;
+    });
+
+    expect(userBubble.querySelector("span")).toBeNull();
+  });
+
   it("recalls a queued follow-up while an optimistic new thread settles", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
@@ -1620,7 +1647,9 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const credit = await screen.findByLabelText("Credit usage 24,234");
+    const credit = await waitFor(() => {
+      return buttonByLabel("Credit usage 24,234");
+    });
     const actions = credit.closest('[data-testid="chat-message-actions"]');
     expect(actions).not.toBeNull();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
@@ -1629,9 +1658,6 @@ describe("chat lifecycle", () => {
     ).toBeTruthy();
 
     click(credit);
-    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
-
-    fireEvent.pointerEnter(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1650,11 +1676,13 @@ describe("chat lifecycle", () => {
       expect(screen.queryByText("moonshot")).not.toBeInTheDocument();
     });
 
-    fireEvent.pointerDown(credit, { button: 0 });
-    expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
-      1,
-    );
-    fireEvent.click(credit);
+    click(credit);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
+    });
+
+    click(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1663,15 +1691,6 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
     });
-
-    fireEvent.pointerLeave(credit);
-
-    await waitFor(() => {
-      expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
-    });
-
-    click(credit);
-    expect(screen.queryByText("Credit usage")).not.toBeInTheDocument();
   });
 
   it("shows generation usage with model names only", async () => {
@@ -1733,7 +1752,7 @@ describe("chat lifecycle", () => {
     });
 
     const credit = await screen.findByLabelText("Credit usage 1,976");
-    fireEvent.pointerEnter(credit);
+    click(credit);
 
     await waitFor(() => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
@@ -1901,7 +1920,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
 
     const connectorCredit = await screen.findByLabelText("Credit usage 108");
-    fireEvent.pointerEnter(connectorCredit);
+    click(connectorCredit);
 
     await waitFor(() => {
       expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
@@ -2004,7 +2023,7 @@ describe("chat lifecycle", () => {
     ).resolves.toBeInTheDocument();
     const connectorCredit = await screen.findByLabelText("Credit usage 108");
 
-    fireEvent.pointerEnter(connectorCredit);
+    click(connectorCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
@@ -2662,12 +2681,14 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("loads older chat history from the thread control", async () => {
+  it("silently loads older chat history after rendering latest messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
+    const beforeHistoryGate = context.mocks.deferred<void>();
 
     mockChatLifecycle(context, {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "History review",
+      beforeHistoryGate: beforeHistoryGate.promise,
       historyMessages: [
         {
           role: "assistant",
@@ -2696,24 +2717,26 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current launch risks are ready."),
       ).toBeInTheDocument();
-      expect(buttonByText("Load history")).toBeInTheDocument();
     });
+    expect(queryButtonByText("Load history")).toBeNull();
     expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
 
-    click(buttonByText("Load history"));
+    beforeHistoryGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
-      expect(queryButtonByText("Load history")).not.toBeInTheDocument();
+      expect(queryButtonByText("Load history")).toBeNull();
     });
   });
 
   it("keeps chat scroll controls visible while browsing older messages", async () => {
     const resizeObserver = mockResizeObserver();
     const olderReply = "Scroll back to the planning notes.";
+    const beforeHistoryGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
       threadId: "scroll-history-thread",
       threadTitle: "Scroll history",
+      beforeHistoryGate: beforeHistoryGate.promise,
       historyMessages: [
         {
           role: "assistant",
@@ -2732,16 +2755,24 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: "/chats/scroll-history-thread" });
 
+    let scrollContainer: HTMLElement | undefined;
     await waitFor(() => {
-      expect(screen.getByText("Visible launch update 7")).toBeInTheDocument();
-      expect(buttonByText("Load history")).toBeInTheDocument();
+      scrollContainer = chatScrollContainer();
+      expect(scrollContainer).toBeInTheDocument();
     });
-
-    const scrollContainer = chatScrollContainer();
+    if (scrollContainer === undefined) {
+      throw new Error("Chat scroll container not found");
+    }
     setScrollMetrics(scrollContainer, {
       scrollHeight: 1200,
       clientHeight: 300,
     });
+
+    await waitFor(() => {
+      expect(screen.getByText("Visible launch update 7")).toBeInTheDocument();
+      expect(queryButtonByText("Load history")).toBeNull();
+    });
+
     scrollContainer.scrollTop = 900;
     fireEvent.scroll(scrollContainer);
     fireEvent.wheel(scrollContainer);
@@ -2771,7 +2802,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "ArrowUp" });
     expect(scrollContainer.scrollTop).toBe(420);
 
-    click(buttonByText("Load history"));
+    beforeHistoryGate.resolve();
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
     });
@@ -3056,37 +3087,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps the linked automation dropdown when the sidebar switch is off", async () => {
-    mockAutomationThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-    expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
-    expect(screen.getByText("Automation inactive")).toBeInTheDocument();
-    expect(screen.queryByTestId("automation-sidebar")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Close automations"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
-    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-  });
-
   it("shows linked automations from the chat header sidebar", async () => {
     mockAutomationThread();
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -3096,7 +3096,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {
@@ -3149,7 +3148,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {
@@ -3612,6 +3610,53 @@ describe("chat lifecycle", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-dismiss-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-dismiss-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-dismiss",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    // Click inside the selection: in a real browser mouseup fires first and the
+    // selection collapses right after. Mirror that order so the deferred read
+    // sees the cleared selection and dismisses the toolbar.
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    window.getSelection()?.removeAllRanges();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
   });
 
   it("sends inline feedback with selected template and draft attachments", async () => {
@@ -4673,6 +4718,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
 
@@ -4715,6 +4762,8 @@ describe("chat lifecycle", () => {
         },
         creditBreakdown: [],
         creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
     });
     context.mocks.api(

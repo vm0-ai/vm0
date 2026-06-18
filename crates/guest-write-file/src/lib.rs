@@ -1,4 +1,7 @@
-//! Direct guest file writer used by vsock-guest.
+//! Library entry point for the `guest-write-file` helper.
+//!
+//! The helper copies stdin to a target file using the CLI contract documented
+//! on [`run_cli`].
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -143,6 +146,25 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
     Ok(())
 }
 
+/// Runs the `guest-write-file` CLI.
+///
+/// `args` must contain the command-line arguments after the executable name,
+/// matching `std::env::args().skip(1)`. The accepted syntax is:
+///
+/// ```text
+/// guest-write-file [--append | --create-parents] [--] <path>
+/// ```
+///
+/// Use `--` before `<path>` when the literal path begins with `-`. `stdin`
+/// provides the complete file content and `stderr` receives diagnostics.
+///
+/// By default, the target file is created or truncated before writing.
+/// `--append` appends to the target file and creates it only when the parent
+/// directory already exists. `--create-parents` creates missing parent
+/// directories before writing.
+///
+/// Returns process-style exit codes: `0` for success, `1` for runtime or write
+/// failures, and `2` for usage or argument errors.
 pub fn run_cli<I>(args: I, stdin: impl Read, mut stderr: impl Write) -> i32
 where
     I: IntoIterator<Item = String>,
@@ -153,7 +175,7 @@ where
             let _ = writeln!(stderr, "guest-write-file: {e}");
             let _ = writeln!(
                 stderr,
-                "usage: guest-write-file [--append | --create-parents] <path>"
+                "usage: guest-write-file [--append | --create-parents] [--] <path>"
             );
             return 2;
         }

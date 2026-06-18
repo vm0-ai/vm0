@@ -24,7 +24,11 @@ static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
 
 static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
 
-/// Path to sandbox operations log file (JSONL format).
+/// Path to the sandbox operations log file in JSONL format.
+///
+/// The path is resolved through the guest runtime path contract in
+/// `guest_contracts::runtime_paths`. An empty string means the guest runtime
+/// path could not be resolved and sandbox operation logging is unavailable.
 pub fn sandbox_ops_log() -> &'static str {
     &SANDBOX_OPS_LOG
 }
@@ -89,10 +93,16 @@ struct SandboxOpEntry {
     error: Option<String>,
 }
 
-/// Record a sandbox operation to the telemetry log.
+/// Record a sandbox operation to the telemetry log on a best-effort basis.
 ///
-/// Writes a JSONL entry to the guest runtime sandbox operations log.
-/// Format is compatible with the TypeScript version for consistency.
+/// This helper is non-fatal: it no-ops when [`sandbox_ops_log`] is empty, and
+/// serialization or append/open/lock/write failures are not propagated to the
+/// caller. Guest operations should not treat a successful return from this
+/// function as proof that a telemetry entry was written.
+///
+/// Each JSONL entry contains `ts`, `action_type`, `duration_ms`, `success`, and
+/// an optional `error` field. The format is compatible with the TypeScript
+/// version for consistency.
 pub fn record_sandbox_op(
     action_type: &str,
     duration: Duration,

@@ -228,6 +228,35 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     ).resolves.toMatchObject([{ value: "example", type: "connector" }]);
   });
 
+  it("normalizes a host field to bare host[:port] when a full URL is pasted", async () => {
+    const fixture = await seedFixture();
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+
+    await accept(
+      client.connect({
+        params: { type: "insforge" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            INSFORGE_API_KEY: "ik_test-key",
+            INSFORGE_DOMAIN: "https://9ksx253h.us-west.insforge.app/api/",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(
+      secretRows(fixture, "INSFORGE_API_KEY", "connector"),
+    ).resolves.toHaveLength(1);
+    await expect(
+      variableRows(fixture, "INSFORGE_DOMAIN"),
+    ).resolves.toMatchObject([
+      { value: "9ksx253h.us-west.insforge.app", type: "connector" },
+    ]);
+  });
+
   it("stores Lark app credentials without writing the logical access token", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
@@ -341,22 +370,27 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await db.insert(connectors).values({
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "stripe",
+      type: "test-oauth",
       authMethod: "oauth",
+    });
+    await db.insert(userFeatureSwitches).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.TestOauthConnector]: true },
     });
     await db.insert(secrets).values([
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        name: "STRIPE_ACCESS_TOKEN",
-        encryptedValue: "encrypted_stripe_access_token",
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+        encryptedValue: "encrypted_test_oauth_access_token",
         type: "connector",
       },
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        name: "STRIPE_REFRESH_TOKEN",
-        encryptedValue: "encrypted_stripe_refresh_token",
+        name: "TEST_OAUTH_REFRESH_TOKEN",
+        encryptedValue: "encrypted_test_oauth_refresh_token",
         type: "connector",
       },
     ]);
@@ -364,36 +398,48 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
       client.connect({
-        params: { type: "stripe" },
+        params: { type: "test-oauth" },
         body: {
           authMethod: "api-token",
-          values: { STRIPE_TOKEN: "sk_test_key" },
+          values: {
+            TEST_OAUTH_TOKEN: "manual-test-oauth-token",
+            TEST_OAUTH_API_TOKEN_INPUT_VAR: "manual-input-variable",
+            TEST_OAUTH_API_TENANT_ID: "manual-tenant",
+          },
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
-    await expect(connectorRows(fixture, "stripe")).resolves.toMatchObject([
+    await expect(connectorRows(fixture, "test-oauth")).resolves.toMatchObject([
       { authMethod: "api-token" },
     ]);
     await expect(
-      secretRows(fixture, "STRIPE_ACCESS_TOKEN", "connector"),
+      secretRows(fixture, "TEST_OAUTH_ACCESS_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
     await expect(
-      secretRows(fixture, "STRIPE_REFRESH_TOKEN", "connector"),
+      secretRows(fixture, "TEST_OAUTH_REFRESH_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
     await expect(
-      secretRows(fixture, "STRIPE_TOKEN", "connector"),
+      secretRows(fixture, "TEST_OAUTH_TOKEN", "connector"),
     ).resolves.toHaveLength(1);
     await expect(
-      secretRows(fixture, "STRIPE_TOKEN", "user"),
+      secretRows(fixture, "TEST_OAUTH_TOKEN", "user"),
     ).resolves.toHaveLength(0);
+    await expect(
+      variableRows(fixture, "TEST_OAUTH_API_TOKEN_INPUT_VAR"),
+    ).resolves.toMatchObject([
+      { value: "manual-input-variable", type: "connector" },
+    ]);
+    await expect(
+      variableRows(fixture, "TEST_OAUTH_API_TENANT_ID"),
+    ).resolves.toMatchObject([{ value: "manual-tenant", type: "connector" }]);
 
     const getClient = setupApp({ context })(zeroConnectorsByTypeContract);
     const getResponse = await accept(
       getClient.get({
-        params: { type: "stripe" },
+        params: { type: "test-oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],

@@ -23,7 +23,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
             run_id,
             sandbox_id,
             profile_name: "vm0/default",
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,

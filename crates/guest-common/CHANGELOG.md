@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.14](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.13...guest-common-v0.2.14) (2026-06-18)
+
+
+### Documentation
+
+* **guest-common:** clarify sandbox ops telemetry contract ([#18259](https://github.com/vm0-ai/vm0/issues/18259)) ([95ca414](https://github.com/vm0-ai/vm0/commit/95ca4149a8c88d5989f0d1225107d285fe87a28c))
+
 ## [0.2.13](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.12...guest-common-v0.2.13) (2026-06-17)
 
 ## [0.2.12](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.11...guest-common-v0.2.12) (2026-06-17)

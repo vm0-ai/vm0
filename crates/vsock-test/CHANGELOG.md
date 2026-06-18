@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.100](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.99...vsock-test-v0.9.100) (2026-06-18)
+
+
+### Refactoring
+
+* classify chunked write helper exec results ([#18208](https://github.com/vm0-ai/vm0/issues/18208)) ([2d84e93](https://github.com/vm0-ai/vm0/commit/2d84e93b92e93c7edfed7c2ba0f8ba64fc4f67ff))
+
+## [0.9.99](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.98...vsock-test-v0.9.99) (2026-06-18)
+
 ## [0.9.98](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.97...vsock-test-v0.9.98) (2026-06-18)
 
 ## [0.9.97](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.96...vsock-test-v0.9.97) (2026-06-18)

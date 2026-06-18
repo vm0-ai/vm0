@@ -207,7 +207,7 @@ describe("buildSignupRedirectUrl", () => {
     );
   });
 
-  it("routes attributed signup completion into app onboarding", () => {
+  it("routes attributed signup completion into the app onboarding handoff", () => {
     const redirectUrl = buildSignupRedirectUrl(
       "https://app.vm0.ai",
       "vm0_source=homepage&gclid=test-click&utm_source=google&utm_campaign=homepage_search",
@@ -234,6 +234,32 @@ describe("buildSignupRedirectUrl", () => {
     expect(url.pathname).toBe("/onboarding");
     expect(url.searchParams.get("gclid")).toBe("test-click");
     expect(url.searchParams.get("vm0_source")).toBe("presentation");
+  });
+
+  it("rewrites staging SO onboarding redirects to the configured paid-onboarding origin", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://app.vm7.ai:8443",
+      "redirect_url=https%3A%2F%2Fstaging-so.vm6.ai%2Fonboarding%2F2afcf6%3Fdomain%3Dstaging-api.vm6.ai%26prompt%3Dhello",
+      ["https://app.vm7.ai:8443", "https://so.vm7.ai:8443"],
+      "https://so.vm7.ai:8443",
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://so.vm7.ai:8443");
+    expect(url.pathname).toBe("/onboarding/2afcf6");
+    expect(url.searchParams.get("domain")).toBe("staging-api.vm6.ai");
+    expect(url.searchParams.get("prompt")).toBe("hello");
+  });
+
+  it("does not rewrite staging SO redirects to production paid-onboarding", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://app.vm0.ai",
+      "redirect_url=https%3A%2F%2Fstaging-so.vm6.ai%2Fonboarding%2F2afcf6",
+      ["https://app.vm0.ai", "https://so.vm0.ai"],
+      "https://so.vm0.ai",
+    );
+
+    expect(redirectUrl).toBe("https://app.vm0.ai");
   });
 
   it("ignores a disallowed redirect_url and keeps the attributed app fallback", () => {

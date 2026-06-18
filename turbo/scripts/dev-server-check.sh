@@ -11,7 +11,7 @@ fi
 check_port() {
   local label="$1"
   local url="$2"
-  if curl -k -s --connect-timeout 3 --resolve "$(echo "$url" | sed 's|https://||;s|/.*||'):127.0.0.1" "$url" > /dev/null 2>&1; then
+  if curl -f -k -s --connect-timeout 3 --max-time 10 --resolve "$(echo "$url" | sed 's|https://||;s|/.*||'):127.0.0.1" "$url" > /dev/null 2>&1; then
     echo "$label | running"
   else
     echo "$label | not started"
@@ -21,3 +21,4 @@ check_port() {
 check_port "Web:      https://www.vm7.ai:8443"      "https://www.vm7.ai:8443/"
 check_port "App:      https://app.vm7.ai:8443"  "https://app.vm7.ai:8443/"
 check_port "API:      https://api.vm7.ai:8443"  "https://api.vm7.ai:8443/health"
+check_port "SO:       https://so.vm7.ai:8443"   "https://so.vm7.ai:8443/onboarding/2afcf6"

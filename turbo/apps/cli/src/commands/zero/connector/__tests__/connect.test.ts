@@ -104,17 +104,17 @@ describe("zero connector connect command", () => {
     await connectCommand.parseAsync([
       "node",
       "cli",
-      "stripe",
+      "openai",
       "--auth-method",
       "api-token",
       "--value",
-      "STRIPE_TOKEN=sk-test",
+      "OPENAI_TOKEN=sk-test",
     ]);
 
     expect(receivedBody).toStrictEqual({
       authMethod: "api-token",
       values: {
-        STRIPE_TOKEN: "sk-test",
+        OPENAI_TOKEN: "sk-test",
       },
     });
   });

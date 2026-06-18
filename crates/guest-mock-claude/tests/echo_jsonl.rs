@@ -434,36 +434,35 @@ fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn one_shot_stream_json_drains_trailing_stdin() -> Result<(), Box<dyn std::error::Error>> {
+fn stream_json_input_does_not_wait_for_stdin_eof() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
-    let mut child = mock_claude()
-        .env("HOME", home.path())
-        .args([
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--",
-            "printf argv-wrong",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
 
-    let mut stdin = child.stdin.take().ok_or("missing stdin")?;
-    stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
-    stdin.write_all(b"\xff\n")?;
-    drop(stdin);
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
 
-    let output = child.wait_with_output()?;
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("read stream-json stdin"),
-        "unexpected stderr: {stderr}"
-    );
-    assert!(output.stdout.is_empty());
+    let events = recv_until_result(&stream.rx, "stdin-ok")?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+
+    let command = events
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("assistant")
+                && event
+                    .pointer("/message/content/0/type")
+                    .and_then(Value::as_str)
+                    == Some("tool_use")
+        })
+        .and_then(|event| event.pointer("/message/content/0/input/command"))
+        .and_then(Value::as_str)
+        .ok_or("missing command")?;
+    assert_eq!(command, "printf stdin-ok");
     Ok(())
 }
 

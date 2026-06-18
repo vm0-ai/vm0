@@ -182,7 +182,10 @@ async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw
     .await;
 
     assert_eq!(outcome.exit_code(), 0);
-    assert_eq!(outcome.guest_session_id.as_deref(), Some(raw_session_id));
+    assert_eq!(
+        outcome.discovered_cli_agent_session_id.as_deref(),
+        Some(raw_session_id)
+    );
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "read guest session ID for parking");
     assert_eq!(
@@ -196,7 +199,8 @@ async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn execute_prepared_sandbox_run_canonicalizes_codex_guest_session_id_for_parking() {
+async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_session_id_for_parking()
+ {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -231,7 +235,7 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_guest_session_id_for_p
 
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(
-        outcome.guest_session_id.as_deref(),
+        outcome.discovered_cli_agent_session_id.as_deref(),
         Some(canonical_session_id)
     );
     assert_captured_events_do_not_contain(&events, raw_session_id);
@@ -243,7 +247,7 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_guest_session_id_for_p
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_guest_session_id() {
+async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agent_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -276,7 +280,7 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_guest_session_id() 
     .await;
 
     assert_eq!(outcome.exit_code(), 0);
-    assert!(outcome.guest_session_id.is_none());
+    assert!(outcome.discovered_cli_agent_session_id.is_none());
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "ignoring invalid guest session ID for framework");
     assert_eq!(
@@ -431,7 +435,7 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     assert_eq!(failure.exit_code, 1);
     assert_eq!(failure.error, "Agent exited with code 1");
     assert_eq!(failure.kind, ExecutionFailureKind::Generic);
-    assert!(outcome.guest_session_id.is_none());
+    assert!(outcome.discovered_cli_agent_session_id.is_none());
     assert!(
         overrides
             .exec_calls()

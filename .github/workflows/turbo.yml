@@ -1432,11 +1432,13 @@ jobs:
             --arg ansible_user "$METAL_USER" \
             --arg job_ref "$JOB_REF" \
             '{ansible_user: $ansible_user, job_ref: $job_ref}')"
-          ansible-playbook \
+          if ! ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-stripe-listener.yml \
             --extra-vars "$CLEANUP_EXTRA_VARS" \
-            -v
+            -v; then
+            echo "::warning::Stripe CLI listener cleanup failed for ${JOB_REF} — stale Stripe forwarding may remain on metal hosts"
+          fi
 
           FORWARD_URL="${API_PREVIEW_URL%/}/api/webhooks/stripe"
           EXTRA_VARS="$(jq -nc \

@@ -318,7 +318,6 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
-          STRIPE
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
           add_oauth_client_config "$prefix"
@@ -332,10 +331,14 @@ runs:
         add_var FINICITY_PARTNER_ID FINICITY_PARTNER_ID
         add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
+        add_var STRIPE_OAUTH_CLIENT_ID STRIPE_OAUTH_CLIENT_ID
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
         add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
-        add_secret ZERO_PRICE ZERO_PRICE
+        add_var ZERO_PRICE_PRO ZERO_PRICE_PRO
+        add_var ZERO_PRICE_TEAM ZERO_PRICE_TEAM
+        add_var ZERO_PRICE_CUSTOM_CREDITS ZERO_PRICE_CUSTOM_CREDITS
+        add_var ZERO_PRICE_CONCURRENCY ZERO_PRICE_CONCURRENCY
         add_var ZERO_ONE_TIME_CAMPAIGN ZERO_ONE_TIME_CAMPAIGN
         add_secret AGENTPHONE_API_KEY AGENTPHONE_API_KEY
         add_var AGENTPHONE_API_BASE_URL AGENTPHONE_API_BASE_URL

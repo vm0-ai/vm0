@@ -21,10 +21,11 @@ pub(super) async fn restore_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore).
+    // Validate the CLI agent session id to prevent path traversal.
+    // Only allow alnum, dash, and underscore.
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
     // skip branch is ever upgraded to a write.
-    if !is_valid_session_id(&session.session_id) {
+    if !is_valid_session_id(&session.cli_agent_session_id) {
         return Err(RunnerError::Internal("invalid session_id".into()));
     }
 
@@ -52,19 +53,19 @@ pub(super) async fn restore_claude_session(
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
-    let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
+    let session_path = format!("{session_dir}/{}.jsonl", session.cli_agent_session_id);
 
     write_session_history_file(
         sandbox,
         &session_path,
-        &[&session.session_id],
+        &[&session.cli_agent_session_id],
         &session.session_history,
     )
     .await?;
     info!(
         run_id = %context.run_id,
         framework = "claude-code",
-        session_fingerprint = %diagnostic_session_fingerprint(&session.session_id),
+        session_fingerprint = %diagnostic_session_fingerprint(&session.cli_agent_session_id),
         bytes_in = session.session_history.len(),
         "restored session history"
     );
@@ -149,7 +150,7 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let session_id = canonical_codex_thread_id(&session.session_id)
+    let session_id = canonical_codex_thread_id(&session.cli_agent_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
 
     let session_path =
@@ -160,7 +161,7 @@ pub(super) async fn restore_codex_session(
     write_session_history_file(
         sandbox,
         &session_path,
-        &[&session_id, &session.session_id],
+        &[&session_id, &session.cli_agent_session_id],
         &session.session_history,
     )
     .await?;

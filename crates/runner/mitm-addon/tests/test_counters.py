@@ -7,7 +7,7 @@ import pytest
 
 import usage
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from tests.pending_helpers import assert_pending
+from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
@@ -71,33 +71,35 @@ class TestUsagePendingCounter:
 
         usage.increment_in_flight_flows()
         usage.increment_in_flight_flows()
-        assert usage.counters._in_flight_flows == 2
         assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=2, buffered=0, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=2, buffered=0, reports=0, flush_request_id="request-1"
+        )
 
         usage.decrement_in_flight_flows()
-        assert usage.counters._in_flight_flows == 1
         assert_pending(pending_path, flows=2, buffered=0, reports=0, flush_request_id="request-1")
-        usage.write_pending_snapshot(flush_request_id="request-2")
-        assert_pending(pending_path, flows=1, buffered=0, reports=0, flush_request_id="request-2")
+        assert_current_pending(
+            pending_path, flows=1, buffered=0, reports=0, flush_request_id="request-2"
+        )
 
         usage.decrement_in_flight_flows()
-        usage.write_pending_snapshot(flush_request_id="request-3")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-3")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-3"
+        )
 
     def test_increment_decrement_pending_reports(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage.counters.increment_pending_reports()
-        assert usage.counters._pending_reports == 1
         assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=1, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=1, flush_request_id="request-1"
+        )
 
         usage.counters.decrement_pending_reports()
-        usage.write_pending_snapshot(flush_request_id="request-2")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2"
+        )
 
     def test_set_buffered_usage_events(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -135,9 +137,9 @@ class TestUsagePendingCounter:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert usage.counters._pending_reports == 0
-        usage.write_pending_snapshot(flush_request_id="request-2")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2"
+        )
 
     def test_enqueue_logs_body_free_payload_summary(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
@@ -189,10 +191,10 @@ class TestUsagePendingCounter:
                 "usage_event",
             )
 
-        assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
+        )
 
     def test_sync_fallback_log_failure_rolls_back_pending_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -215,10 +217,10 @@ class TestUsagePendingCounter:
                 "usage_event",
             )
 
-        assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
+        )
 
     def test_saturated_usage_flush_keeps_buffered_pending_snapshot(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -317,13 +319,15 @@ class TestUsagePendingCounter:
         assert usage.read_usage_flush_request_id() is None
 
     def test_decrement_does_not_go_negative(self, tmp_path):
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage.decrement_in_flight_flows()
         usage.counters.decrement_pending_reports()
-        assert usage.counters._in_flight_flows == 0
-        assert usage.counters._pending_reports == 0
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
+        )
 
-    def test_no_op_when_path_not_set(self):
+    def test_no_op_when_path_not_set(self, tmp_path):
         usage.set_pending_path("")
         usage.increment_in_flight_flows()
         usage.decrement_in_flight_flows()
@@ -331,8 +335,9 @@ class TestUsagePendingCounter:
         usage.counters.decrement_pending_reports()
         usage.write_pending_snapshot(flush_request_id="request-1")
         # Should not raise — just no file written.
-        assert usage.counters._in_flight_flows == 0
-        assert usage.counters._pending_reports == 0
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     # ---- one-shot error signal on write failure (issue #10483) ----
 
@@ -395,10 +400,10 @@ class TestUsagePendingCounter:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1"
+        )
 
     def test_enqueue_increments_and_drains_reports(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
@@ -419,10 +424,10 @@ class TestUsagePendingCounter:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
+        )
 
     def test_sync_fallback_decrements_reports(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
@@ -445,7 +450,7 @@ class TestUsagePendingCounter:
             usage.report_model_provider_usage(flow, "run-1")
             usage.flush_usage_events(trigger="test")
 
-        assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
+        )

@@ -326,7 +326,7 @@ describe("zero automation detail page", () => {
     });
   });
 
-  it("updates automation schedule settings", async () => {
+  it("updates automation to a loop schedule", async () => {
     mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/automations/${automationId}` });
@@ -351,6 +351,29 @@ describe("zero automation detail page", () => {
     selectOptionByLabel("Every", "60 minutes");
     expect(screen.getByText("60 minutes")).toBeInTheDocument();
 
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Automation updated")).toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
+  });
+
+  it("updates automation to a one-time schedule", async () => {
+    mockAutomationDetailStory();
+
+    detachedSetupPage({ context, path: `/automations/${automationId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
+
     selectOptionByLabel("Time", "Once");
     fireEvent.change(screen.getByLabelText("Date"), {
       target: { value: "2099-06-12" },
@@ -373,7 +396,6 @@ describe("zero automation detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Automation updated")).toBeInTheDocument();
     });
-    expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
   });
 
   it("shows the trigger section when automation multi trigger is enabled", async () => {

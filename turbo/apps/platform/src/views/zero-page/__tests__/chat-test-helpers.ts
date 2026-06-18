@@ -346,6 +346,11 @@ export function mockChatLifecycle(
      * keep the new-thread optimistic view mounted while interacting with it.
      */
     sendGate?: Promise<void>;
+    /**
+     * Promise the paged history handler awaits before responding to beforeId.
+     * Lets tests prove the latest-message view renders before silent backfill.
+     */
+    beforeHistoryGate?: Promise<void>;
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
@@ -535,6 +540,7 @@ export function mockChatLifecycle(
     const sinceId = query.sinceId;
     const beforeId = query.beforeId;
     const limit = query.limit ?? 50;
+    const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
 
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
 
@@ -604,19 +610,21 @@ export function mockChatLifecycle(
     }
 
     if (beforeId) {
-      const beforeIndex = pagedMessages.findIndex((message) => {
-        return message.id === beforeId;
-      });
-      if (beforeIndex <= 0) {
-        return respond(200, { messages: [], hasHistoryBefore: false });
-      }
-      const olderMessages = pagedMessages.slice(
-        Math.max(0, beforeIndex - limit),
-        beforeIndex,
-      );
-      return respond(200, {
-        messages: olderMessages,
-        hasHistoryBefore: beforeIndex - olderMessages.length > 0,
+      return beforeHistoryGate.then(() => {
+        const beforeIndex = pagedMessages.findIndex((message) => {
+          return message.id === beforeId;
+        });
+        if (beforeIndex <= 0) {
+          return respond(200, { messages: [], hasHistoryBefore: false });
+        }
+        const olderMessages = pagedMessages.slice(
+          Math.max(0, beforeIndex - limit),
+          beforeIndex,
+        );
+        return respond(200, {
+          messages: olderMessages,
+          hasHistoryBefore: beforeIndex - olderMessages.length > 0,
+        });
       });
     }
 

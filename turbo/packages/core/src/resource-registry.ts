@@ -133,45 +133,53 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "b0ed1fa2b7daa5d543ae3b187edea17f95b0594d2a408d4cc197510caafc26ef",
   playfulEditorial:
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "f81eb007394492bca0892ecc306e6277d00fd37f9a7e45705edcf6c9fe87a5d2",
+  aplocoto: "89326826cc850aae4f4dc0f4aa6bb9cbe562d00059ab1cc040060b840cdbf259",
   botaneOrganic:
-    "ba068d143065a04115363682d479ab645b49729efa449ead35d21092f1ddbafe",
+    "246f8f30a23bac6a5aaab879ec6a416700fdc7ea2d9093edab7fb97b50eff3fe",
   businessData:
-    "1b6c4058bfc1edfc0ad18710e4e0674639dec8146e694306be9d8e90f1c06712",
+    "d0df888f518eebdb7812a212a5fb0d571283dcf595621c9866b2cde9df900572",
   presentationDeckTools:
-    "8496e875b20bb8df3e9af967c8815a0770d1e4c20e9258e64a6cae7a473e5ca3",
+    "fbf86018b5d34fea84d805bade8dade68c610f09b8cd3a7b799f71a8a88bbea2",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
-    "293f41b98c8266858a27aea3f75e94b424dc3997182b6d3c0436361b16ce451c",
+    "213e826ae2f41dcd63fd02e9f20e7eaec8bfaffb0c53d9e81f9f9043f34d5ef8",
   designSystemCreativeAgency:
     "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
   templateCreativeAgency:
-    "5c4092656abf7f529bc6439d0f581d303dd1489cf640bda9ff29c5dde2130ebd",
+    "896ce150fc69a3985a37fd3ffc123072661eecec78c0428a09dc307c879fc5d6",
   designSystemDataReport:
     "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
   templateDataReport:
-    "c8d062ec2dbdea6c8e51f4debbc31e4894b27dfceadb1c0f9255330cc9405a68",
+    "56e2e7d3da83f53dfe5a34667e926d9056198982398f9d6a22f9e20ecad4e872",
   designSystemEditorialMagazine:
     "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
   templateEditorialMagazine:
-    "1c23ab5091b89b58ede9086669f4a0714d643bb436f8a54664d81a0b1a9acb9a",
+    "647f3aec98c6ec12bd587687f26003d68863f4625fb4a357426c2ade60a6ab51",
   designSystemLandingConsulting:
     "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
   templateLandingConsulting:
-    "6b2ae64734c389e9347e8b2b5af902ea81a16265f1ed5f7d51ddd05ccbc786f6",
+    "ff2b342d126ebac1e173276267286c06dc299aa7ad34bf261cb8efc0fa24b474",
   designSystemLumina:
     "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
   templateLumina:
-    "73062bb286bd100229ee2cf11e3bc2e94189363ae5e05014b72626f9ee59c0a0",
+    "4076ee669fb7c89aa589cc393bffc78b405548f8040b8df53a25c9c8016ac33e",
   designSystemMosaicGeometric:
     "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
   templateMosaicGeometric:
-    "ab5170d701a1cd827ccad51e33c1b2d6a91bf2738d32886e8db1551756b30278",
+    "58cf038a4e94e9b87ab0636e936bc952157216673dc75b3ec5f38e9bd1f054e1",
   designSystemPlayfulPop:
     "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
   templatePlayfulPop:
-    "9bf259f8278c89e411a6903b36d5033a1135bc8952f841fa6ebd3dfafb300ccc",
+    "4f281c2365b00cfd88c44a01d012b5f4bc908ae7b570fd432284d8cf4af90c32",
+  designSystemNocturne:
+    "bc82f6665394cc99039fe34523e5c6095a9bbf5a2a3a81dee128540a43812dec",
+  templateNocturne:
+    "4f94ba422af6c66e734e73b784902ed9e01beeefd9d69bc4e947ce645940de26",
+  designSystemNeoBrutalism:
+    "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
+  templateNeoBrutalism:
+    "b6e082199f3927a6bc6e5bf0b5e45d2716ade71e81f678f5d60302537229facb",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
@@ -1128,6 +1136,30 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-template/playful-pop",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePlayfulPop,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-nocturne",
+    kind: "template",
+    name: "Nocturne Presentation",
+    description:
+      "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
+    source: privateR2ArchiveSource(
+      "presentation-template/nocturne",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNocturne,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-neo-brutalism",
+    kind: "template",
+    name: "Neo Brutalism Presentation",
+    description:
+      "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
+    source: privateR2ArchiveSource(
+      "presentation-template/neo-brutalism",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNeoBrutalism,
     ),
     targets: ["presentation"],
   },
@@ -2981,6 +3013,28 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-design-system/playful-pop",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
+    ),
+  },
+  {
+    id: "design-system:nocturne",
+    kind: "design-system",
+    name: "Nocturne",
+    description:
+      "Dark-stage data keynote look with Midnight Mono palette, Space Grotesk display, Lexend body, soft rounded data geometry, tonal ramps, donut rings, bento grids, and frameless hero numbers.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/nocturne",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNocturne,
+    ),
+  },
+  {
+    id: "design-system:neo-brutalism",
+    kind: "design-system",
+    name: "Neo Brutalism",
+    description:
+      "High-contrast brutalist look with Mono Ink palette, Space Grotesk display, Lexend body, thick black outlines, sharp corners, hard offset shadows, nav chrome, circle badges, and arch cards.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/neo-brutalism",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNeoBrutalism,
     ),
   },
   {

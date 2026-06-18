@@ -102,6 +102,8 @@ function mockPersonalUsageStory(): string[] {
         },
       ],
       creditGrants: [],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
     });
   });
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {

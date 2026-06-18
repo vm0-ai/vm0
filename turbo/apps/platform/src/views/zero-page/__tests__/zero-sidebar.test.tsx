@@ -421,7 +421,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps sidebar double-click rename disabled by default", async () => {
+  it("renames a chat thread by double-clicking from the sidebar", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
@@ -431,30 +431,6 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    fireEvent.doubleClick(threadLinkByTitle("Release plan"));
-
-    expect(
-      screen.queryByRole("dialog", { name: "Rename chat" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renames a chat thread by double-clicking from the sidebar when enabled", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadDoubleClickRename]: true },
     });
 
     await waitFor(() => {

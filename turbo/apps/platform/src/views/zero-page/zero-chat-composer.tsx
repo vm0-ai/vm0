@@ -896,6 +896,16 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   );
 }
 
+/**
+ * Soft, cool-tinted card shadow matching the home chat composer
+ * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
+ * picker renders through a Radix portal on `document.body` — outside that
+ * scope — so the value is inlined here instead of referencing the CSS var.
+ * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
+ */
+const TEMPLATE_CARD_SHADOW =
+  "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
+
 function VideoTemplateCard({
   item,
   selected,
@@ -908,7 +918,8 @@ function VideoTemplateCard({
   return (
     <div
       className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
@@ -2652,11 +2663,8 @@ function TemplatePreviewPage({
             className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
-            Templates
-          </button>
-          <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">Presentation</span>
-          <span className="shrink-0 text-muted-foreground">/</span>
+            Template
+          </button>{" "}
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
       </DialogHeader>
@@ -2877,7 +2885,8 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
@@ -3267,7 +3276,8 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        TEMPLATE_CARD_SHADOW,
         selected
           ? "border-primary ring-1 ring-primary"
           : "border-border hover:border-muted-foreground/30",
@@ -4676,22 +4686,24 @@ function ComputerUseDownloadDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md gap-5 pt-4">
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-gray-50 text-muted-foreground">
-              <IconDeviceDesktop size={18} stroke={1.5} />
+          <div className="flex items-start gap-4 pr-8">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-gray-50 text-muted-foreground">
+              <IconDeviceDesktop size={20} stroke={1.5} />
             </div>
-            <div className="min-w-0 space-y-1 text-left">
-              <DialogTitle>Connect your computer</DialogTitle>
-              <DialogDescription>
+            <div className="min-w-0 text-left">
+              <DialogTitle className="text-xl leading-7">
+                Connect your computer
+              </DialogTitle>
+              <DialogDescription className="mt-3 leading-6">
                 Download Zero Computer Use for macOS, then open it to let Zero
                 use your desktop.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
-        <Button asChild className="mt-2 w-full">
+        <Button asChild size="lg" className="w-full">
           <a
             href={downloadUrl}
             target="_blank"

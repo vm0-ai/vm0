@@ -1,5 +1,60 @@
 # Changelog
 
+## [8.355.1](https://github.com/vm0-ai/vm0/compare/core-v8.355.0...core-v8.355.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* add scenarios to presentation picker prompts ([#18262](https://github.com/vm0-ai/vm0/issues/18262)) ([38720c7](https://github.com/vm0-ai/vm0/commit/38720c71893139a605ae44cb6852e8f17b624fb8))
+
+
+### Refactoring
+
+* remove paid onboarding redirect switch ([#18253](https://github.com/vm0-ai/vm0/issues/18253)) ([1cb8858](https://github.com/vm0-ai/vm0/commit/1cb88584d30a882541de87e535ebfdf99056097f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/connectors bumped to 1.92.0
+
+## [8.355.0](https://github.com/vm0-ai/vm0/compare/core-v8.354.0...core-v8.355.0) (2026-06-18)
+
+
+### Features
+
+* roll out chat draft + double-click rename switches, drop automation sidebar switch ([#18234](https://github.com/vm0-ai/vm0/issues/18234)) ([b799861](https://github.com/vm0-ai/vm0/commit/b7998617982e6a542d8f15125d8db82b532e4163))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+
+## [8.354.0](https://github.com/vm0-ai/vm0/compare/core-v8.353.0...core-v8.354.0) (2026-06-18)
+
+
+### Features
+
+* register nocturne and neo-brutalism presentation resources ([#18209](https://github.com/vm0-ai/vm0/issues/18209)) ([5b76751](https://github.com/vm0-ai/vm0/commit/5b767515121b00104f45a81ecbd145c672e2ee3e))
+
+
+### Bug Fixes
+
+* update presentation picker CDN embeds ([#18210](https://github.com/vm0-ai/vm0/issues/18210)) ([f019454](https://github.com/vm0-ai/vm0/commit/f019454c5660ad97b1cbdaf4f685d7eda377c256))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+
 ## [8.353.0](https://github.com/vm0-ai/vm0/compare/core-v8.352.0...core-v8.353.0) (2026-06-18)
 
 

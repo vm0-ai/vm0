@@ -272,9 +272,14 @@ export function buildSignupRedirectUrl(
   appUrl: string,
   signUpSearch: string,
   allowedRedirectOrigins: readonly string[] = [appUrl],
+  paidOnboardingUrl?: string,
 ): string {
   const params = new URLSearchParams(signUpSearch);
-  const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
+  const redirectUrl = readAllowedRedirectUrl(
+    params,
+    allowedRedirectOrigins,
+    paidOnboardingUrl,
+  );
   if (redirectUrl) {
     return redirectUrl;
   }
@@ -291,6 +296,7 @@ export function buildSignupRedirectUrl(
 function readAllowedRedirectUrl(
   params: URLSearchParams,
   allowedRedirectOrigins: readonly string[],
+  paidOnboardingUrl: string | undefined,
 ): string | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
@@ -298,13 +304,49 @@ function readAllowedRedirectUrl(
   }
 
   try {
-    const redirectUrl = new URL(rawRedirectUrl);
+    const redirectUrl = normalizeOnboardingRedirectUrl(
+      new URL(rawRedirectUrl),
+      paidOnboardingUrl,
+    );
     return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
       ? redirectUrl.toString()
       : null;
   } catch {
     return null;
   }
+}
+
+function normalizeOnboardingRedirectUrl(
+  redirectUrl: URL,
+  paidOnboardingUrl: string | undefined,
+): URL {
+  if (!paidOnboardingUrl || !isKnownStagingSoOnboardingRedirect(redirectUrl)) {
+    return redirectUrl;
+  }
+
+  const paidUrl = new URL(paidOnboardingUrl);
+  if (isVm0ProductionOrigin(paidUrl)) {
+    return redirectUrl;
+  }
+
+  const normalized = new URL(redirectUrl.toString());
+  normalized.protocol = paidUrl.protocol;
+  normalized.host = paidUrl.host;
+  return normalized;
+}
+
+function isKnownStagingSoOnboardingRedirect(redirectUrl: URL): boolean {
+  return (
+    redirectUrl.protocol === "https:" &&
+    (redirectUrl.hostname === "staging-so.vm6.ai" ||
+      redirectUrl.hostname.endsWith("-so.vm6.ai")) &&
+    (redirectUrl.pathname === "/onboarding" ||
+      redirectUrl.pathname.startsWith("/onboarding/"))
+  );
+}
+
+function isVm0ProductionOrigin(url: URL): boolean {
+  return url.hostname === "vm0.ai" || url.hostname.endsWith(".vm0.ai");
 }
 
 function isAllowedRedirectOrigin(

@@ -58,8 +58,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -135,7 +135,6 @@ import {
   requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -963,23 +962,6 @@ function GithubPrTrackingButton({
   );
 }
 
-// Second line shown under each automation in the legacy header dropdown: the
-// next upcoming run time, or a note that the automation is inactive when it has
-// been disabled.
-function automationMenuSubline(automation: HeaderAutomationEntry): string {
-  if (!automation.enabled) {
-    return "Automation inactive";
-  }
-  if (!automation.nextRunAt) {
-    return "No upcoming run";
-  }
-  const nextRun = new Date(automation.nextRunAt).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-  return `Next run ${nextRun}`;
-}
-
 function featureSwitchEnabled(
   features: Record<FeatureSwitchKey, boolean> | undefined,
   key: FeatureSwitchKey,
@@ -996,76 +978,20 @@ export function AutomationMenuButton({
   threadId: string;
   ariaLabel?: string;
 }) {
-  const navigate = useSet(detachedNavigateTo$);
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
-  const features = useLastResolved(featureSwitch$);
-  const automationSidebarEnabled = featureSwitchEnabled(
-    features,
-    FeatureSwitchKey.ChatAutomationSidebar,
-  );
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
-  const open = automationSidebarEnabled && openThreadId === threadId;
+  const open = openThreadId === threadId;
 
   if (automations.length === 0) {
     return null;
-  }
-
-  if (!automationSidebarEnabled) {
-    return (
-      <DropdownMenu
-        onOpenChange={(dropdownOpen) => {
-          if (dropdownOpen) {
-            reloadAutomations();
-          }
-        }}
-      >
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
-            aria-label={ariaLabel}
-          >
-            <IconClock size={18} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          {automations.map((automation) => {
-            return (
-              <DropdownMenuItem
-                key={automation.id}
-                onClick={() => {
-                  navigate("/automations/:automationId", {
-                    pathParams: { automationId: automation.id },
-                  });
-                }}
-                className="items-start gap-2"
-              >
-                <IconClock
-                  size={15}
-                  className="mt-0.5 shrink-0 text-muted-foreground"
-                />
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate">
-                    {automationDescription(automation)}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {automationMenuSubline(automation)}
-                  </span>
-                </div>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
   }
 
   return (
@@ -1419,7 +1345,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
         <iframe
           src={publicUrl}
           title={`${file.filename} artifact thumbnail`}
-          sandbox="allow-scripts"
+          sandbox="allow-same-origin allow-scripts"
           tabIndex={-1}
           loading="lazy"
           scrolling="no"
@@ -2434,17 +2360,12 @@ export function ZeroChatThreadPage() {
     features,
     FeatureSwitchKey.PresentationHtmlPptxDownload,
   );
-  const automationSidebarEnabled = featureSwitchEnabled(
-    features,
-    FeatureSwitchKey.ChatAutomationSidebar,
-  );
   const activePresentationEditorUrl = presentationHtmlEditorEnabled
     ? presentationEditorUrl
     : null;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen =
-    automationSidebarEnabled && automationPanelThreadId !== null;
+  const automationPanelOpen = automationPanelThreadId !== null;
   const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
@@ -2608,20 +2529,14 @@ function ChatThreadMessagesMain({
   activeGroups,
   sessionError,
   skeletonVisible,
-  hasOlderHistory,
-  loadingHistory,
   messagesLoading,
-  onLoadHistory,
 }: {
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
   activeGroups: GroupedChatMessageGroup[];
   sessionError: string | null;
   skeletonVisible: boolean;
-  hasOlderHistory: boolean;
-  loadingHistory: boolean;
   messagesLoading: boolean;
-  onLoadHistory: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   const showEmptyState =
     !sessionError &&
@@ -2640,18 +2555,6 @@ function ChatThreadMessagesMain({
         className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
         style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
       >
-        {!sessionError && !skeletonVisible && hasOlderHistory && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              disabled={loadingHistory}
-              onClick={onLoadHistory}
-              className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Load history
-            </button>
-          </div>
-        )}
         {sessionError && (
           <div className="flex-1 flex items-center justify-center py-16">
             <div className="flex items-center gap-2 text-destructive">
@@ -3021,7 +2924,7 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-2.5">
+    <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-[15px]">
       <button
         type="button"
         aria-expanded={expanded}
@@ -3136,10 +3039,6 @@ function useChatThreadKeyDownFactory() {
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
-  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
-  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
-    thread.loadHistory$,
-  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
@@ -3147,14 +3046,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const loadingHistory = loadHistoryLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
-  const onLoadHistory = onDomEventFn(() => {
-    return loadHistory(pageSignal);
-  });
   const githubPrTrackingOpen = useGithubPrTrackingOpen(
     thread,
     threadDataLoadable,
@@ -3182,10 +3076,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 activeGroups={activeGroups}
                 sessionError={sessionError}
                 skeletonVisible={skeletonVisible}
-                hasOlderHistory={hasOlderHistory}
-                loadingHistory={loadingHistory}
                 messagesLoading={messagesLoading}
-                onLoadHistory={onLoadHistory}
               />
             </div>
             <ChatThreadSkeletonOverlay
@@ -4272,11 +4163,13 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
+  escapeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
+  escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
@@ -4295,6 +4188,7 @@ function BodyContentBlocks({
               }
               mediaPreview={markdownMediaPreview}
               mathEnabled
+              escapeHtml={escapeMarkdownHtml}
               style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           );
@@ -5576,7 +5470,7 @@ function UserMessageAttachments({
   }
 
   return (
-    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+    <div className="mb-2 flex max-w-[85%] flex-wrap justify-end gap-2">
       {attachments.map((a) => {
         if (a.isImage) {
           return (
@@ -5890,22 +5784,23 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-            {bodyBlocks.length > 0 && (
+          <UserMessageAttachments
+            attachments={allAttachments}
+            onImageClick={openLightbox}
+          />
+          {bodyBlocks.length > 0 && (
+            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
               <div className="px-4 py-3">
                 <BodyContentBlocks
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
+                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
-            )}
-            <UserMessageAttachments
-              attachments={allAttachments}
-              onImageClick={openLightbox}
-            />
-          </div>
+            </div>
+          )}
           <UserMessageActions
             canCopy={canCopy}
             copied={copied}
@@ -6158,46 +6053,20 @@ function UsageChip({
 }) {
   const total = formatCredits(usage.totalCredits);
   const displayRows = buildRunUsageDisplayRows(usage);
-  const showTooltip = () => {
-    setOpen(true);
-  };
-  const hideTooltip = () => {
-    setOpen(false);
-  };
 
   return (
-    <Popover open={open}>
-      <PopoverAnchor asChild>
-        <span
-          tabIndex={0}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
-          onFocus={showTooltip}
-          onBlur={hideTooltip}
-          onPointerDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-          }}
-          onMouseEnter={showTooltip}
-          onMouseLeave={hideTooltip}
-          onPointerEnter={showTooltip}
-          onPointerLeave={hideTooltip}
         >
           <IconCoins size={17} stroke={1.5} />
           <span>{total}</span>
-        </span>
-      </PopoverAnchor>
-      <PopoverContent
-        side="bottom"
-        align={contentAlign}
-        className="w-72 p-3"
-        onPointerEnter={showTooltip}
-        onPointerLeave={hideTooltip}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align={contentAlign} className="w-72 p-3">
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
           <span>{title}</span>
           <span>{total}</span>

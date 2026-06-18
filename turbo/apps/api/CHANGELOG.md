@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.156.0](https://github.com/vm0-ai/vm0/compare/api-v1.155.1...api-v1.156.0) (2026-06-18)
+
+
+### Features
+
+* **connectors:** give InsForge a firewall with user-entered backend URL ([#18229](https://github.com/vm0-ai/vm0/issues/18229)) ([e1f702c](https://github.com/vm0-ai/vm0/commit/e1f702cb7000fa9290fcb5812cec2df76f886b85))
+
+
+### Bug Fixes
+
+* use figma pat firewall header ([#18266](https://github.com/vm0-ai/vm0/issues/18266)) ([f86838c](https://github.com/vm0-ai/vm0/commit/f86838c9e1aa3bef21ebe0f97689de0695c829a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.3
+    * @vm0/connectors bumped to 1.92.0
+    * @vm0/core bumped to 8.355.1
+    * @vm0/db bumped to 1.57.3
+
+## [1.155.1](https://github.com/vm0-ai/vm0/compare/api-v1.155.0...api-v1.155.1) (2026-06-18)
+
+
+### Refactoring
+
+* clarify agent and cli session ids ([#18232](https://github.com/vm0-ai/vm0/issues/18232)) ([18fa8d6](https://github.com/vm0-ai/vm0/commit/18fa8d6e5740b7121b3985a19b5082a637f9d39b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+    * @vm0/core bumped to 8.355.0
+    * @vm0/db bumped to 1.57.2
+
+## [1.155.0](https://github.com/vm0-ai/vm0/compare/api-v1.154.0...api-v1.155.0) (2026-06-18)
+
+
+### Features
+
+* register nocturne and neo-brutalism presentation resources ([#18209](https://github.com/vm0-ai/vm0/issues/18209)) ([5b76751](https://github.com/vm0-ai/vm0/commit/5b767515121b00104f45a81ecbd145c672e2ee3e))
+
+
+### Bug Fixes
+
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+    * @vm0/core bumped to 8.354.0
+    * @vm0/db bumped to 1.57.1
+
 ## [1.154.0](https://github.com/vm0-ai/vm0/compare/api-v1.153.0...api-v1.154.0) (2026-06-18)
 
 

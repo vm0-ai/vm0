@@ -491,7 +491,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows a partially gated connector with only ungated auth methods", async () => {
+  it("hides Stripe when the connector switch is disabled", async () => {
     mockConnectors([]);
 
     detachedSetupPage({
@@ -502,42 +502,27 @@ describe("connectors page", () => {
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "stripe");
-    click(await screen.findByLabelText("Connect Stripe"));
 
-    const connectDialog = await screen.findByRole("dialog", {
-      name: "Stripe",
+    await waitFor(() => {
+      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
-    expect(
-      within(connectDialog).getByText("Sign in with Stripe"),
-    ).toBeInTheDocument();
-    expect(
-      within(connectDialog).getAllByText("API Key").length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(connectDialog).queryByText("OAuth (Recommended)"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Connect Stripe")).not.toBeInTheDocument();
   });
 
-  it("hides statically hidden auth methods from the connect dialog", async () => {
+  it("starts Stripe OAuth directly from the connector card", async () => {
     mockConnectors([]);
-    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
-    const originalOauth = authMethods.oauth;
-
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "oauth", {
-        value: originalOauth,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "oauth", {
-      value: {
-        ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("stripe");
+        expect(body?.authMethod).toBe("oauth");
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/stripe/authorize",
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -549,26 +534,20 @@ describe("connectors page", () => {
     await fill(searchInput, "stripe");
     click(await screen.findByLabelText("Connect Stripe"));
 
-    const connectDialog = await screen.findByRole("dialog", {
-      name: "Stripe",
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
     });
     expect(
-      within(connectDialog).getByText("Sign in with Stripe"),
-    ).toBeInTheDocument();
-    expect(
-      within(connectDialog).getAllByText("API Key").length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(connectDialog).queryByText("OAuth (Recommended)"),
+      screen.queryByRole("dialog", { name: "Stripe" }),
     ).not.toBeInTheDocument();
   });
 
-  it("hides a connector when all auth methods are statically hidden", async () => {
+  it("hides Stripe when its only auth method is statically hidden", async () => {
     mockConnectors([]);
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;
     const originalOauth = authMethods.oauth;
-    const originalCli = authMethods.cli;
-    const originalApiToken = authMethods["api-token"];
 
     restoreConnectorRegistry.push(() => {
       Object.defineProperty(authMethods, "oauth", {
@@ -580,36 +559,6 @@ describe("connectors page", () => {
     Object.defineProperty(authMethods, "oauth", {
       value: {
         ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "cli", {
-        value: originalCli,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "cli", {
-      value: {
-        ...originalCli,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "api-token", {
-        value: originalApiToken,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "api-token", {
-      value: {
-        ...originalApiToken,
         visible: false,
       } satisfies ConnectorAuthMethodConfig,
       configurable: true,

@@ -9,7 +9,7 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VM0_API_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
-PAID_ONBOARDING_URL=https://so.vm7.ai:8441
+PAID_ONBOARDING_URL=https://so.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom.vm7.ai:8442/
@@ -201,7 +201,6 @@ WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 
 # Optional: Stripe OAuth Connector
 STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
-STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 
 # Optional: Stripe Billing (Vercel AI Gateway metering)
 STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY
@@ -209,7 +208,10 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 # Optional: Stripe Billing (subscription + credits)
 STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
-ZERO_PRICE=op://Development/stripe/ZERO_PRICE
+ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
+ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
+ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
+ZERO_PRICE_CONCURRENCY=op://Development/stripe/ZERO_PRICE_CONCURRENCY
 ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN
 
 # Optional: AgentPhone (Phone/iMessage Channel)

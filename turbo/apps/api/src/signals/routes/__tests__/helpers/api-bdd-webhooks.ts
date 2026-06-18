@@ -242,10 +242,9 @@ export function createWebhookCallbackApi(context: TestContext) {
      */
     configureStripeBillingEnv(): void {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-      mockEnv(
-        "ZERO_PRICE",
-        JSON.stringify({ pro: ["price_bdd_pro"], team: ["price_bdd_team"] }),
-      );
+      mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
+      mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
+      mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockEnv(
         "ZERO_ONE_TIME_CAMPAIGN",
         JSON.stringify({

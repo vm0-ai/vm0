@@ -120,6 +120,80 @@ interface PermissionsDrawerFooterProps {
   readonly onApply: () => void;
 }
 
+interface InitialPermissionDrawerState {
+  readonly ref: ConnectorType;
+  readonly initialUnknownPolicy: FirewallPolicyValue;
+  readonly initialPolicyState: Record<string, Record<string, PermissionPolicy>>;
+  readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
+  readonly initialPolicyKey: string;
+}
+
+type LoadedPermissionsDrawerContentProps = Pick<
+  PermissionsDrawerProps,
+  "initialPolicies" | "resetEnabled" | "readOnly" | "onApply" | "onClose"
+> & {
+  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly initialState: InitialPermissionDrawerState;
+};
+
+function buildInitialPermissionDrawerState({
+  agentId,
+  connectorType,
+  metadata,
+  initialPolicies,
+  initialGrants,
+}: Pick<
+  PermissionsDrawerProps,
+  "agentId" | "connectorType" | "initialPolicies" | "initialGrants"
+> & {
+  readonly metadata: FirewallPermissionDetailMetadata;
+}): InitialPermissionDrawerState {
+  const initialUnknownPolicy = buildInitialUnknownPolicy(
+    connectorType,
+    metadata,
+    initialPolicies,
+  );
+  const initialPolicyState = buildInitialPolicies(
+    connectorType,
+    metadata,
+    initialPolicies,
+  );
+  const explicitGrants = buildExplicitGrantMap(connectorType, initialGrants);
+  const grantStateKey = explicitGrantStateKey(explicitGrants);
+  return {
+    ref: connectorType,
+    initialUnknownPolicy,
+    initialPolicyState,
+    explicitGrants,
+    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[connectorType] ?? {})}\u0000${grantStateKey}`,
+  };
+}
+
+function PermissionsDrawerHeader({
+  connectorType,
+  displayName,
+}: Pick<PermissionsDrawerProps, "connectorType" | "displayName">) {
+  const connectorLabel = CONNECTOR_TYPES[connectorType].label;
+
+  return (
+    <SheetHeader>
+      <div className="flex items-center gap-3">
+        <ConnectorIcon type={connectorType} size={24} />
+        <SheetTitle className="text-base">
+          {connectorLabel} permissions
+          <span className="text-sm font-normal text-muted-foreground ml-1">
+            for {displayName}
+          </span>
+        </SheetTitle>
+      </div>
+      <SheetDescription>
+        Configure which actions this agent is allowed to perform via this
+        connector.
+      </SheetDescription>
+    </SheetHeader>
+  );
+}
+
 function sortPermissions(
   perms: readonly ConnectorPermission[],
 ): ConnectorPermission[] {
@@ -1178,36 +1252,23 @@ function PermissionsDrawerFooter({
   );
 }
 
-function LoadedPermissionsDrawer({
-  agentId,
-  connectorType,
-  displayName,
+function LoadedPermissionsDrawerContent({
   initialPolicies,
-  initialGrants,
   resetEnabled,
   readOnly,
   onApply,
   onClose,
   metadata,
-}: PermissionsDrawerProps & {
-  readonly metadata: FirewallPermissionDetailMetadata;
-}) {
-  const ref = connectorType;
-
-  const initialUnknownPolicy = buildInitialUnknownPolicy(
-    ref,
-    metadata,
-    initialPolicies,
-  );
-  const initialPolicyState = buildInitialPolicies(
-    ref,
-    metadata,
-    initialPolicies,
-  );
+  initialState,
+}: LoadedPermissionsDrawerContentProps) {
   const defaultPolicyState = buildDefaultPolicyState(metadata);
-  const explicitGrants = buildExplicitGrantMap(ref, initialGrants);
-  const grantStateKey = explicitGrantStateKey(explicitGrants);
-  const initialPolicyKey = `${agentId}\u0000${ref}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[ref] ?? {})}\u0000${grantStateKey}`;
+  const {
+    ref,
+    initialUnknownPolicy,
+    initialPolicyState,
+    explicitGrants,
+    initialPolicyKey,
+  } = initialState;
   useSet(initPermissionPolicies$)(
     initialPolicyKey,
     initialPolicyState,
@@ -1371,129 +1432,102 @@ function LoadedPermissionsDrawer({
     );
   };
 
-  const connectorLabel = CONNECTOR_TYPES[connectorType].label;
-
   return (
-    <Sheet
-      open
-      onOpenChange={(open) => {
-        return !open && handleClose();
-      }}
-    >
-      <SheetContent side="right">
-        <SheetHeader>
-          <div className="flex items-center gap-3">
-            <ConnectorIcon type={connectorType} size={24} />
-            <SheetTitle className="text-base">
-              {connectorLabel} permissions
-              <span className="text-sm font-normal text-muted-foreground ml-1">
-                for {displayName}
-              </span>
-            </SheetTitle>
-          </div>
-          <SheetDescription>
-            Configure which actions this agent is allowed to perform via this
-            connector.
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="flex flex-1 flex-col min-h-0">
-          {!groups && (
-            <div
-              className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
-            >
-              <span className="text-xs font-medium text-foreground">
-                {readOnly ? "Permissions" : "Select all"} ({permissions.length})
-              </span>
-              {!readOnly && (
-                <PolicyPill
-                  policy={getGroupPolicy(permissions, policies)}
-                  onChange={handleSetAll}
-                />
-              )}
-            </div>
-          )}
-
+    <>
+      <div className="flex flex-1 flex-col min-h-0">
+        {!groups && (
           <div
-            className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
-            onScroll={(e) => {
-              const target = e.currentTarget;
-              setScrolled(target.scrollTop > 0);
-            }}
+            className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
           >
-            <PermissionRows
-              groups={groups}
-              permissions={permissions}
-              initialPolicies={initialPoliciesForRef}
-              policies={policies}
-              expandedGroups={expandedGroups}
-              explicitGrants={effectiveExplicitGrants}
-              expirationSelections={expirationSelections}
-              readOnly={readOnly}
-              saving={saving}
-              onToggleGroup={toggleGroup}
-              onSetGroupAll={handleSetGroupAll}
-              onPolicyChange={handlePolicyChange}
-              onGrantExpirationChange={setGrantExpiration}
-              onResetPermission={handleResetPermission}
-            />
-          </div>
-
-          <UnknownEndpointsToggle
-            policyControl={
-              <PermissionGrantPolicyControl
-                permission={UNKNOWN_PERMISSION_GRANT}
-                policy={unknownPolicy}
-                grant={unknownGrant}
-                selected={unknownSelectedExpiration}
-                hasPendingChange={hasPendingPermissionControlChange({
-                  grant: unknownGrant,
-                  initialPolicy: initialUnknownPolicy,
-                  policy: unknownPolicy,
-                  selected: unknownSelectedExpiration,
-                })}
-                allowAlwaysActive={hasAllowAlwaysPolicy(
-                  unknownGrant,
-                  unknownPolicy,
-                )}
-                readOnly={readOnly}
-                saving={saving}
-                onClearExpiration={() => {
-                  setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
-                }}
-                onAllowDurationChange={(expiresIn) => {
-                  setGrantExpiration(
-                    UNKNOWN_PERMISSION_GRANT,
-                    menuOptionExpiresIn(
-                      expiresIn,
-                      unknownGrant?.action === "allow"
-                        ? unknownGrant
-                        : undefined,
-                    ),
-                  );
-                }}
-                onPolicyChange={(p) => {
-                  setUnknownPolicy(p);
-                }}
-                onReset={handleResetUnknownPermission}
+            <span className="text-xs font-medium text-foreground">
+              {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+            </span>
+            {!readOnly && (
+              <PolicyPill
+                policy={getGroupPolicy(permissions, policies)}
+                onChange={handleSetAll}
               />
-            }
+            )}
+          </div>
+        )}
+
+        <div
+          className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            setScrolled(target.scrollTop > 0);
+          }}
+        >
+          <PermissionRows
+            groups={groups}
+            permissions={permissions}
+            initialPolicies={initialPoliciesForRef}
+            policies={policies}
+            expandedGroups={expandedGroups}
+            explicitGrants={effectiveExplicitGrants}
+            expirationSelections={expirationSelections}
+            readOnly={readOnly}
+            saving={saving}
+            onToggleGroup={toggleGroup}
+            onSetGroupAll={handleSetGroupAll}
+            onPolicyChange={handlePolicyChange}
+            onGrantExpirationChange={setGrantExpiration}
+            onResetPermission={handleResetPermission}
           />
         </div>
 
-        <PermissionsDrawerFooter
-          readOnly={readOnly}
-          resetEnabled={resetEnabled}
-          canReset
-          resetAvailable={resetAvailable}
-          saving={saving}
-          canApply={canApply}
-          onReset={handleResetConnector}
-          onClose={handleClose}
-          onApply={handleApply}
+        <UnknownEndpointsToggle
+          policyControl={
+            <PermissionGrantPolicyControl
+              permission={UNKNOWN_PERMISSION_GRANT}
+              policy={unknownPolicy}
+              grant={unknownGrant}
+              selected={unknownSelectedExpiration}
+              hasPendingChange={hasPendingPermissionControlChange({
+                grant: unknownGrant,
+                initialPolicy: initialUnknownPolicy,
+                policy: unknownPolicy,
+                selected: unknownSelectedExpiration,
+              })}
+              allowAlwaysActive={hasAllowAlwaysPolicy(
+                unknownGrant,
+                unknownPolicy,
+              )}
+              readOnly={readOnly}
+              saving={saving}
+              onClearExpiration={() => {
+                setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
+              }}
+              onAllowDurationChange={(expiresIn) => {
+                setGrantExpiration(
+                  UNKNOWN_PERMISSION_GRANT,
+                  menuOptionExpiresIn(
+                    expiresIn,
+                    unknownGrant?.action === "allow" ? unknownGrant : undefined,
+                  ),
+                );
+              }}
+              onPolicyChange={(p) => {
+                setUnknownPolicy(p);
+              }}
+              onReset={handleResetUnknownPermission}
+            />
+          }
         />
-      </SheetContent>
-    </Sheet>
+      </div>
+
+      <PermissionsDrawerFooter
+        readOnly={readOnly}
+        resetEnabled={resetEnabled}
+        canReset
+        resetAvailable={resetAvailable}
+        saving={saving}
+        canApply={canApply}
+        onReset={handleResetConnector}
+        onClose={handleClose}
+        onApply={handleApply}
+      />
+    </>
   );
 }
 
@@ -1503,14 +1537,26 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
       connectorType: props.connectorType,
     }),
   );
-  const connectorLabel = CONNECTOR_TYPES[props.connectorType].label;
-
-  if (metadataLoadable.state === "hasData" && metadataLoadable.data) {
-    return (
-      <LoadedPermissionsDrawer {...props} metadata={metadataLoadable.data} />
-    );
-  }
-
+  const loadedMetadata =
+    metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
+  const loadedInitialState = loadedMetadata
+    ? buildInitialPermissionDrawerState({
+        agentId: props.agentId,
+        connectorType: props.connectorType,
+        metadata: loadedMetadata,
+        initialPolicies: props.initialPolicies,
+        initialGrants: props.initialGrants,
+      })
+    : null;
+  const resetPermissionPolicies = useSet(resetPermissionPolicies$);
+  const resetGrantExpirations = useSet(resetPermissionGrantExpirations$);
+  const handleClose = () => {
+    if (loadedInitialState) {
+      resetPermissionPolicies(loadedInitialState.initialPolicyKey);
+      resetGrantExpirations(loadedInitialState.initialPolicyKey);
+    }
+    props.onClose();
+  };
   const loading = metadataLoadable.state === "loading";
   const message =
     metadataLoadable.state === "hasError"
@@ -1521,42 +1567,42 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
     <Sheet
       open
       onOpenChange={(open) => {
-        return !open && props.onClose();
+        return !open && handleClose();
       }}
     >
       <SheetContent side="right">
-        <SheetHeader>
-          <div className="flex items-center gap-3">
-            <ConnectorIcon type={props.connectorType} size={24} />
-            <SheetTitle className="text-base">
-              {connectorLabel} permissions
-              <span className="text-sm font-normal text-muted-foreground ml-1">
-                for {props.displayName}
-              </span>
-            </SheetTitle>
-          </div>
-          <SheetDescription>
-            Configure which actions this agent is allowed to perform via this
-            connector.
-          </SheetDescription>
-        </SheetHeader>
+        <PermissionsDrawerHeader
+          connectorType={props.connectorType}
+          displayName={props.displayName}
+        />
 
-        <div className="flex flex-1 items-center justify-center">
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <IconLoader2 size={16} className="animate-spin" />
-              Loading permissions...
+        {loadedMetadata && loadedInitialState ? (
+          <LoadedPermissionsDrawerContent
+            {...props}
+            metadata={loadedMetadata}
+            initialState={loadedInitialState}
+            onClose={handleClose}
+          />
+        ) : (
+          <>
+            <div className="flex flex-1 items-center justify-center">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <IconLoader2 size={16} className="animate-spin" />
+                  Loading permissions...
+                </div>
+              ) : (
+                <p className="text-sm text-destructive">{message}</p>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-destructive">{message}</p>
-          )}
-        </div>
 
-        <SheetFooter>
-          <Button variant="outline" onClick={props.onClose}>
-            {props.readOnly ? "Close" : "Cancel"}
-          </Button>
-        </SheetFooter>
+            <SheetFooter>
+              <Button variant="outline" onClick={handleClose}>
+                {props.readOnly ? "Close" : "Cancel"}
+              </Button>
+            </SheetFooter>
+          </>
+        )}
       </SheetContent>
     </Sheet>
   );

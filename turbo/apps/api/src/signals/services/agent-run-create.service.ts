@@ -40,6 +40,7 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
+  type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
@@ -148,6 +149,11 @@ import {
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import {
+  activePaidConcurrencySlots,
+  cappedBaseConcurrencyLimit,
+  totalConcurrencyLimit,
+} from "./org-concurrency-entitlements.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -164,13 +170,15 @@ const TIER_LIMITS = Object.freeze({
   team: 10,
 });
 
-function getEffectiveConcurrencyLimit(tier: keyof typeof TIER_LIMITS): number {
-  const tierLimit = TIER_LIMITS[tier];
-  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
-  if (cap === 0) {
-    return 0;
-  }
-  return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
+function getEffectiveConcurrencyLimit(
+  tier: keyof typeof TIER_LIMITS,
+  paidSlots: number,
+): number {
+  const limit = totalConcurrencyLimit({
+    baseLimit: cappedBaseConcurrencyLimit(TIER_LIMITS[tier]),
+    paidSlots,
+  });
+  return Number.isFinite(limit) ? limit : 0;
 }
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -181,6 +189,7 @@ const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type RunAdmissionDb = Pick<Db, "select">;
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -255,11 +264,19 @@ interface ResolvedCompose {
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
-  readonly sessionId?: string;
+  readonly agentSessionId?: string;
   readonly resumedFromCheckpointId?: string;
-  readonly continuedFromSessionId?: string;
+  readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
+
+// Session naming in this service:
+// - agentSessionId is the vm0 application session (`agent_sessions.id`) used
+//   for product-level continuation and future correctness checks.
+// - cliAgentSessionId is the Claude/Codex CLI agent session stored on
+//   `conversations.cli_agent_session_id`; runner sandbox reuse is keyed by it.
+// Existing API/runner wire fields named `sessionId` are preserved for
+// compatibility and normalized to these semantic names at the boundary.
 
 interface RunRecord {
   readonly id: string;
@@ -391,6 +408,7 @@ interface ConnectorRuntimeContext {
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
+  readonly connectorAuthMethods: Partial<Record<ConnectorType, string>>;
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -723,7 +741,7 @@ function artifactsForRun(args: {
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation =
-    Boolean(args.resolved.sessionId) ||
+    Boolean(args.resolved.agentSessionId) ||
     Boolean(args.resolved.resumedFromCheckpointId);
   const composeContextArtifacts = isContinuation
     ? []
@@ -1732,6 +1750,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     connectorTypes: [],
+    connectorAuthMethods: {},
     storedEnvironment: undefined,
   };
 }
@@ -2029,6 +2048,11 @@ async function loadStoredConnectorContext(
       connectorTypes: allowedConnectorRows.map((row) => {
         return row.connectorType;
       }),
+      connectorAuthMethods: Object.fromEntries(
+        allowedConnectorRows.map((row) => {
+          return [row.connectorType, row.authMethod];
+        }),
+      ),
       storedEnvironment: compactRecord(resolved.environment),
     };
   });
@@ -2220,6 +2244,44 @@ function inlineFirewallEntry(
   return { kind: "inline", firewall: runtimeFirewall(firewall) };
 }
 
+interface RuntimeConnectorFirewall {
+  readonly firewall: ExpandedFirewallConfig;
+  readonly inline: boolean;
+}
+
+const FIGMA_API_TOKEN_TEMPLATE = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
+const FIGMA_API_TOKEN_AUTH_HEADERS = Object.freeze({
+  "X-Figma-Token": FIGMA_API_TOKEN_TEMPLATE,
+});
+
+function figmaApiTokenFirewall(
+  firewall: ExpandedFirewallConfig,
+): ExpandedFirewallConfig {
+  return {
+    ...firewall,
+    apis: firewall.apis.map((api) => {
+      return {
+        ...api,
+        auth: {
+          ...api.auth,
+          headers: FIGMA_API_TOKEN_AUTH_HEADERS,
+        },
+      };
+    }),
+  };
+}
+
+function runtimeConnectorFirewall(
+  type: FirewallConnectorType,
+  authMethod: string | undefined,
+): RuntimeConnectorFirewall {
+  const firewall = getConnectorFirewall(type);
+  if (type === "figma" && authMethod === "api-token") {
+    return { firewall: figmaApiTokenFirewall(firewall), inline: true };
+  }
+  return { firewall, inline: false };
+}
+
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
@@ -2300,21 +2362,37 @@ function buildPermissionManifest(args: {
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
+  readonly connectorAuthMethods?: Partial<Record<ConnectorType, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
 }): PermissionManifest | undefined {
   const connectorTypes =
     args.connectorTypes ??
     Object.keys(args.permissionPolicies ?? {}).filter(isFirewallConnectorType);
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const connectorFirewalls = connectorTypes
+  const runtimeConnectorFirewalls = connectorTypes
     .filter(isFirewallConnectorType)
     .map((type) => {
-      return getConnectorFirewall(type);
+      return runtimeConnectorFirewall(type, args.connectorAuthMethods?.[type]);
     });
+  const connectorFirewalls = runtimeConnectorFirewalls.map(({ firewall }) => {
+    return firewall;
+  });
+  const inlineConnectorFirewallNames = new Set(
+    runtimeConnectorFirewalls
+      .filter(({ inline }) => {
+        return inline;
+      })
+      .map(({ firewall }) => {
+        return firewall.name;
+      }),
+  );
   const connectorManifest = applyConnectorPolicies(
     connectorFirewalls,
     args.permissionPolicies,
     (firewall) => {
+      if (inlineConnectorFirewallNames.has(firewall.name)) {
+        return inlineFirewallEntry(firewall);
+      }
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
     defaultBuiltinConnectorPolicyForFirewall,
@@ -2424,7 +2502,7 @@ function parseAdditionalVolumesSnapshot(
 }
 
 async function orgTier(
-  db: Db,
+  db: RunAdmissionDb,
   orgId: string,
 ): Promise<keyof typeof TIER_LIMITS> {
   const [row] = await db
@@ -2437,10 +2515,14 @@ async function orgTier(
 }
 
 async function checkRunConcurrencyLimit(
-  tx: Db,
+  tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const limit = getEffectiveConcurrencyLimit(await orgTier(tx, orgId));
+  const [tier, paidSlots] = await Promise.all([
+    orgTier(tx, orgId),
+    activePaidConcurrencySlots(tx, orgId),
+  ]);
+  const limit = getEffectiveConcurrencyLimit(tier, paidSlots);
   if (limit === 0) {
     return null;
   }
@@ -2596,7 +2678,7 @@ async function resolveByComposeId(
 
 function resolveBySessionId(
   db: Db,
-  sessionId: string,
+  agentSessionId: string,
   userId: string,
   orgId: string,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
@@ -2617,7 +2699,7 @@ function resolveBySessionId(
         )
         .where(
           and(
-            eq(agentSessions.id, sessionId),
+            eq(agentSessions.id, agentSessionId),
             eq(agentSessions.userId, userId),
             eq(agentSessions.orgId, orgId),
           ),
@@ -2649,8 +2731,8 @@ function resolveBySessionId(
         ...resolved,
         artifacts: session.artifacts ?? [],
         vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
-        sessionId: session.id,
-        continuedFromSessionId: session.id,
+        agentSessionId: session.id,
+        continuedFromAgentSessionId: session.id,
         resumeSession,
       };
     },
@@ -2749,8 +2831,9 @@ function loadResumeSession(
         return undefined;
       }
 
+      const cliAgentSessionId = conversation.cliAgentSessionId;
       return {
-        sessionId: conversation.cliAgentSessionId,
+        sessionId: cliAgentSessionId,
         sessionHistory,
       };
     },
@@ -2921,8 +3004,8 @@ async function insertRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const sessionId =
-    args.resolved.sessionId ??
+  const agentSessionId =
+    args.resolved.agentSessionId ??
     (
       await tx
         .insert(agentSessions)
@@ -2936,7 +3019,7 @@ async function insertRunRecord(
         .returning({ id: agentSessions.id })
     )[0]?.id;
 
-  if (!sessionId) {
+  if (!agentSessionId) {
     throw new Error("Failed to create agent session");
   }
 
@@ -2955,8 +3038,8 @@ async function insertRunRecord(
         ? [...args.additionalVolumes]
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
-      sessionId,
+      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
+      sessionId: agentSessionId,
       lastHeartbeatAt: nowDate(),
     })
     .returning({
@@ -3015,8 +3098,8 @@ async function insertQueuedRunRecord(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
-  const sessionId =
-    args.resolved.sessionId ??
+  const agentSessionId =
+    args.resolved.agentSessionId ??
     (
       await tx
         .insert(agentSessions)
@@ -3030,7 +3113,7 @@ async function insertQueuedRunRecord(
         .returning({ id: agentSessions.id })
     )[0]?.id;
 
-  if (!sessionId) {
+  if (!agentSessionId) {
     throw new Error("Failed to create queued agent session");
   }
 
@@ -3049,8 +3132,8 @@ async function insertQueuedRunRecord(
         ? [...args.additionalVolumes]
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
-      sessionId,
+      continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
+      sessionId: agentSessionId,
       lastHeartbeatAt: nowDate(),
     })
     .returning({
@@ -3117,6 +3200,7 @@ async function buildStoredExecutionContext(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
+    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
   const executionSecrets = buildStoredExecutionSecrets({
@@ -3244,13 +3328,14 @@ function ingestRunContextSnapshot(args: {
     storedContext.environment,
     args.builtContext.secretValues,
   );
+  const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
   const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
     userId: args.userId,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
-    sessionId: storedContext.resumeSession?.sessionId ?? null,
+    sessionId: cliAgentSessionId,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: firewallSnapshots(storedContext.firewalls),
@@ -3478,11 +3563,11 @@ function buildRunnerJobPayload(
         builtContext,
       });
       const storedContext = builtContext.context;
-      const sessionId = storedContext.resumeSession?.sessionId ?? null;
+      const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
       return queuedRunnerJobPayload({
         runnerGroup: group,
         profile,
-        sessionId,
+        cliAgentSessionId,
         executionContext: storedContext,
       });
     },
@@ -3555,7 +3640,7 @@ function dispatchRun(
         runId: args.run.id,
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
-        sessionId: payload.sessionId,
+        cliAgentSessionId: payload.cliAgentSessionId,
         executionContext: payload.executionContext,
         expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
       });
@@ -3575,7 +3660,7 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
-        sessionId: payload.sessionId,
+        cliAgentSessionId: payload.cliAgentSessionId,
       });
     }
 
@@ -3877,6 +3962,7 @@ function validateRunEnvironmentReferences(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
+    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
   const validationSecrets = buildStoredExecutionSecrets({

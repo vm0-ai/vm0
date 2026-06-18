@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.37...vsock-guest-v0.18.38) (2026-06-18)
+
+
+### Bug Fixes
+
+* **vsock-guest:** refresh non-signalable child pgid targets ([#18201](https://github.com/vm0-ai/vm0/issues/18201)) ([54f1786](https://github.com/vm0-ai/vm0/commit/54f1786ab7070c9a1c6e6b2ddc18f67a3e55a839))
+
 ## [0.18.37](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.36...vsock-guest-v0.18.37) (2026-06-17)
 
 ## [0.18.36](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.35...vsock-guest-v0.18.36) (2026-06-17)
