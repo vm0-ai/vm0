@@ -13,10 +13,10 @@ use serde_json::json;
 
 #[tokio::test]
 async fn complete_report_success_posts_full_payload_when_metadata_present() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
-    // VM0_SANDBOX_ID / VM0_SANDBOX_REUSE_RESULT come from MOCK_SERVER init.
+    // VM0_SANDBOX_ID / VM0_SANDBOX_REUSE_RESULT come from shared API mock init.
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
@@ -43,7 +43,6 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
     .await;
 
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 /// Unset runner metadata (guest launched without `VM0_SANDBOX_ID` /
@@ -53,8 +52,8 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
 /// contract end-to-end.
 #[tokio::test]
 async fn complete_report_success_omits_metadata_when_env_absent() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -69,13 +68,12 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
     guest_agent::complete::report_success(&http_client!(), "", "", None).await;
 
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 #[tokio::test]
 async fn complete_report_success_swallows_server_error() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/complete");
@@ -93,7 +91,6 @@ async fn complete_report_success_swallows_server_error() {
     .await;
 
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
 
 /// 4xx takes a different branch in `post_json` than 5xx: it returns Err
@@ -103,8 +100,8 @@ async fn complete_report_success_swallows_server_error() {
 /// call that actually transitions the run.
 #[tokio::test]
 async fn complete_report_success_swallows_4xx_auth_error() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let server = &*MOCK_SERVER;
+    let api = SharedApiMock::new().await;
+    let server = api.server();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/complete");
@@ -122,5 +119,4 @@ async fn complete_report_success_swallows_4xx_auth_error() {
     .await;
 
     mock.assert_calls_async(1).await;
-    mock.delete_async().await;
 }
