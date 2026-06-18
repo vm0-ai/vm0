@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getPermissionCategories } from "@vm0/connectors/firewalls";
+import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -36,6 +36,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+const PERMISSION_METADATA_TIMEOUT_MS = 15_000;
+const PERMISSION_UI_TEST_TIMEOUT_MS = 20_000;
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
@@ -119,33 +121,52 @@ function tabByText(text: string): HTMLElement {
 }
 
 async function permissionRowByName(
-  container: HTMLElement,
+  _container: HTMLElement,
   name: string,
 ): Promise<HTMLElement> {
-  const row = (await within(container).findByText(name)).closest(
-    "div",
-  )?.parentElement;
+  const row = (
+    await screen.findByText(
+      name,
+      {},
+      { timeout: PERMISSION_METADATA_TIMEOUT_MS },
+    )
+  ).closest("div")?.parentElement;
   if (!(row instanceof HTMLElement)) {
     throw new Error(`${name} permission row not found`);
   }
   return row;
 }
 
-function unknownEndpointsRow(container: HTMLElement): HTMLElement {
-  const row = within(container)
-    .getByText("Other endpoints")
-    .closest("div")?.parentElement;
+async function unknownEndpointsRow(
+  _container: HTMLElement,
+): Promise<HTMLElement> {
+  const row = (
+    await screen.findByText(
+      "Other endpoints",
+      {},
+      { timeout: PERMISSION_METADATA_TIMEOUT_MS },
+    )
+  ).closest("div")?.parentElement;
   if (!(row instanceof HTMLElement)) {
     throw new Error("Other endpoints row not found");
   }
   return row;
 }
 
-function connectorCategoryLabel(
+function dialogForElement(element: HTMLElement): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error("dialog not found for element");
+  }
+  return dialog;
+}
+
+async function connectorCategoryLabel(
   connectorType: ConnectorType,
   category: string,
-): string {
-  const categoryData = getPermissionCategories(connectorType);
+): Promise<string> {
+  const metadata = await loadFirewallPermissionMetadata(connectorType);
+  const categoryData = metadata?.categories;
   if (!categoryData) {
     throw new Error(`${connectorType} categories not found`);
   }
@@ -567,299 +588,339 @@ describe("team page navigation", () => {
     });
   });
 
-  it("updates connector permission policies from an agent page", async () => {
-    mockTeamAPIs();
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}`,
-    });
+  it(
+    "updates connector permission policies from an agent page",
+    async () => {
+      mockTeamAPIs();
+      detachedSetupPage({
+        context,
+        path: `/agents/${researchAgentId}`,
+      });
 
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Research Agent" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("@workspace")).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Manage Axiom permissions"));
+
+      const permissionsDialog = await screen.findByRole("dialog");
       expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
+        within(permissionsDialog).getByText("Axiom permissions"),
       ).toBeInTheDocument();
-      expect(screen.getByText("@workspace")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Manage Axiom permissions"));
-
-    const permissionsDialog = await screen.findByRole("dialog");
-    expect(
-      within(permissionsDialog).getByText("Axiom permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionsDialog).getByText("for Research Agent"),
-    ).toBeInTheDocument();
-
-    const permissionRow = await permissionRowByName(
-      permissionsDialog,
-      "annotations|create",
-    );
-    click(screen.getByLabelText("annotations|create allow options"));
-    click(menuItemByText("Allow for 24h"));
-    await waitFor(() => {
-      expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
-      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
-    });
-    click(buttonByText("Apply", permissionsDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Manage Axiom permissions"));
-
-    const resetDialog = await screen.findByRole("dialog");
-    expect(
-      within(resetDialog).getByText("Axiom permissions"),
-    ).toBeInTheDocument();
-
-    const resetPermissionRow = await permissionRowByName(
-      resetDialog,
-      "annotations|create",
-    );
-    click(buttonByText("Deny", resetPermissionRow));
-    click(buttonByText("Deny", unknownEndpointsRow(resetDialog)));
-
-    await waitFor(() => {
-      expect(buttonByText("Restore", resetDialog)).toBeEnabled();
-    });
-    click(buttonByText("Restore", resetDialog));
-    await waitFor(() => {
-      expect(buttonByText("Apply", resetDialog)).toBeEnabled();
-    });
-    click(buttonByText("Apply", resetDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
-    });
-  });
-
-  it("uses Cloudflare unknown endpoint deny as the permissions drawer default", async () => {
-    mockTeamAPIs();
-    context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}`,
-    });
-
-    await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
+        within(permissionsDialog).getByText("for Research Agent"),
       ).toBeInTheDocument();
-      expect(screen.getByText("@cf-team")).toBeInTheDocument();
-    });
 
-    click(screen.getByLabelText("Manage Cloudflare permissions"));
-
-    const permissionsDialog = await screen.findByRole("dialog");
-    expect(
-      within(permissionsDialog).getByText("Cloudflare permissions"),
-    ).toBeInTheDocument();
-
-    const unknownRow = unknownEndpointsRow(permissionsDialog);
-    expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
-
-    click(buttonByText("Allow", unknownRow));
-    await waitFor(() => {
-      expect(buttonByText("Allow", unknownRow)).toHaveAttribute(
-        "aria-pressed",
-        "true",
+      const permissionRow = await permissionRowByName(
+        permissionsDialog,
+        "annotations|create",
       );
-      expect(buttonByText("Restore", permissionsDialog)).toBeEnabled();
-    });
+      const loadedPermissionsDialog = dialogForElement(permissionRow);
+      click(screen.getByLabelText("annotations|create allow options"));
+      click(menuItemByText("Allow for 24h"));
+      await waitFor(() => {
+        expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
+        expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
+      });
+      click(buttonByText("Apply", loadedPermissionsDialog));
 
-    click(buttonByText("Restore", permissionsDialog));
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+        expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Manage Axiom permissions"));
+
+      const resetDialog = dialogForElement(
+        await screen.findByText("Axiom permissions"),
+      );
+
+      const resetPermissionRow = await permissionRowByName(
+        resetDialog,
+        "annotations|create",
+      );
+      const loadedResetDialog = dialogForElement(resetPermissionRow);
+      click(buttonByText("Deny", resetPermissionRow));
+      click(buttonByText("Deny", await unknownEndpointsRow(loadedResetDialog)));
+
+      await waitFor(() => {
+        expect(buttonByText("Restore", loadedResetDialog)).toBeEnabled();
+      });
+      click(buttonByText("Restore", loadedResetDialog));
+      await waitFor(() => {
+        expect(buttonByText("Apply", loadedResetDialog)).toBeEnabled();
+      });
+      click(buttonByText("Apply", loadedResetDialog));
+
+      await waitFor(() => {
+        expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+        expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+      });
+    },
+    PERMISSION_UI_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "uses Cloudflare unknown endpoint deny as the permissions drawer default",
+    async () => {
+      mockTeamAPIs();
+      context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+      detachedSetupPage({
+        context,
+        path: `/agents/${researchAgentId}`,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Research Agent" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("@cf-team")).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Manage Cloudflare permissions"));
+
+      const permissionsDialog = await screen.findByRole("dialog");
+      expect(
+        within(permissionsDialog).getByText("Cloudflare permissions"),
+      ).toBeInTheDocument();
+
+      const unknownRow = await unknownEndpointsRow(permissionsDialog);
+      const loadedPermissionsDialog = dialogForElement(unknownRow);
       expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
         "aria-pressed",
         "true",
       );
-      expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
-    });
-  });
+      expect(buttonByText("Restore", loadedPermissionsDialog)).toBeDisabled();
 
-  it("saves permission duration changes from an agent page", async () => {
-    mockNow();
-    mockTeamAPIs();
-    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
-    let grants: UserPermissionGrantResponse[] = [
-      {
-        agentId: researchAgentId,
-        connectorRef: "axiom",
-        permission: "annotations|create",
-        action: "allow",
-        expiresAt: isoFromNowMs(30 * 60 * 1000),
-        createdAt: "2026-03-01T00:00:00.000Z",
-        updatedAt: "2026-03-01T00:00:00.000Z",
-      },
-    ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(200, grants);
-    });
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
-      ({ body, respond }) => {
-        capturedUpserts.push(body);
-        const grant: UserPermissionGrantResponse = {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt:
-            body.action === "allow" && body.expiresIn !== "always"
-              ? isoFromNowMs(60 * 60 * 1000)
-              : null,
-          createdAt: "2026-03-01T00:00:00.000Z",
-          updatedAt: "2026-03-01T00:30:00.000Z",
-        };
-        grants = [
-          ...grants.filter((current) => {
-            return (
-              current.connectorRef !== grant.connectorRef ||
-              current.permission !== grant.permission
-            );
-          }),
-          grant,
-        ];
-        return respond(200, grant);
-      },
-    );
+      click(buttonByText("Allow", unknownRow));
+      await waitFor(() => {
+        expect(buttonByText("Allow", unknownRow)).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        expect(buttonByText("Restore", loadedPermissionsDialog)).toBeEnabled();
+      });
 
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+      click(buttonByText("Restore", loadedPermissionsDialog));
+      await waitFor(() => {
+        expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        expect(buttonByText("Restore", loadedPermissionsDialog)).toBeDisabled();
+      });
+    },
+    PERMISSION_UI_TEST_TIMEOUT_MS,
+  );
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("@workspace")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Manage Axiom permissions"));
-
-    const permissionsDialog = await screen.findByRole("dialog");
-    const createRow = await permissionRowByName(
-      permissionsDialog,
-      "annotations|create",
-    );
-    expect(within(createRow).getByText("< 1 hour")).toBeInTheDocument();
-
-    click(screen.getByLabelText("annotations|create allow options"));
-    click(menuItemByText("Allow always"));
-    await waitFor(() => {
-      expect(within(createRow).getByText("Always")).toBeInTheDocument();
-      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
-    });
-
-    click(buttonByText("Apply", permissionsDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-    });
-    expect(capturedUpserts).toStrictEqual(
-      expect.arrayContaining([
+  it(
+    "saves permission duration changes from an agent page",
+    async () => {
+      mockNow();
+      mockTeamAPIs();
+      const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+      let grants: UserPermissionGrantResponse[] = [
         {
           agentId: researchAgentId,
           connectorRef: "axiom",
           permission: "annotations|create",
           action: "allow",
-          expiresIn: "always",
+          expiresAt: isoFromNowMs(30 * 60 * 1000),
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
         },
-      ]),
-    );
-  });
+      ];
+      context.mocks.api(
+        zeroUserPermissionGrantsContract.list,
+        ({ respond }) => {
+          return respond(200, grants);
+        },
+      );
+      context.mocks.api(
+        zeroUserPermissionGrantsContract.upsert,
+        ({ body, respond }) => {
+          capturedUpserts.push(body);
+          const grant: UserPermissionGrantResponse = {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+            expiresAt:
+              body.action === "allow" && body.expiresIn !== "always"
+                ? isoFromNowMs(60 * 60 * 1000)
+                : null,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:30:00.000Z",
+          };
+          grants = [
+            ...grants.filter((current) => {
+              return (
+                current.connectorRef !== grant.connectorRef ||
+                current.permission !== grant.permission
+              );
+            }),
+            grant,
+          ];
+          return respond(200, grant);
+        },
+      );
 
-  it("updates grouped connector permission policies from an agent page", async () => {
-    mockTeamAPIs();
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}`,
-    });
+      detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
 
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Research Agent" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("@workspace")).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Manage Axiom permissions"));
+
+      const permissionsDialog = await screen.findByRole("dialog");
+      const createRow = await permissionRowByName(
+        permissionsDialog,
+        "annotations|create",
+      );
+      const loadedPermissionsDialog = dialogForElement(createRow);
+      expect(within(createRow).getByText("< 1 hour")).toBeInTheDocument();
+
+      click(screen.getByLabelText("annotations|create allow options"));
+      click(menuItemByText("Allow always"));
+      await waitFor(() => {
+        expect(within(createRow).getByText("Always")).toBeInTheDocument();
+        expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
+      });
+
+      click(buttonByText("Apply", loadedPermissionsDialog));
+
+      await waitFor(() => {
+        expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      });
+      expect(capturedUpserts).toStrictEqual(
+        expect.arrayContaining([
+          {
+            agentId: researchAgentId,
+            connectorRef: "axiom",
+            permission: "annotations|create",
+            action: "allow",
+            expiresIn: "always",
+          },
+        ]),
+      );
+    },
+    PERMISSION_UI_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "updates grouped connector permission policies from an agent page",
+    async () => {
+      mockTeamAPIs();
+      detachedSetupPage({
+        context,
+        path: `/agents/${researchAgentId}`,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Research Agent" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("@ops")).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Manage Slack permissions"));
+
+      const groupedDialog = await screen.findByRole("dialog");
       expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
+        within(groupedDialog).getByText("Slack permissions"),
       ).toBeInTheDocument();
-      expect(screen.getByText("@ops")).toBeInTheDocument();
-    });
+      const readGroupLabel = await connectorCategoryLabel("slack", "Read");
+      const writeGroupLabel = await connectorCategoryLabel("slack", "Write");
+      const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
+      const readGroupElement = await screen.findByText(
+        readGroupLabel,
+        {},
+        { timeout: PERMISSION_METADATA_TIMEOUT_MS },
+      );
+      const loadedGroupedDialog = dialogForElement(readGroupElement);
+      expect(readGroupElement).toBeInTheDocument();
+      const writeGroupElement = await screen.findByText(
+        writeGroupLabel,
+        {},
+        { timeout: PERMISSION_METADATA_TIMEOUT_MS },
+      );
+      expect(writeGroupElement).toBeInTheDocument();
+      const miscGroupElement = await screen.findByText(
+        miscGroupLabel,
+        {},
+        { timeout: PERMISSION_METADATA_TIMEOUT_MS },
+      );
+      expect(miscGroupElement).toBeInTheDocument();
 
-    click(screen.getByLabelText("Manage Slack permissions"));
+      click(screen.getByText(miscGroupLabel));
+      const miscGroup = screen.getByText(miscGroupLabel).closest("div");
+      if (!(miscGroup instanceof HTMLElement)) {
+        throw new Error("Misc permission group not found");
+      }
+      click(within(miscGroup).getByLabelText("Misc allow options"));
+      click(menuItemByText("Allow for 7d"));
+      await waitFor(() => {
+        expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
+      });
+      click(buttonByText("Deny", miscGroup));
+      await waitFor(() => {
+        expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
+      });
+      click(buttonByText("Allow", miscGroup));
+      click(within(miscGroup).getByLabelText("Misc allow options"));
+      click(menuItemByText("Allow always"));
 
-    const groupedDialog = await screen.findByRole("dialog");
-    expect(
-      within(groupedDialog).getByText("Slack permissions"),
-    ).toBeInTheDocument();
-    const readGroupLabel = connectorCategoryLabel("slack", "Read");
-    const writeGroupLabel = connectorCategoryLabel("slack", "Write");
-    const miscGroupLabel = connectorCategoryLabel("slack", "Misc");
-    expect(within(groupedDialog).getByText(readGroupLabel)).toBeInTheDocument();
-    expect(
-      within(groupedDialog).getByText(writeGroupLabel),
-    ).toBeInTheDocument();
-    expect(within(groupedDialog).getByText(miscGroupLabel)).toBeInTheDocument();
+      const permissionsScrollArea =
+        loadedGroupedDialog.querySelector(".overflow-y-auto");
+      if (!(permissionsScrollArea instanceof HTMLElement)) {
+        throw new Error("permissions scroll area not found");
+      }
+      Object.defineProperty(permissionsScrollArea, "scrollTop", {
+        configurable: true,
+        value: 24,
+      });
+      fireEvent.scroll(permissionsScrollArea);
 
-    click(screen.getByText(miscGroupLabel));
-    const miscGroup = screen.getByText(miscGroupLabel).closest("div");
-    if (!(miscGroup instanceof HTMLElement)) {
-      throw new Error("Misc permission group not found");
-    }
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow for 7d"));
-    await waitFor(() => {
-      expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
-    });
-    click(buttonByText("Deny", miscGroup));
-    await waitFor(() => {
-      expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
-    });
-    click(buttonByText("Allow", miscGroup));
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow always"));
+      const channelsJoinRow = await permissionRowByName(
+        loadedGroupedDialog,
+        "channels:join",
+      );
+      click(
+        within(channelsJoinRow).getByLabelText("Undo channels:join changes"),
+      );
+      await waitFor(() => {
+        expect(
+          within(channelsJoinRow).queryByLabelText(
+            "Undo channels:join changes",
+          ),
+        ).not.toBeInTheDocument();
+      });
 
-    const permissionsScrollArea =
-      groupedDialog.querySelector(".overflow-y-auto");
-    if (!(permissionsScrollArea instanceof HTMLElement)) {
-      throw new Error("permissions scroll area not found");
-    }
-    Object.defineProperty(permissionsScrollArea, "scrollTop", {
-      configurable: true,
-      value: 24,
-    });
-    fireEvent.scroll(permissionsScrollArea);
+      const unknownRow = await unknownEndpointsRow(loadedGroupedDialog);
+      click(within(unknownRow).getByLabelText("__unknown__ allow options"));
+      click(menuItemByText("Allow for 1h"));
+      await waitFor(() => {
+        expect(within(unknownRow).getByText("1h")).toBeInTheDocument();
+      });
+      click(within(unknownRow).getByLabelText("Undo __unknown__ changes"));
+      await waitFor(() => {
+        expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
+      });
 
-    const channelsJoinRow = await permissionRowByName(
-      groupedDialog,
-      "channels:join",
-    );
-    click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
-    await waitFor(() => {
-      expect(
-        within(channelsJoinRow).queryByLabelText("Undo channels:join changes"),
-      ).not.toBeInTheDocument();
-    });
+      click(buttonByText("Apply", loadedGroupedDialog));
 
-    const unknownRow = unknownEndpointsRow(groupedDialog);
-    click(within(unknownRow).getByLabelText("__unknown__ allow options"));
-    click(menuItemByText("Allow for 1h"));
-    await waitFor(() => {
-      expect(within(unknownRow).getByText("1h")).toBeInTheDocument();
-    });
-    click(within(unknownRow).getByLabelText("Undo __unknown__ changes"));
-    await waitFor(() => {
-      expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
-    });
-
-    click(buttonByText("Apply", groupedDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-      expect(screen.queryByText("Slack permissions")).not.toBeInTheDocument();
-    });
-  });
+      await waitFor(() => {
+        expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+        expect(screen.queryByText("Slack permissions")).not.toBeInTheDocument();
+      });
+    },
+    PERMISSION_UI_TEST_TIMEOUT_MS,
+  );
 });
