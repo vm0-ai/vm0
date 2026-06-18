@@ -69,10 +69,13 @@ function expectCdnPreviewImages(
 
   const assetUrls = [
     item.previewImage,
+    item.cardPreviewImage,
     item.embedUrl,
     ...item.previewImages,
     ...(item.previewHtmls ?? []),
-  ];
+  ].filter((url): url is string => {
+    return url !== undefined;
+  });
 
   for (const url of assetUrls) {
     for (const forbidden of FORBIDDEN_ASSET_URL_PARTS) {
@@ -227,6 +230,15 @@ describe("presentation template items", () => {
     ...PRESENTATION_TEMPLATE_ITEMS,
     ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
   ];
+
+  it("defines direct card preview assets for picker thumbnails", () => {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
+      expect(item.cardPreviewImage, item.slug).toMatch(
+        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.jpg$/u,
+      );
+      expect(item.cardPreviewImage, item.slug).not.toContain("/cdn-cgi/image/");
+    }
+  });
 
   it("resolve every design system and template against the resource registry", () => {
     for (const item of allPresentationItems) {

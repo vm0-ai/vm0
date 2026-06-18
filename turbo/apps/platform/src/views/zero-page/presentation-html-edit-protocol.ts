@@ -425,6 +425,49 @@ export function previewPresentationHtml(params: {
       margin: 0 !important;
       box-sizing: border-box !important;
     }
+    [data-vm0-editor-stage] > .slide,
+    [data-vm0-editor-stage] > .ppt-slide,
+    [data-vm0-editor-stage] > .presentation-slide,
+    [data-vm0-editor-stage] > .deck-slide,
+    [data-vm0-editor-stage] > .slide-page,
+    [data-vm0-editor-stage] > section,
+    [data-vm0-editor-stage] > [data-vm0-slide],
+    [data-vm0-editor-stage] > [data-slide],
+    [data-vm0-editor-stage] > [data-slide-index],
+    [data-vm0-editor-stage] > [data-page] {
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+    }
+    [data-vm0-editor-stage] > .slide > .stage,
+    [data-vm0-editor-stage] > .ppt-slide > .stage,
+    [data-vm0-editor-stage] > .presentation-slide > .stage,
+    [data-vm0-editor-stage] > .deck-slide > .stage,
+    [data-vm0-editor-stage] > .slide-page > .stage,
+    [data-vm0-editor-stage] > section > .stage,
+    [data-vm0-editor-stage] > [data-vm0-slide] > .stage,
+    [data-vm0-editor-stage] > [data-slide] > .stage,
+    [data-vm0-editor-stage] > [data-slide-index] > .stage,
+    [data-vm0-editor-stage] > [data-page] > .stage {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      max-height: none !important;
+      margin: 0 !important;
+      border: 0 !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      box-sizing: border-box !important;
+    }
     [data-vm0-editor-edit-id] {
       cursor: text !important;
       outline: 2px solid transparent !important;

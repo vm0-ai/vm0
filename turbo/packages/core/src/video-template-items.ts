@@ -10,6 +10,7 @@ export interface VideoTemplateItem {
   readonly title: string;
   readonly description: string;
   readonly previewImage: string;
+  readonly cardPreviewImage?: string;
   readonly previewVideo: string;
   readonly sourcePath: string;
 }
@@ -35,6 +36,29 @@ const VIDEO_TEMPLATE_PREVIEW_IMAGES: Readonly<Record<string, string>> = {
     "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40ab801f-16bc-4e29-8370-6b10cd394e30/thumbnail-shortform-viral.jpg",
   "sports-performance-ad":
     "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a95669a-b86c-4817-9d82-250da7509b54/thumbnail-athletic-motivation.jpg",
+};
+
+const VIDEO_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<Record<string, string>> = {
+  "epic-grandeur":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ad13726-9151-4c68-b89d-afbe90c949bb/template-card-video-epic-grandeur-480x270.jpg",
+  "gourmet-documentary":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37cffe87-de56-4a53-bddc-b8f43f97b260/template-card-video-gourmet-documentary-480x270.jpg",
+  "luxury-product":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9726e1d9-f08e-4a94-b823-2b1f89bc382d/template-card-video-luxury-product-480x270.jpg",
+  "shortform-viral":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2d798f24-325f-4185-9a01-28b3faa3950f/template-card-video-shortform-viral-480x270.jpg",
+  "fashion-editorial":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa629d39-bf4f-433c-ad87-7385aa05700b/template-card-video-fashion-editorial-480x270.jpg",
+  "sports-performance-ad":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/91cf5878-1b6f-468c-82e1-4d59a99fccae/template-card-video-sports-performance-ad-480x270.jpg",
+  "japanese-wabi-sabi":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07d4529e-d9ed-43dd-bf13-c2f6ac253476/template-card-video-japanese-wabi-sabi-480x270.jpg",
+  "hand-drawn-fantasy-anime":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82204005-e01a-47de-9120-e533e992b290/template-card-video-hand-drawn-fantasy-anime-480x270.jpg",
+  "cyberpunk-anime":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1d690a29-2be1-404b-9698-638f18685513/template-card-video-cyberpunk-anime-480x270.jpg",
+  "chinese-ink-art":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bad21ee-4b92-4ea0-ad15-5453573aad7b/template-card-video-chinese-ink-art-480x270.jpg",
 };
 
 const VIDEO_TEMPLATE_PREVIEW_VIDEOS: Readonly<Record<string, string>> = {
@@ -72,6 +96,10 @@ function toVideoTemplateItem(
   if (!previewImage) {
     throw new Error(`Missing video template preview image: ${entry.id}`);
   }
+  const cardPreviewImage = VIDEO_TEMPLATE_CARD_PREVIEW_IMAGES[slug];
+  if (!cardPreviewImage) {
+    throw new Error(`Missing video template card preview image: ${entry.id}`);
+  }
   const previewVideo = VIDEO_TEMPLATE_PREVIEW_VIDEOS[slug];
   if (!previewVideo) {
     throw new Error(`Missing video template preview video: ${entry.id}`);
@@ -82,6 +110,7 @@ function toVideoTemplateItem(
     title: entry.name,
     description: entry.description,
     previewImage,
+    cardPreviewImage,
     previewVideo,
     sourcePath: entry.source.path,
   };

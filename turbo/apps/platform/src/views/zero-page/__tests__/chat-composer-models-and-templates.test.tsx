@@ -33,6 +33,7 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage,
@@ -1611,6 +1612,99 @@ describe("chat composer templates", () => {
     }
   });
 
+  it("scrubs presentation template card slide images before HTML preview loads", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const lastSlideIndex = template.previewImages.length - 1;
+    let previewFetchCount = 0;
+    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      previewFetchCount += 1;
+      return previewFetch.promise;
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+
+    const previewFrame = await screen.findByTestId(
+      `${template.title} card HTML preview`,
+    );
+    const preview = previewFrame.parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    expect(previewFetchCount).toBe(0);
+    expect(
+      screen.getByTestId(`${template.title} card preview slide 1`),
+    ).toHaveAttribute(
+      "src",
+      template.cardPreviewImage ??
+        r2ImageTransformUrl(template.previewImages[0]!, {
+          width: 480,
+          height: 270,
+        }),
+    );
+    expect(previewFrame).not.toHaveAttribute("src");
+
+    fireEvent.mouseEnter(preview);
+    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+
+    await waitFor(() => {
+      expect(previewFetchCount).toBe(1);
+      expect(
+        screen.getByTestId(
+          `${template.title} card preview slide ${String(lastSlideIndex + 1)}`,
+        ),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(template.previewImages[lastSlideIndex]!, {
+          width: 480,
+          height: 270,
+        }),
+      );
+      expect(previewFrame).not.toHaveAttribute("src");
+    });
+
+    previewFetch.resolve(
+      new Response(
+        `
+          <!doctype html>
+          <html>
+            <body>
+              <section data-vm0-slide data-slide-id="slide-one">
+                <h1>Slide one</h1>
+              </section>
+              <section data-vm0-slide data-slide-id="slide-two">
+                <h1>Slide two</h1>
+              </section>
+            </body>
+          </html>
+        `,
+        { headers: { "Content-Type": "text/html" } },
+      ),
+    );
+    fireEvent.mouseLeave(preview);
+  });
+
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -1693,9 +1787,12 @@ describe("chat composer templates", () => {
 
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
+      if (index === 0 && illustrationTemplate.cardPreviewImage) {
+        return illustrationTemplate.cardPreviewImage;
+      }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 768,
-        height: 768,
+        width: 512,
+        height: 512,
         quality: 72,
       });
     };
@@ -1834,9 +1931,12 @@ describe("chat composer templates", () => {
 
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
+      if (index === 0 && illustrationTemplate.cardPreviewImage) {
+        return illustrationTemplate.cardPreviewImage;
+      }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 768,
-        height: 768,
+        width: 512,
+        height: 512,
         quality: 72,
       });
     };
@@ -2003,6 +2103,12 @@ describe("chat composer templates", () => {
         expect(
           screen.getByLabelText(`Select video template ${videoStyle.title}`),
         ).toBeInTheDocument();
+        const posterUrl =
+          videoStyle.cardPreviewImage ??
+          r2ImageTransformUrl(videoStyle.previewImage, {
+            width: 480,
+            height: 270,
+          });
         const previewVideo = Array.from(
           document.querySelectorAll("video"),
         ).find((video) => {
@@ -2011,13 +2117,7 @@ describe("chat composer templates", () => {
         if (!previewVideo) {
           throw new Error("Video template preview video not found");
         }
-        expect(previewVideo).toHaveAttribute(
-          "poster",
-          r2ImageTransformUrl(videoStyle.previewImage, {
-            width: 640,
-            height: 360,
-          }),
-        );
+        expect(previewVideo).toHaveAttribute("poster", posterUrl);
         expect(previewVideo).toHaveAttribute("preload", "none");
         expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
         expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
