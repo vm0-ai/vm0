@@ -9,7 +9,6 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
@@ -1446,7 +1445,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1521,7 +1519,6 @@ describe("chat composer templates", () => {
         path: `/chats/${THREAD_ID}`,
         featureSwitches: {
           [FeatureSwitchKey.ChatTemplatePicker]: true,
-          [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
         },
       });
 
@@ -1623,7 +1620,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1673,69 +1669,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("uses legacy presentation templates when the new catalog switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: false,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText(legacyTemplate.title)).toBeInTheDocument();
-      expect(screen.queryByText(newTemplate.title)).not.toBeInTheDocument();
-    });
-
-    await user.click(
-      screen.getByLabelText(`Select template ${legacyTemplate.title}`),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${legacyTemplate.title}`),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("uses switched presentation templates when the new catalog switch is on", async () => {
-    const legacyTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const newTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText(newTemplate.title)).toBeInTheDocument();
-      expect(screen.queryByText(legacyTemplate.title)).not.toBeInTheDocument();
-    });
-  });
-
   it("selects and removes an illustration style from the picker", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -1745,7 +1678,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -1861,7 +1793,6 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 
@@ -2029,7 +1960,7 @@ describe("chat composer templates", () => {
 
   it("queues a selected template during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockActiveTemplateThread();
 
     detachedSetupPage({
@@ -2067,7 +1998,7 @@ describe("chat composer templates", () => {
 
   it("keeps newer template selections visible after a queued template is sent", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockActiveTemplateThread();
 
@@ -2177,7 +2108,7 @@ describe("chat composer templates", () => {
 
   it("reopens the picker on the presentation tab from the selected chip", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2268,7 +2199,7 @@ describe("chat composer templates", () => {
 
   it("removes the selected template from the chip without opening the picker", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({

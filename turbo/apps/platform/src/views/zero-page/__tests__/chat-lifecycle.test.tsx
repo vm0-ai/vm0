@@ -3659,7 +3659,6 @@ describe("chat lifecycle", () => {
       featureSwitches: {
         [FeatureSwitchKey.ChatInlineFeedback]: true,
         [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.ChatNewPresentationTemplates]: true,
       },
     });
 

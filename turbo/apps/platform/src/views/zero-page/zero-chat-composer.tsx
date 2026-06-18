@@ -107,7 +107,6 @@ import {
 import { readablePresentationResourceUrl } from "./presentation-html-pptx-download.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   findVideoTemplateItem,
@@ -696,14 +695,6 @@ function toPresentationGenerationTemplate(
   };
 }
 
-function presentationTemplatePickerItems(
-  useNewPresentationTemplates: boolean,
-): readonly PresentationTemplateItem[] {
-  return useNewPresentationTemplates
-    ? PRESENTATION_TEMPLATE_PICKER_ITEMS
-    : PRESENTATION_TEMPLATE_ITEMS;
-}
-
 function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
@@ -722,14 +713,9 @@ function selectedPresentationTemplateItem(
   if (value?.type !== "presentation") {
     return undefined;
   }
-  return (
-    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
-      return isSelectedPresentationTemplate(item, value);
-    }) ??
-    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return isSelectedPresentationTemplate(item, value);
-    })
-  );
+  return PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+    return isSelectedPresentationTemplate(item, value);
+  });
 }
 
 function isSelectedIllustrationTemplate(
@@ -3561,12 +3547,7 @@ function ComposerTemplatePickerSlot({
   const hasPptTab = hasChatTemplatePicker;
   const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
-  const useNewPresentationTemplates = Boolean(
-    features?.[FeatureSwitchKey.ChatNewPresentationTemplates],
-  );
-  const presentationItems = presentationTemplatePickerItems(
-    useNewPresentationTemplates,
-  );
+  const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }
