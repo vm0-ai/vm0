@@ -327,7 +327,7 @@ class TestUsagePendingCounter:
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
         )
 
-    def test_no_op_when_path_not_set(self):
+    def test_no_op_when_path_not_set(self, tmp_path):
         usage.set_pending_path("")
         usage.increment_in_flight_flows()
         usage.decrement_in_flight_flows()
@@ -335,7 +335,9 @@ class TestUsagePendingCounter:
         usage.counters.decrement_pending_reports()
         usage.write_pending_snapshot(flush_request_id="request-1")
         # Should not raise — just no file written.
-        assert usage.read_usage_flush_request_id() is None
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     # ---- one-shot error signal on write failure (issue #10483) ----
 
