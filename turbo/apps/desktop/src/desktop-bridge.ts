@@ -56,10 +56,24 @@ export interface DesktopComputerUseApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+export interface DesktopDeveloperToolsState {
+  readonly available: boolean;
+  readonly enabled: boolean;
+}
+
+export interface DesktopDeveloperToolsApi {
+  readonly getState: () => Promise<DesktopDeveloperToolsState>;
+  readonly setEnabled: (
+    enabled: boolean,
+  ) => Promise<DesktopDeveloperToolsState>;
+  readonly subscribe: (callback: () => void) => () => void;
+}
+
 declare global {
   interface Window {
     vm0DesktopAuth?: DesktopAuthApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
+    vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
   }
 }
 

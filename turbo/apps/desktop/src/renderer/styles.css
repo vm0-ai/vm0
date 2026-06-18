@@ -274,6 +274,143 @@ button {
   gap: 6px;
 }
 
+.computer-use-status-card {
+  position: relative;
+  min-height: 156px;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 8px;
+  padding: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 252, 0.9)
+    ),
+    #f8fafc;
+}
+
+.computer-use-status-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: #94a3b8;
+}
+
+.computer-use-status-online::before {
+  background: #12b76a;
+}
+
+.computer-use-status-connecting::before,
+.computer-use-status-recovering::before {
+  background: #2e90fa;
+}
+
+.computer-use-status-unauthenticated::before,
+.computer-use-status-needs_organization::before {
+  background: #f79009;
+}
+
+.computer-use-status-disabled::before,
+.computer-use-status-error::before {
+  background: #f04438;
+}
+
+.computer-use-status-main {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.computer-use-status-mark {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475467;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+.computer-use-status-online .computer-use-status-mark {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.computer-use-status-connecting .computer-use-status-mark,
+.computer-use-status-recovering .computer-use-status-mark {
+  color: #175cd3;
+  background: #eff8ff;
+}
+
+.computer-use-status-unauthenticated .computer-use-status-mark,
+.computer-use-status-needs_organization .computer-use-status-mark {
+  color: #b54708;
+  background: #fffaeb;
+}
+
+.computer-use-status-disabled .computer-use-status-mark,
+.computer-use-status-error .computer-use-status-mark {
+  color: #b42318;
+  background: #fef3f2;
+}
+
+.computer-use-status-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.computer-use-status-copy span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.computer-use-status-copy strong {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  color: #202631;
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.computer-use-status-copy p {
+  max-width: 430px;
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.computer-use-status-action {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.computer-use-status-action .button {
+  min-width: 118px;
+  min-height: 42px;
+  font-size: 15px;
+}
+
 .status-error-button {
   width: 24px;
   height: 24px;
@@ -1058,6 +1195,20 @@ button {
 
   .runtime-grid {
     grid-template-columns: 1fr;
+  }
+
+  .computer-use-status-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .computer-use-status-main {
+    align-items: flex-start;
+  }
+
+  .computer-use-status-action,
+  .computer-use-status-action .button {
+    width: 100%;
   }
 
   .permission-row {
