@@ -55,6 +55,13 @@ enum ReplayEventUuid<'a> {
     NonString,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PromptUserContent {
+    Text(String),
+    ToolResult,
+    Unknown,
+}
+
 #[derive(Debug)]
 struct PendingInput {
     state: PendingState,
@@ -224,29 +231,35 @@ fn replay_event_uuid(event: &Value) -> ReplayEventUuid<'_> {
     }
 }
 
-fn prompt_like_user_content(event: &Value) -> Option<String> {
-    let content = event.pointer("/message/content")?;
+fn prompt_user_content(event: &Value) -> PromptUserContent {
+    let Some(content) = event.pointer("/message/content") else {
+        return PromptUserContent::Unknown;
+    };
     if let Some(text) = content.as_str() {
-        return Some(text.to_owned());
+        return PromptUserContent::Text(text.to_owned());
     }
-    let items = content.as_array()?;
+    let Some(items) = content.as_array() else {
+        return PromptUserContent::Unknown;
+    };
     if items.is_empty() {
-        return None;
+        return PromptUserContent::Unknown;
     }
 
     let mut text = String::new();
     for item in items {
         match item.get("type").and_then(Value::as_str) {
-            Some("tool_result") => return None,
+            Some("tool_result") => return PromptUserContent::ToolResult,
             Some("text") => {
-                let part = item.get("text").and_then(Value::as_str)?;
+                let Some(part) = item.get("text").and_then(Value::as_str) else {
+                    return PromptUserContent::Unknown;
+                };
                 text.push_str(part);
             }
-            _ => return None,
+            _ => return PromptUserContent::Unknown,
         }
     }
 
-    Some(text)
+    PromptUserContent::Text(text)
 }
 
 impl ActiveInputRuntime {
@@ -451,20 +464,22 @@ impl ActiveInputController {
             }
         }
 
-        if let Some(text) = prompt_like_user_content(event) {
-            let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            if event_uuid == ReplayEventUuid::Missing {
-                if state.remove_replayable_pending_by_text(&text) {
-                    return ReplayUserEventAction::InternalActiveInput;
+        match prompt_user_content(event) {
+            PromptUserContent::Text(text) => {
+                let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if event_uuid == ReplayEventUuid::Missing {
+                    if state.remove_replayable_pending_by_text(&text) {
+                        return ReplayUserEventAction::InternalActiveInput;
+                    }
+                    if !state.observed_result && text == self.inner.initial_prompt_text {
+                        state.initial_prompt_replay_seen = true;
+                    }
                 }
-                if !state.observed_result && text == self.inner.initial_prompt_text {
-                    state.initial_prompt_replay_seen = true;
-                }
+                ReplayUserEventAction::UnknownPromptUser
             }
-            return ReplayUserEventAction::UnknownPromptUser;
+            PromptUserContent::ToolResult => ReplayUserEventAction::External,
+            PromptUserContent::Unknown => ReplayUserEventAction::UnknownPromptUser,
         }
-
-        ReplayUserEventAction::External
     }
 }
 
@@ -1198,20 +1213,27 @@ mod tests {
     }
 
     #[test]
-    fn replay_filter_keeps_unknown_user_content_blocks_external() {
+    fn replay_filter_filters_unknown_user_content_blocks() {
         let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
-        let event = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{"type": "image", "source": "future-schema"}]
-            }
-        });
 
-        assert_eq!(
-            runtime.controller().replay_user_event_action(&event),
-            ReplayUserEventAction::External
-        );
+        for content in [
+            json!([{"type": "image", "source": "future-schema"}]),
+            json!({"type": "future-schema"}),
+            json!([]),
+        ] {
+            let event = json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": content
+                }
+            });
+
+            assert_eq!(
+                runtime.controller().replay_user_event_action(&event),
+                ReplayUserEventAction::UnknownPromptUser
+            );
+        }
     }
 
     #[test]
