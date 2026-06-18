@@ -118,6 +118,23 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
     .to_string()
 }
 
+fn is_prompt_like_user_content(event: &Value) -> bool {
+    let Some(content) = event.pointer("/message/content") else {
+        return false;
+    };
+    if content.as_str().is_some() {
+        return true;
+    }
+    let Some(items) = content.as_array() else {
+        return false;
+    };
+
+    !items.is_empty()
+        && items
+            .iter()
+            .all(|item| item.get("type").and_then(Value::as_str) != Some("tool_result"))
+}
+
 impl ActiveInputRuntime {
     pub fn new(run_id: &str, enabled: bool) -> Self {
         let (tx, rx) = mpsc::channel(ACTIVE_INPUT_QUEUE_CAPACITY);
@@ -289,11 +306,7 @@ impl ActiveInputController {
             }
         }
 
-        if event
-            .pointer("/message/content")
-            .and_then(Value::as_str)
-            .is_some()
-        {
+        if is_prompt_like_user_content(event) {
             return ReplayUserEventAction::UnknownPromptUser;
         }
 
@@ -509,5 +522,22 @@ mod tests {
             ReplayUserEventAction::InternalActiveInput
         );
         assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_treats_text_block_user_events_without_uuid_as_unknown_prompt() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let event = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "follow-up"}]
+            }
+        });
+
+        assert_eq!(
+            runtime.controller().replay_user_event_action(&event),
+            ReplayUserEventAction::UnknownPromptUser
+        );
     }
 }
