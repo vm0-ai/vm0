@@ -501,10 +501,10 @@ fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
     let Some((start, end)) = range.split_once('-') else {
         return ProbeContentRange::Invalid;
     };
-    let Ok(start) = start.parse::<u64>() else {
+    let Some(start) = parse_content_range_decimal(start) else {
         return ProbeContentRange::Invalid;
     };
-    let Ok(end) = end.parse::<u64>() else {
+    let Some(end) = parse_content_range_decimal(end) else {
         return ProbeContentRange::Invalid;
     };
     if start != 0 || end != 0 {
@@ -514,13 +514,20 @@ fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
     if total == "*" {
         return ProbeContentRange::UnknownSize;
     }
-    let Ok(total) = total.parse::<u64>() else {
+    let Some(total) = parse_content_range_decimal(total) else {
         return ProbeContentRange::Invalid;
     };
     if total <= end {
         return ProbeContentRange::Invalid;
     }
     ProbeContentRange::Known(total)
+}
+
+fn parse_content_range_decimal(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u64>().ok()
 }
 
 async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResult<DownloadBody> {
@@ -2217,6 +2224,9 @@ mod tests {
             ("bytes 0-1/7", "wrong-range"),
             ("items 0-0/7", "wrong-unit"),
             ("bytes 0-0/0", "empty-total"),
+            ("bytes +0-0/7", "plus-start"),
+            ("bytes 0-+0/7", "plus-end"),
+            ("bytes 0-0/+7", "plus-total"),
         ];
 
         for (content_range, slug) in cases {
