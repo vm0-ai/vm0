@@ -57,9 +57,15 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
     let raw = std::fs::read_to_string(path_file).map_err(|e| {
         AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
     })?;
-    let trimmed = raw.trim();
+    read_session_history_from_payload(raw.trim())
+}
 
-    if let Some((sessions_dir, thread_id)) = decode_marker(trimmed) {
+/// Read session history bytes from an already-resolved marker payload.
+///
+/// The payload is either a literal path (Claude) or a
+/// `CODEX_SEARCH:{dir}:{id}` marker (codex).
+pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
+    if let Some((sessions_dir, thread_id)) = decode_marker(payload) {
         return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
             AgentError::Checkpoint(format!(
                 "Codex session file not found under {}",
@@ -68,7 +74,7 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
         });
     }
 
-    let session_path = PathBuf::from(trimmed);
+    let session_path = PathBuf::from(payload);
     read_history_bytes(&session_path)
 }
 

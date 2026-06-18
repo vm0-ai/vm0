@@ -438,6 +438,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut failure_diagnostic = None;
+    let mut session_metadata_capture = events::SessionMetadataCapture::new();
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             stdin_write_result = async {
@@ -559,7 +560,7 @@ async fn execute_cli_inner(
                             // Capture checkpoint metadata and register any
                             // event-local session identifier before logging
                             // terminal diagnostics from the same event.
-                            events::capture_session_metadata(&event, masker);
+                            session_metadata_capture.capture_event(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 claude_result = Some(ClaudeResultSummary::from_event(&event));

@@ -249,7 +249,7 @@ async fn send_event_keeps_existing_session_metadata() {
 }
 
 #[tokio::test]
-async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
+async fn send_event_seeds_existing_claude_session_id_without_repairing_history_marker() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
@@ -286,11 +286,18 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
             session_id,
             "later events must keep the existing session id"
         );
-        let history = std::fs::read_to_string(hist_file).unwrap();
-        assert!(
-            history.ends_with(&format!("/{session_id}.jsonl")),
-            "repaired history marker should point at the existing session id, got: {history}"
-        );
+        if seed_empty_marker {
+            assert_eq!(
+                std::fs::read_to_string(hist_file).unwrap(),
+                "",
+                "ordinary events must not repair empty history markers"
+            );
+        } else {
+            assert!(
+                !std::path::Path::new(hist_file).exists(),
+                "ordinary events must not create missing history markers"
+            );
+        }
         assert_eq!(masker.mask_string(session_id), "***");
     }
 

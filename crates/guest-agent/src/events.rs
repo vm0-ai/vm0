@@ -10,10 +10,10 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
+use crate::session_metadata;
 use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
 use serde_json::{Map, Value, json};
-use std::path::{Component, Path};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
@@ -45,7 +45,8 @@ pub async fn send_event(
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
-    capture_session_metadata(&event, masker);
+    let mut capture = SessionMetadataCapture::new();
+    capture.capture_event(&event, masker);
 
     if !http.has_api() {
         return Ok(());
@@ -351,70 +352,109 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
     results
 }
 
-/// Capture or repair the session metadata files needed by checkpoint.
+/// Capture session metadata files needed by checkpoint.
 ///
 /// Both frameworks emit a single id-bearing event near the top of their
 /// JSONL stream:
 /// - Claude Code: `{type: system, subtype: init, session_id: <uuid>}`
 /// - Codex:       `{type: thread.started, thread_id: <uuid>}`
 ///
+/// Ordinary events only seed the masker from an existing session id once; they
+/// do not repair the history marker. Checkpoint resolves missing markers when
+/// it consumes session metadata.
+///
 /// The on-disk format of `session_history_path_file()` differs by framework:
 /// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
 /// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
-pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
-    register_event_session_identifier(event, masker);
+pub(crate) struct SessionMetadataCapture {
+    existing_session_id_seeded: bool,
+}
 
-    let parsed = match Framework::from_env() {
-        Framework::ClaudeCode => extract_claude_session_id(event),
-        Framework::Codex => extract_codex_thread_id(event),
-    };
-    let Some((session_id, history_path_payload)) = parsed else {
-        repair_missing_session_history_marker_from_existing_session(masker);
-        return;
-    };
-    masker.add_sensitive_value(&session_id);
+impl SessionMetadataCapture {
+    pub(crate) fn new() -> Self {
+        Self {
+            existing_session_id_seeded: false,
+        }
+    }
 
-    // Idempotency: only the first id-bearing event of the run wins, but allow
-    // a retry of the same session to repair a missing history marker after a
-    // partial metadata write.
-    match std::fs::read_to_string(paths::session_id_file()) {
-        Ok(existing_session_id) => {
-            let existing_session_id = existing_session_id.trim();
-            if !existing_session_id.is_empty() {
-                masker.add_sensitive_value(existing_session_id);
+    pub(crate) fn capture_event(&mut self, event: &Value, masker: &SecretMasker) {
+        register_event_session_identifier(event, masker);
+
+        let parsed = match Framework::from_env() {
+            Framework::ClaudeCode => extract_claude_session_id(event),
+            Framework::Codex => extract_codex_thread_id(event),
+        };
+        let Some((session_id, history_path_payload)) = parsed else {
+            self.seed_existing_session_id(masker);
+            return;
+        };
+        masker.add_sensitive_value(&session_id);
+
+        // Idempotency: only the first id-bearing event of the run wins, but allow
+        // a retry of the same session to repair a missing history marker after a
+        // partial metadata write.
+        match std::fs::read_to_string(paths::session_id_file()) {
+            Ok(existing_session_id) => {
+                let existing_session_id = existing_session_id.trim();
+                if !existing_session_id.is_empty() {
+                    masker.add_sensitive_value(existing_session_id);
+                    self.existing_session_id_seeded = true;
+                }
+                if existing_session_id == session_id {
+                    session_metadata::ensure_history_marker_payload(&history_path_payload);
+                }
+                return;
             }
-            if existing_session_id == session_id {
-                ensure_session_history_marker(&history_path_payload);
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                log_error!(
+                    LOG_TAG,
+                    "Failed to read existing session ID from {}: {e}",
+                    paths::session_id_file()
+                );
+                return;
             }
+        }
+
+        log_info!(LOG_TAG, "Captured session ID");
+        match paths::write_private(paths::session_id_file(), &session_id) {
+            Ok(()) => log_info!(
+                LOG_TAG,
+                "Session ID written to {}",
+                paths::session_id_file()
+            ),
+            Err(e) => log_error!(
+                LOG_TAG,
+                "Failed to write session ID to {}: {e}",
+                paths::session_id_file()
+            ),
+        }
+        session_metadata::write_session_history_marker(&history_path_payload);
+    }
+
+    fn seed_existing_session_id(&mut self, masker: &SecretMasker) {
+        if self.existing_session_id_seeded {
             return;
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            log_error!(
+        self.existing_session_id_seeded = true;
+
+        match std::fs::read_to_string(paths::session_id_file()) {
+            Ok(session_id) => {
+                let session_id = session_id.trim();
+                if !session_id.is_empty() {
+                    masker.add_sensitive_value(session_id);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => log_error!(
                 LOG_TAG,
                 "Failed to read existing session ID from {}: {e}",
                 paths::session_id_file()
-            );
-            return;
+            ),
         }
     }
-
-    log_info!(LOG_TAG, "Captured session ID");
-    match paths::write_private(paths::session_id_file(), &session_id) {
-        Ok(()) => log_info!(
-            LOG_TAG,
-            "Session ID written to {}",
-            paths::session_id_file()
-        ),
-        Err(e) => log_error!(
-            LOG_TAG,
-            "Failed to write session ID to {}: {e}",
-            paths::session_id_file()
-        ),
-    }
-    write_session_history_marker(&history_path_payload);
 }
 
 pub(crate) fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
@@ -434,91 +474,11 @@ fn string_field<'a>(event: &'a Value, field: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
-fn repair_missing_session_history_marker_from_existing_session(masker: &SecretMasker) {
-    if !should_write_session_history_marker() {
-        return;
-    }
-    let session_id = match std::fs::read_to_string(paths::session_id_file()) {
-        Ok(session_id) => session_id.trim().to_string(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-        Err(e) => {
-            log_error!(
-                LOG_TAG,
-                "Failed to read existing session ID from {}: {e}",
-                paths::session_id_file()
-            );
-            return;
-        }
-    };
-    if session_id.is_empty() {
-        return;
-    }
-    masker.add_sensitive_value(&session_id);
-    if let Some(history_path_payload) = history_path_payload_for_session_id(&session_id) {
-        write_session_history_marker(&history_path_payload);
-    }
-}
-
-fn ensure_session_history_marker(history_path_payload: &str) {
-    if should_write_session_history_marker() {
-        write_session_history_marker(history_path_payload);
-    }
-}
-
-fn should_write_session_history_marker() -> bool {
-    match std::fs::read_to_string(paths::session_history_path_file()) {
-        Ok(existing) => existing.trim().is_empty(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        Err(e) => {
-            log_error!(
-                LOG_TAG,
-                "Failed to read existing session history marker from {}: {e}",
-                paths::session_history_path_file()
-            );
-            false
-        }
-    }
-}
-
-fn write_session_history_marker(history_path_payload: &str) {
-    match paths::write_private(paths::session_history_path_file(), history_path_payload) {
-        Ok(()) => log_info!(
-            LOG_TAG,
-            "Session history marker written to {} ({})",
-            paths::session_history_path_file(),
-            session_history_marker_kind(history_path_payload)
-        ),
-        Err(e) => log_error!(
-            LOG_TAG,
-            "Failed to write session history marker to {}: {e}",
-            paths::session_history_path_file()
-        ),
-    }
-}
-
-fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
-    if crate::session_history::is_codex_marker(history_path_payload) {
-        "codex"
-    } else {
-        "claude"
-    }
-}
-
-fn history_path_payload_for_session_id(session_id: &str) -> Option<String> {
-    match Framework::from_env() {
-        Framework::ClaudeCode => claude_history_path_payload(session_id),
-        Framework::Codex => {
-            let thread_id = crate::session_history::canonical_codex_thread_id(session_id)?;
-            Some(codex_history_marker_payload(&thread_id))
-        }
-    }
-}
-
 /// Claude variant — matches `system/init` and computes the project-scoped
 /// jsonl path under `$HOME/.claude/projects/-{cwd}/`.
 fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
     let session_id = raw_claude_session_id(event)?;
-    let history_path_payload = claude_history_path_payload(session_id)?;
+    let history_path_payload = session_metadata::claude_history_path_payload(session_id)?;
 
     Some((session_id.to_string(), history_path_payload))
 }
@@ -532,42 +492,12 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
     string_field(event, "session_id")
 }
 
-fn claude_history_path_payload(session_id: &str) -> Option<String> {
-    if !is_valid_session_history_id(session_id) {
-        return None;
-    }
-
-    let home = env::home_dir();
-    let project_name = paths::CANONICAL_WORKING_DIR
-        .strip_prefix('/')
-        .unwrap_or(paths::CANONICAL_WORKING_DIR)
-        .replace('/', "-");
-    Some(format!(
-        "{home}/.claude/projects/-{project_name}/{session_id}.jsonl"
-    ))
-}
-
-fn is_valid_session_history_id(session_id: &str) -> bool {
-    if session_id.is_empty()
-        || session_id == "."
-        || session_id == ".."
-        || session_id.contains('/')
-        || session_id.contains('\\')
-        || session_id.chars().any(char::is_control)
-    {
-        return false;
-    }
-
-    let mut components = Path::new(session_id).components();
-    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
-}
-
 /// Codex variant — matches `thread.started` and emits a session-history
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     let thread_id = raw_codex_thread_id(event)?;
     let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
-    let marker = codex_history_marker_payload(&thread_id);
+    let marker = session_metadata::codex_history_marker_payload(&thread_id);
 
     Some((thread_id, marker))
 }
@@ -578,11 +508,6 @@ fn raw_codex_thread_id(event: &Value) -> Option<&str> {
         return None;
     }
     string_field(event, "thread_id")
-}
-
-fn codex_history_marker_payload(thread_id: &str) -> String {
-    let sessions_dir = format!("{}/.codex/sessions", env::home_dir());
-    crate::session_history::codex_marker_payload(Path::new(&sessions_dir), thread_id)
 }
 
 #[cfg(test)]
@@ -1309,7 +1234,7 @@ mod tests {
         );
     }
 
-    // Note: end-to-end coverage of `capture_session_metadata` (including both
+    // Note: end-to-end coverage of session metadata capture (including both
     // the Claude `system/init` branch and the codex `thread.started`
     // branch) lives in the integration test suites:
     //   - `tests/integration.rs::send_event_extracts_claude_session_id`
