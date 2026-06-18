@@ -3048,37 +3048,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps the linked automation dropdown when the sidebar switch is off", async () => {
-    mockAutomationThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}?automations=${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-    expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
-    expect(screen.getByText("Automation inactive")).toBeInTheDocument();
-    expect(screen.queryByTestId("automation-sidebar")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Close automations"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
-    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-  });
-
   it("shows linked automations from the chat header sidebar", async () => {
     mockAutomationThread();
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -3088,7 +3057,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {
@@ -3141,7 +3109,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${AUTOMATION_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatAutomationSidebar]: true },
     });
 
     await waitFor(() => {

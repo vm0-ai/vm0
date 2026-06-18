@@ -254,14 +254,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Persist per-user, per-org drafts for the new agent chat page. When disabled, agent chat uses the local non-persisted draft path and does not call the agent draft endpoint.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadDoubleClickRename]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Open the existing chat rename dialog when a sidebar chat thread is double-clicked.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
@@ -315,12 +314,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable slash command suggestions for the current agent's workflows in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatAutomationSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the chat header automation dropdown with the right-side Automation sidebar. While off, chat headers keep the legacy dropdown menu.",
-    enabled: true,
   },
   [FeatureSwitchKey.ConnectorReconnectReasons]: {
     maintainer: "liangyou@vm0.ai",

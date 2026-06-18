@@ -49,7 +49,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatThreadDoubleClickRename, {
+      isFeatureEnabled(FeatureSwitchKey.ChatTemplatePicker, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -72,7 +72,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatThreadDoubleClickRename, {
+      isFeatureEnabled(FeatureSwitchKey.ChatTemplatePicker, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -126,9 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadDoubleClickRename]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
 
@@ -138,9 +136,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadDoubleClickRename]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });
