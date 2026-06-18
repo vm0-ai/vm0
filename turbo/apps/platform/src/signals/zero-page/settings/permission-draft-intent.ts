@@ -720,21 +720,23 @@ export function materializePermissionDraftForLegacySave({
   const expiresInByPermission: Record<string, UserPermissionGrantExpiresIn> =
     {};
   for (const permission of permissions) {
-    connectorPolicies[permission.name] = resolvePermissionDraftPolicy({
+    const policy = resolvePermissionDraftPolicy({
       context,
       draft,
       permissionName: permission.name,
     });
+    connectorPolicies[permission.name] = policy;
     const expiresIn = resolvePermissionDraftExpiration({
       context,
       draft,
       permissionName: permission.name,
     });
-    if (expiresIn !== undefined) {
+    if (policy === "allow" && expiresIn !== undefined) {
       expiresInByPermission[permission.name] = expiresIn;
     }
   }
-  if (draft.unknownExpiration !== undefined) {
+  const unknownPolicy = resolvePermissionDraftUnknownPolicy({ context, draft });
+  if (unknownPolicy === "allow" && draft.unknownExpiration !== undefined) {
     expiresInByPermission[UNKNOWN_PERMISSION_GRANT] = draft.unknownExpiration;
   }
 
@@ -742,7 +744,7 @@ export function materializePermissionDraftForLegacySave({
     policies: {
       [context.metadata.type]: {
         policies: connectorPolicies,
-        unknownPolicy: resolvePermissionDraftUnknownPolicy({ context, draft }),
+        unknownPolicy,
       },
     },
     expiresInByPermission,

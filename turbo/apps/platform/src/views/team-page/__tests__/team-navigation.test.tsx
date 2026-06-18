@@ -857,6 +857,99 @@ describe("team page navigation", () => {
     );
   });
 
+  it("does not save inherited group duration on denied permissions", async () => {
+    mockTeamAPIs();
+    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedUpserts.push(body);
+        return respond(200, {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: null,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@ops")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Slack permissions"));
+
+    const readGroupLabel = await connectorCategoryLabel("slack", "Read");
+    const readGroupElement = await screen.findByText(readGroupLabel);
+    const loadedGroupedDialog = dialogForElement(readGroupElement);
+    const readGroup = readGroupElement.closest("div");
+    if (!(readGroup instanceof HTMLElement)) {
+      throw new Error("Read permission group not found");
+    }
+    click(within(readGroup).getByLabelText("Read allow options"));
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(within(readGroup).getByText("7d")).toBeInTheDocument();
+    });
+    await fill(
+      within(loadedGroupedDialog).getByLabelText("Find permissions"),
+      "bookmarks:read",
+    );
+
+    const bookmarksReadRow = await permissionRowByName(
+      loadedGroupedDialog,
+      "bookmarks:read",
+    );
+    click(buttonByText("Deny", bookmarksReadRow));
+    await waitFor(() => {
+      expect(buttonByText("Deny", bookmarksReadRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    click(buttonByText("Apply", loadedGroupedDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(capturedUpserts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          connectorRef: "slack",
+          action: "allow",
+          expiresIn: "7d",
+        }),
+      ]),
+    );
+    expect(
+      capturedUpserts.filter((body) => {
+        return body.action === "deny";
+      }),
+    ).toStrictEqual([
+      {
+        agentId: researchAgentId,
+        connectorRef: "slack",
+        permission: "bookmarks:read",
+        action: "deny",
+      },
+    ]);
+  });
+
   it("updates grouped connector permission policies from an agent page", async () => {
     mockTeamAPIs();
     detachedSetupPage({

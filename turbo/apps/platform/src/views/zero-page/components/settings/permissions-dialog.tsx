@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Sheet,
   SheetContent,
@@ -69,10 +70,10 @@ import {
 } from "../../../../signals/zero-page/settings/permission-draft-intent.ts";
 import { permissionGrantExpiryText } from "../../../../signals/permission-allow/permission-grant-expiration.ts";
 import {
+  applyPermissionDrawer$,
   permissionDrawerUiState$,
   permissionDrawerUiStateForKey,
   resetPermissionDrawerState$,
-  setPermissionDrawerSaving$,
   setPermissionDrawerScrolled$,
   setPermissionDrawerSearch$,
   showMorePermissionDrawerRows$,
@@ -92,6 +93,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 
 interface ConnectorPermission {
@@ -1139,16 +1141,17 @@ function LoadedPermissionsDrawerContent({
   const toggleGroup = useSet(togglePermissionDrawerGroup$);
   const showMore = useSet(showMorePermissionDrawerRows$);
   const setSearch = useSet(setPermissionDrawerSearch$);
-  const setSaving = useSet(setPermissionDrawerSaving$);
   const setScrolled = useSet(setPermissionDrawerScrolled$);
   const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
+  const [applyLoadable, applyDrawer] = useLoadableSet(applyPermissionDrawer$);
+  const pageSignal = useGet(pageSignal$);
   const context = createPermissionDraftContext({ metadata, initialPolicies });
   const draft = drawerUiState.draft;
   const scrolled = drawerUiState.scrolled;
   const expandedGroups = drawerUiState.expandedGroups;
   const visibleCounts = drawerUiState.visibleCounts;
   const search = drawerUiState.search;
-  const saving = drawerUiState.saving;
+  const saving = applyLoadable.state === "loading";
 
   const effectiveExplicitGrants = draft.resetPending
     ? new Map<string, UserPermissionGrantResponse>()
@@ -1317,13 +1320,16 @@ function LoadedPermissionsDrawerContent({
     if (saving) {
       return;
     }
-    setSaving(stateKey, true);
     detach(
-      (async () => {
-        await onApply(draft, { metadata });
-        setSaving(stateKey, false);
-        handleClose();
-      })(),
+      applyDrawer(
+        {
+          intent: draft,
+          metadata,
+          onApply,
+          onClose: handleClose,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };

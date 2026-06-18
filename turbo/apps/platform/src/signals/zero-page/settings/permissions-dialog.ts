@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 
 import {
   createEmptyPermissionDraftIntent,
@@ -11,8 +12,23 @@ interface PermissionDrawerUiState {
   readonly expandedGroups: ReadonlySet<string>;
   readonly visibleCounts: Readonly<Record<string, number>>;
   readonly search: string;
-  readonly saving: boolean;
   readonly scrolled: boolean;
+}
+
+interface PermissionDrawerApplyOptions {
+  readonly metadata: FirewallPermissionDetailMetadata;
+}
+
+type PermissionDrawerApply = (
+  intent: PermissionDraftIntent,
+  options: PermissionDrawerApplyOptions,
+) => Promise<void>;
+
+interface ApplyPermissionDrawerParams {
+  readonly intent: PermissionDraftIntent;
+  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly onApply: PermissionDrawerApply;
+  readonly onClose: () => void;
 }
 
 function emptyPermissionDrawerUiState(
@@ -24,7 +40,6 @@ function emptyPermissionDrawerUiState(
     expandedGroups: new Set(),
     visibleCounts: {},
     search: "",
-    saving: false,
     scrolled: false,
   };
 }
@@ -107,16 +122,6 @@ export const setPermissionDrawerSearch$ = command(
   },
 );
 
-export const setPermissionDrawerSaving$ = command(
-  ({ get, set }, key: string, saving: boolean) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
-    set(internalPermissionDrawerUiState$, {
-      ...current,
-      saving,
-    });
-  },
-);
-
 export const setPermissionDrawerScrolled$ = command(
   ({ get, set }, key: string, scrolled: boolean) => {
     const current = stateForKey(get(internalPermissionDrawerUiState$), key);
@@ -130,3 +135,16 @@ export const setPermissionDrawerScrolled$ = command(
 export const resetPermissionDrawerState$ = command(({ set }) => {
   set(internalPermissionDrawerUiState$, emptyPermissionDrawerUiState(null));
 });
+
+export const applyPermissionDrawer$ = command(
+  async (
+    _ctx,
+    params: ApplyPermissionDrawerParams,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    await params.onApply(params.intent, { metadata: params.metadata });
+    signal.throwIfAborted();
+    params.onClose();
+  },
+);
