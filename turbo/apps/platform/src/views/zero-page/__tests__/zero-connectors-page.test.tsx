@@ -4,6 +4,7 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   CONNECTOR_TYPES,
@@ -453,6 +454,41 @@ describe("connectors page", () => {
     expect(
       within(dialog).getByText(/Google will show a security warning/),
     ).toBeInTheDocument();
+  });
+
+  it("starts Meta Ads OAuth without review guidance", async () => {
+    mockConnectors([]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        return respond(200, {
+          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+    });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
+    click(await screen.findByLabelText("Connect Meta Ads"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/meta-ads/authorize",
+      );
+    });
+    expect(
+      screen.queryByText(/Meta Ads is currently in Meta's app review period/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Meta Ads" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a partially gated connector with only ungated auth methods", async () => {
