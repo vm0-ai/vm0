@@ -103,7 +103,7 @@ function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
         timezone: "UTC",
       },
       scheduleSummary: "Weekdays at 9:00 AM",
-      agentId: "00000000-0000-0000-0000-0000000000a1",
+      agentId: "c0000000-0000-4000-a000-000000000201",
       enabled: true,
       chatThreadId: "thread_weekday_brief",
       nextRunAt: "2026-06-19T01:00:00.000Z",
