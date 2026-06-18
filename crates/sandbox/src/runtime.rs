@@ -25,6 +25,14 @@ pub trait SandboxRuntime: Send + Sync {
     /// The returned factory is fully initialized and ready to create sandboxes.
     async fn create_factory(&self, config: FactoryConfig) -> Result<Box<dyn SandboxFactory>>;
 
+    /// Return the host interface pattern that runner-managed DNS should bind.
+    ///
+    /// Backends that create VM-facing host interfaces can return a scoped
+    /// pattern here so dnsmasq avoids listening on unrelated host interfaces.
+    async fn dns_interface_pattern(&self) -> Option<String> {
+        None
+    }
+
     /// Release shared resources (network pools, device caches).
     async fn shutdown(&mut self);
 }

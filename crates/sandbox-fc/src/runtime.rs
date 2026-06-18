@@ -109,6 +109,14 @@ impl SandboxRuntime for FirecrackerRuntime {
         Ok(Box::new(factory))
     }
 
+    async fn dns_interface_pattern(&self) -> Option<String> {
+        if self.dns_port.is_some() {
+            Some(self.netns_pool.host_device_pattern().await)
+        } else {
+            None
+        }
+    }
+
     async fn shutdown(&mut self) {
         // Clean up shared netns pool.
         if let Err(e) = self.netns_pool.cleanup().await {

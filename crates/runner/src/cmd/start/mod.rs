@@ -434,15 +434,12 @@ async fn run_start_with_home(
     let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
-    // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
-    // Shares NetworkLogManager with kmsg — both use source IP (peer veth) as key.
-    let dns_handle = dns::start(network_log_manager.clone())
-        .await
-        .map_err(|e| RunnerError::Internal(format!("dns proxy: {e}")))?;
-    let network_log_drain = NetworkLogDrainCoordinator::new(vec![
-        kmsg_handle.drain_producer(),
-        dns_handle.drain_producer(),
-    ]);
+    // Reserve the DNS proxy port before netns setup so iptables can redirect
+    // to a stable value. dnsmasq starts after runtime creation, once the
+    // backend knows the runner-specific VM-facing interface pattern.
+    let dns_port_reservation =
+        dns::reserve_port().map_err(|e| RunnerError::Internal(format!("dns port: {e}")))?;
+    let dns_port = dns_port_reservation.port();
 
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
@@ -520,10 +517,49 @@ async fn run_start_with_home(
     let mut runtime = runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
-            dns_port: Some(dns_handle.port()),
+            dns_port: Some(dns_port),
         })
         .await
         .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
+
+    let Some(dns_interface_pattern) = runtime.dns_interface_pattern().await else {
+        memory_prefetch.cancel();
+        runtime.shutdown().await;
+        if let Err(e) = mitm.kill_now().await {
+            warn!(error = %e, "failed to kill proxy after DNS interface resolution failed");
+        }
+        kmsg_handle.stop().await;
+        memory_prefetch.drain().await;
+        return Err(RunnerError::Internal(
+            "sandbox runtime did not provide DNS interface pattern".into(),
+        ));
+    };
+
+    // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
+    // Shares NetworkLogManager with kmsg — both use source IP (peer veth) as key.
+    let dns_handle = match dns::start_on_reserved_port(
+        dns_port_reservation,
+        dns_interface_pattern,
+        network_log_manager.clone(),
+    )
+    .await
+    {
+        Ok(handle) => handle,
+        Err(e) => {
+            memory_prefetch.cancel();
+            runtime.shutdown().await;
+            if let Err(kill_error) = mitm.kill_now().await {
+                warn!(error = %kill_error, "failed to kill proxy after DNS startup failed");
+            }
+            kmsg_handle.stop().await;
+            memory_prefetch.drain().await;
+            return Err(RunnerError::Internal(format!("dns proxy: {e}")));
+        }
+    };
+    let network_log_drain = NetworkLogDrainCoordinator::new(vec![
+        kmsg_handle.drain_producer(),
+        dns_handle.drain_producer(),
+    ]);
 
     let status = Arc::new(StatusTracker::new(
         paths.status(),
