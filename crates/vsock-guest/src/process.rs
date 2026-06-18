@@ -62,8 +62,10 @@ fn signalable_child_pgid(child_id: u32, pgid: u32) -> Option<u32> {
 /// the `su` process's group — the child's group (where the actual command
 /// runs) is missed.
 ///
-/// This function scans `/proc` to find that child and returns its PGID so
-/// the timeout killer can send SIGKILL to both process groups.
+/// This function scans `/proc` to find that child and returns its distinct PGID
+/// so the timeout killer can send SIGKILL to both process groups. Same-group
+/// children are skipped because `kill(-parent_pid, SIGKILL)` already reaches
+/// them, and a later refresh can still capture a child that calls `setsid()`.
 ///
 /// Must be called BEFORE killing the parent, because once the parent dies
 /// the child's PPID changes to 1 (init).
@@ -120,7 +122,7 @@ pub(crate) fn process_tree_kill_target(child_id: u32) -> ProcessTreeKillTarget {
 }
 
 /// Refresh a snapshotted process-tree target while the direct child may still
-/// have a child session visible in `/proc`.
+/// have a distinct child session visible in `/proc`.
 pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarget) {
     if target.child_pgid_to_signal().is_none() {
         target.child_pgid = find_child_pgid(target.child_id);
