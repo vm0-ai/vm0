@@ -26,7 +26,7 @@ fn context_with_session_opt(
     let mut ctx = minimal_context(run_id);
     if let Some(sid) = session_id {
         ctx.resume_session = Some(crate::types::ResumeSession {
-            session_id: sid.to_string(),
+            cli_agent_session_id: sid.to_string(),
             session_history: String::new(),
         });
     }
@@ -1198,14 +1198,14 @@ async fn sequential_same_session_reuse_cycle() {
     shutdown(&env, run_handle).await;
 }
 
-/// Test 22: `ParkResult::Replaced` via `guest_session_id`.
+/// Test 22: `ParkResult::Replaced` via `discovered_cli_agent_session_id`.
 ///
 /// A first-run job (no `resume_session`) reads a CLI-generated session ID
 /// from the guest filesystem. When that session already has an entry in
 /// the idle pool, `pool.park()` returns `Replaced(old)`, the old VM is
 /// destroyed, and the new VM takes its place.
 #[tokio::test(start_paused = true)]
-async fn park_evicts_via_guest_session_id() {
+async fn park_evicts_via_discovered_cli_agent_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
         pattern: "/.vm0/guest-agent/runs/".into(),
@@ -1224,7 +1224,7 @@ async fn park_evicts_via_guest_session_id() {
     let run_handle = tokio::spawn(run(config));
 
     // Push job WITHOUT resume_session — first run, no session context.
-    // read_guest_session_id() will be called and return "sess-evict"
+    // read_guest_cli_agent_session_id() will be called and return "sess-evict"
     // via the exec matcher.
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
@@ -1244,7 +1244,7 @@ async fn park_evicts_via_guest_session_id() {
     assert_eq!(
         pool.held_sessions(),
         vec!["sess-evict"],
-        "parked session should match guest_session_id"
+        "parked session should match discovered_cli_agent_session_id"
     );
     drop(pool);
 

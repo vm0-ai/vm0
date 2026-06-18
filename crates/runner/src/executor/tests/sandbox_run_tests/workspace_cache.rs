@@ -12,7 +12,7 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-cache-hit".into(),
+        cli_agent_session_id: "sess-cache-hit".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -76,7 +76,7 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-cache-default".into(),
+        cli_agent_session_id: "sess-cache-default".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -130,7 +130,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-register-fail".into(),
+        cli_agent_session_id: "sess-register-fail".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     let params = JobParams {
@@ -210,7 +210,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -227,7 +227,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
             run_id: RunId::new_v4(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: &params.profile_name,
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -253,7 +253,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -267,7 +267,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
             run_id: RunId::new_v4(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: &params.profile_name,
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -309,7 +309,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -368,7 +368,7 @@ async fn unconfigured_cache_reuse_stops_when_required_cache_invalidation_lock_is
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -416,7 +416,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
 
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
     ctx.environment = Some(HashMap::from([(
@@ -442,7 +442,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
             run_id: RunId::new_v4(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: &params.profile_name,
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -474,7 +474,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     let raw_session_id = "../invalid-resume";
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: raw_session_id.into(),
+        cli_agent_session_id: raw_session_id.into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
 
@@ -499,7 +499,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
             run_id: RunId::new_v4(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: &params.profile_name,
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -538,7 +538,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
             run_id,
             sandbox_id,
             profile_name: &params.profile_name,
-            session_id: Some(session_id),
+            cli_agent_session_id: Some(session_id),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -550,7 +550,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
             crate::workspace_image_cache::WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                session_id_override: Some(session_id),
+                cli_agent_session_id_override: Some(session_id),
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
@@ -579,7 +579,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
         sandbox,
         factory,
-        session_id: session_id.to_owned(),
+        cli_agent_session_id: session_id.to_owned(),
         sandbox_id,
         profile_name: params.profile_name.clone(),
         device_rate_limits: params.device_rate_limits.clone(),
@@ -634,7 +634,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
             run_id,
             sandbox_id,
             profile_name: &params.profile_name,
-            session_id: None,
+            cli_agent_session_id: None,
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             workspace_drive_required: true,
@@ -653,7 +653,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
             crate::workspace_image_cache::WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                session_id_override: Some(session_id),
+                cli_agent_session_id_override: Some(session_id),
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
@@ -682,7 +682,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
         sandbox,
         factory,
-        session_id: session_id.to_owned(),
+        cli_agent_session_id: session_id.to_owned(),
         sandbox_id,
         profile_name: params.profile_name.clone(),
         device_rate_limits: params.device_rate_limits.clone(),

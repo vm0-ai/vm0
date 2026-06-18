@@ -369,7 +369,7 @@ mod tests {
                     factory: Arc::new(
                         Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
                     ),
-                    session_id: session_id.into(),
+                    cli_agent_session_id: session_id.into(),
                     sandbox_id,
                     profile_name: "vm0/default".into(),
                     device_rate_limits: None,

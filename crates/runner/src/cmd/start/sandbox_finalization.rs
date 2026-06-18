@@ -62,8 +62,8 @@ pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
     pub(super) profile_name: String,
-    pub(super) session_id: Option<String>,
-    pub(super) guest_session_id: Option<String>,
+    pub(super) cli_agent_session_id: Option<String>,
+    pub(super) discovered_cli_agent_session_id: Option<String>,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
@@ -99,8 +99,8 @@ pub(super) async fn finalize_sandbox_for_completion(
         run_id,
         sandbox_id,
         profile_name,
-        session_id,
-        guest_session_id,
+        cli_agent_session_id,
+        discovered_cli_agent_session_id,
         source_ip,
         mut network_log_session,
         workspace_image,
@@ -132,22 +132,19 @@ pub(super) async fn finalize_sandbox_for_completion(
     let cancelled = cancel.is_cancelled();
     let terminal_status = workspace_terminal_status(exit_code, cancelled);
     let completed_at = local_completed_at();
-    let parkable_session = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        // Prefer context session_id (from resume_session), fall back to
-        // guest-reported session ID (first run — CLI generated it).
-        session_id
-            .as_deref()
-            .or(guest_session_id.as_deref())
-            .map(str::to_owned)
+    let resolved_cli_agent_session_id = cli_agent_session_id
+        .as_deref()
+        .or(discovered_cli_agent_session_id.as_deref());
+    let parkable_cli_agent_session_id = if exit_code == 0 && !cancelled && parking_gate.is_open() {
+        resolved_cli_agent_session_id.map(str::to_owned)
     } else {
         None
     };
-    let promotion_session_id = session_id.as_deref().or(guest_session_id.as_deref());
     let workspace_promotion = workspace_image.and_then(|workspace_image| {
         workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id,
-            session_id_override: promotion_session_id,
+            cli_agent_session_id_override: resolved_cli_agent_session_id,
             terminal_status,
             completed_at: completed_at.clone(),
             storage_fingerprints: storage_fingerprints.clone(),
@@ -157,15 +154,15 @@ pub(super) async fn finalize_sandbox_for_completion(
 
     let mut session_affinity_changed = false;
     let mut session_affinity_refresh_sent = false;
-    let budget = if let Some(session_id) = parkable_session {
-        let session_fingerprint = diagnostic_session_fingerprint(&session_id);
+    let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
+        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory: Arc::clone(&factory),
-            session_id: session_id.clone(),
+            cli_agent_session_id: cli_agent_session_id.clone(),
             sandbox_id,
             profile_name: profile_name.clone(),
             device_rate_limits: device_rate_limits.clone(),
@@ -203,7 +200,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         run_id,
                         sandbox_id,
                         profile_name: &profile_name,
-                        session_id: Some(&session_id),
+                        cli_agent_session_id: Some(&cli_agent_session_id),
                         reason: "park_failed",
                         network_log_session: network_log_session.take(),
                         network_log_drain: network_log_drain.clone(),
@@ -391,8 +388,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 exit_code,
                 cancelled,
                 parking_gate.is_open(),
-                session_id.as_deref(),
-                guest_session_id.as_deref(),
+                resolved_cli_agent_session_id,
             ),
         )
         .await;
@@ -404,13 +400,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                 run_id,
                 sandbox_id,
                 profile_name: &profile_name,
-                session_id: session_id.as_deref().or(guest_session_id.as_deref()),
+                cli_agent_session_id: resolved_cli_agent_session_id,
                 reason: active_cleanup_reason(
                     exit_code,
                     cancelled,
                     parking_gate.is_open(),
-                    session_id.as_deref(),
-                    guest_session_id.as_deref(),
+                    resolved_cli_agent_session_id,
                 ),
                 network_log_session: network_log_session.take(),
                 network_log_drain: network_log_drain.clone(),
@@ -482,8 +477,7 @@ fn active_cleanup_reason(
     exit_code: i32,
     cancelled: bool,
     parking_open: bool,
-    context_session_id: Option<&str>,
-    guest_session_id: Option<&str>,
+    resolved_cli_agent_session_id: Option<&str>,
 ) -> &'static str {
     if cancelled {
         "cancelled"
@@ -491,7 +485,7 @@ fn active_cleanup_reason(
         "nonzero_exit"
     } else if !parking_open {
         "parking_closed"
-    } else if context_session_id.is_none() && guest_session_id.is_none() {
+    } else if resolved_cli_agent_session_id.is_none() {
         "no_session"
     } else {
         "not_parkable"
@@ -512,7 +506,7 @@ struct ActiveCleanupContext<'a> {
     run_id: RunId,
     sandbox_id: SandboxId,
     profile_name: &'a str,
-    session_id: Option<&'a str>,
+    cli_agent_session_id: Option<&'a str>,
     reason: &'static str,
     network_log_session: Option<NetworkLogSession>,
     network_log_drain: NetworkLogDrainCoordinator,
@@ -525,7 +519,9 @@ async fn stop_and_destroy_sandbox(
     mut context: ActiveCleanupContext<'_>,
 ) -> DestroyOutcome {
     let mut uncertain = false;
-    let session_fingerprint = context.session_id.map(diagnostic_session_fingerprint);
+    let session_fingerprint = context
+        .cli_agent_session_id
+        .map(diagnostic_session_fingerprint);
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(
@@ -673,8 +669,8 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default".into(),
-                session_id: Some(session_id.into()),
-                guest_session_id: None,
+                cli_agent_session_id: Some(session_id.into()),
+                discovered_cli_agent_session_id: None,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
@@ -708,7 +704,7 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
-                session_id: Some(session_id),
+                cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: b"image".len() as u64,
                 workspace_drive_required: true,
@@ -735,7 +731,7 @@ mod tests {
             .into_promotion_context(WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                session_id_override: Some(session_id),
+                cli_agent_session_id_override: Some(session_id),
                 terminal_status,
                 completed_at: local_completed_at(),
                 storage_fingerprints,
@@ -984,7 +980,7 @@ mod tests {
                     run_id: RunId::new_v4(),
                     sandbox_id: SandboxId::new_v4(),
                     profile_name: "vm0/default",
-                    session_id: Some(session_id),
+                    cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                     workspace_drive_required: true,
@@ -1061,7 +1057,7 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
-                session_id: None,
+                cli_agent_session_id: None,
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: b"image".len() as u64,
                 workspace_drive_required: true,
@@ -1081,8 +1077,8 @@ mod tests {
             network_log_session,
             RunCancellationHandle::new(),
         );
-        context.session_id = None;
-        context.guest_session_id = Some("sess-guest".into());
+        context.cli_agent_session_id = None;
+        context.discovered_cli_agent_session_id = Some("sess-guest".into());
         context.workspace_image = Some(workspace_image);
         context.workspace_promotable = true;
 
@@ -1118,7 +1114,7 @@ mod tests {
         let existing = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox: Box::new(MockSandbox::new("existing-idle")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: "sess-existing".into(),
+            cli_agent_session_id: "sess-existing".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -1145,7 +1141,7 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
-                session_id: Some("sess-new"),
+                cli_agent_session_id: Some("sess-new"),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: b"image".len() as u64,
                 workspace_drive_required: true,
@@ -1240,7 +1236,7 @@ mod tests {
             source_ip: existing_sandbox.source_ip().to_owned(),
             sandbox: existing_sandbox,
             factory: existing_factory,
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             sandbox_id: old_sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

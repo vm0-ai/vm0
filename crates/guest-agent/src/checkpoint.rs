@@ -346,11 +346,11 @@ async fn create_checkpoint_impl_with_artifacts(
 ) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating {}...", mode.log_label());
 
-    // Read session ID. Let `read_to_string` surface `NotFound` directly — an
-    // explicit `exists()` check would be a redundant stat plus a TOCTOU race
-    // between check and read.
+    // Read the CLI agent session id. Let `read_to_string` surface `NotFound`
+    // directly — an explicit `exists()` check would be a redundant stat plus a
+    // TOCTOU race between check and read.
     let session_id_start = std::time::Instant::now();
-    let session_id = match std::fs::read_to_string(paths::session_id_file()) {
+    let cli_agent_session_id = match std::fs::read_to_string(paths::session_id_file()) {
         Ok(s) => s.trim().to_string(),
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Err(fail(
@@ -369,7 +369,7 @@ async fn create_checkpoint_impl_with_artifacts(
             ));
         }
     };
-    if session_id.is_empty() {
+    if cli_agent_session_id.is_empty() {
         return Err(fail(
             mode,
             "session_id_read",
@@ -461,7 +461,7 @@ async fn create_checkpoint_impl_with_artifacts(
     let mut payload = json!({
         "runId": env::run_id(),
         "cliAgentType": cli_agent_type,
-        "cliAgentSessionId": session_id,
+        "cliAgentSessionId": cli_agent_session_id,
         "cliAgentSessionHistoryHash": history_hash,
     });
 

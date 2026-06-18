@@ -167,7 +167,7 @@ fn execution_context_validation_rejects_invalid_codex_resume_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "not-a-thread-id".into(),
+        cli_agent_session_id: "not-a-thread-id".into(),
         session_history: "{}".into(),
     });
 
@@ -562,7 +562,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     ]));
     ctx.append_system_prompt = Some("Use terse answers.".into());
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-123".into(),
+        cli_agent_session_id: "sess-123".into(),
         session_history: "{}".into(),
     });
     ctx.disallowed_tools = Some(vec!["CronCreate".into()]);
@@ -631,7 +631,7 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     ctx.cli_agent_type = "codex".into();
     ctx.append_system_prompt = Some("Use terse answers.".into());
     ctx.resume_session = Some(ResumeSession {
-        session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
+        cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
         session_history: "{}".into(),
     });
 
@@ -654,7 +654,7 @@ fn build_env_json_rejects_invalid_codex_resume_session_id() {
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "codex".into();
         ctx.resume_session = Some(ResumeSession {
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             session_history: "{}".into(),
         });
 
@@ -802,7 +802,7 @@ fn build_env_json_with_secrets() {
 fn build_env_json_with_resume_session() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-123".into(),
+        cli_agent_session_id: "sess-123".into(),
         session_history: "{}".into(),
     });
 

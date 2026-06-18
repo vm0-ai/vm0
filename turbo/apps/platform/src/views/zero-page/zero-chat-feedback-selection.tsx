@@ -29,14 +29,33 @@ function selectionListenersRef(
     if (!element) {
       return;
     }
-    document.addEventListener("mouseup", capture);
+    // A mouse click inside an existing selection collapses it *after* the
+    // mouseup event fires, so reading the selection synchronously here would
+    // still see the stale range and keep the toolbar floating once the
+    // highlight is gone. Defer the read to the next tick so the selection has
+    // settled — clicking to clear the selection then dismisses the toolbar.
+    let captureTimerId: number | null = null;
+    const captureDeferred = () => {
+      if (captureTimerId !== null) {
+        window.clearTimeout(captureTimerId);
+      }
+      captureTimerId = window.setTimeout(() => {
+        captureTimerId = null;
+        capture();
+      }, 0);
+    };
+    document.addEventListener("mouseup", captureDeferred);
     document.addEventListener("keyup", capture);
     document.addEventListener("scroll", dismissOnScroll, {
       capture: true,
       passive: true,
     });
     detachListeners = () => {
-      document.removeEventListener("mouseup", capture);
+      if (captureTimerId !== null) {
+        window.clearTimeout(captureTimerId);
+        captureTimerId = null;
+      }
+      document.removeEventListener("mouseup", captureDeferred);
       document.removeEventListener("keyup", capture);
       document.removeEventListener("scroll", dismissOnScroll, {
         capture: true,

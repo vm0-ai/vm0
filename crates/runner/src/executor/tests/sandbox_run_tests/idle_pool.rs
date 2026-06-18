@@ -37,7 +37,7 @@ async fn idle_pool_park_and_reuse_cycle() {
     let entry = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
         sandbox,
         factory: std::sync::Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-        session_id: "test-session".into(),
+        cli_agent_session_id: "test-session".into(),
         sandbox_id: SandboxId::new_v4(),
         profile_name: "vm0/default".into(),
         device_rate_limits: None,
@@ -95,7 +95,7 @@ async fn idle_pool_profile_mismatch_returns_none() {
         factory: std::sync::Arc::new(
             Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
         ),
-        session_id: "test-session".into(),
+        cli_agent_session_id: "test-session".into(),
         sandbox_id: SandboxId::new_v4(),
         profile_name: "vm0/default".into(),
         device_rate_limits: None,

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tracing::{debug, info};
 
-use super::active_sessions::{ActiveSessions, active_session_ids};
+use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_ids};
 use crate::config::ProfileConfig;
 use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
@@ -29,7 +29,7 @@ pub(super) struct HeartbeatContext<'a> {
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
     workspace_cache: Option<SessionWorkspaceCache>,
-    active_sessions: &'a ActiveSessions,
+    active_cli_agent_sessions: &'a ActiveCliAgentSessions,
 }
 
 pub(super) struct HeartbeatContextInit<'a> {
@@ -41,7 +41,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
     pub(super) workspace_cache: Option<SessionWorkspaceCache>,
-    pub(super) active_sessions: &'a ActiveSessions,
+    pub(super) active_cli_agent_sessions: &'a ActiveCliAgentSessions,
 }
 
 impl<'a> HeartbeatContext<'a> {
@@ -55,7 +55,7 @@ impl<'a> HeartbeatContext<'a> {
             budget: init.budget,
             provider: init.provider,
             workspace_cache: init.workspace_cache,
-            active_sessions: init.active_sessions,
+            active_cli_agent_sessions: init.active_cli_agent_sessions,
         }
     }
 }
@@ -77,7 +77,7 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     state.held_session_states = current_held_session_states(
         state.held_session_states,
         hb.workspace_cache.as_ref(),
-        hb.active_sessions,
+        hb.active_cli_agent_sessions,
         None,
     )
     .await;
@@ -100,32 +100,32 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
 pub(super) async fn current_held_session_states(
     idle_states: Vec<HeldSessionState>,
     workspace_cache: Option<&SessionWorkspaceCache>,
-    active_sessions: &ActiveSessions,
+    active_cli_agent_sessions: &ActiveCliAgentSessions,
     extra_active_session: Option<&str>,
 ) -> Vec<HeldSessionState> {
     let Some(cache) = workspace_cache else {
         return idle_states;
     };
 
-    let mut active_sessions = active_session_ids(active_sessions);
+    let mut active_cli_agent_sessions = active_cli_agent_session_ids(active_cli_agent_sessions);
     if let Some(session_id) = extra_active_session {
-        active_sessions.insert(session_id.to_owned());
+        active_cli_agent_sessions.insert(session_id.to_owned());
     }
     let cache_states = cache.held_session_states().await;
-    merge_held_session_states(idle_states, cache_states, &active_sessions)
+    merge_held_session_states(idle_states, cache_states, &active_cli_agent_sessions)
 }
 
 fn merge_held_session_states(
     idle_states: Vec<HeldSessionState>,
     cache_states: Vec<HeldSessionState>,
-    active_sessions: &std::collections::HashSet<String>,
+    active_cli_agent_sessions: &std::collections::HashSet<String>,
 ) -> Vec<HeldSessionState> {
     let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
     for state in idle_states {
         by_session.insert(state.session_id.clone(), state);
     }
     for state in cache_states {
-        if active_sessions.contains(&state.session_id) {
+        if active_cli_agent_sessions.contains(&state.session_id) {
             continue;
         }
         match by_session.get(&state.session_id) {
@@ -232,7 +232,7 @@ mod tests {
         ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: session_id.into(),
+            cli_agent_session_id: session_id.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -255,7 +255,7 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
-                session_id: Some(session_id),
+                cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: b"image".len() as u64,
                 workspace_drive_required: true,
@@ -345,7 +345,8 @@ mod tests {
         seed_workspace_cache_state(&cache, &paths, session_id, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let active_sessions = super::super::active_sessions::new_active_sessions();
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
         let (provider, provider_handle) =
             MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let hb = HeartbeatContext::new(HeartbeatContextInit {
@@ -357,7 +358,7 @@ mod tests {
             budget: &budget,
             provider: provider.as_ref(),
             workspace_cache: Some(cache),
-            active_sessions: &active_sessions,
+            active_cli_agent_sessions: &active_cli_agent_sessions,
         });
 
         let ((), events) = capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running)).await;
@@ -389,15 +390,20 @@ mod tests {
         seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
         seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
             .await;
-        let active_sessions = super::super::active_sessions::new_active_sessions();
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
         let idle = vec![HeldSessionState {
             session_id: "sess-idle".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
         }];
 
-        let states =
-            current_held_session_states(idle, Some(&cache), &active_sessions, Some("sess-claimed"))
-                .await;
+        let states = current_held_session_states(
+            idle,
+            Some(&cache),
+            &active_cli_agent_sessions,
+            Some("sess-claimed"),
+        )
+        .await;
 
         assert!(
             states.iter().any(|state| state.session_id == "sess-idle"),

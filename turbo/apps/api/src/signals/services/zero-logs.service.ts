@@ -177,7 +177,7 @@ export function zeroLogsList(
           composeContent: agentComposeVersions.content,
           displayName: zeroAgents.displayName,
           triggerAgentName: triggerAgentAlias.displayName,
-          sessionId: conversations.cliAgentSessionId,
+          cliAgentSessionId: conversations.cliAgentSessionId,
         })
         .from(agentRuns)
         .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -216,7 +216,7 @@ export function zeroLogsList(
       data: data.map((run) => {
         return {
           id: run.id,
-          sessionId: run.sessionId ?? null,
+          sessionId: run.cliAgentSessionId ?? null,
           agentId: run.agentId ?? null,
           displayName: run.displayName ?? null,
           framework: extractFramework(run.composeContent),
@@ -446,12 +446,13 @@ export function zeroLogDetail(
       selectedModel,
     } = result;
     const runResult = run.result as RunResult | null;
+    const agentSessionId = runResult?.agentSessionId ?? null;
     const composeContent =
       composeVersion?.content as AgentComposeContent | null;
 
     return {
       id: run.id,
-      sessionId: runResult?.agentSessionId ?? null,
+      sessionId: agentSessionId,
       agentId,
       displayName: agentDisplayName ?? null,
       framework: extractFramework(composeContent),
