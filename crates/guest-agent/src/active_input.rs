@@ -45,6 +45,7 @@ enum Lifecycle {
 enum PendingState {
     Accepted,
     Writing,
+    WritingWithUuidlessReplay,
     Written,
 }
 
@@ -161,7 +162,12 @@ impl ActiveInputState {
             .iter()
             .find(|uuid| {
                 self.pending_by_uuid.get(*uuid).is_some_and(|input| {
-                    matches!(input.state, PendingState::Written) && input.text == text
+                    matches!(
+                        input.state,
+                        PendingState::Writing
+                            | PendingState::WritingWithUuidlessReplay
+                            | PendingState::Written
+                    ) && input.text == text
                 })
             })
             .cloned();
@@ -169,7 +175,18 @@ impl ActiveInputState {
             return false;
         };
 
-        self.remove_pending_by_uuid(&uuid)
+        let Some(input) = self.pending_by_uuid.get_mut(&uuid) else {
+            return false;
+        };
+        match input.state {
+            PendingState::Writing => {
+                input.state = PendingState::WritingWithUuidlessReplay;
+                true
+            }
+            PendingState::WritingWithUuidlessReplay => true,
+            PendingState::Written => self.remove_pending_by_uuid(&uuid),
+            PendingState::Accepted => false,
+        }
     }
 
     fn remove_oldest_pending_if_written(&mut self) -> bool {
@@ -422,8 +439,16 @@ impl ActiveInputController {
 
     pub fn mark_written(&self, uuid: &str) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(input) = state.pending_by_uuid.get_mut(uuid) {
-            input.state = PendingState::Written;
+        let should_remove = match state.pending_by_uuid.get_mut(uuid) {
+            Some(input) if matches!(input.state, PendingState::WritingWithUuidlessReplay) => true,
+            Some(input) => {
+                input.state = PendingState::Written;
+                false
+            }
+            None => false,
+        };
+        if should_remove {
+            state.remove_pending_by_uuid(uuid);
         }
     }
 
@@ -896,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn replay_filter_does_not_consume_uuidless_text_match_while_writing() {
+    fn replay_filter_defers_uuidless_text_match_while_writing_until_written() {
         let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
@@ -914,14 +939,54 @@ mod tests {
         });
         assert_eq!(
             controller.replay_user_event_action(&event),
-            ReplayUserEventAction::UnknownPromptUser
-        );
-
-        controller.mark_written(&active_uuid);
-        assert_eq!(
-            controller.replay_user_event_action(&event),
             ReplayUserEventAction::InternalActiveInput
         );
+        {
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(state.pending_by_uuid.contains_key(&active_uuid));
+        }
+
+        controller.mark_written(&active_uuid);
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_clears_multiple_uuidless_writing_replays_after_writes() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+
+        for (message_id, text) in [("msg-1", "first"), ("msg-2", "second")] {
+            let payload = serde_json::to_vec(&json!({
+                "type": ACTIVE_INPUT_TYPE,
+                "text": text,
+            }))
+            .expect("active input payload should serialize");
+            assert_eq!(
+                controller.handle_control_payload(message_id, &payload),
+                ActiveInputControlOutcome::Accepted
+            );
+        }
+        let first_uuid = claude_active_input_uuid("run-1", 0, "msg-1");
+        let second_uuid = claude_active_input_uuid("run-1", 1, "msg-2");
+        assert!(!controller.close_for_result_if_idle());
+
+        for (uuid, text) in [(&first_uuid, "first"), (&second_uuid, "second")] {
+            controller.mark_writing(uuid);
+            let event = json!({
+                "type": "user",
+                "message": {"role": "user", "content": text}
+            });
+            assert_eq!(
+                controller.replay_user_event_action(&event),
+                ReplayUserEventAction::InternalActiveInput
+            );
+            controller.mark_written(uuid);
+        }
+
         assert!(controller.close_for_result_if_idle());
     }
 
