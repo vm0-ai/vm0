@@ -56,6 +56,7 @@ struct PendingInput {
 #[derive(Debug)]
 struct ActiveInputState {
     lifecycle: Lifecycle,
+    initial_prompt_replay_seen: bool,
     observed_result: bool,
     seen_message_ids: HashSet<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
@@ -65,6 +66,7 @@ impl Default for ActiveInputState {
     fn default() -> Self {
         Self {
             lifecycle: Lifecycle::Open,
+            initial_prompt_replay_seen: false,
             observed_result: false,
             seen_message_ids: HashSet::new(),
             pending_by_uuid: HashMap::new(),
@@ -78,7 +80,7 @@ impl ActiveInputState {
     }
 
     fn remove_replayable_pending_by_text(&mut self, text: &str) -> bool {
-        if !self.observed_result {
+        if !self.initial_prompt_replay_seen && !self.observed_result {
             return false;
         }
 
@@ -345,6 +347,8 @@ impl ActiveInputController {
 
         if let Some(uuid) = event.get("uuid").and_then(Value::as_str) {
             if uuid == self.inner.initial_prompt_uuid {
+                let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                state.initial_prompt_replay_seen = true;
                 return ReplayUserEventAction::InternalInitialPrompt;
             }
 
@@ -358,6 +362,9 @@ impl ActiveInputController {
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             if state.remove_replayable_pending_by_text(&text) {
                 return ReplayUserEventAction::InternalActiveInput;
+            }
+            if !state.observed_result {
+                state.initial_prompt_replay_seen = true;
             }
             return ReplayUserEventAction::UnknownPromptUser;
         }
@@ -663,6 +670,70 @@ mod tests {
             ReplayUserEventAction::UnknownPromptUser
         );
         assert!(!controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_consumes_uuidless_text_match_after_initial_replay_before_first_result() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+
+        let initial = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "initial"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&initial),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+
+        let active = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&active),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_waits_for_second_uuidless_same_text_before_first_result() {
+        let runtime = ActiveInputRuntime::new("run-1", true);
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"same-text"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+        controller.mark_written(&active_uuid);
+
+        let initial = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "same-text"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&initial),
+            ReplayUserEventAction::UnknownPromptUser
+        );
+
+        let active = json!({
+            "type": "user",
+            "message": {"role": "user", "content": "same-text"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&active),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
     }
 
     #[test]
