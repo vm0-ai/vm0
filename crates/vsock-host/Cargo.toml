@@ -1,6 +1,6 @@
 [package]
 name = "vsock-host"
-version = "0.17.35"
+version = "0.17.36"
 edition.workspace = true
 description = "Vsock host client for Firecracker VM communication"
 
