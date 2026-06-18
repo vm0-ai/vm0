@@ -1333,6 +1333,15 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
   ];
 
+const PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS = new Set([
+  "botane-organic-deck",
+  "playful-launch-presentation",
+  "crayon-learning-deck",
+  "data-report-presentation",
+  "mosaic-geometric-pitch",
+  "playful-pop-deck",
+]);
+
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
 ): string {
@@ -1362,14 +1371,26 @@ function presentationTemplateThemePreviewSwatches(
   ];
 }
 
+function presentationTemplateAccentSwatchColor(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption,
+): { readonly color: string; readonly id: string } {
+  if (item.slug === "landing-consulting-deck") {
+    return { id: "support-1", color: theme.colors[5] };
+  }
+  if (PRESENTATION_TEMPLATE_SUPPORT_2_SWATCH_SLUGS.has(item.slug)) {
+    return { id: "support-2", color: theme.colors[6] };
+  }
+  return { id: "accent", color: theme.colors[4] };
+}
+
 function presentationTemplateThemeAccentSwatches(
+  item: PresentationTemplateItem,
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
   return [
     { id: "background", color: theme.colors[0] },
-    { id: "support-1", color: theme.colors[5] },
-    { id: "support-2", color: theme.colors[6] },
-    { id: "support-3", color: theme.colors[7] },
+    presentationTemplateAccentSwatchColor(item, theme),
   ];
 }
 
@@ -2281,8 +2302,10 @@ function TemplatePreviewPage({
                 <div className="grid grid-cols-8 gap-2">
                   {singleAccentThemes.map((theme) => {
                     const active = theme.id === selectedTheme.id;
-                    const swatches =
-                      presentationTemplateThemeAccentSwatches(theme);
+                    const swatches = presentationTemplateThemeAccentSwatches(
+                      item,
+                      theme,
+                    );
                     return (
                       <button
                         key={theme.id}
