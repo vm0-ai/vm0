@@ -1473,6 +1473,12 @@ describe("chat composer templates", () => {
 
   it("renders presentation template card hover previews from HTML when available", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const prismTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.colorSystemId === "color-system:prism";
+    });
+    if (prismTemplate === undefined) {
+      throw new Error("Prism presentation template not found");
+    }
     const blobHtml: Promise<string>[] = [];
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -1560,6 +1566,34 @@ describe("chat composer templates", () => {
       });
       await expect(blobHtml[1]).resolves.toContain("Slide two");
       fireEvent.mouseLeave(preview);
+
+      await fill(
+        screen.getByLabelText("Search templates"),
+        prismTemplate.title,
+      );
+      const prismPreviewFrame = await screen.findByTestId(
+        `${prismTemplate.title} card HTML preview`,
+      );
+      const prismPreview = prismPreviewFrame.parentElement;
+      if (!prismPreview) {
+        throw new Error("Prism template preview not found");
+      }
+      Object.defineProperty(prismPreview, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return new DOMRect(0, 0, 300, 160);
+        },
+      });
+
+      fireEvent.mouseEnter(prismPreview);
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${prismTemplate.title} card HTML preview`),
+        ).toHaveAttribute("src", "blob:template-preview-3");
+      });
+      await expect(blobHtml[2]).resolves.toContain("--accent:#7257E6");
+      await expect(blobHtml[2]).resolves.toContain("--s1:#FF6B4A");
+      await expect(blobHtml[2]).resolves.toContain("--s2:#AEE63E");
     } finally {
       if (originalCreateObjectURL) {
         Object.defineProperty(URL, "createObjectURL", {
