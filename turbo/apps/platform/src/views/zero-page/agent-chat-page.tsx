@@ -461,6 +461,19 @@ function useNewThreadComputerUse() {
   };
 }
 
+function useAgentChatDraftSync(pageSignal: AbortSignal) {
+  const queueDraftSync = useSet(queueCurrentAgentDraftSync$);
+  const features = useLastResolved(featureSwitch$);
+  const agentDraftsEnabled =
+    features?.[FeatureSwitchKey.AgentChatDrafts] ?? false;
+
+  return () => {
+    if (agentDraftsEnabled) {
+      detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    }
+  };
+}
+
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
@@ -515,7 +528,7 @@ export function AgentChatPage() {
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
-  const queueDraftSync = useSet(queueCurrentAgentDraftSync$);
+  const queueAgentDraftSync = useAgentChatDraftSync(pageSignal);
   const startTiming = useSet(startChatNavigationTiming$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline =
@@ -531,11 +544,11 @@ export function AgentChatPage() {
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    queueAgentDraftSync();
   };
 
   const handleDraftChange = () => {
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+    queueAgentDraftSync();
   };
 
   const handleSend = (

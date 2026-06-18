@@ -6,6 +6,7 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroAgentsByIdContract,
   zeroAgentDraftContract,
@@ -163,7 +164,11 @@ describe("chat drafts", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${agentId}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: true },
+    });
 
     await waitFor(() => {
       expect(textarea()).toHaveValue(`Resume the ${agentId} launch notes`);
@@ -188,7 +193,11 @@ describe("chat drafts", () => {
       return respond(204);
     });
 
-    detachedSetupPage({ context, path: `/agents/${agentId}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: true },
+    });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -201,6 +210,40 @@ describe("chat drafts", () => {
         draftAttachments: null,
       });
     });
+  });
+
+  it("keeps persisted agent drafts disabled behind the feature switch", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000103";
+    let draftLoads = 0;
+    const draftPatches: Record<string, unknown>[] = [];
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      draftLoads += 1;
+      return respond(200, {
+        draftContent: "server draft should stay hidden",
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentChatDrafts]: false },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("");
+    });
+    expect(draftLoads).toBe(0);
+
+    await fill(textarea(), "local-only agent draft");
+
+    expect(draftLoads).toBe(0);
+    expect(draftPatches).toStrictEqual([]);
   });
 
   it("preserves per-thread text drafts while navigating", async () => {

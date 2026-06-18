@@ -250,6 +250,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
+  [FeatureSwitchKey.AgentChatDrafts]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Persist per-user, per-org drafts for the new agent chat page. When disabled, agent chat uses the local non-persisted draft path and does not call the agent draft endpoint.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatThreadDoubleClickRename]: {
     maintainer: "lancy@vm0.ai",
     description:

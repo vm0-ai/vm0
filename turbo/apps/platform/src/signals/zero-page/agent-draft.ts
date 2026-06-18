@@ -1,9 +1,11 @@
 import { command, state, type Command } from "ccstate";
 import { delay } from "signal-timers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
 import { resetSignal } from "../utils.ts";
 import {
@@ -129,6 +131,11 @@ export const loadAgentDraft$ = command(
     isNew: boolean,
     signal: AbortSignal,
   ) => {
+    const features = get(featureSwitch$);
+    if (!features[FeatureSwitchKey.AgentChatDrafts]) {
+      return;
+    }
+
     if (!isNew) {
       return;
     }
@@ -166,6 +173,11 @@ export const loadAgentDraft$ = command(
 
 export const queueCurrentAgentDraftSync$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const features = get(featureSwitch$);
+    if (!features[FeatureSwitchKey.AgentChatDrafts]) {
+      return;
+    }
+
     const agentId = await get(currentChatAgentRecordId$);
     signal.throwIfAborted();
     if (!agentId) {
@@ -178,7 +190,12 @@ export const queueCurrentAgentDraftSync$ = command(
 );
 
 export const clearAgentDraftById$ = command(
-  async ({ set }, agentId: string, signal: AbortSignal) => {
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
+    const features = get(featureSwitch$);
+    if (!features[FeatureSwitchKey.AgentChatDrafts]) {
+      return;
+    }
+
     const entry = set(ensureAgentDraft$, agentId);
     set(entry.draft.clear$);
     await set(entry.flushDraftClear$, signal);

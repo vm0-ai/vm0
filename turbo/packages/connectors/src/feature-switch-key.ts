@@ -45,6 +45,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",
   ChatGithubPrTracking = "chatGithubPrTracking",
+  AgentChatDrafts = "agentChatDrafts",
   ChatThreadDoubleClickRename = "chatThreadDoubleClickRename",
   ChatTemplatePicker = "chatTemplatePicker",
   VideoTemplatePicker = "videoTemplatePicker",
