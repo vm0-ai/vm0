@@ -2224,7 +2224,7 @@ function TemplatePreviewPage({
                       title={`${item.title} slide ${slideNumber} thumbnail`}
                       src={visibleDetailPreview.thumbnailFrameUrls[slideIndex]}
                       sandbox="allow-same-origin"
-                      className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
+                      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
                     />
                   ) : (
                     <span className="absolute inset-0 bg-muted/40" />
