@@ -371,6 +371,25 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert isinstance(error, str)
         assert error
 
+    def test_eventless_incomplete_non_terminal_after_prefix_bound_stays_quiet(self):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.output_text.delta","delta":"hello'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert parse_errors == []
+
     def test_eventless_incomplete_duplicate_type_does_not_use_stale_terminal_type(self):
         parse_errors: list[tuple[str, str]] = []
 
