@@ -235,7 +235,7 @@ export const setTemplateCardDefaultHtmlPreview$ = command(
   },
 );
 
-export interface TemplateDetailHtmlPreviewState {
+interface TemplateDetailHtmlPreviewState {
   readonly slug: string;
   readonly embedUrl: string;
   readonly themeId: string;
