@@ -1,17 +1,21 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use api_contracts::generated::types::runners::storage::StorageManifest;
 use sandbox::{ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::agent_run::{ProcessCancelTimeouts, RunStart, run_in_sandbox};
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
+use super::super::storage::guest_download_command;
 use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT};
 use super::support::{
-    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox,
+    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
     minimal_context, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
     test_executor_config, test_telemetry,
 };
+use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::SandboxReuseResult;
 
 #[tokio::test]
@@ -66,6 +70,56 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
             chunk_truncated: true,
             stream_overflowed: false,
         }
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    let mut storage = api_storage(
+        "instructions",
+        "/home/user/.codex",
+        "v1",
+        "https://example.com/instructions.tar.gz",
+    );
+    storage.instructions_target_filename = Some("AGENTS.md".into());
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+    });
+    let prev_storage = StorageFingerprints {
+        storages: HashMap::from([(
+            "/home/user/.codex".into(),
+            StorageFingerprint::new("instructions", "v1"),
+        )]),
+        artifacts: HashMap::new(),
+    };
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: Some(&prev_storage),
+        },
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let exec_calls = sandbox.exec_calls();
+    assert!(
+        exec_calls
+            .iter()
+            .any(|call| call.cmd == guest_download_command()),
+        "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
 }
 
