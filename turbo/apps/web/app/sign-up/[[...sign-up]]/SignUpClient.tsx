@@ -9,6 +9,7 @@ import { buildSignupRedirectUrl } from "../../../src/lib/adAttribution";
 import {
   getAllowedRedirectOrigins,
   getAppUrl,
+  getPaidOnboardingUrl,
 } from "../../../src/lib/zero/url";
 
 export function SignUpClient() {
@@ -18,6 +19,7 @@ export function SignUpClient() {
     getAppUrl(),
     searchParams.toString(),
     getAllowedRedirectOrigins(),
+    getPaidOnboardingUrl(),
   );
 
   return (

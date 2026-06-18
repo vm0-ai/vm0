@@ -74,12 +74,12 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.origin).toBe("https://so.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
     });
   });
 
@@ -94,12 +94,12 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.origin).toBe("https://so.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
     });
   });
 
@@ -122,12 +122,12 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.origin).toBe("https://so.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
       expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+      expect(url.searchParams.get("domain")).toBe("api.vm7.ai:8443");
     });
   });
 

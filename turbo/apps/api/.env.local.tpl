@@ -9,7 +9,7 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VM0_API_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
-PAID_ONBOARDING_URL=https://so.vm7.ai:8441
+PAID_ONBOARDING_URL=https://so.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom.vm7.ai:8442/

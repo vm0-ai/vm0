@@ -38,6 +38,16 @@ api.vm7.ai:8443 {
 	reverse_proxy localhost:3001
 }
 
+# Paid onboarding surface proxied to the shared staging SO deployment.
+so.vm7.ai:8443 {
+	tls {
+		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
+	}
+	reverse_proxy https://staging-so.vm6.ai {
+		header_up Host staging-so.vm6.ai
+	}
+}
+
 # HTTP redirects to HTTPS
 http://vm7.ai:8080 {
 	redir https://www.vm7.ai:8443{uri} permanent
@@ -53,4 +63,8 @@ http://app.vm7.ai:8080 {
 
 http://api.vm7.ai:8080 {
 	redir https://api.vm7.ai:8443{uri} permanent
+}
+
+http://so.vm7.ai:8080 {
+	redir https://so.vm7.ai:8443{uri} permanent
 }
