@@ -264,17 +264,17 @@ describe("desktop tray", () => {
     expect(tray.image.path).toBe(disabledIconPath);
     expect(tray.image.templateImage).toBe(false);
 
-    vi.advanceTimersByTime(280);
+    vi.advanceTimersByTime(500);
 
     expect(tray.image.path).toBe(runningIconPath);
     expect(tray.image.templateImage).toBe(false);
 
-    vi.advanceTimersByTime(280);
+    vi.advanceTimersByTime(500);
 
     expect(tray.image.path).toBe(iconPath);
     expect(tray.image.templateImage).toBe(true);
 
-    vi.advanceTimersByTime(280);
+    vi.advanceTimersByTime(500);
 
     expect(tray.image.path).toBe(runningIconPath);
   });
@@ -290,11 +290,11 @@ describe("desktop tray", () => {
 
     runningCommand = false;
     controller.refresh();
-    vi.advanceTimersByTime(14_840);
+    vi.advanceTimersByTime(14_500);
 
     expect(tray.image.path).toBe(runningIconPath);
 
-    vi.advanceTimersByTime(280);
+    vi.advanceTimersByTime(500);
 
     expect(tray.image.path).toBe(iconPath);
     expect(tray.image.templateImage).toBe(true);
