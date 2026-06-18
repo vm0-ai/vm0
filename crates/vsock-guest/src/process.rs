@@ -217,7 +217,7 @@ pub(crate) fn kill_and_reap_child_with_target(mut child: Child, mut target: Proc
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -257,6 +257,21 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         path.exists()
+    }
+
+    fn read_pid_file<T: std::str::FromStr>(path: &Path) -> Option<T> {
+        std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    }
+
+    fn wait_for_pid_file<T: std::str::FromStr>(path: &Path, timeout: Duration) -> Option<T> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Some(pid) = read_pid_file(path) {
+                return Some(pid);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        read_pid_file(path)
     }
 
     #[test]
@@ -677,28 +692,17 @@ wait
         command.process_group(0);
 
         let mut child = Some(command.spawn().unwrap());
-        if !wait_for_path(&direct_pid_path, Duration::from_secs(2)) {
-            kill_spawned_child(&mut child);
-            panic!("parent should publish same-group child pid before snapshot");
-        }
+        let direct_pid: u32 = match wait_for_pid_file(&direct_pid_path, Duration::from_secs(2)) {
+            Some(pid) => pid,
+            None => {
+                kill_spawned_child(&mut child);
+                panic!("parent should publish same-group child pid before snapshot");
+            }
+        };
         if !wait_for_path(&child_ready, Duration::from_secs(2)) {
             kill_spawned_child(&mut child);
             panic!("same-group child should block on fifo before snapshot");
         }
-        let direct_pid_text = match std::fs::read_to_string(&direct_pid_path) {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child(&mut child);
-                panic!("failed to read direct child pid: {e}");
-            }
-        };
-        let direct_pid: u32 = match direct_pid_text.trim().parse() {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child(&mut child);
-                panic!("failed to parse direct child pid {direct_pid_text:?}: {e}");
-            }
-        };
         let parent_pid = child.as_ref().unwrap().id();
         let direct_stat = match std::fs::read_to_string(format!("/proc/{direct_pid}/stat")) {
             Ok(stat) => stat,
@@ -730,24 +734,14 @@ wait
             }
         }
 
-        if !wait_for_path(&setsid_child_pid_path, Duration::from_secs(2)) {
-            kill_spawned_child(&mut child);
-            panic!("setsid child should publish its pid before kill");
-        }
-        let setsid_child_pid_text = match std::fs::read_to_string(&setsid_child_pid_path) {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child(&mut child);
-                panic!("failed to read setsid child pid: {e}");
-            }
-        };
-        let setsid_child_pid: libc::pid_t = match setsid_child_pid_text.trim().parse() {
-            Ok(pid) => pid,
-            Err(e) => {
-                kill_spawned_child(&mut child);
-                panic!("failed to parse setsid child pid {setsid_child_pid_text:?}: {e}");
-            }
-        };
+        let setsid_child_pid: libc::pid_t =
+            match wait_for_pid_file(&setsid_child_pid_path, Duration::from_secs(2)) {
+                Some(pid) => pid,
+                None => {
+                    kill_spawned_child(&mut child);
+                    panic!("setsid child should publish its pid before kill");
+                }
+            };
         let setsid_child_pidfd = match open_pidfd(setsid_child_pid) {
             Ok(pidfd) => pidfd,
             Err(e) => {
