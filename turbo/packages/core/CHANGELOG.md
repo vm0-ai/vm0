@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.356.0](https://github.com/vm0-ai/vm0/compare/core-v8.355.1...core-v8.356.0) (2026-06-18)
+
+
+### Features
+
+* add Box OAuth connector ([#18270](https://github.com/vm0-ai/vm0/issues/18270)) ([b9806d5](https://github.com/vm0-ai/vm0/commit/b9806d5b496c53520c34cda130f5b6ed219957ac))
+* add Microsoft 365 OAuth connector ([#18271](https://github.com/vm0-ai/vm0/issues/18271)) ([ae3d80d](https://github.com/vm0-ai/vm0/commit/ae3d80da3d0bd11ecb79bb1617714e4d1428e0d0))
+* add QuickBooks OAuth connector ([#18273](https://github.com/vm0-ai/vm0/issues/18273)) ([6f4aa42](https://github.com/vm0-ai/vm0/commit/6f4aa424c5311f4a36326ec81279dbd937d366e6))
+* use stripe connector oauth ([#18249](https://github.com/vm0-ai/vm0/issues/18249)) ([3045308](https://github.com/vm0-ai/vm0/commit/3045308f5672939067b6689b1bcfb7d491055d47))
+
+
+### Bug Fixes
+
+* update mosaic geometric embed url ([#18285](https://github.com/vm0-ai/vm0/issues/18285)) ([c80792f](https://github.com/vm0-ai/vm0/commit/c80792fd22a78edaf7c77065581299a2532dd275))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.103.0
+    * @vm0/connectors bumped to 1.93.0
+
 ## [8.355.1](https://github.com/vm0-ai/vm0/compare/core-v8.355.0...core-v8.355.1) (2026-06-18)
 
 

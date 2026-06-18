@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.157.0](https://github.com/vm0-ai/vm0/compare/api-v1.156.0...api-v1.157.0) (2026-06-18)
+
+
+### Features
+
+* add QuickBooks OAuth connector ([#18273](https://github.com/vm0-ai/vm0/issues/18273)) ([6f4aa42](https://github.com/vm0-ai/vm0/commit/6f4aa424c5311f4a36326ec81279dbd937d366e6))
+* silently cache chat history ([#18300](https://github.com/vm0-ai/vm0/issues/18300)) ([85fa183](https://github.com/vm0-ai/vm0/commit/85fa18391d12438d886cbe4356a572de36f159a6))
+* use stripe connector oauth ([#18249](https://github.com/vm0-ai/vm0/issues/18249)) ([3045308](https://github.com/vm0-ai/vm0/commit/3045308f5672939067b6689b1bcfb7d491055d47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.103.0
+    * @vm0/connectors bumped to 1.93.0
+    * @vm0/core bumped to 8.356.0
+    * @vm0/db bumped to 1.57.4
+
 ## [1.156.0](https://github.com/vm0-ai/vm0/compare/api-v1.155.1...api-v1.156.0) (2026-06-18)
 
 

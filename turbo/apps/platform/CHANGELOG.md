@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.472.0](https://github.com/vm0-ai/vm0/compare/app-v0.471.1...app-v0.472.0) (2026-06-18)
+
+
+### Features
+
+* add Box OAuth connector ([#18270](https://github.com/vm0-ai/vm0/issues/18270)) ([b9806d5](https://github.com/vm0-ai/vm0/commit/b9806d5b496c53520c34cda130f5b6ed219957ac))
+* add Microsoft 365 OAuth connector ([#18271](https://github.com/vm0-ai/vm0/issues/18271)) ([ae3d80d](https://github.com/vm0-ai/vm0/commit/ae3d80da3d0bd11ecb79bb1617714e4d1428e0d0))
+* add QuickBooks OAuth connector ([#18273](https://github.com/vm0-ai/vm0/issues/18273)) ([6f4aa42](https://github.com/vm0-ai/vm0/commit/6f4aa424c5311f4a36326ec81279dbd937d366e6))
+* silently cache chat history ([#18300](https://github.com/vm0-ai/vm0/issues/18300)) ([85fa183](https://github.com/vm0-ai/vm0/commit/85fa18391d12438d886cbe4356a572de36f159a6))
+* use stripe connector oauth ([#18249](https://github.com/vm0-ai/vm0/issues/18249)) ([3045308](https://github.com/vm0-ai/vm0/commit/3045308f5672939067b6689b1bcfb7d491055d47))
+
+
+### Bug Fixes
+
+* copy chat attachments as links ([#18302](https://github.com/vm0-ai/vm0/issues/18302)) ([0751f7b](https://github.com/vm0-ai/vm0/commit/0751f7beeff698255e2e6972e8d4d16049944246))
+* improve computer use dialog spacing ([#18299](https://github.com/vm0-ai/vm0/issues/18299)) ([26191cc](https://github.com/vm0-ai/vm0/commit/26191ccafabccf34aa88e9dbc7bea4a3a14c4a91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.103.0
+    * @vm0/connectors bumped to 1.93.0
+    * @vm0/core bumped to 8.356.0
+
 ## [0.471.1](https://github.com/vm0-ai/vm0/compare/app-v0.471.0...app-v0.471.1) (2026-06-18)
 
 

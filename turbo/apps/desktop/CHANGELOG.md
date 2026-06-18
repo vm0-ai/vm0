@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.0...desktop-v0.16.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **desktop:** handle auth window close cleanup ([#18298](https://github.com/vm0-ai/vm0/issues/18298)) ([1cdd097](https://github.com/vm0-ai/vm0/commit/1cdd0976dd1ff076e545f9a5bddfe03af0e33d9b))
+* lock desktop main window size ([#18301](https://github.com/vm0-ai/vm0/issues/18301)) ([be54ab5](https://github.com/vm0-ai/vm0/commit/be54ab5bbd614109d7c5948c6244b3a8c2a444e7))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.2...desktop-v0.16.0) (2026-06-18)
 
 
