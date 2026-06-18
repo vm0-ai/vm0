@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.198.0](https://github.com/vm0-ai/vm0/compare/cli-v9.197.7...cli-v9.198.0) (2026-06-18)
+
+
+### Features
+
+* use stripe connector oauth ([#18249](https://github.com/vm0-ai/vm0/issues/18249)) ([3045308](https://github.com/vm0-ai/vm0/commit/3045308f5672939067b6689b1bcfb7d491055d47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.103.0
+    * @vm0/connectors bumped to 1.93.0
+    * @vm0/core bumped to 8.356.0
+
 ## [9.197.7](https://github.com/vm0-ai/vm0/compare/cli-v9.197.6...cli-v9.197.7) (2026-06-18)
 
 

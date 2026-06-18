@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.43](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.42...nbd-cow-v0.4.43) (2026-06-18)
+
+
+### Refactoring
+
+* split nbd-cow benchmark modules ([#18294](https://github.com/vm0-ai/vm0/issues/18294)) ([250dc50](https://github.com/vm0-ai/vm0/commit/250dc502a38c51900dcea793fbafe11a8c9e53c5))
+
 ## [0.4.42](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.41...nbd-cow-v0.4.42) (2026-06-18)
 
 

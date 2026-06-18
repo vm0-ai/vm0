@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.123.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.122.0...runner-rs-v0.123.0) (2026-06-18)
+
+
+### Features
+
+* add Box OAuth connector ([#18270](https://github.com/vm0-ai/vm0/issues/18270)) ([b9806d5](https://github.com/vm0-ai/vm0/commit/b9806d5b496c53520c34cda130f5b6ed219957ac))
+* add Microsoft 365 OAuth connector ([#18271](https://github.com/vm0-ai/vm0/issues/18271)) ([ae3d80d](https://github.com/vm0-ai/vm0/commit/ae3d80da3d0bd11ecb79bb1617714e4d1428e0d0))
+* add QuickBooks OAuth connector ([#18273](https://github.com/vm0-ai/vm0/issues/18273)) ([6f4aa42](https://github.com/vm0-ai/vm0/commit/6f4aa424c5311f4a36326ec81279dbd937d366e6))
+
+
+### Refactoring
+
+* **runner:** split main loop tests by behavior ([#18261](https://github.com/vm0-ai/vm0/issues/18261)) ([5deb4df](https://github.com/vm0-ai/vm0/commit/5deb4df2e95503f066f0f7985d6a07c15531f05b))
+* split runner build snapshot and scripts ([#18293](https://github.com/vm0-ai/vm0/issues/18293)) ([7d215f5](https://github.com/vm0-ai/vm0/commit/7d215f5ad7432680e9498b678f77461a2a0304ed))
+
 ## [0.122.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.121.1...runner-rs-v0.122.0) (2026-06-18)
 
 
