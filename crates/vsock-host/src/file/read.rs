@@ -64,37 +64,33 @@ fn validate_read_exec_result(
     let (stdout, stdout_truncated) = read_exec_output(path, "stdout", stdout)?;
     let (stderr, stderr_truncated) = read_exec_output(path, "stderr", stderr)?;
 
-    if termination
-        == (ExecTermination::Exited {
-            exit_code: MISSING_FILE_EXIT_CODE,
-        })
-    {
-        if stdout_truncated || !stdout.is_empty() {
-            let stdout_detail = if stdout_truncated {
-                "stdout truncated"
-            } else {
-                "stdout"
-            };
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("read_file missing result for {path} included {stdout_detail}"),
-            ));
-        }
-        let stderr = normalize_file_exec_stderr(stderr, stderr_truncated);
-        if !stderr.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "read_file missing result for {path} included stderr: {}",
-                    String::from_utf8_lossy(&stderr)
-                ),
-            ));
-        }
-        return Ok(None);
-    }
-
     let stderr = normalize_file_exec_stderr(stderr, stderr_truncated);
     match termination {
+        ExecTermination::Exited {
+            exit_code: MISSING_FILE_EXIT_CODE,
+        } => {
+            if stdout_truncated || !stdout.is_empty() {
+                let stdout_detail = if stdout_truncated {
+                    "stdout truncated"
+                } else {
+                    "stdout"
+                };
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("read_file missing result for {path} included {stdout_detail}"),
+                ));
+            }
+            if !stderr.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "read_file missing result for {path} included stderr: {}",
+                        String::from_utf8_lossy(&stderr)
+                    ),
+                ));
+            }
+            Ok(None)
+        }
         ExecTermination::Exited { exit_code: 0 } => {
             if stdout_truncated {
                 return Err(io::Error::other(format!(
@@ -147,6 +143,7 @@ impl VsockHost {
     ///
     /// The guest path must be non-empty and must not contain NUL bytes.
     /// `max_bytes` must be positive and fit within the exec capture limit.
+    /// `timeout_ms` must be positive.
     ///
     /// Missing files return `Ok(None)`. Files larger than `max_bytes` return
     /// an error instead of silently returning truncated bytes.
