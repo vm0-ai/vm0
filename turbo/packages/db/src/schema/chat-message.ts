@@ -20,6 +20,7 @@ export interface ChatMessagePresentationGenerationTemplate {
   readonly selection: {
     readonly designSystemId: string;
     readonly templateId: string;
+    readonly previewUrl?: string;
   };
 }
 

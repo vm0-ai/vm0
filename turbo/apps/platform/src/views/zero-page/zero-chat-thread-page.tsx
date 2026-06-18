@@ -3232,7 +3232,7 @@ function ScrollToBottomButton({
       onClick={() => {
         scrollToBottom();
       }}
-      className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+      className="absolute bottom-4 left-[calc((100%-var(--github-pr-tracking-content-inset,0px))/2)] z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
     >
       <IconArrowDown size={18} />
     </button>

@@ -17,8 +17,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconChevronLeft,
-  IconChevronRight,
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
@@ -26,6 +24,7 @@ import {
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
+  IconPalette,
   IconPlayerStop,
   IconPlug,
   IconPhoto,
@@ -70,6 +69,7 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  settle,
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
@@ -100,8 +100,13 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
+  parsePresentationEditDraft,
+  previewPresentationHtml,
+  type PresentationEditDraft,
+} from "./presentation-html-edit-protocol.ts";
+import { readablePresentationResourceUrl } from "./presentation-html-pptx-download.ts";
+import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   findVideoTemplateItem,
@@ -164,13 +169,22 @@ import {
   setTemplatePickerSearch$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
-  templatePickerPreviewSlideIndex$,
   setComputerUseDownloadDialogOpen$,
-  setTemplatePickerPreviewSlideIndex$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  templateCardDefaultHtmlPreviews$,
+  setTemplateCardDefaultHtmlPreview$,
+  templateCardHtmlPreview$,
+  setTemplateCardHtmlPreview$,
+  type TemplateCardHtmlPreviewState,
+  templateDetailHtmlPreview$,
+  setTemplateDetailHtmlPreview$,
+  templateDetailThemeIdBySlug$,
+  setTemplateDetailThemeId$,
+  templateDetailSlideIndexBySlug$,
+  setTemplateDetailSlideIndex$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -333,8 +347,6 @@ type ComposerTemplatePicker = NonNullable<
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
-const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
-const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
   width: 768,
   height: 768,
@@ -672,22 +684,19 @@ function isSelectedPresentationTemplate(
 
 function toPresentationGenerationTemplate(
   item: PresentationTemplateItem,
+  colorSystemId = presentationTemplateColorSystemId(
+    defaultPresentationTemplateThemeId(item),
+  ),
 ): GenerationTemplateRequest {
   return {
     type: "presentation",
     selection: {
+      colorSystemId,
       designSystemId: item.designSystemId,
       templateId: item.templateId,
+      previewUrl: item.embedUrl,
     },
   };
-}
-
-function presentationTemplatePickerItems(
-  useNewPresentationTemplates: boolean,
-): readonly PresentationTemplateItem[] {
-  return useNewPresentationTemplates
-    ? PRESENTATION_TEMPLATE_PICKER_ITEMS
-    : PRESENTATION_TEMPLATE_ITEMS;
 }
 
 function selectedTemplateTitle(
@@ -708,14 +717,9 @@ function selectedPresentationTemplateItem(
   if (value?.type !== "presentation") {
     return undefined;
   }
-  return (
-    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
-      return isSelectedPresentationTemplate(item, value);
-    }) ??
-    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return isSelectedPresentationTemplate(item, value);
-    })
-  );
+  return PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+    return isSelectedPresentationTemplate(item, value);
+  });
 }
 
 function isSelectedIllustrationTemplate(
@@ -974,143 +978,664 @@ function presentationTemplateSlideImages(
   return item.previewImages;
 }
 
-interface PresentationPreviewImageCache {
-  readonly decoded: Set<string>;
-  readonly pendingDecodes: Map<string, Promise<void>>;
-  readonly preloads: Map<string, HTMLImageElement>;
+interface PresentationTemplateThemeOption {
+  readonly id: string;
+  readonly name: string;
+  readonly group: "multi-accent" | "single-accent";
+  readonly paletteName: string;
+  readonly colors: readonly [
+    bg: string,
+    surface: string,
+    ink: string,
+    inkSoft: string,
+    accent: string,
+    support1: string,
+    support2: string,
+    support3: string,
+    placeholder: string,
+  ];
 }
 
-function presentationPreviewImageCache(): PresentationPreviewImageCache {
-  const cacheKey = "vm0PresentationPreviewImageDecodeCache";
+const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
+  [
+    {
+      id: "prism",
+      name: "Prism",
+      group: "multi-accent",
+      paletteName: "Prism",
+      colors: [
+        "#FFFFFF",
+        "#F7F7FA",
+        "#1A1726",
+        "#5C5870",
+        "#7257E6",
+        "#FF6B4A",
+        "#AEE63E",
+        "#3FA9F5",
+        "#ECECF2",
+      ],
+    },
+    {
+      id: "carnival",
+      name: "Carnival",
+      group: "multi-accent",
+      paletteName: "Carnival",
+      colors: [
+        "#FFFDF7",
+        "#FFFFFF",
+        "#221C14",
+        "#5E564A",
+        "#FF7A1A",
+        "#E5388E",
+        "#F5B73E",
+        "#1FB6A6",
+        "#EFEADF",
+      ],
+    },
+    {
+      id: "pop-art",
+      name: "Pop Art",
+      group: "multi-accent",
+      paletteName: "Pop Art",
+      colors: [
+        "#111016",
+        "#1B1A22",
+        "#F4F2FA",
+        "#A09CB0",
+        "#3D7BFF",
+        "#FF3D9A",
+        "#C6FF4A",
+        "#FF7A1A",
+        "#26242E",
+      ],
+    },
+    {
+      id: "warm-sand",
+      name: "Warm Sand",
+      group: "single-accent",
+      paletteName: "Warm Sand",
+      colors: [
+        "#FFFDF8",
+        "#FFFFFF",
+        "#262626",
+        "#5A5A5A",
+        "#F19B3A",
+        "#8DACE5",
+        "#DDB8D9",
+        "#516049",
+        "#ECECEC",
+      ],
+    },
+    {
+      id: "bauhaus-primary",
+      name: "Bauhaus Primary",
+      group: "single-accent",
+      paletteName: "Bauhaus Primary",
+      colors: [
+        "#F5F1E6",
+        "#FFFFFF",
+        "#1A1A1A",
+        "#4A4A4A",
+        "#E63327",
+        "#2C5BD6",
+        "#F2B705",
+        "#1A1A1A",
+        "#E2DDD0",
+      ],
+    },
+    {
+      id: "nordic-frost",
+      name: "Nordic Frost",
+      group: "single-accent",
+      paletteName: "Nordic Frost",
+      colors: [
+        "#FBFCFD",
+        "#FFFFFF",
+        "#1F2933",
+        "#5B6B7B",
+        "#3E8EDE",
+        "#7BC6C9",
+        "#B8C4D0",
+        "#1F2933",
+        "#E8EDF1",
+      ],
+    },
+    {
+      id: "forest-editorial",
+      name: "Forest Editorial",
+      group: "single-accent",
+      paletteName: "Forest Editorial",
+      colors: [
+        "#F7F6F1",
+        "#FFFFFF",
+        "#1E2B22",
+        "#4F5C52",
+        "#5B7553",
+        "#C97B4A",
+        "#E4DFD0",
+        "#1E2B22",
+        "#E6E8E1",
+      ],
+    },
+    {
+      id: "coral-studio",
+      name: "Coral Studio",
+      group: "single-accent",
+      paletteName: "Coral Studio",
+      colors: [
+        "#FFF9F6",
+        "#FFFFFF",
+        "#3A2A26",
+        "#6E5B55",
+        "#FF6F5E",
+        "#FFB199",
+        "#2BB3A3",
+        "#3A2A26",
+        "#F0E7E2",
+      ],
+    },
+    {
+      id: "slate-corporate",
+      name: "Slate Corporate",
+      group: "single-accent",
+      paletteName: "Slate Corporate",
+      colors: [
+        "#FFFFFF",
+        "#F6F8FB",
+        "#16243B",
+        "#5A6678",
+        "#2F5BD0",
+        "#6E8BB8",
+        "#F0A03A",
+        "#16243B",
+        "#E9EDF3",
+      ],
+    },
+    {
+      id: "terracotta-clay",
+      name: "Terracotta Clay",
+      group: "single-accent",
+      paletteName: "Terracotta Clay",
+      colors: [
+        "#FBF4EC",
+        "#FFFFFF",
+        "#3B2A20",
+        "#6B5546",
+        "#C36A3F",
+        "#D9A441",
+        "#7A7A52",
+        "#EAD9C6",
+        "#ECE0D2",
+      ],
+    },
+    {
+      id: "berry-pop",
+      name: "Berry Pop",
+      group: "single-accent",
+      paletteName: "Berry Pop",
+      colors: [
+        "#FFFAFC",
+        "#FFFFFF",
+        "#2E1A2C",
+        "#6A5566",
+        "#D63A8E",
+        "#8E5BD0",
+        "#F4B8D4",
+        "#2E1A2C",
+        "#F0E6EC",
+      ],
+    },
+    {
+      id: "citrus-fresh",
+      name: "Citrus Fresh",
+      group: "single-accent",
+      paletteName: "Citrus Fresh",
+      colors: [
+        "#FFFFFB",
+        "#FFFFFF",
+        "#232318",
+        "#5C5C4E",
+        "#FF8A1E",
+        "#FFD23E",
+        "#8FB339",
+        "#4FA3A3",
+        "#EDEDE3",
+      ],
+    },
+    {
+      id: "mauve-dusk",
+      name: "Mauve Dusk",
+      group: "single-accent",
+      paletteName: "Mauve Dusk",
+      colors: [
+        "#FAF7FB",
+        "#FFFFFF",
+        "#2B2533",
+        "#635B70",
+        "#9C7BB8",
+        "#8AA0C9",
+        "#E0B6C9",
+        "#2B2533",
+        "#ECE7F0",
+      ],
+    },
+    {
+      id: "mono-ink",
+      name: "Mono Ink",
+      group: "single-accent",
+      paletteName: "Mono Ink",
+      colors: [
+        "#FFFFFF",
+        "#FAFAFA",
+        "#0A0A0A",
+        "#6B6B6B",
+        "#E5392E",
+        "#0A0A0A",
+        "#BFBFBF",
+        "#0A0A0A",
+        "#EEEEEE",
+      ],
+    },
+    {
+      id: "sunset-maroon",
+      name: "Sunset Maroon",
+      group: "single-accent",
+      paletteName: "Sunset Maroon",
+      colors: [
+        "#FFF7F2",
+        "#FFFFFF",
+        "#3A1F22",
+        "#6E4A4C",
+        "#F26B3A",
+        "#E0457B",
+        "#F2A93B",
+        "#3A1F22",
+        "#F0E2DA",
+      ],
+    },
+    {
+      id: "mint-tech",
+      name: "Mint Tech",
+      group: "single-accent",
+      paletteName: "Mint Tech",
+      colors: [
+        "#FBFFFD",
+        "#FFFFFF",
+        "#1B2A26",
+        "#56655F",
+        "#16B981",
+        "#4FA3E0",
+        "#9AE6C8",
+        "#3A4A45",
+        "#E6F0EB",
+      ],
+    },
+    {
+      id: "midnight-mono",
+      name: "Midnight Mono",
+      group: "single-accent",
+      paletteName: "Midnight Mono",
+      colors: [
+        "#121316",
+        "#1C1E22",
+        "#F2F2F0",
+        "#A0A3A8",
+        "#C6FF4A",
+        "#6B7280",
+        "#3A3D44",
+        "#C6FF4A",
+        "#2A2C31",
+      ],
+    },
+    {
+      id: "ocean-deep",
+      name: "Ocean Deep",
+      group: "single-accent",
+      paletteName: "Ocean Deep",
+      colors: [
+        "#0E2A33",
+        "#143840",
+        "#EAF6F4",
+        "#9DB8B8",
+        "#38C7B4",
+        "#5A93A8",
+        "#1F4A52",
+        "#38C7B4",
+        "#1B454E",
+      ],
+    },
+    {
+      id: "gold-luxe",
+      name: "Gold Luxe",
+      group: "single-accent",
+      paletteName: "Gold Luxe",
+      colors: [
+        "#16140F",
+        "#211E16",
+        "#F3EEE2",
+        "#ADA48E",
+        "#C9A24B",
+        "#8A6E3A",
+        "#3A352A",
+        "#C9A24B",
+        "#2A271E",
+      ],
+    },
+  ];
+
+function defaultPresentationTemplateThemeId(
+  item: PresentationTemplateItem,
+): string {
+  return item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
+}
+
+function presentationTemplateColorSystemId(themeId: string): string {
+  return `color-system:${themeId}`;
+}
+
+function findPresentationTemplateTheme(
+  themeId: string,
+): PresentationTemplateThemeOption {
+  return (
+    PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
+      return theme.id === themeId;
+    }) ?? PRESENTATION_TEMPLATE_THEME_OPTIONS[0]!
+  );
+}
+
+function presentationTemplateThemePreviewSwatches(
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  const background = theme.colors[0];
+  const accents = theme.colors.slice(4, 8);
+  return [
+    { id: "background", color: background },
+    ...accents.slice(0, 3).map((accent, accentIndex) => {
+      return { id: `accent-${accentIndex + 1}`, color: accent };
+    }),
+  ];
+}
+
+function isPresentationTemplateSupport2SwatchSlug(slug: string): boolean {
+  return (
+    slug === "playful-launch-presentation" ||
+    slug === "crayon-learning-deck" ||
+    slug === "mosaic-geometric-pitch"
+  );
+}
+
+function presentationTemplateAccentSwatchColor(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption,
+): { readonly color: string; readonly id: string } {
+  if (item.slug === "landing-consulting-deck") {
+    return { id: "support-1", color: theme.colors[5] };
+  }
+  if (isPresentationTemplateSupport2SwatchSlug(item.slug)) {
+    return { id: "support-2", color: theme.colors[6] };
+  }
+  return { id: "accent", color: theme.colors[4] };
+}
+
+function presentationTemplateThemeAccentSwatches(
+  item: PresentationTemplateItem,
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  return [
+    { id: "background", color: theme.colors[0] },
+    presentationTemplateAccentSwatchColor(item, theme),
+  ];
+}
+
+function hexLuminance(hexColor: string): number {
+  const normalized = hexColor.replace("#", "");
+  const channels = [0, 2, 4].map((index) => {
+    const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
+    return value <= 0.039_28
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
+
+function contrastRatio(colorA: string, colorB: string): number {
+  const luminanceA = hexLuminance(colorA);
+  const luminanceB = hexLuminance(colorB);
+  return (
+    (Math.max(luminanceA, luminanceB) + 0.05) /
+    (Math.min(luminanceA, luminanceB) + 0.05)
+  );
+}
+
+function hexToRgb(hexColor: string): readonly [number, number, number] {
+  const normalized = hexColor.replace("#", "");
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+  ];
+}
+
+function rgbToHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb
+    .map((value) => {
+      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+    })
+    .join("")}`;
+}
+
+function mixRgb(
+  colorA: readonly [number, number, number],
+  colorB: readonly [number, number, number],
+  amount: number,
+): readonly [number, number, number] {
+  return [
+    Math.round(colorA[0] * (1 - amount) + colorB[0] * amount),
+    Math.round(colorA[1] * (1 - amount) + colorB[1] * amount),
+    Math.round(colorA[2] * (1 - amount) + colorB[2] * amount),
+  ];
+}
+
+function previewTextColorOn(background: string): string {
+  return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
+}
+
+function safePreviewGround(accent: string): readonly [string, string] {
+  const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
+  const target: readonly [number, number, number] =
+    text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
+  const accentRgb = hexToRgb(accent);
+  for (let amount = 0; amount <= 1.0001; amount += 0.04) {
+    const ground = rgbToHex(mixRgb(accentRgb, target, amount));
+    if (contrastRatio(text, ground) >= 4.6) {
+      return [ground, text];
+    }
+  }
+  return [accent, text];
+}
+
+function presentationTemplateThemeCss(
+  theme: PresentationTemplateThemeOption,
+): string {
+  const [bg, surface, ink, soft, accent, s1, s2, s3, ph] = theme.colors;
+  const accents = [accent, s1, s2, s3] as const;
+  const accentVariables = accents
+    .map((accent, index) => {
+      const [ground, text] = safePreviewGround(accent);
+      return `--g${index}:${ground};--t${index}:${text};`;
+    })
+    .join("");
+  return `
+    :root {
+      --bg:${bg};
+      --surface:${surface};
+      --ink:${ink};
+      --soft:${soft};
+      --ph:${ph};
+      --accent:${accent};
+      --s1:${s1};
+      --s2:${s2};
+      --s3:${s3};
+      --oa:${previewTextColorOn(accent)};
+      --o1:${previewTextColorOn(s1)};
+      --o2:${previewTextColorOn(s2)};
+      --o3:${previewTextColorOn(s3)};
+      --ka:${contrastRatio(accent, bg) >= 4.5 ? accent : ink};
+      --kad:${contrastRatio(accent, ink) >= 4.5 ? accent : bg};
+      --k1:${contrastRatio(s1, bg) >= 4.5 ? s1 : ink};
+      --k2:${contrastRatio(s2, bg) >= 4.5 ? s2 : ink};
+      --k3:${contrastRatio(s3, bg) >= 4.5 ? s3 : ink};
+      ${accentVariables}
+    }
+    #sw {
+      display: none !important;
+    }
+  `;
+}
+
+function themedPreviewPresentationHtml(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  const html = previewPresentationHtml({
+    activeSlideId: params.activeSlideId,
+    html: params.draft.html,
+  });
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const style = doc.createElement("style");
+  style.textContent = presentationTemplateThemeCss(params.theme);
+  doc.head.append(style);
+  return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+}
+
+async function loadPresentationTemplateHtmlPreview(params: {
+  readonly item: PresentationTemplateItem;
+}): Promise<PresentationEditDraft | null> {
+  const response = await fetch(
+    readablePresentationResourceUrl(params.item.embedUrl),
+    {
+      credentials: "omit",
+      mode: "cors",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load template HTML (${response.status})`);
+  }
+
+  const draft = parsePresentationEditDraft(await response.text());
+  return draft.slides.length > 0 ? draft : null;
+}
+
+interface PresentationTemplateHtmlPreviewCache {
+  readonly drafts: Map<string, PresentationEditDraft>;
+  readonly failed: Set<string>;
+  readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
+  readonly activeTokens: Map<string, symbol>;
+  readonly activeIndexes: Map<string, number>;
+  readonly defaultLoads: Set<string>;
+  readonly detailTokens: Map<string, symbol>;
+}
+
+function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
+  const cacheKey = "vm0PresentationTemplateHtmlPreviewCache";
   const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationPreviewImageCache
+    | PresentationTemplateHtmlPreviewCache
     | undefined;
   if (existingCache !== undefined) {
     return existingCache;
   }
 
-  const cache: PresentationPreviewImageCache = {
-    decoded: new Set<string>(),
-    pendingDecodes: new Map<string, Promise<void>>(),
-    preloads: new Map<string, HTMLImageElement>(),
+  const cache: PresentationTemplateHtmlPreviewCache = {
+    activeIndexes: new Map<string, number>(),
+    activeTokens: new Map<string, symbol>(),
+    defaultLoads: new Set<string>(),
+    detailTokens: new Map<string, symbol>(),
+    drafts: new Map<string, PresentationEditDraft>(),
+    failed: new Set<string>(),
+    pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
 }
 
-function preloadPresentationPreviewImage(
-  url: string,
-): HTMLImageElement | undefined {
-  if (typeof Image === "undefined") {
-    return undefined;
-  }
-
-  const cache = presentationPreviewImageCache();
-  const cachedImage = cache.preloads.get(url);
-  if (cachedImage !== undefined) {
-    return cachedImage;
-  }
-
-  const image = new Image();
-  image.decoding = "async";
-  image.src = url;
-  cache.preloads.set(url, image);
-  return image;
-}
-
-function preloadPresentationPreviewImages(imageUrls: readonly string[]): void {
-  for (const imageUrl of imageUrls) {
-    preloadPresentationPreviewImage(imageUrl);
+function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
+  if (url !== null) {
+    URL.revokeObjectURL(url);
   }
 }
 
-async function decodePresentationPreviewImage(url: string): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  if (cache.decoded.has(url)) {
-    return;
-  }
-
-  if (isHappyDomTestEnvironment()) {
-    cache.decoded.add(url);
-    return;
-  }
-
-  const pendingDecode = cache.pendingDecodes.get(url);
-  if (pendingDecode !== undefined) {
-    await pendingDecode;
-    return;
-  }
-
-  const image = preloadPresentationPreviewImage(url);
-  if (image === undefined) {
-    return;
-  }
-
-  if (image.decode === undefined) {
-    if (image.complete && image.naturalWidth > 0) {
-      cache.decoded.add(url);
-    }
-    return;
-  }
-
-  const decode = markPresentationPreviewImageDecoded(url, image);
-  cache.pendingDecodes.set(url, decode);
-  await decode;
-}
-
-async function markPresentationPreviewImageDecoded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  await tapError(image.decode(), () => {});
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-  cache.pendingDecodes.delete(url);
-}
-
-function presentationPreviewImageDecoded(url: string): boolean {
-  return presentationPreviewImageCache().decoded.has(url);
-}
-
-async function selectDecodedTemplatePreviewImage({
-  container,
-  imageUrl,
-  index,
-  item,
-  setHover,
-}: {
-  container: HTMLDivElement;
-  imageUrl: string;
-  index: number;
-  item: PresentationTemplateItem;
-  setHover: (value: { readonly slug: string; readonly index: number }) => void;
-}): Promise<void> {
-  await decodePresentationPreviewImage(imageUrl);
-  if (
-    container.dataset.targetSlideIndex === String(index) &&
-    presentationPreviewImageDecoded(imageUrl)
-  ) {
-    setHover({ slug: item.slug, index });
+function revokePresentationTemplateHtmlPreviewUrls(
+  urls: readonly string[],
+): void {
+  for (const url of urls) {
+    URL.revokeObjectURL(url);
   }
 }
 
-async function markPresentationPreviewImageLoaded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationPreviewImageCache();
-  if (image.decode !== undefined) {
-    await tapError(image.decode(), () => {});
+function createThemedPresentationPreviewUrl(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return URL.createObjectURL(
+    new Blob(
+      [
+        themedPreviewPresentationHtml({
+          activeSlideId: params.activeSlideId,
+          draft: params.draft,
+          theme: params.theme,
+        }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+}
+
+function createPresentationTemplateHtmlPreviewState(params: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly theme?: PresentationTemplateThemeOption;
+}): TemplateCardHtmlPreviewState | null {
+  const slide =
+    params.draft.slides[Math.min(params.index, params.draft.slides.length - 1)];
+  if (slide === undefined) {
+    return null;
   }
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-  image.dataset.loaded = "true";
-  image.parentElement
-    ?.querySelector<HTMLElement>("[data-template-preview-error]")
-    ?.setAttribute("hidden", "");
+
+  revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+  const frameUrl = URL.createObjectURL(
+    new Blob(
+      [
+        params.theme
+          ? themedPreviewPresentationHtml({
+              activeSlideId: slide.id,
+              draft: params.draft,
+              theme: params.theme,
+            })
+          : previewPresentationHtml({
+              activeSlideId: slide.id,
+              html: params.draft.html,
+            }),
+      ],
+      { type: "text/html;charset=utf-8" },
+    ),
+  );
+
+  return {
+    slug: params.item.slug,
+    embedUrl: params.item.embedUrl,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: params.draft.slides.length,
+  };
 }
 
 function TemplatePreview({
@@ -1120,17 +1645,199 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item).map((imageUrl) => {
-    return r2ImageTransformUrl(imageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
-  });
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
+  const htmlPreview = useGet(templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[0];
-  const isHovering = hover?.slug === item.slug;
+  const activeHtmlPreview =
+    htmlPreview?.slug === item.slug && htmlPreview.embedUrl === item.embedUrl
+      ? htmlPreview
+      : null;
+  const defaultHtmlPreview = defaultHtmlPreviews[item.embedUrl] ?? null;
+  const visibleHtmlPreview = activeHtmlPreview ?? defaultHtmlPreview;
+  const defaultTheme = findPresentationTemplateTheme(
+    defaultPresentationTemplateThemeId(item),
+  );
+  const fallbackSlideCount = Math.max(item.previewImages.length, 1);
+  const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
+
+  const loadDefaultHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    if (
+      node === null ||
+      isHappyDomTestEnvironment() ||
+      defaultHtmlPreview !== null
+    ) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setDefaultPreview = (draft: PresentationEditDraft) => {
+      if (!node.isConnected) {
+        return;
+      }
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+        theme: defaultTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(item.embedUrl, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setDefaultPreview(cachedDraft);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      if (!node.isConnected) {
+        return;
+      }
+      setDefaultHtmlPreview(item.embedUrl, {
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+      return;
+    }
+
+    cache.defaultLoads.add(item.embedUrl);
+    setDefaultHtmlPreview(item.embedUrl, {
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      slideCount: fallbackSlideCount,
+    });
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (!node.isConnected) {
+            return;
+          }
+          setDefaultHtmlPreview(item.embedUrl, {
+            slug: item.slug,
+            embedUrl: item.embedUrl,
+            loading: false,
+            failed: true,
+            frameUrl: null,
+            slideCount: fallbackSlideCount,
+          });
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setDefaultPreview(result.value);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const startHtmlPreviewLoad = () => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    const activeIndex = cache.activeIndexes.get(item.embedUrl) ?? 0;
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft: cachedDraft,
+        index: activeIndex,
+        item,
+        previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+        theme: defaultTheme,
+      });
+      setHtmlPreview(previewState);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      setHtmlPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+
+    const activeToken = Symbol(item.embedUrl);
+    cache.activeTokens.set(item.embedUrl, activeToken);
+    setHtmlPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      slideCount: fallbackSlideCount,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+            setHtmlPreview({
+              slug: item.slug,
+              embedUrl: item.embedUrl,
+              loading: false,
+              failed: true,
+              frameUrl: null,
+              slideCount: fallbackSlideCount,
+            });
+          }
+          return;
+        }
+
+        cache.drafts.set(item.embedUrl, result.value);
+        if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+          setHtmlPreview(
+            createPresentationTemplateHtmlPreviewState({
+              draft: result.value,
+              index: cache.activeIndexes.get(item.embedUrl) ?? 0,
+              item,
+              previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+              theme: defaultTheme,
+            }),
+          );
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (slideImages.length < 2) {
+    if (scrubSlideCount < 2) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1142,127 +1849,77 @@ function TemplatePreview({
       Math.max(0, event.clientX - rect.left),
     );
     const nextIndex = Math.min(
-      slideImages.length - 1,
-      Math.round((offsetX / rect.width) * (slideImages.length - 1)),
+      scrubSlideCount - 1,
+      Math.round((offsetX / rect.width) * (scrubSlideCount - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
-      const nextImage = slideImages[nextIndex];
-      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
-      if (nextIndex === 0) {
-        setHover({ slug: item.slug, index: nextIndex });
-        return;
-      }
-
-      if (presentationPreviewImageDecoded(nextImage)) {
-        setHover({ slug: item.slug, index: nextIndex });
-        return;
-      }
-
-      detach(
-        selectDecodedTemplatePreviewImage({
-          container: event.currentTarget,
-          imageUrl: nextImage,
-          index: nextIndex,
-          item,
-          setHover,
-        }),
-        Reason.DomCallback,
+      const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+        item.embedUrl,
       );
+      presentationTemplateHtmlPreviewCache().activeIndexes.set(
+        item.embedUrl,
+        nextIndex,
+      );
+      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
+      if (cachedDraft !== undefined) {
+        setHover({ slug: item.slug, index: nextIndex });
+        setHtmlPreview(
+          createPresentationTemplateHtmlPreviewState({
+            draft: cachedDraft,
+            index: nextIndex,
+            item,
+            previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+            theme: defaultTheme,
+          }),
+        );
+        return;
+      }
+
+      setHover({ slug: item.slug, index: nextIndex });
     }
   };
 
   return (
     <div
+      ref={loadDefaultHtmlPreviewAfterMount}
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
-        preloadPresentationPreviewImages(slideImages);
-        detach(
-          Promise.all(
-            slideImages.map((imageUrl) => {
-              return decodePresentationPreviewImage(imageUrl);
-            }),
-          ),
-          Reason.DomCallback,
+        presentationTemplateHtmlPreviewCache().activeIndexes.set(
+          item.embedUrl,
+          0,
         );
+        setHover({ slug: item.slug, index: 0 });
+        startHtmlPreviewLoad();
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={(event) => {
         delete event.currentTarget.dataset.targetSlideIndex;
+        const cache = presentationTemplateHtmlPreviewCache();
+        cache.activeIndexes.delete(item.embedUrl);
+        cache.activeTokens.delete(item.embedUrl);
+        revokePresentationTemplateHtmlPreviewUrl(
+          activeHtmlPreview?.frameUrl ?? null,
+        );
+        setHtmlPreview(null);
         setHover(null);
       }}
     >
-      {previewImage ? (
-        <>
-          <img
-            src={previewImage}
-            alt=""
-            data-testid={`${item.title} card preview slide 1`}
-            title={`${item.title} card preview slide 1`}
-            className="absolute inset-0 h-full w-full object-contain"
-            loading="lazy"
-            onLoad={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.setAttribute("hidden", "");
-            }}
-            onError={(event) => {
-              event.currentTarget.parentElement
-                ?.querySelector<HTMLElement>("[data-template-preview-error]")
-                ?.removeAttribute("hidden");
-            }}
-          />
-          {isHovering &&
-            slideImages.map((imageUrl, imageIndex) => {
-              const active = imageIndex > 0 && imageIndex === hoverSlideIndex;
-              return (
-                <img
-                  key={imageUrl}
-                  src={imageUrl}
-                  alt=""
-                  data-testid={`${item.title} card preview slide ${
-                    isHovering ? imageIndex + 1 : 1
-                  }`}
-                  className={cn(
-                    "absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-75",
-                    active && "data-[loaded=true]:opacity-100",
-                  )}
-                  loading={isHovering ? "eager" : "lazy"}
-                  onLoad={(event) => {
-                    detach(
-                      markPresentationPreviewImageLoaded(
-                        imageUrl,
-                        event.currentTarget,
-                      ),
-                      Reason.DomCallback,
-                    );
-                  }}
-                  onError={(event) => {
-                    event.currentTarget.parentElement
-                      ?.querySelector<HTMLElement>(
-                        "[data-template-preview-error]",
-                      )
-                      ?.removeAttribute("hidden");
-                  }}
-                />
-              );
-            })}
-          <div
-            data-template-preview-error=""
-            hidden
-            className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
-          >
-            <IconTemplate size={28} stroke={1.5} />
-          </div>
-        </>
-      ) : (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-          <IconTemplate size={28} stroke={1.5} />
+      <iframe
+        title={`${item.title} HTML preview`}
+        data-testid={`${item.title} card HTML preview`}
+        src={visibleHtmlPreview?.frameUrl ?? undefined}
+        sandbox="allow-same-origin"
+        className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background"
+      />
+      {visibleHtmlPreview?.loading || !visibleHtmlPreview?.frameUrl ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+          <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
         </div>
-      )}
+      ) : null}
       <button
         type="button"
         aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
           onPreview(item);
@@ -1276,36 +1933,243 @@ function TemplatePreview({
 
 function TemplatePreviewPage({
   item,
-  selectedSlideIndex,
-  onSlideChange,
   onBack,
   onSelect,
 }: {
   item: PresentationTemplateItem;
-  selectedSlideIndex: number;
-  onSlideChange: (index: number) => void;
   onBack: () => void;
-  onSelect: (item: PresentationTemplateItem) => void;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item);
-  const safeSlideIndex = Math.max(
-    0,
-    Math.min(selectedSlideIndex, slideImages.length - 1),
-  );
-  const selectedSlideImage = slideImages[safeSlideIndex];
-  const selectedSlidePreviewImage = selectedSlideImage
-    ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
-    : selectedSlideImage;
-  const hasMultipleSlides = slideImages.length > 1;
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const setThemeId = useSet(setTemplateDetailThemeId$);
+  const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
+  const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const selectedThemeId =
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
+  const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+  const activeSlideIndex = slideIndexBySlug[item.slug] ?? 0;
+  const visibleDetailPreview =
+    detailPreview?.slug === item.slug &&
+    detailPreview.embedUrl === item.embedUrl &&
+    detailPreview.themeId === selectedTheme.id &&
+    detailPreview.index === activeSlideIndex
+      ? detailPreview
+      : null;
+  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const detailSlideCount =
+    visibleDetailPreview?.slideCount ?? fallbackSlideCount;
+  const canReuseDetailThumbnailFrameUrls =
+    detailPreview?.slug === item.slug &&
+    detailPreview.embedUrl === item.embedUrl &&
+    detailPreview.themeId === selectedTheme.id;
 
-  const changeSlide = (direction: -1 | 1) => {
-    if (!hasMultipleSlides) {
+  const setLoadedDetailPreview = (params: {
+    readonly draft: PresentationEditDraft;
+    readonly index: number;
+    readonly previousFrameUrl: string | null;
+    readonly previousThumbnailFrameUrls: readonly string[];
+    readonly reuseThumbnailFrameUrls: boolean;
+    readonly theme: PresentationTemplateThemeOption;
+  }) => {
+    const slide =
+      params.draft.slides[
+        Math.min(params.index, params.draft.slides.length - 1)
+      ];
+    if (slide === undefined) {
       return;
     }
-    onSlideChange(
-      (safeSlideIndex + direction + slideImages.length) % slideImages.length,
+    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+    if (
+      !params.reuseThumbnailFrameUrls &&
+      params.previousThumbnailFrameUrls.length > 0
+    ) {
+      revokePresentationTemplateHtmlPreviewUrls(
+        params.previousThumbnailFrameUrls,
+      );
+    }
+    const frameUrl = createThemedPresentationPreviewUrl({
+      activeSlideId: slide.id,
+      draft: params.draft,
+      theme: params.theme,
+    });
+    const thumbnailFrameUrls =
+      params.reuseThumbnailFrameUrls &&
+      params.previousThumbnailFrameUrls.length > 0
+        ? params.previousThumbnailFrameUrls
+        : params.draft.slides.slice(0, 15).map((thumbnailSlide) => {
+            return createThemedPresentationPreviewUrl({
+              activeSlideId: thumbnailSlide.id,
+              draft: params.draft,
+              theme: params.theme,
+            });
+          });
+    setDetailPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: params.theme.id,
+      index: params.index,
+      loading: false,
+      failed: false,
+      frameUrl,
+      thumbnailFrameUrls,
+      slideCount: params.draft.slides.length,
+    });
+  };
+
+  const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    if (
+      node === null ||
+      isHappyDomTestEnvironment() ||
+      visibleDetailPreview !== null
+    ) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const detailTokenKey = `detail:${item.embedUrl}`;
+    const detailToken = Symbol(detailTokenKey);
+    cache.detailTokens.set(detailTokenKey, detailToken);
+    const isActive = () => {
+      return (
+        node.isConnected &&
+        cache.detailTokens.get(detailTokenKey) === detailToken
+      );
+    };
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      if (isActive()) {
+        setLoadedDetailPreview({
+          draft: cachedDraft,
+          index: activeSlideIndex,
+          previousFrameUrl: detailPreview?.frameUrl ?? null,
+          previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+          reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
+          theme: selectedTheme,
+        });
+      }
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      if (isActive()) {
+        setDetailPreview({
+          slug: item.slug,
+          embedUrl: item.embedUrl,
+          themeId: selectedTheme.id,
+          index: activeSlideIndex,
+          loading: false,
+          failed: true,
+          frameUrl: null,
+          thumbnailFrameUrls: [],
+          slideCount: fallbackSlideCount,
+        });
+      }
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    setDetailPreview({
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: selectedTheme.id,
+      index: activeSlideIndex,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      thumbnailFrameUrls: [],
+      slideCount: fallbackSlideCount,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          if (!isActive()) {
+            return;
+          }
+          setDetailPreview({
+            slug: item.slug,
+            embedUrl: item.embedUrl,
+            themeId: selectedTheme.id,
+            index: activeSlideIndex,
+            loading: false,
+            failed: true,
+            frameUrl: null,
+            thumbnailFrameUrls: [],
+            slideCount: fallbackSlideCount,
+          });
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        if (isActive()) {
+          setLoadedDetailPreview({
+            draft: result.value,
+            index: activeSlideIndex,
+            previousFrameUrl: detailPreview?.frameUrl ?? null,
+            previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+            reuseThumbnailFrameUrls: false,
+            theme: selectedTheme,
+          });
+        }
+      })(),
+      Reason.DomCallback,
     );
   };
+
+  const selectDetailSlide = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
+    setSlideIndex(item.slug, nextIndex);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: nextIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+        reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
+        theme: selectedTheme,
+      });
+    }
+  };
+
+  const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
+    setThemeId(item.slug, theme.id);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedDetailPreview({
+        draft: cachedDraft,
+        index: activeSlideIndex,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
+        reuseThumbnailFrameUrls: false,
+        theme,
+      });
+    }
+  };
+  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "multi-accent";
+    },
+  );
+  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "single-accent";
+    },
+  );
 
   return (
     <>
@@ -1324,72 +2188,85 @@ function TemplatePreviewPage({
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid max-h-[72vh] gap-5 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border border-border bg-background p-4">
+      <div
+        ref={loadDetailHtmlPreviewAfterMount}
+        className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
+      >
+        <div className="rounded-lg border border-border bg-background p-3">
           <div className="relative overflow-hidden rounded-lg bg-muted">
-            <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
-              {safeSlideIndex + 1} of {slideImages.length}
-            </div>
-            <img
-              key={selectedSlideImage}
-              src={selectedSlidePreviewImage}
-              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
-              alt=""
-              className="aspect-[16/9] w-full object-contain"
-              loading="lazy"
+            <iframe
+              title={`${item.title} HTML preview`}
+              data-testid={`${item.title} detail HTML preview`}
+              src={visibleDetailPreview?.frameUrl ?? undefined}
+              sandbox="allow-same-origin"
+              className="pointer-events-none aspect-[16/9] w-full border-0 bg-background"
             />
             <button
               type="button"
-              aria-label="Previous slide"
-              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={!hasMultipleSlides}
+              aria-label="Preview previous slide"
+              disabled={activeSlideIndex === 0}
               onClick={() => {
-                changeSlide(-1);
+                selectDetailSlide(activeSlideIndex - 1);
               }}
-            >
-              <IconChevronLeft size={22} stroke={1.8} />
-            </button>
+              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+            />
             <button
               type="button"
-              aria-label="Next slide"
-              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={!hasMultipleSlides}
+              aria-label="Preview next slide"
+              disabled={activeSlideIndex >= detailSlideCount - 1}
               onClick={() => {
-                changeSlide(1);
+                selectDetailSlide(activeSlideIndex + 1);
               }}
-            >
-              <IconChevronRight size={22} stroke={1.8} />
-            </button>
+              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+            />
+            <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+              {Math.min(activeSlideIndex + 1, detailSlideCount)} of{" "}
+              {detailSlideCount}
+            </div>
+            {visibleDetailPreview?.loading ||
+            !visibleDetailPreview?.frameUrl ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+                <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
+              </div>
+            ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {slideImages.map((image, index) => {
-              const selected = index === safeSlideIndex;
-              const thumbnailImage = r2ImageTransformUrl(
-                image,
-                TEMPLATE_STRIP_THUMB_SIZE,
-              );
+          <div className="mt-3 grid grid-cols-8 gap-1.5">
+            {Array.from(
+              { length: Math.min(detailSlideCount, 15) },
+              (_, index) => {
+                return index + 1;
+              },
+            ).map((slideNumber) => {
+              const slideIndex = slideNumber - 1;
+              const active = slideIndex === activeSlideIndex;
               return (
                 <button
-                  key={image}
+                  key={slideNumber}
                   type="button"
-                  aria-label={`Show slide ${index + 1}`}
-                  aria-pressed={selected}
-                  className={cn(
-                    "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "border-primary" : "border-border",
-                  )}
+                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-pressed={active}
                   onClick={() => {
-                    onSlideChange(index);
+                    selectDetailSlide(slideIndex);
                   }}
+                  className={cn(
+                    "relative aspect-[16/9] overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "border-ring ring-1 ring-ring"
+                      : "border-border hover:border-muted-foreground/50",
+                  )}
                 >
-                  <img
-                    src={thumbnailImage}
-                    alt=""
-                    className="aspect-[16/9] w-full object-contain"
-                    loading="lazy"
-                  />
-                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {index + 1}
+                  {visibleDetailPreview?.thumbnailFrameUrls[slideIndex] ? (
+                    <iframe
+                      title={`${item.title} slide ${slideNumber} thumbnail`}
+                      src={visibleDetailPreview.thumbnailFrameUrls[slideIndex]}
+                      sandbox="allow-same-origin"
+                      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
+                    />
+                  ) : (
+                    <span className="absolute inset-0 bg-muted/40" />
+                  )}
+                  <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
+                    {slideNumber}
                   </span>
                 </button>
               );
@@ -1397,19 +2274,110 @@ function TemplatePreviewPage({
           </div>
         </div>
         <div className="flex flex-col lg:sticky lg:top-0">
-          <div className="rounded-lg border border-border bg-background p-5 shadow-sm">
+          <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
             <h3 className="text-xl font-semibold text-foreground">
               {item.title}
             </h3>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {slideImages.length} slides
+            <div className="my-5 border-t border-border" />
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <IconPalette size={14} stroke={1.9} />
+              <span>Theme</span>
             </p>
+            <div className="mt-3 space-y-4">
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Multi-accent
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {multiAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-11 overflow-hidden rounded-lg border bg-background p-1 transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full overflow-hidden rounded-md">
+                          {presentationTemplateThemePreviewSwatches(theme).map(
+                            (swatch) => {
+                              return (
+                                <span
+                                  key={`${theme.id}-${swatch.id}`}
+                                  className="flex-1"
+                                  style={{ backgroundColor: swatch.color }}
+                                />
+                              );
+                            },
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Single-accent
+                </p>
+                <div className="grid grid-cols-8 gap-2">
+                  {singleAccentThemes.map((theme) => {
+                    const active = theme.id === selectedTheme.id;
+                    const swatches = presentationTemplateThemeAccentSwatches(
+                      item,
+                      theme,
+                    );
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`Select style ${theme.name}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectDetailTheme(theme);
+                        }}
+                        className={cn(
+                          "relative h-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-ring ring-1 ring-ring"
+                            : "border-border hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span className="flex h-full">
+                          {swatches.map((swatch) => {
+                            return (
+                              <span
+                                key={`${theme.id}-${swatch.id}`}
+                                className="flex-1"
+                                style={{ backgroundColor: swatch.color }}
+                              />
+                            );
+                          })}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
             <button
               type="button"
               aria-label={`Select template ${item.title}`}
-              className="mt-5 h-12 w-full rounded-lg bg-[#ff7a1a] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#f06c12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
-                onSelect(item);
+                onSelect(
+                  item,
+                  presentationTemplateColorSystemId(selectedTheme.id),
+                );
               }}
             >
               Use this template
@@ -1429,7 +2397,7 @@ function PptCard({
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
-  onSelect: (item: PresentationTemplateItem) => void;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
   return (
@@ -2025,7 +2993,7 @@ function PptTemplateGrid({
 }: {
   items: PresentationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
-  onSelect: (item: PresentationTemplateItem) => void;
+  onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
   return (
@@ -2068,8 +3036,7 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
+  const setDetailThemeId = useSet(setTemplateDetailThemeId$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -2097,8 +3064,11 @@ function TemplatePickerDialog({
     return videoTemplateMatchesSearch(item, search);
   });
 
-  const handleSelectPresentation = (item: PresentationTemplateItem) => {
-    onChange(toPresentationGenerationTemplate(item));
+  const handleSelectPresentation = (
+    item: PresentationTemplateItem,
+    colorSystemId?: string,
+  ) => {
+    onChange(toPresentationGenerationTemplate(item, colorSystemId));
     onClose();
   };
 
@@ -2113,7 +3083,7 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem) => {
-    setSelectedSlideIndex(0);
+    setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
     setPreviewSlug(item.slug);
   };
 
@@ -2144,8 +3114,6 @@ function TemplatePickerDialog({
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
-            selectedSlideIndex={selectedSlideIndex}
-            onSlideChange={setSelectedSlideIndex}
             onBack={() => {
               setPreviewSlug(null);
             }}
@@ -2247,10 +3215,12 @@ function TemplatePickerDialog({
 }
 
 function SelectedTemplateChip({
+  colorSystemId,
   item,
   onOpen,
   onRemove,
 }: {
+  colorSystemId?: string;
   item: PresentationTemplateItem;
   onOpen: () => void;
   onRemove: () => void;
@@ -2266,15 +3236,10 @@ function SelectedTemplateChip({
             className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onOpen}
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <img
-                src={r2ImageTransformUrl(
-                  item.previewImage,
-                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-                )}
-                alt=""
-                className="h-full w-full object-cover"
-                loading="lazy"
+            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <SelectedPresentationTemplateChipPreview
+                colorSystemId={colorSystemId}
+                item={item}
               />
             </span>
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
@@ -2297,6 +3262,101 @@ function SelectedTemplateChip({
       </div>
       <div className="mt-3 h-px bg-border/50" />
     </div>
+  );
+}
+
+function SelectedPresentationTemplateChipPreview({
+  colorSystemId,
+  item,
+}: {
+  colorSystemId?: string;
+  item: PresentationTemplateItem;
+}) {
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
+  const selectedTheme = findPresentationTemplateTheme(
+    colorSystemId?.replace("color-system:", "") ??
+      themeIdBySlug[item.slug] ??
+      defaultPresentationTemplateThemeId(item),
+  );
+  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
+  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
+  const fallbackImageUrl = r2ImageTransformUrl(
+    item.previewImage,
+    SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+  );
+
+  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
+    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setChipPreview = (draft: PresentationEditDraft) => {
+      if (!node.isConnected) {
+        return;
+      }
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+        theme: selectedTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(previewKey, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setChipPreview(cachedDraft);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      return;
+    }
+
+    cache.defaultLoads.add(previewKey);
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setChipPreview(result.value);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return htmlPreview?.frameUrl ? (
+    <iframe
+      title={`${item.title} selected template preview`}
+      src={htmlPreview.frameUrl}
+      sandbox="allow-same-origin"
+      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
+    />
+  ) : (
+    <img
+      ref={loadChipHtmlPreviewAfterMount}
+      src={fallbackImageUrl}
+      alt=""
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
   );
 }
 
@@ -2413,7 +3473,6 @@ function SelectedTemplateChipSlot({
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
@@ -2425,13 +3484,17 @@ function SelectedTemplateChipSlot({
   const openPicker = (category: string) => {
     setSearch("");
     setPreviewSlug(null);
-    setSelectedSlideIndex(0);
     setCategory(category);
     setOpen(true);
   };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
+        colorSystemId={
+          picker.value?.type === "presentation"
+            ? picker.value.selection.colorSystemId
+            : undefined
+        }
         item={presentationItem}
         onOpen={() => {
           return openPicker("slides");
@@ -2491,7 +3554,6 @@ function TemplatePickerButton({
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
 
   return (
@@ -2510,7 +3572,6 @@ function TemplatePickerButton({
               onClick={() => {
                 setSearch("");
                 setPreviewSlug(null);
-                setSelectedSlideIndex(0);
                 setOpen(true);
               }}
             >
@@ -2556,12 +3617,7 @@ function ComposerTemplatePickerSlot({
   const hasPptTab = hasChatTemplatePicker;
   const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
-  const useNewPresentationTemplates = Boolean(
-    features?.[FeatureSwitchKey.ChatNewPresentationTemplates],
-  );
-  const presentationItems = presentationTemplatePickerItems(
-    useNewPresentationTemplates,
-  );
+  const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }

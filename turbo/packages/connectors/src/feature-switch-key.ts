@@ -47,7 +47,6 @@ export enum FeatureSwitchKey {
   ChatGithubPrTracking = "chatGithubPrTracking",
   ChatThreadDoubleClickRename = "chatThreadDoubleClickRename",
   ChatTemplatePicker = "chatTemplatePicker",
-  ChatNewPresentationTemplates = "chatNewPresentationTemplates",
   VideoTemplatePicker = "videoTemplatePicker",
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",

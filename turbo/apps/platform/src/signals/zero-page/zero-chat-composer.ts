@@ -164,16 +164,6 @@ export const setTemplatePickerPreviewSlug$ = command(
   },
 );
 
-const internalTemplatePickerPreviewSlideIndex$ = state(0);
-export const templatePickerPreviewSlideIndex$ = computed((get) => {
-  return get(internalTemplatePickerPreviewSlideIndex$);
-});
-export const setTemplatePickerPreviewSlideIndex$ = command(
-  ({ set }, index: number) => {
-    set(internalTemplatePickerPreviewSlideIndex$, index);
-  },
-);
-
 // Inline illustration cards show a hero image plus a variant thumbnail strip.
 // Several cards are visible at once, so the active variant index is tracked per
 // illustration style slug rather than as a single shared value.
@@ -207,6 +197,94 @@ export const templateCardHover$ = computed((get) => {
 export const setTemplateCardHover$ = command(
   ({ set }, value: TemplateCardHoverState | null) => {
     set(internalTemplateCardHover$, value);
+  },
+);
+
+export interface TemplateCardHtmlPreviewState {
+  readonly slug: string;
+  readonly embedUrl: string;
+  readonly loading: boolean;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly slideCount: number;
+}
+
+const internalTemplateCardHtmlPreview$ =
+  state<TemplateCardHtmlPreviewState | null>(null);
+export const templateCardHtmlPreview$ = computed((get) => {
+  return get(internalTemplateCardHtmlPreview$);
+});
+export const setTemplateCardHtmlPreview$ = command(
+  ({ set }, value: TemplateCardHtmlPreviewState | null) => {
+    set(internalTemplateCardHtmlPreview$, value);
+  },
+);
+
+const internalTemplateCardDefaultHtmlPreviews$ = state<
+  Readonly<Record<string, TemplateCardHtmlPreviewState>>
+>({});
+export const templateCardDefaultHtmlPreviews$ = computed((get) => {
+  return get(internalTemplateCardDefaultHtmlPreviews$);
+});
+export const setTemplateCardDefaultHtmlPreview$ = command(
+  ({ get, set }, embedUrl: string, value: TemplateCardHtmlPreviewState) => {
+    set(internalTemplateCardDefaultHtmlPreviews$, {
+      ...get(internalTemplateCardDefaultHtmlPreviews$),
+      [embedUrl]: value,
+    });
+  },
+);
+
+interface TemplateDetailHtmlPreviewState {
+  readonly slug: string;
+  readonly embedUrl: string;
+  readonly themeId: string;
+  readonly index: number;
+  readonly loading: boolean;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly thumbnailFrameUrls: readonly string[];
+  readonly slideCount: number;
+}
+
+const internalTemplateDetailHtmlPreview$ =
+  state<TemplateDetailHtmlPreviewState | null>(null);
+export const templateDetailHtmlPreview$ = computed((get) => {
+  return get(internalTemplateDetailHtmlPreview$);
+});
+export const setTemplateDetailHtmlPreview$ = command(
+  ({ set }, value: TemplateDetailHtmlPreviewState | null) => {
+    set(internalTemplateDetailHtmlPreview$, value);
+  },
+);
+
+const internalTemplateDetailThemeIdBySlug$ = state<
+  Readonly<Record<string, string>>
+>({});
+export const templateDetailThemeIdBySlug$ = computed((get) => {
+  return get(internalTemplateDetailThemeIdBySlug$);
+});
+export const setTemplateDetailThemeId$ = command(
+  ({ get, set }, slug: string, themeId: string) => {
+    set(internalTemplateDetailThemeIdBySlug$, {
+      ...get(internalTemplateDetailThemeIdBySlug$),
+      [slug]: themeId,
+    });
+  },
+);
+
+const internalTemplateDetailSlideIndexBySlug$ = state<
+  Readonly<Record<string, number>>
+>({});
+export const templateDetailSlideIndexBySlug$ = computed((get) => {
+  return get(internalTemplateDetailSlideIndexBySlug$);
+});
+export const setTemplateDetailSlideIndex$ = command(
+  ({ get, set }, slug: string, index: number) => {
+    set(internalTemplateDetailSlideIndexBySlug$, {
+      ...get(internalTemplateDetailSlideIndexBySlug$),
+      [slug]: index,
+    });
   },
 );
 
