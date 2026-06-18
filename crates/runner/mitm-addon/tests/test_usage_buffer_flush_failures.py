@@ -72,6 +72,7 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
 
 def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_success(tmp_path):
     attempted_payloads = []
+    pending_path = tmp_path / "usage-pending"
 
     def fail_second_batch(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, path, log_type
@@ -81,6 +82,7 @@ def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_suc
 
     enqueue = RecordingEnqueue(side_effect=fail_second_batch)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -102,6 +104,13 @@ def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_suc
 
     assert enqueue.call_count == 2
     assert [payload["runId"] for payload in attempted_payloads] == ["run-1", "run-2"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="partial-retained",
+    )
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -114,6 +123,13 @@ def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_suc
         == attempted_payloads[1]["events"][0]["idempotencyKey"]
     )
     assert_usage_buffer_drained(enqueue)
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="partial-drained",
+    )
 
 
 def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
@@ -653,6 +669,7 @@ def test_same_priority_retained_batches_retry_fifo(tmp_path):
     callbacks: list[DeliveryOutcomeCallback] = []
     first_attempt_runs: list[str] = []
     retry_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
     retrying = False
 
     def enqueue_webhook(
@@ -674,6 +691,7 @@ def test_same_priority_retained_batches_retry_fifo(tmp_path):
         return True
 
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -696,11 +714,25 @@ def test_same_priority_retained_batches_retry_fifo(tmp_path):
 
     callbacks[0]("retryable_failure")
     callbacks[1]("retryable_failure")
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="fifo-retained",
+    )
 
     retrying = True
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert retry_runs == ["run-a", "run-b"]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="fifo-drained",
+    )
 
 
 def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_callbacks(

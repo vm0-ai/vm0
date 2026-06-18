@@ -90,6 +90,7 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
     shutdown_results: list[int] = []
     enqueued_runs: list[str] = []
     enqueue_call_count = 0
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, log_type):
         nonlocal enqueue_call_count
@@ -113,6 +114,7 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
         enqueue_webhook=enqueue,
         flush_owner_lock=flush_owner_lock,
     )
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -148,6 +150,13 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
     assert enqueued_runs == ["run-1", "run-2"]
     assert len(timers) == 2
     assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-wait-drained",
+    )
 
 
 def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(tmp_path):
@@ -159,6 +168,7 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
     enqueued_run_ids: list[str] = []
     enqueued_idempotency_keys: list[str] = []
     timer_errors: list[str] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, path
@@ -175,6 +185,7 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
         enqueue_webhook=enqueue,
         flush_owner_lock=flush_owner_lock,
     )
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -216,6 +227,13 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-retry-drained",
+    )
 
 
 def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(tmp_path):
@@ -225,6 +243,7 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
     shutdown_returned = threading.Event()
     shutdown_results: list[int] = []
     enqueued_run_ids: list[str] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token
@@ -240,6 +259,7 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
         enqueue_webhook=enqueue,
         flush_owner_lock=flush_owner_lock,
     )
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -285,10 +305,18 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-threshold-drained",
+    )
 
 
 def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
     enqueued_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, log_type):
         enqueued_runs.append(payload["runId"])
@@ -306,6 +334,7 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
     enqueue = RecordingEnqueue(side_effect=enqueue_webhook)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -321,6 +350,13 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
     assert len(timers) == 2
     assert timers[0].cancelled is True
     assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-own-enqueue-drained",
+    )
 
 
 def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_path):
@@ -585,12 +621,15 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
 
 
 def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+
     def fail_enqueue(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, payload, path, log_type
         raise OSError("no threads")
 
     enqueue = RecordingEnqueue(side_effect=fail_enqueue)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -610,11 +649,19 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     assert len(timers) == 2
     assert timers[1].started is True
     assert timers[1].cancelled is False
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="timer-failure-retained",
+    )
 
 
 def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     callbacks: list[Callable[[usage.webhook.WebhookDeliveryOutcome], None]] = []
     enqueued_keys: list[str] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, log_type, delivery_callback):
         del url, sandbox_token, path
@@ -627,6 +674,7 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
         return True
 
     timers = install_recording_usage_timer(enqueue_webhook=enqueue_webhook)
+    usage.set_pending_path(str(pending_path))
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
@@ -639,8 +687,22 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
 
     assert len(callbacks) == 1
     assert len(timers) == 1
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="timer-delivering",
+    )
     callbacks[0]("retryable_failure")
 
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="timer-delivery-retained",
+    )
     assert len(timers) == 2
     assert timers[1].started is True
     assert timers[1].cancelled is False
@@ -648,6 +710,13 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     timers[1].callback()
 
     assert enqueued_keys == [enqueued_keys[0], enqueued_keys[0]]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="timer-delivery-drained",
+    )
 
 
 def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
