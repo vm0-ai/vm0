@@ -151,14 +151,14 @@ fn claude_active_input_uuid(run_id: &str, message_id: &str) -> String {
     .to_string()
 }
 
-fn prompt_like_user_content(event: &Value) -> Option<String> {
-    if matches!(
+fn user_message_role_allows_replay(event: &Value) -> bool {
+    !matches!(
         event.pointer("/message/role").and_then(Value::as_str),
         Some(role) if role != "user"
-    ) {
-        return None;
-    }
+    )
+}
 
+fn prompt_like_user_content(event: &Value) -> Option<String> {
     let content = event.pointer("/message/content")?;
     if let Some(text) = content.as_str() {
         return Some(text.to_owned());
@@ -184,8 +184,8 @@ fn prompt_like_user_content(event: &Value) -> Option<String> {
 }
 
 impl ActiveInputRuntime {
-    pub fn new(run_id: &str, enabled: bool) -> Self {
-        Self::new_with_initial_prompt(run_id, enabled, "")
+    pub fn new_disabled(run_id: &str) -> Self {
+        Self::new_with_initial_prompt(run_id, false, "")
     }
 
     pub fn new_with_initial_prompt(run_id: &str, enabled: bool, initial_prompt_text: &str) -> Self {
@@ -357,6 +357,9 @@ impl ActiveInputController {
         if event.get("type").and_then(Value::as_str) != Some("user") {
             return ReplayUserEventAction::External;
         }
+        if !user_message_role_allows_replay(event) {
+            return ReplayUserEventAction::External;
+        }
 
         if let Some(uuid) = event.get("uuid").and_then(Value::as_str) {
             if uuid == self.inner.initial_prompt_uuid {
@@ -432,7 +435,7 @@ mod tests {
 
     #[test]
     fn active_input_accepts_valid_payload_once() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
 
         assert_eq!(
@@ -452,7 +455,7 @@ mod tests {
 
     #[test]
     fn active_input_rejects_invalid_payloads() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
 
         for (message_id, payload) in [
@@ -472,7 +475,7 @@ mod tests {
 
     #[test]
     fn active_input_rejects_when_disabled_or_closed() {
-        let disabled = ActiveInputRuntime::new("run-1", false);
+        let disabled = ActiveInputRuntime::new_disabled("run-1");
         assert!(matches!(
             disabled
                 .controller()
@@ -481,7 +484,7 @@ mod tests {
                 if diagnostic == "active input is not supported for this agent"
         ));
 
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert!(controller.close_for_result_if_idle());
         assert!(matches!(
@@ -492,7 +495,7 @@ mod tests {
 
     #[test]
     fn active_input_capacity_counts_pending_inputs() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
 
         for index in 0..ACTIVE_INPUT_QUEUE_CAPACITY {
@@ -514,7 +517,7 @@ mod tests {
 
     #[test]
     fn replay_filter_consumes_initial_and_active_input_user_events() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -547,7 +550,7 @@ mod tests {
 
     #[test]
     fn replay_filter_keeps_tool_result_user_events_external() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let event = json!({
             "type": "user",
             "message": {
@@ -564,7 +567,7 @@ mod tests {
 
     #[test]
     fn replay_filter_consumes_matching_uuid_even_with_non_string_content() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -602,7 +605,7 @@ mod tests {
 
     #[test]
     fn replay_filter_treats_text_block_user_events_without_uuid_as_unknown_prompt() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let event = json!({
             "type": "user",
             "message": {
@@ -619,7 +622,7 @@ mod tests {
 
     #[test]
     fn replay_filter_consumes_uuidless_active_input_replay_by_text() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -643,7 +646,7 @@ mod tests {
 
     #[test]
     fn replay_filter_does_not_consume_unwritten_uuidless_text_match() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -664,7 +667,7 @@ mod tests {
 
     #[test]
     fn replay_filter_does_not_consume_uuidless_text_match_before_first_result() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -751,7 +754,7 @@ mod tests {
 
     #[test]
     fn replay_filter_consumes_uuidless_text_block_active_input_replay() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let controller = runtime.controller();
         assert_eq!(
             controller
@@ -778,7 +781,7 @@ mod tests {
 
     #[test]
     fn replay_filter_keeps_unknown_user_content_blocks_external() {
-        let runtime = ActiveInputRuntime::new("run-1", true);
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
         let event = json!({
             "type": "user",
             "message": {
@@ -829,6 +832,39 @@ mod tests {
         });
         assert_eq!(
             controller.replay_user_event_action(&second_valid_prompt_like),
+            ReplayUserEventAction::InternalActiveInput
+        );
+        assert!(controller.close_for_result_if_idle());
+    }
+
+    #[test]
+    fn replay_filter_keeps_non_user_role_uuid_matches_external() {
+        let runtime = ActiveInputRuntime::new_with_initial_prompt("run-1", true, "initial");
+        let controller = runtime.controller();
+        assert_eq!(
+            controller
+                .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let active_uuid = claude_active_input_uuid("run-1", "msg-1");
+
+        let malformed = json!({
+            "type": "user",
+            "uuid": active_uuid,
+            "message": {"role": "assistant", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&malformed),
+            ReplayUserEventAction::External
+        );
+
+        let replay = json!({
+            "type": "user",
+            "uuid": claude_active_input_uuid("run-1", "msg-1"),
+            "message": {"role": "user", "content": "follow-up"}
+        });
+        assert_eq!(
+            controller.replay_user_event_action(&replay),
             ReplayUserEventAction::InternalActiveInput
         );
         assert!(controller.close_for_result_if_idle());
