@@ -443,6 +443,125 @@ const runWorkflowTriggerNow$ = command(
 );
 
 /**
+ * Fire a one-off TEST run for a workflow schedule trigger. Same execution as a
+ * scheduled fire (the workflow skill is injected via the agent's attachment and
+ * the run renders in the bound thread), but it carries ONLY the chat callback —
+ * no recurrence callback — and the caller does not claim or advance the
+ * schedule. Used by the manual "Test run" action so authors can validate the
+ * automatic entry point without disturbing `next_run_at`/`last_run_at`.
+ */
+export const fireWorkflowTriggerTestRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly trigger: TriggerRow;
+      readonly workflowName: string;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<RunWorkflowTriggerResult> => {
+    const db = set(writeDb$);
+    const { trigger, workflowName } = args;
+
+    if (!trigger.agentId || !trigger.chatThreadId) {
+      return {
+        kind: "run_error",
+        response: {
+          status: 400,
+          body: {
+            error: {
+              message: "Workflow trigger is missing its agent or thread",
+              code: "INVALID_TRIGGER",
+            },
+          },
+        },
+      };
+    }
+    const agentId = trigger.agentId;
+    const chatThreadId = trigger.chatThreadId;
+
+    const modelContext = await resolveModelContext({
+      db,
+      orgId: trigger.orgId,
+      userId: trigger.ownerUserId,
+      chatThreadId,
+      signal,
+    });
+    if (!modelContext.ok) {
+      return modelContext.failure;
+    }
+    const { modelPin, effectiveModelProvider } = modelContext;
+
+    const prompt = `/${workflowName}`;
+    const result = await set(
+      createZeroRun$,
+      {
+        auth: {
+          orgId: trigger.orgId,
+          orgRole: "member",
+          userId: trigger.ownerUserId,
+          tokenType: "session",
+        },
+        body: {
+          prompt,
+          agentId,
+          ...(effectiveModelProvider
+            ? { modelProvider: effectiveModelProvider }
+            : {}),
+        },
+        apiStartTime: args.apiStartTime,
+        triggerSource: "workflow-schedule",
+        chatThreadId,
+        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
+        appendSystemPrompt: buildAppendSystemPrompt(workflowName),
+        // Chat callback only — a test run must not advance the schedule.
+        callbacks: [
+          {
+            internalKind: "chat",
+            secret: generateCallbackSecret(),
+            payload: { threadId: chatThreadId, agentId },
+          },
+        ],
+        zeroRunMetadata: { workflowTriggerId: trigger.id },
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status !== 201) {
+      return { kind: "run_error", response: result };
+    }
+
+    await postAutomationUserMessage({
+      db,
+      threadId: chatThreadId,
+      userId: trigger.ownerUserId,
+      runId: result.body.runId,
+      prompt,
+      appendQueueMarker: result.body.status === "queued",
+    });
+    signal.throwIfAborted();
+
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: effectiveModelProvider,
+        modelProviderId: modelPin.modelProviderId,
+        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+        selectedModel: modelPin.selectedModel,
+      })
+      .where(eq(zeroRuns.id, result.body.runId));
+    signal.throwIfAborted();
+
+    return { kind: "ok", runId: result.body.runId };
+  },
+);
+
+/**
  * Time poller over `zero_workflow_triggers`, run from the
  * execute-workflow-triggers cron route. Mirrors the automation poller: scan
  * enabled triggers whose `next_run_at` is due, skip any whose previous run is

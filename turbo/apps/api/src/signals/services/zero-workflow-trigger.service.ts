@@ -17,6 +17,7 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
+import { fireWorkflowTriggerTestRun$ } from "./zero-workflow-trigger-poller.service";
 import {
   loadVisibleWorkflow,
   type WorkflowMember,
@@ -162,6 +163,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
     schedule,
     scheduleSummary: summarizeSchedule(schedule),
     agentId: row.agentId,
+    ownerUserId: row.ownerUserId,
     enabled: row.enabled,
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
@@ -693,10 +695,10 @@ export async function disableTriggersForDetachedAgent(
     readonly agentId: string;
   },
 ): Promise<void> {
-  const now = nowDate();
+  const detachedAt = nowDate();
   await db
     .update(zeroWorkflowTriggers)
-    .set({ enabled: false, nextRunAt: null, updatedAt: now })
+    .set({ enabled: false, nextRunAt: null, updatedAt: detachedAt })
     .where(
       and(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
@@ -705,3 +707,77 @@ export async function disableTriggersForDetachedAgent(
       ),
     );
 }
+
+/**
+ * Outcome of a manual test run. A test run fires the workflow into the bound
+ * thread without claiming or advancing the schedule.
+ */
+type WorkflowTriggerTestRunResult =
+  | { readonly kind: "ok"; readonly runId: string }
+  | { readonly kind: "not-found" }
+  | { readonly kind: "forbidden"; readonly message: string }
+  | { readonly kind: "conflict"; readonly message: string }
+  | {
+      readonly kind: "run_error";
+      readonly response: {
+        readonly status: number;
+        readonly body: {
+          readonly error: { readonly message: string; readonly code: string };
+        };
+      };
+    };
+
+export const testRunWorkflowTrigger$ = command(
+  async (
+    { set },
+    args: TriggerActionInput,
+    signal: AbortSignal,
+  ): Promise<WorkflowTriggerTestRunResult> => {
+    const writeDb = set(writeDb$);
+    const owned = await loadOwnedTrigger(writeDb, args);
+    signal.throwIfAborted();
+    if ("kind" in owned) {
+      return owned.kind === "forbidden"
+        ? { kind: "forbidden", message: owned.message }
+        : { kind: "not-found" };
+    }
+    const { trigger } = owned;
+
+    if (!trigger.agentId || !trigger.chatThreadId) {
+      return {
+        kind: "conflict",
+        message:
+          "Cannot run: the trigger has no agent. Reassign an agent first.",
+      };
+    }
+
+    const [workflow] = await writeDb
+      .select({ name: zeroWorkflows.name })
+      .from(zeroWorkflows)
+      .where(eq(zeroWorkflows.id, trigger.workflowId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!workflow) {
+      return { kind: "not-found" };
+    }
+
+    const result = await set(
+      fireWorkflowTriggerTestRun$,
+      {
+        trigger,
+        workflowName: workflow.name,
+        apiStartTime: nowDate().getTime(),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.kind === "ok") {
+      return { kind: "ok", runId: result.runId };
+    }
+    if (result.kind === "conflict") {
+      return { kind: "conflict", message: result.message };
+    }
+    return { kind: "run_error", response: result.response };
+  },
+);

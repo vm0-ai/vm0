@@ -4,8 +4,10 @@ import {
   zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  zeroWorkflowTriggersContract,
   type ZeroWorkflowAgentSummary,
   type ZeroWorkflowDetailResponse,
+  type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -238,6 +240,83 @@ export const detachSelectedWorkflowAgent$ = command(
     set(internalWorkflowReload$, (prev) => {
       return prev + 1;
     });
+  },
+);
+
+export const createWorkflowScheduleTrigger$ = command(
+  async (
+    { get, set },
+    input: { agentId: string; schedule: ZeroWorkflowSchedule },
+    signal: AbortSignal,
+  ) => {
+    const workflowName = await get(selectedWorkflowName$);
+    signal.throwIfAborted();
+    if (!workflowName) {
+      return;
+    }
+
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { name: workflowName },
+        body: { agentId: input.agentId, schedule: input.schedule },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(internalWorkflowReload$, (prev) => {
+      return prev + 1;
+    });
+  },
+);
+
+export const setWorkflowTriggerEnabled$ = command(
+  async (
+    { get, set },
+    input: { triggerId: string; enabled: boolean },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const request = input.enabled
+      ? client.enable({
+          params: { id: input.triggerId },
+          fetchOptions: { signal },
+        })
+      : client.disable({
+          params: { id: input.triggerId },
+          fetchOptions: { signal },
+        });
+    await accept(request, [200]);
+    signal.throwIfAborted();
+    set(internalWorkflowReload$, (prev) => {
+      return prev + 1;
+    });
+  },
+);
+
+export const deleteWorkflowScheduleTrigger$ = command(
+  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.delete({ params: { id: triggerId }, fetchOptions: { signal } }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(internalWorkflowReload$, (prev) => {
+      return prev + 1;
+    });
+  },
+);
+
+export const runWorkflowScheduleTrigger$ = command(
+  async ({ get }, triggerId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.run({ params: { id: triggerId }, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
   },
 );
 

@@ -104,6 +104,7 @@ function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
       },
       scheduleSummary: "Weekdays at 9:00 AM",
       agentId: "c0000000-0000-4000-a000-000000000201",
+      ownerUserId: CURRENT_USER_ID,
       enabled: true,
       chatThreadId: "thread_weekday_brief",
       nextRunAt: "2026-06-19T01:00:00.000Z",
@@ -115,6 +116,7 @@ function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
       schedule: { type: "loop", intervalSeconds: 3600 },
       scheduleSummary: "Every 1 hour",
       agentId: null,
+      ownerUserId: OTHER_USER_ID,
       enabled: false,
       chatThreadId: "thread_hourly_sync",
       nextRunAt: null,
@@ -437,7 +439,13 @@ describe("workflows page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Attached agents")).toBeInTheDocument();
-    expect(screen.getByText("Support Bot")).toBeInTheDocument();
+    // The agent name also appears as a create-trigger agent option, so scope to
+    // the attached-agents link.
+    expect(
+      queryAllByRoleFast("link").some((link) => {
+        return link.textContent?.includes("Support Bot");
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("Triggers")).toBeInTheDocument();
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
@@ -530,7 +538,11 @@ describe("workflows page", () => {
 
     click(screen.getByRole("option", { name: "Shared Bot" }));
     await waitFor(() => {
-      expect(screen.getByText("Shared Bot")).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("link").some((link) => {
+          return link.textContent?.includes("Shared Bot");
+        }),
+      ).toBeTruthy();
     });
 
     click(screen.getByLabelText("Detach workflow from Shared Bot"));

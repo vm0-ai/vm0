@@ -141,6 +141,7 @@ export const zeroWorkflowTriggerSummarySchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
   scheduleSummary: z.string(),
   agentId: z.string().uuid().nullable(),
+  ownerUserId: z.string(),
   enabled: z.boolean(),
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
@@ -476,6 +477,21 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Disable a workflow schedule trigger",
+  },
+  run: {
+    method: "POST",
+    path: "/api/zero/workflow-triggers/:id/run",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParams,
+    body: c.noBody(),
+    responses: {
+      200: z.object({ runId: z.string() }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Fire a one-off test run of a workflow schedule trigger",
   },
 });
 
