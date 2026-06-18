@@ -5,6 +5,34 @@ use tracing::{info, warn};
 
 pub(super) const SLOW_SANDBOX_CREATE_THRESHOLD: Duration = Duration::from_secs(3);
 
+macro_rules! emit_success_summary_event {
+    ($emit:ident, $timing:expr, $total_elapsed:expr, $message:literal) => {
+        $emit!(
+            stage = "sandbox_create",
+            total_elapsed_ms = duration_ms($total_elapsed),
+            threshold_ms = duration_ms(SLOW_SANDBOX_CREATE_THRESHOLD),
+            success = true,
+            sandbox_id = ($timing).sandbox_id.as_str(),
+            profile = ($timing).profile.as_str(),
+            workspace_drive_present = ($timing).workspace_drive_present,
+            workspace_seed_image_used = ($timing).workspace_seed_image_used,
+            cow_pool_acquire_ms = optional_duration_ms(($timing).durations.cow_pool_acquire),
+            workspace_dir_rename_ms =
+                optional_duration_ms(($timing).durations.workspace_dir_rename),
+            workspace_drive_prepare_ms =
+                optional_duration_ms(($timing).durations.workspace_drive_prepare),
+            workspace_seed_sparse_copy_ms =
+                optional_duration_ms(($timing).durations.workspace_seed_sparse_copy),
+            workspace_fresh_format_ms =
+                optional_duration_ms(($timing).durations.workspace_fresh_format),
+            sock_dir_prepare_ms = optional_duration_ms(($timing).durations.sock_dir_prepare),
+            netns_acquire_ms = optional_duration_ms(($timing).durations.netns_acquire),
+            nbd_cow_create_ms = optional_duration_ms(($timing).durations.nbd_cow_create),
+            $message
+        );
+    };
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SandboxCreateStage {
     CowPoolAcquire,
@@ -163,51 +191,10 @@ impl SandboxCreateTiming {
 
     fn emit_success_summary_with_total(&self, total_elapsed: Duration) {
         if total_elapsed < SLOW_SANDBOX_CREATE_THRESHOLD {
-            info!(
-                stage = "sandbox_create",
-                total_elapsed_ms = duration_ms(total_elapsed),
-                threshold_ms = duration_ms(SLOW_SANDBOX_CREATE_THRESHOLD),
-                success = true,
-                sandbox_id = self.sandbox_id.as_str(),
-                profile = self.profile.as_str(),
-                workspace_drive_present = self.workspace_drive_present,
-                workspace_seed_image_used = self.workspace_seed_image_used,
-                cow_pool_acquire_ms = optional_duration_ms(self.durations.cow_pool_acquire),
-                workspace_dir_rename_ms = optional_duration_ms(self.durations.workspace_dir_rename),
-                workspace_drive_prepare_ms =
-                    optional_duration_ms(self.durations.workspace_drive_prepare),
-                workspace_seed_sparse_copy_ms =
-                    optional_duration_ms(self.durations.workspace_seed_sparse_copy),
-                workspace_fresh_format_ms =
-                    optional_duration_ms(self.durations.workspace_fresh_format),
-                sock_dir_prepare_ms = optional_duration_ms(self.durations.sock_dir_prepare),
-                netns_acquire_ms = optional_duration_ms(self.durations.netns_acquire),
-                nbd_cow_create_ms = optional_duration_ms(self.durations.nbd_cow_create),
-                "sandbox create timing"
-            );
+            emit_success_summary_event!(info, self, total_elapsed, "sandbox create timing");
             return;
         }
-        warn!(
-            stage = "sandbox_create",
-            total_elapsed_ms = duration_ms(total_elapsed),
-            threshold_ms = duration_ms(SLOW_SANDBOX_CREATE_THRESHOLD),
-            success = true,
-            sandbox_id = self.sandbox_id.as_str(),
-            profile = self.profile.as_str(),
-            workspace_drive_present = self.workspace_drive_present,
-            workspace_seed_image_used = self.workspace_seed_image_used,
-            cow_pool_acquire_ms = optional_duration_ms(self.durations.cow_pool_acquire),
-            workspace_dir_rename_ms = optional_duration_ms(self.durations.workspace_dir_rename),
-            workspace_drive_prepare_ms =
-                optional_duration_ms(self.durations.workspace_drive_prepare),
-            workspace_seed_sparse_copy_ms =
-                optional_duration_ms(self.durations.workspace_seed_sparse_copy),
-            workspace_fresh_format_ms = optional_duration_ms(self.durations.workspace_fresh_format),
-            sock_dir_prepare_ms = optional_duration_ms(self.durations.sock_dir_prepare),
-            netns_acquire_ms = optional_duration_ms(self.durations.netns_acquire),
-            nbd_cow_create_ms = optional_duration_ms(self.durations.nbd_cow_create),
-            "slow sandbox create"
-        );
+        emit_success_summary_event!(warn, self, total_elapsed, "slow sandbox create");
     }
 }
 
@@ -262,6 +249,7 @@ fn is_path_like_token(token: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::time::Duration;
 
     use tracing::Level;
@@ -270,11 +258,55 @@ mod tests {
 
     use super::*;
 
+    const SUCCESS_SUMMARY_FIELD_NAMES: &[&str] = &[
+        "cow_pool_acquire_ms",
+        "message",
+        "nbd_cow_create_ms",
+        "netns_acquire_ms",
+        "profile",
+        "sandbox_id",
+        "sock_dir_prepare_ms",
+        "stage",
+        "success",
+        "threshold_ms",
+        "total_elapsed_ms",
+        "workspace_dir_rename_ms",
+        "workspace_drive_prepare_ms",
+        "workspace_drive_present",
+        "workspace_fresh_format_ms",
+        "workspace_seed_image_used",
+        "workspace_seed_sparse_copy_ms",
+    ];
+
     fn capture_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, action);
         captured.entries()
+    }
+
+    fn capture_success_summary_event(
+        timing: &SandboxCreateTiming,
+        total_elapsed: Duration,
+    ) -> CapturedEvent {
+        let events = capture_events(|| {
+            timing.emit_success_summary_with_total(total_elapsed);
+        });
+        assert_eq!(events.len(), 1, "events: {events:#?}");
+        events
+            .into_iter()
+            .next()
+            .expect("success summary event should be captured")
+    }
+
+    fn event_field_names(event: &CapturedEvent) -> BTreeSet<&str> {
+        event.fields.keys().map(String::as_str).collect()
+    }
+
+    fn assert_success_summary_field_names(event: &CapturedEvent) {
+        let expected: BTreeSet<&str> = SUCCESS_SUMMARY_FIELD_NAMES.iter().copied().collect();
+        let actual = event_field_names(event);
+        assert_eq!(actual, expected, "field names mismatch; event={event:#?}");
     }
 
     fn assert_field(event: &CapturedEvent, field: &str, expected: &str) {
@@ -285,26 +317,65 @@ mod tests {
         assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
     }
 
+    fn assert_field_kind(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .field_kinds
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field kind {field}; event={event:#?}"));
+        assert_eq!(
+            actual, &expected,
+            "field kind {field} mismatch; event={event:#?}"
+        );
+    }
+
+    fn assert_success_summary_representative_field_kinds(event: &CapturedEvent) {
+        assert_field_kind(event, "stage", "str");
+        assert_field_kind(event, "total_elapsed_ms", "u64");
+        assert_field_kind(event, "success", "bool");
+    }
+
     #[test]
     fn fast_success_emits_info_summary() {
         let timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
 
-        let events = capture_events(|| {
-            timing.emit_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD / 2);
-        });
+        let event = capture_success_summary_event(&timing, SLOW_SANDBOX_CREATE_THRESHOLD / 2);
 
-        assert_eq!(events.len(), 1, "events: {events:#?}");
-        let event = &events[0];
         assert_eq!(event.level, Level::INFO);
-        assert_field(event, "message", "sandbox create timing");
-        assert_field(event, "stage", "sandbox_create");
-        assert_field(event, "success", "true");
-        assert_field(event, "sandbox_id", "sandbox-1");
-        assert_field(event, "profile", "vm0/default");
-        assert_field(event, "total_elapsed_ms", "1500");
-        assert_field(event, "threshold_ms", "3000");
-        assert_field(event, "workspace_drive_present", "false");
-        assert_field(event, "workspace_seed_image_used", "false");
+        assert_success_summary_field_names(&event);
+        assert_success_summary_representative_field_kinds(&event);
+        assert_field(&event, "message", "sandbox create timing");
+        assert_field(&event, "stage", "sandbox_create");
+        assert_field(&event, "success", "true");
+        assert_field(&event, "sandbox_id", "sandbox-1");
+        assert_field(&event, "profile", "vm0/default");
+        assert_field(&event, "total_elapsed_ms", "1500");
+        assert_field(&event, "threshold_ms", "3000");
+        assert_field(&event, "workspace_drive_present", "false");
+        assert_field(&event, "workspace_seed_image_used", "false");
+        assert_field(&event, "cow_pool_acquire_ms", "0");
+        assert_field(&event, "workspace_dir_rename_ms", "0");
+        assert_field(&event, "workspace_drive_prepare_ms", "0");
+        assert_field(&event, "workspace_seed_sparse_copy_ms", "0");
+        assert_field(&event, "workspace_fresh_format_ms", "0");
+        assert_field(&event, "sock_dir_prepare_ms", "0");
+        assert_field(&event, "netns_acquire_ms", "0");
+        assert_field(&event, "nbd_cow_create_ms", "0");
+    }
+
+    #[test]
+    fn success_summary_fast_and_slow_field_sets_match() {
+        let fast_timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let slow_timing = SandboxCreateTiming::new("sandbox-2".into(), "vm0/default".into());
+
+        let fast_event =
+            capture_success_summary_event(&fast_timing, SLOW_SANDBOX_CREATE_THRESHOLD / 2);
+        let slow_event = capture_success_summary_event(&slow_timing, SLOW_SANDBOX_CREATE_THRESHOLD);
+
+        assert_eq!(
+            event_field_names(&fast_event),
+            event_field_names(&slow_event),
+            "fast and slow success summary fields should stay in sync"
+        );
     }
 
     #[test]
@@ -335,30 +406,28 @@ mod tests {
         timing.record_stage_duration(SandboxCreateStage::NetnsAcquire, Duration::from_millis(60));
         timing.record_stage_duration(SandboxCreateStage::NbdCowCreate, Duration::from_millis(70));
 
-        let events = capture_events(|| {
-            timing.emit_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD);
-        });
+        let event = capture_success_summary_event(&timing, SLOW_SANDBOX_CREATE_THRESHOLD);
 
-        assert_eq!(events.len(), 1, "events: {events:#?}");
-        let event = &events[0];
         assert_eq!(event.level, Level::WARN);
-        assert_field(event, "message", "slow sandbox create");
-        assert_field(event, "stage", "sandbox_create");
-        assert_field(event, "success", "true");
-        assert_field(event, "sandbox_id", "sandbox-1");
-        assert_field(event, "profile", "vm0/default");
-        assert_field(event, "total_elapsed_ms", "3000");
-        assert_field(event, "threshold_ms", "3000");
-        assert_field(event, "workspace_drive_present", "true");
-        assert_field(event, "workspace_seed_image_used", "true");
-        assert_field(event, "cow_pool_acquire_ms", "10");
-        assert_field(event, "workspace_dir_rename_ms", "20");
-        assert_field(event, "workspace_drive_prepare_ms", "30");
-        assert_field(event, "workspace_seed_sparse_copy_ms", "40");
-        assert_field(event, "workspace_fresh_format_ms", "0");
-        assert_field(event, "sock_dir_prepare_ms", "50");
-        assert_field(event, "netns_acquire_ms", "60");
-        assert_field(event, "nbd_cow_create_ms", "70");
+        assert_success_summary_field_names(&event);
+        assert_success_summary_representative_field_kinds(&event);
+        assert_field(&event, "message", "slow sandbox create");
+        assert_field(&event, "stage", "sandbox_create");
+        assert_field(&event, "success", "true");
+        assert_field(&event, "sandbox_id", "sandbox-1");
+        assert_field(&event, "profile", "vm0/default");
+        assert_field(&event, "total_elapsed_ms", "3000");
+        assert_field(&event, "threshold_ms", "3000");
+        assert_field(&event, "workspace_drive_present", "true");
+        assert_field(&event, "workspace_seed_image_used", "true");
+        assert_field(&event, "cow_pool_acquire_ms", "10");
+        assert_field(&event, "workspace_dir_rename_ms", "20");
+        assert_field(&event, "workspace_drive_prepare_ms", "30");
+        assert_field(&event, "workspace_seed_sparse_copy_ms", "40");
+        assert_field(&event, "workspace_fresh_format_ms", "0");
+        assert_field(&event, "sock_dir_prepare_ms", "50");
+        assert_field(&event, "netns_acquire_ms", "60");
+        assert_field(&event, "nbd_cow_create_ms", "70");
     }
 
     #[test]
