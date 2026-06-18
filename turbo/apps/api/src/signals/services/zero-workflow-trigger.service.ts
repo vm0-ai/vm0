@@ -13,7 +13,7 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq, or } from "drizzle-orm";
 
-import { writeDb$, type ReadonlyDb } from "../external/db";
+import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
@@ -677,3 +677,31 @@ export const disableWorkflowTrigger$ = command(
     return { kind: "ok", summary: rowToSummary(row) };
   },
 );
+
+/**
+ * Disable every schedule trigger bound to a now-detached (workflow, agent)
+ * pair. Called when a workflow is detached from an agent: such triggers can no
+ * longer inject the workflow skill, so they are paused (and cannot be re-enabled
+ * until the workflow is re-attached). Clears `next_run_at` so the poller skips
+ * them immediately.
+ */
+export async function disableTriggersForDetachedAgent(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly workflowId: string;
+    readonly agentId: string;
+  },
+): Promise<void> {
+  const now = nowDate();
+  await db
+    .update(zeroWorkflowTriggers)
+    .set({ enabled: false, nextRunAt: null, updatedAt: now })
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.workflowId, args.workflowId),
+        eq(zeroWorkflowTriggers.agentId, args.agentId),
+      ),
+    );
+}

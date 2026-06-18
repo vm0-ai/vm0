@@ -367,6 +367,7 @@ export {
   cronDrainEmailOutboxResponseSchema,
   cronExecuteAutomationsContract,
   cronExecuteAutomationsResponseSchema,
+  cronExecuteWorkflowTriggersContract,
   cronProcessUsageEventsContract,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsContract,

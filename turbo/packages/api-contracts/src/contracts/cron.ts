@@ -236,6 +236,19 @@ export const cronExecuteAutomationsContract = c.router({
   },
 });
 
+export const cronExecuteWorkflowTriggersContract = c.router({
+  execute: {
+    method: "GET",
+    path: "/api/cron/execute-workflow-triggers",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExecuteAutomationsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Execute due workflow schedule triggers",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",

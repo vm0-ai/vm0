@@ -11,6 +11,7 @@ import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
 import { automations, automationTriggers } from "./automation";
+import { zeroWorkflowTriggers } from "./zero-workflow";
 
 /**
  * Zero Runs table
@@ -39,6 +40,14 @@ export const zeroRuns = pgTable(
     triggerId: uuid("trigger_id").references(
       (): AnyPgColumn => {
         return automationTriggers.id;
+      },
+      { onDelete: "set null" },
+    ),
+    // Run provenance for workflow schedule triggers (the events-first
+    // counterpart of automation_id/trigger_id).
+    workflowTriggerId: uuid("workflow_trigger_id").references(
+      (): AnyPgColumn => {
+        return zeroWorkflowTriggers.id;
       },
       { onDelete: "set null" },
     ),
@@ -77,6 +86,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_trigger")
         .on(table.triggerId)
         .where(sql`trigger_id IS NOT NULL`),
+      index("idx_zero_runs_workflow_trigger")
+        .on(table.workflowTriggerId)
+        .where(sql`workflow_trigger_id IS NOT NULL`),
     ];
   },
 );

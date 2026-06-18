@@ -9,6 +9,7 @@ import {
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
   cronExecuteAutomationsContract,
+  cronExecuteWorkflowTriggersContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
   cronSummarizeMemoryContract,
@@ -42,6 +43,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronExecuteAutomationsContract.execute.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronExecuteWorkflowTriggersContract.execute.path,
     schedule: "* * * * *",
   },
   {

@@ -572,6 +572,10 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-automations", "/api/cron/execute-automations"],
+  [
+    "/api/cron/execute-workflow-triggers",
+    "/api/cron/execute-workflow-triggers",
+  ],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [
     "/api/cron/reconcile-billing-entitlements",

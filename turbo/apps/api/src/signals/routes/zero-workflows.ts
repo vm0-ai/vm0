@@ -22,6 +22,7 @@ import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.servi
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
+import { disableTriggersForDetachedAgent } from "../services/zero-workflow-trigger.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import {
   loadVisibleWorkflow,
@@ -565,6 +566,19 @@ const setWorkflowAgentsInner$ = command(
     });
     signal.throwIfAborted();
 
+    // Pause triggers whose agent was removed from the workflow's attachments.
+    const removedAgentIds = existingAgentIds.filter((agentId) => {
+      return !requestedAgentIds.includes(agentId);
+    });
+    for (const agentId of removedAgentIds) {
+      await disableTriggersForDetachedAgent(writeDb, {
+        orgId: auth.orgId,
+        workflowId: workflow.id,
+        agentId,
+      });
+      signal.throwIfAborted();
+    }
+
     const summary = await workflowSummary(writeDb, { workflow, member });
     signal.throwIfAborted();
     return { status: 200 as const, body: summary };
@@ -625,6 +639,15 @@ const detachWorkflowAgentInner$ = command(
           eq(zeroWorkflowAgents.agentId, params.agentId),
         ),
       );
+    signal.throwIfAborted();
+
+    // Triggers bound to the now-detached agent can no longer inject the
+    // workflow skill — pause them until the workflow is re-attached.
+    await disableTriggersForDetachedAgent(writeDb, {
+      orgId: auth.orgId,
+      workflowId: workflow.id,
+      agentId: params.agentId,
+    });
     signal.throwIfAborted();
 
     const summary = await workflowSummary(writeDb, { workflow, member });
