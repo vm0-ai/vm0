@@ -104,7 +104,13 @@ fn duration_ms(timeout: Duration) -> u32 {
 
 /// Result of a bounded command execution.
 pub struct ExecResult {
-    /// Process exit code, or a synthetic code for timeout/cancel failures.
+    /// Structured terminal state reported by the provider.
+    ///
+    /// This is the semantic terminal state. The `exit_code` field remains as a
+    /// temporary legacy projection while callers migrate to structured handling.
+    pub termination: ProcessTerminationKind,
+    /// Process exit code, or a synthetic compatibility code for timeout, cancel,
+    /// start, and wait failures.
     pub exit_code: i32,
     /// Captured stdout bytes, capped by the requested output limit.
     pub stdout: Vec<u8>,
@@ -117,8 +123,10 @@ pub struct ExecResult {
 }
 
 impl ExecResult {
+    /// Construct an ordinary exited-process result.
     pub fn new(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
+            termination: ProcessTerminationKind::Exited,
             exit_code,
             stdout,
             stderr,
@@ -658,6 +666,18 @@ mod tests {
                 queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
             }
         );
+    }
+
+    #[test]
+    fn exec_result_new_defaults_to_exited() {
+        let result = ExecResult::new(7, b"out".to_vec(), b"err".to_vec());
+
+        assert_eq!(result.termination, ProcessTerminationKind::Exited);
+        assert_eq!(result.exit_code, 7);
+        assert_eq!(result.stdout, b"out");
+        assert_eq!(result.stderr, b"err");
+        assert!(!result.stdout_truncated);
+        assert!(!result.stderr_truncated);
     }
 
     #[test]

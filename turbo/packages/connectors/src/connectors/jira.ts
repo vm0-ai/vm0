@@ -27,6 +27,7 @@ export const jira = {
               label: "Jira Domain",
               required: true,
               storage: "variable",
+              normalize: "host",
               placeholder: "your-domain.atlassian.net",
             },
             JIRA_EMAIL: {

@@ -248,6 +248,7 @@ export function createHtmlArtifactAuthoringPacket(
     "- Open the HTML locally and verify it is nonblank.",
     "- Check that keyboard/click interactions work when present.",
     "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
+    "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
     "- Run the final hosting command only after the artifact looks correct.",
     "",
     "## Publish",

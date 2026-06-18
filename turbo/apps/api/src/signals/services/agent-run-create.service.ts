@@ -40,6 +40,7 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
+  type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
@@ -407,6 +408,7 @@ interface ConnectorRuntimeContext {
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
+  readonly connectorAuthMethods: Partial<Record<ConnectorType, string>>;
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -1748,6 +1750,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     connectorTypes: [],
+    connectorAuthMethods: {},
     storedEnvironment: undefined,
   };
 }
@@ -2045,6 +2048,11 @@ async function loadStoredConnectorContext(
       connectorTypes: allowedConnectorRows.map((row) => {
         return row.connectorType;
       }),
+      connectorAuthMethods: Object.fromEntries(
+        allowedConnectorRows.map((row) => {
+          return [row.connectorType, row.authMethod];
+        }),
+      ),
       storedEnvironment: compactRecord(resolved.environment),
     };
   });
@@ -2236,6 +2244,44 @@ function inlineFirewallEntry(
   return { kind: "inline", firewall: runtimeFirewall(firewall) };
 }
 
+interface RuntimeConnectorFirewall {
+  readonly firewall: ExpandedFirewallConfig;
+  readonly inline: boolean;
+}
+
+const FIGMA_API_TOKEN_TEMPLATE = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
+const FIGMA_API_TOKEN_AUTH_HEADERS = Object.freeze({
+  "X-Figma-Token": FIGMA_API_TOKEN_TEMPLATE,
+});
+
+function figmaApiTokenFirewall(
+  firewall: ExpandedFirewallConfig,
+): ExpandedFirewallConfig {
+  return {
+    ...firewall,
+    apis: firewall.apis.map((api) => {
+      return {
+        ...api,
+        auth: {
+          ...api.auth,
+          headers: FIGMA_API_TOKEN_AUTH_HEADERS,
+        },
+      };
+    }),
+  };
+}
+
+function runtimeConnectorFirewall(
+  type: FirewallConnectorType,
+  authMethod: string | undefined,
+): RuntimeConnectorFirewall {
+  const firewall = getConnectorFirewall(type);
+  if (type === "figma" && authMethod === "api-token") {
+    return { firewall: figmaApiTokenFirewall(firewall), inline: true };
+  }
+  return { firewall, inline: false };
+}
+
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
@@ -2316,21 +2362,37 @@ function buildPermissionManifest(args: {
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
+  readonly connectorAuthMethods?: Partial<Record<ConnectorType, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
 }): PermissionManifest | undefined {
   const connectorTypes =
     args.connectorTypes ??
     Object.keys(args.permissionPolicies ?? {}).filter(isFirewallConnectorType);
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const connectorFirewalls = connectorTypes
+  const runtimeConnectorFirewalls = connectorTypes
     .filter(isFirewallConnectorType)
     .map((type) => {
-      return getConnectorFirewall(type);
+      return runtimeConnectorFirewall(type, args.connectorAuthMethods?.[type]);
     });
+  const connectorFirewalls = runtimeConnectorFirewalls.map(({ firewall }) => {
+    return firewall;
+  });
+  const inlineConnectorFirewallNames = new Set(
+    runtimeConnectorFirewalls
+      .filter(({ inline }) => {
+        return inline;
+      })
+      .map(({ firewall }) => {
+        return firewall.name;
+      }),
+  );
   const connectorManifest = applyConnectorPolicies(
     connectorFirewalls,
     args.permissionPolicies,
     (firewall) => {
+      if (inlineConnectorFirewallNames.has(firewall.name)) {
+        return inlineFirewallEntry(firewall);
+      }
       return builtinFirewallEntry(firewall, connectorBaseUrlVars);
     },
     defaultBuiltinConnectorPolicyForFirewall,
@@ -3138,6 +3200,7 @@ async function buildStoredExecutionContext(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
+    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
   const executionSecrets = buildStoredExecutionSecrets({
@@ -3899,6 +3962,7 @@ function validateRunEnvironmentReferences(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
+    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
   const validationSecrets = buildStoredExecutionSecrets({

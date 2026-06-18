@@ -110,6 +110,7 @@ import { generate as generateHume } from "./hume";
 import { generate as generateHunter } from "./hunter";
 import { generate as generateImgur } from "./imgur";
 import { generate as generateInfisical } from "./infisical";
+import { generate as generateInsforge } from "./insforge";
 import { generate as generateInstagram } from "./instagram";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
@@ -364,6 +365,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   hume: generateHume,
   imgur: generateImgur,
   infisical: generateInfisical,
+  insforge: generateInsforge,
   instagram: generateInstagram,
   instantly: generateInstantly,
   intercom: generateIntercom,
