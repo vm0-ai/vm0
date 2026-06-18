@@ -135,7 +135,6 @@ function computerUseState(
       lastError: null,
       recovery: null,
       errorLog: [],
-      recentAuditEvents: [],
       localCommandLog: options.runningCommand
         ? [runningLocalCommandLogEntry()]
         : [],
