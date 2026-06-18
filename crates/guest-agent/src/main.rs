@@ -68,13 +68,14 @@ async fn run() -> i32 {
 
     let masker = Arc::new(masker::SecretMasker::from_env());
     let shutdown = CancellationToken::new();
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
         env::run_id(),
         matches!(env::Framework::from_env(), env::Framework::ClaudeCode)
             && matches!(
                 std::env::var(process_control_ipc::BOOTSTRAP_ENV),
                 Ok(endpoint) if !endpoint.is_empty()
             ),
+        env::prompt(),
     );
     let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
     let start = Instant::now();

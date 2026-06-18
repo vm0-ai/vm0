@@ -219,7 +219,8 @@ pub async fn execute_cli(
     http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
-    let active_input = ActiveInputRuntime::new(env::run_id(), false);
+    let active_input =
+        ActiveInputRuntime::new_with_initial_prompt(env::run_id(), false, env::prompt());
     execute_cli_inner(
         masker,
         heartbeat_monitor,
