@@ -1684,6 +1684,7 @@ jobs:
 
           echo "=== Running keep-alive test ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          set -euo pipefail
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
           SVC="${JOB_REF}-keepalive"
@@ -1706,6 +1707,7 @@ jobs:
           cleanup() {
             echo "--- Cleanup ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            wait_for_unit_inactive
             sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
           }
           trap cleanup EXIT
