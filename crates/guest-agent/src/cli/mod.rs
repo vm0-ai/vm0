@@ -868,6 +868,7 @@ async fn execute_cli_inner(
         }
     };
 
+    active_input_controller.close_terminal();
     if let Some(handle) = claude_stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
@@ -888,7 +889,6 @@ async fn execute_cli_inner(
         } else {
             handle.abort();
             let _ = handle.await;
-            active_input_controller.close_terminal();
             log_warn!(LOG_TAG, "Aborted unfinished Claude stdin writer");
         }
     }
