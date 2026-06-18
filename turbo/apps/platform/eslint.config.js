@@ -102,6 +102,13 @@ export default [
                 "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
             },
           ],
+          patterns: [
+            {
+              group: ["@vm0/connectors/firewalls/*", "@vm0/core/firewalls/*"],
+              message:
+                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+            },
+          ],
         },
       ],
     },
