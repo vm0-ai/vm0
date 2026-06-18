@@ -171,6 +171,14 @@ export function listS3Objects(
   });
 }
 
+export function listS3ObjectsUnderPrefix(
+  bucket: string,
+  prefix: string,
+): Computed<Promise<readonly S3Object[]>> {
+  const boundedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  return listS3Objects(bucket, boundedPrefix);
+}
+
 export function deleteS3Objects(
   bucket: string,
   keys: readonly string[],

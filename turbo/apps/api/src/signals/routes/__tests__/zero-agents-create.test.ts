@@ -106,6 +106,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function commandName(command: unknown): string {
+  if (!isRecord(command)) {
+    return "";
+  }
+  return command.constructor.name;
+}
+
+function s3CommandCount(name: string): number {
+  return context.mocks.s3.send.mock.calls.filter((call) => {
+    return commandName(call[0]) === name;
+  }).length;
+}
+
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
   if (!isRecord(value)) {
     throw new Error(`Expected ${label} to be an object`);
@@ -259,7 +272,8 @@ describe("POST /api/zero/agents", () => {
         ),
       );
     expect(instructionsStorage?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
+    expect(s3CommandCount("PutObjectCommand")).toBe(2);
+    expect(s3CommandCount("HeadObjectCommand")).toBe(2);
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {

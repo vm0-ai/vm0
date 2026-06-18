@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { create } from "tar";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { putS3Object } from "../external/s3";
+import { putS3Object, verifyS3FilesExist } from "../external/s3";
 import { onRejection, safeSync } from "../utils";
 import {
   computeContentHashFromHashes,
@@ -108,6 +108,46 @@ function createArchiveBuffer(
   );
 }
 
+async function uploadAndVerifyVolumeObjects(
+  get: <T>(computedValue: Computed<T>) => T,
+  args: {
+    readonly bucketName: string;
+    readonly s3Key: string;
+    readonly archiveBuffer: Buffer;
+    readonly manifest: S3StorageManifest;
+    readonly fileCount: number;
+    readonly storageName: string;
+  },
+): Promise<void> {
+  await Promise.all([
+    get(
+      putS3Object(
+        args.bucketName,
+        `${args.s3Key}/archive.tar.gz`,
+        args.archiveBuffer,
+        "application/gzip",
+      ),
+    ),
+    get(
+      putS3Object(
+        args.bucketName,
+        `${args.s3Key}/manifest.json`,
+        JSON.stringify(args.manifest),
+        "application/json",
+      ),
+    ),
+  ]);
+
+  const uploadVerified = await get(
+    verifyS3FilesExist(args.bucketName, args.s3Key, args.fileCount),
+  );
+  if (!uploadVerified) {
+    throw new Error(
+      `Uploaded volume files are not available for ${args.storageName}`,
+    );
+  }
+}
+
 const uploadVolumeServerSideInner$ = command(
   async (
     { get, set },
@@ -183,24 +223,14 @@ const uploadVolumeServerSideInner$ = command(
       files: fileEntries,
     };
 
-    await Promise.all([
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/archive.tar.gz`,
-          archiveBuffer,
-          "application/gzip",
-        ),
-      ),
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/manifest.json`,
-          JSON.stringify(manifest),
-          "application/json",
-        ),
-      ),
-    ]);
+    await uploadAndVerifyVolumeObjects(get, {
+      bucketName,
+      s3Key,
+      archiveBuffer,
+      manifest,
+      fileCount: files.length,
+      storageName: args.storageName,
+    });
     signal.throwIfAborted();
 
     await writeDb.transaction(async (tx) => {

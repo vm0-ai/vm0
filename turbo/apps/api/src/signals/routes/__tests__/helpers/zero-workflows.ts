@@ -313,6 +313,28 @@ export function mockWorkflowContent(
   });
 }
 
+export function mockMissingWorkflowContent(
+  context: TestContext,
+  args: { readonly s3Key: string },
+): void {
+  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
+    const key = commandKey(cmd);
+    if (
+      key === `${args.s3Key}/manifest.json` ||
+      key === `${args.s3Key}/archive.tar.gz`
+    ) {
+      return Promise.reject(
+        Object.assign(new Error(`No such key: ${key}`), {
+          name: "NoSuchKey",
+          Code: "NoSuchKey",
+          $metadata: { httpStatusCode: 404 },
+        }),
+      );
+    }
+    return Promise.resolve({});
+  });
+}
+
 interface InstructionsStorageSeed {
   readonly orgId: string;
   readonly userId: string;
