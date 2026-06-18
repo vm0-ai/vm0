@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.120.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.120.0...runner-rs-v0.120.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **mitm-addon:** release unreportable websocket usage sources ([#18087](https://github.com/vm0-ai/vm0/issues/18087)) ([45c3c26](https://github.com/vm0-ai/vm0/commit/45c3c26934b635707d93ab0e7675a0aaeb958e21))
+
 ## [0.120.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.119.3...runner-rs-v0.120.0) (2026-06-18)
 
 

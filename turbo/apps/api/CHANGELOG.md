@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.152.2](https://github.com/vm0-ai/vm0/compare/api-v1.152.1...api-v1.152.2) (2026-06-18)
+
+
+### Bug Fixes
+
+* guard workflow storage object deletion ([#18144](https://github.com/vm0-ai/vm0/issues/18144)) ([6842ee9](https://github.com/vm0-ai/vm0/commit/6842ee91b7d7ad31c4574d23bc046669530f89cd))
+
 ## [1.152.1](https://github.com/vm0-ai/vm0/compare/api-v1.152.0...api-v1.152.1) (2026-06-18)
 
 
