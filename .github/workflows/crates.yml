@@ -598,6 +598,131 @@ jobs:
             "$DEFAULT_SNAPSHOT_HASH" \
             "$OFFICIAL_RUNNER_SECRET"
 
+  runner-local-active-input-smoke:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test local active input with mock Claude
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          set -euo pipefail
+
+          REMOTE="${METAL_USER}@${HOST}"
+          ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$DEFAULT_ROOTFS_HASH" \
+            "$DEFAULT_SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          BIN_DIR=$1
+          JOB_REF=$2
+          ROOTFS_HASH=$3
+          SNAPSHOT_HASH=$4
+          OFFICIAL_RUNNER_SECRET=$5
+
+          SVC="${JOB_REF}-local-active-input"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
+          GROUP="vm0/local-active-input-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-active-input-${JOB_REF}"
+
+          fail() {
+            echo "FAIL: $1" >&2
+            exit 1
+          }
+
+          print_service_logs() {
+            echo "--- ${SVC} service logs ---"
+            sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 200 || true
+          }
+
+          cleanup() {
+            echo "--- Cleanup local active-input smoke runner ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+          }
+          trap cleanup EXIT
+
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+
+          echo "--- Generating local runner config ---"
+          sudo "$BIN_DIR/runner" config \
+            --profile vm0/default \
+            --rootfs-hash "$ROOTFS_HASH" \
+            --snapshot-hash "$SNAPSHOT_HASH" \
+            --name "$SVC" \
+            --group "$GROUP" \
+            --runner-dirname "$SVC" \
+            --max-concurrent 1 \
+            --api-url https://not-a-real-server.test \
+            --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "--- Starting local runner with mock Claude ---"
+          sudo "$BIN_DIR/runner" service start \
+            --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" \
+            --local \
+            --env USE_MOCK_CLAUDE=true \
+            --env USE_MOCK_CODEX=true
+
+          echo "--- Submitting active-input smoke job ---"
+          if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+            --group "$GROUP" \
+            --timeout 180 \
+            --cli-agent-type claude-code \
+            --env USE_MOCK_CLAUDE=true \
+            --prompt '@active-input-smoke:2' \
+            --active-input 'after=1s,text=first' \
+            --active-input 'after=2s,text=second' 2>&1); then
+            echo "$SUBMIT_OUTPUT"
+            print_service_logs
+            fail "mock Claude active-input local submit smoke failed"
+          fi
+          echo "$SUBMIT_OUTPUT"
+
+          SUBMIT_JSON="$(awk '/^\{/{line=$0} END{print line}' <<<"$SUBMIT_OUTPUT")"
+          [ -n "$SUBMIT_JSON" ] || fail "local submit output did not include a JSON response"
+          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_JSON")"
+          [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
+          STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
+
+          print_failure_context() {
+            echo "--- Guest stdout stream tail ---"
+            sudo tail -200 "$STREAM_LOG" || true
+            print_service_logs
+          }
+
+          sudo grep -q 'Using mock-claude for testing' "$STREAM_LOG" || {
+            print_failure_context
+            fail "active-input smoke did not use mock Claude"
+          }
+          sudo grep -q 'RESULT=first+second' "$STREAM_LOG" || {
+            print_failure_context
+            fail "mock Claude active-input smoke did not return RESULT=first+second"
+          }
+
+          echo "PASS: local active input reached mock Claude and returned RESULT=first+second"
+          REMOTE_SCRIPT
+
   runner-benchmark:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -1783,6 +1908,7 @@ jobs:
       - mitm-addon-test
       - runner-build
       - runner-local-submit-env-smoke
+      - runner-local-active-input-smoke
       - runner-benchmark
       - runner-exec
       - runner-cancel
@@ -1833,6 +1959,7 @@ jobs:
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-local-submit-env-smoke" "${{ needs.runner-local-submit-env-smoke.result }}" "true"
+          check_result "runner-local-active-input-smoke" "${{ needs.runner-local-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-cancel" "${{ needs.runner-cancel.result }}" "true"

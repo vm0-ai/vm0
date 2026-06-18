@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tracing::{info, warn};
 
-use super::types::{JobRequest, JobResponse};
+use super::types::{ActiveInputEntry, JobRequest, JobResponse};
 use crate::ids::RunId;
 
 #[derive(Clone)]
@@ -58,6 +58,10 @@ enum JobFileScanMode {
 impl LocalQueue {
     pub(crate) fn new(group_dir: PathBuf) -> Self {
         Self { group_dir }
+    }
+
+    pub(crate) fn group_dir(&self) -> &Path {
+        &self.group_dir
     }
 
     pub(crate) fn discover_candidate_sync(
@@ -240,6 +244,7 @@ impl LocalQueue {
             if self.remove_job_files_if_present(run_id) {
                 let _ = std::fs::remove_file(super::cancel_path(&self.group_dir, run_id));
                 let _ = std::fs::remove_file(super::claim_path(&self.group_dir, run_id));
+                self.cleanup_active_inputs_sync(run_id);
             }
             return;
         }
@@ -248,6 +253,133 @@ impl LocalQueue {
         // last discover() scan but before the job actually finished).
         let _ = std::fs::remove_file(super::cancel_path(&self.group_dir, run_id));
         let _ = std::fs::remove_file(super::claim_path(&self.group_dir, run_id));
+        self.cleanup_active_inputs_sync(run_id);
+    }
+
+    pub(crate) fn write_active_input_sync(&self, entry: &ActiveInputEntry) -> std::io::Result<()> {
+        if entry.text.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "local active input text must not be empty",
+            ));
+        }
+        let run_dir = super::ensure_run_inputs_dir(&self.group_dir, entry.run_id)?;
+        let bytes = serde_json::to_vec(entry).map_err(std::io::Error::other)?;
+        let tmp_path = run_dir.join(format!(
+            "{:020}.{}.json.tmp",
+            entry.sequence,
+            RunId::new_v4()
+        ));
+        let final_path = super::active_input_path(&self.group_dir, entry.run_id, entry.sequence);
+        if let Err(e) =
+            super::write_private_file(&tmp_path, &bytes, "local active-input temporary file")
+        {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e);
+        }
+        if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "rename local active-input file {}: {e}",
+                    final_path.display()
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn read_active_input_entries_sync(&self, run_id: RunId) -> Vec<ActiveInputEntry> {
+        let run_dir = super::run_inputs_dir(&self.group_dir, run_id);
+        match std::fs::symlink_metadata(&run_dir) {
+            Ok(_) => {
+                if let Err(e) = super::validate_run_inputs_dir(&self.group_dir, run_id) {
+                    warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: invalid active-input directory");
+                    return Vec::new();
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+            Err(e) => {
+                warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: cannot stat active-input directory");
+                return Vec::new();
+            }
+        }
+
+        let entries = match std::fs::read_dir(&run_dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+            Err(e) => {
+                warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: cannot read active-input directory");
+                return Vec::new();
+            }
+        };
+
+        let mut parsed = Vec::new();
+        for entry in entries.filter_map(Result::ok) {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(sequence) = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .and_then(|stem| stem.parse::<u64>().ok())
+            else {
+                continue;
+            };
+            let Ok(bytes) = super::read_private_file(&path, "local active-input file") else {
+                continue;
+            };
+            let Ok(input) = serde_json::from_slice::<ActiveInputEntry>(&bytes) else {
+                continue;
+            };
+            if input.run_id != run_id || input.sequence != sequence || input.text.is_empty() {
+                continue;
+            }
+            parsed.push(input);
+        }
+        parsed.sort_by_key(|entry| entry.sequence);
+        parsed
+    }
+
+    pub(crate) fn cleanup_active_inputs_sync(&self, run_id: RunId) {
+        let run_dir = super::run_inputs_dir(&self.group_dir, run_id);
+        match std::fs::symlink_metadata(&run_dir) {
+            Ok(metadata) if metadata.file_type().is_dir() => {
+                if let Err(e) = super::validate_run_inputs_dir(&self.group_dir, run_id) {
+                    warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: invalid active-input directory during cleanup");
+                    return;
+                }
+                if let Err(e) = std::fs::remove_dir_all(&run_dir)
+                    && e.kind() != std::io::ErrorKind::NotFound
+                {
+                    warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: failed to clean active-input directory");
+                }
+            }
+            Ok(metadata) if metadata.file_type().is_file() => {
+                if let Err(e) = super::validate_inputs_dir(&self.group_dir) {
+                    warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: invalid active-input parent directory during cleanup");
+                    return;
+                }
+                if let Err(e) = std::fs::remove_file(&run_dir)
+                    && e.kind() != std::io::ErrorKind::NotFound
+                {
+                    warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: failed to clean active-input file");
+                }
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(run_id = %run_id, path = %run_dir.display(), error = %e, "local: cannot stat active-input directory for cleanup");
+            }
+        }
     }
 
     pub(crate) fn collect_cancel_markers_sync(&self) -> Vec<LocalCancelMarker> {
@@ -550,6 +682,7 @@ mod tests {
             profile: Some(profile.to_owned()),
             session_id: Some("session-123".into()),
             feature_flags: None,
+            active_input: None,
         };
         std::fs::write(&job_path, serde_json::to_vec(&request).unwrap()).unwrap();
         job_path
@@ -596,6 +729,123 @@ mod tests {
         assert!(matches!(claim, LocalClaimResult::Claimed { .. }));
         assert_eq!(mode(&super::super::claims_dir(group_dir)), 0o700);
         assert_eq!(mode(&super::super::claim_path(group_dir, run_id)), 0o600);
+    }
+
+    #[test]
+    fn active_input_write_creates_private_files_and_reads_in_numeric_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let entry_10 = ActiveInputEntry {
+            run_id,
+            sequence: 10,
+            message_id: "msg-10".to_string(),
+            text: "ten".to_string(),
+        };
+        let entry_2 = ActiveInputEntry {
+            run_id,
+            sequence: 2,
+            message_id: "msg-2".to_string(),
+            text: "two".to_string(),
+        };
+
+        queue.write_active_input_sync(&entry_10).unwrap();
+        queue.write_active_input_sync(&entry_2).unwrap();
+
+        assert_eq!(mode(&super::super::inputs_dir(group_dir)), 0o700);
+        assert_eq!(
+            mode(&super::super::run_inputs_dir(group_dir, run_id)),
+            0o700
+        );
+        assert_eq!(
+            mode(&super::super::active_input_path(group_dir, run_id, 2)),
+            0o600
+        );
+        assert_eq!(
+            queue.read_active_input_entries_sync(run_id),
+            vec![entry_2, entry_10]
+        );
+    }
+
+    #[test]
+    fn active_input_read_ignores_malformed_or_mismatched_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let other_run_id = RunId::new_v4();
+        let valid = ActiveInputEntry {
+            run_id,
+            sequence: 1,
+            message_id: "msg-1".to_string(),
+            text: "one".to_string(),
+        };
+        queue.write_active_input_sync(&valid).unwrap();
+        let run_dir = super::super::run_inputs_dir(group_dir, run_id);
+        std::fs::write(run_dir.join("00000000000000000002.json"), b"not-json").unwrap();
+        std::fs::write(
+            run_dir.join("00000000000000000003.json"),
+            serde_json::to_vec(&ActiveInputEntry {
+                run_id: other_run_id,
+                sequence: 3,
+                message_id: "msg-3".to_string(),
+                text: "wrong run".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            run_dir.join("00000000000000000004.json"),
+            serde_json::to_vec(&ActiveInputEntry {
+                run_id,
+                sequence: 5,
+                message_id: "msg-5".to_string(),
+                text: "wrong sequence".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(queue.read_active_input_entries_sync(run_id), vec![valid]);
+    }
+
+    #[test]
+    fn active_input_cleanup_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        queue
+            .write_active_input_sync(&ActiveInputEntry {
+                run_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
+
+        queue.cleanup_active_inputs_sync(run_id);
+        queue.cleanup_active_inputs_sync(run_id);
+
+        assert!(!super::super::run_inputs_dir(group_dir, run_id).exists());
+    }
+
+    #[test]
+    fn active_input_cleanup_does_not_follow_inputs_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("group");
+        let target_dir = dir.path().join("target");
+        let run_id = RunId::new_v4();
+        std::fs::create_dir_all(&group_dir).unwrap();
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let target_file = target_dir.join(run_id.to_string());
+        std::fs::write(&target_file, b"do not delete").unwrap();
+        symlink(&target_dir, super::super::inputs_dir(&group_dir)).unwrap();
+
+        LocalQueue::new(group_dir).cleanup_active_inputs_sync(run_id);
+
+        assert!(target_file.exists());
     }
 
     #[test]

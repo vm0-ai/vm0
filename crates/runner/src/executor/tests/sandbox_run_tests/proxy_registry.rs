@@ -145,7 +145,7 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
         &config,
         &prev_storage,
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     )
     .await;
 
@@ -192,7 +192,7 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
             prev_storage: None,
         },
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     )
     .await;
 

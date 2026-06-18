@@ -1492,8 +1492,9 @@ mod tests {
             ))
             .await
             .expect("claim should succeed");
-        let (context, completion_auth) = claimed.into_parts();
+        let (context, completion_auth, active_input_source) = claimed.into_parts();
         assert_eq!(context.sandbox_token, "claim-sandbox-token");
+        assert!(active_input_source.is_none());
 
         provider
             .complete(run_id, 0, None, None, None, completion_auth)
@@ -1578,8 +1579,10 @@ mod tests {
             ))
             .await
             .expect("second claim should succeed");
-        let (context_a, completion_auth_a) = claimed_a.into_parts();
-        let (context_b, completion_auth_b) = claimed_b.into_parts();
+        let (context_a, completion_auth_a, active_input_source_a) = claimed_a.into_parts();
+        let (context_b, completion_auth_b, active_input_source_b) = claimed_b.into_parts();
+        assert!(active_input_source_a.is_none());
+        assert!(active_input_source_b.is_none());
 
         provider
             .complete(context_b.run_id, 0, None, None, None, completion_auth_b)

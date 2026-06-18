@@ -50,6 +50,43 @@ pub(crate) fn validate_cancels_dir(group_dir: &Path) -> io::Result<PathBuf> {
     Ok(dir)
 }
 
+pub(crate) fn ensure_run_inputs_dir(
+    group_dir: &Path,
+    run_id: crate::ids::RunId,
+) -> io::Result<PathBuf> {
+    ensure_group_dir(group_dir)?;
+    let inputs_dir = super::inputs_dir(group_dir);
+    ensure_queue_dir(&inputs_dir, "local queue inputs directory")?;
+    let run_dir = super::run_inputs_dir(group_dir, run_id);
+    ensure_queue_dir(&run_dir, "local queue run inputs directory")?;
+    Ok(run_dir)
+}
+
+pub(crate) fn validate_inputs_dir(group_dir: &Path) -> io::Result<PathBuf> {
+    validate_group_dir(group_dir)?;
+    let inputs_dir = super::inputs_dir(group_dir);
+    host_file::validate_dir(
+        &inputs_dir,
+        DirMode::Private,
+        "local queue inputs directory",
+    )?;
+    Ok(inputs_dir)
+}
+
+pub(crate) fn validate_run_inputs_dir(
+    group_dir: &Path,
+    run_id: crate::ids::RunId,
+) -> io::Result<PathBuf> {
+    validate_inputs_dir(group_dir)?;
+    let run_dir = super::run_inputs_dir(group_dir, run_id);
+    host_file::validate_dir(
+        &run_dir,
+        DirMode::Private,
+        "local queue run inputs directory",
+    )?;
+    Ok(run_dir)
+}
+
 pub(crate) fn ensure_group_dir(group_dir: &Path) -> io::Result<()> {
     host_file::ensure_dir(
         group_dir,
