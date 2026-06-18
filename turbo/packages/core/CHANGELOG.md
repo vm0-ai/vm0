@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.355.0](https://github.com/vm0-ai/vm0/compare/core-v8.354.0...core-v8.355.0) (2026-06-18)
+
+
+### Features
+
+* roll out chat draft + double-click rename switches, drop automation sidebar switch ([#18234](https://github.com/vm0-ai/vm0/issues/18234)) ([b799861](https://github.com/vm0-ai/vm0/commit/b7998617982e6a542d8f15125d8db82b532e4163))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+
 ## [8.354.0](https://github.com/vm0-ai/vm0/compare/core-v8.353.0...core-v8.354.0) (2026-06-18)
 
 

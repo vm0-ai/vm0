@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.155.1](https://github.com/vm0-ai/vm0/compare/api-v1.155.0...api-v1.155.1) (2026-06-18)
+
+
+### Refactoring
+
+* clarify agent and cli session ids ([#18232](https://github.com/vm0-ai/vm0/issues/18232)) ([18fa8d6](https://github.com/vm0-ai/vm0/commit/18fa8d6e5740b7121b3985a19b5082a637f9d39b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.2
+    * @vm0/connectors bumped to 1.91.0
+    * @vm0/core bumped to 8.355.0
+    * @vm0/db bumped to 1.57.2
+
 ## [1.155.0](https://github.com/vm0-ai/vm0/compare/api-v1.154.0...api-v1.155.0) (2026-06-18)
 
 
