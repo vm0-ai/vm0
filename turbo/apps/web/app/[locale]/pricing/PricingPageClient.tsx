@@ -218,7 +218,6 @@ export function PricingPageClient() {
                   t("enterprise.features.concurrentRuns"),
                   t("enterprise.features.unlimitedAgents"),
                   t("enterprise.features.bringOwnLLM"),
-                  t("enterprise.features.sso"),
                   t("enterprise.features.dedicatedSupport"),
                   t("enterprise.features.annualBilling"),
                 ]}

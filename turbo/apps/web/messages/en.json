@@ -152,7 +152,6 @@
         "concurrentRuns": "Custom concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
         "bringOwnLLM": "Bring your own LLM keys",
-        "sso": "SSO & SAML",
         "dedicatedSupport": "Dedicated support & SLA",
         "annualBilling": "Volume & annual billing"
       },

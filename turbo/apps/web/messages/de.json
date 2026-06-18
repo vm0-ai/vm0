@@ -152,7 +152,6 @@
         "concurrentRuns": "Individuelle gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
-        "sso": "SSO & SAML",
         "dedicatedSupport": "Dedizierter Support & SLA",
         "annualBilling": "Mengen- und Jahresabrechnung"
       },

@@ -152,7 +152,6 @@
         "concurrentRuns": "Ejecuciones simultáneas personalizadas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
-        "sso": "SSO y SAML",
         "dedicatedSupport": "Soporte dedicado y SLA",
         "annualBilling": "Facturación por volumen y anual"
       },

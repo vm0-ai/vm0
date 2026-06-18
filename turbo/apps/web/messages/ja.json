@@ -152,7 +152,6 @@
         "concurrentRuns": "カスタム同時実行数",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "独自のLLMキーを利用可能",
-        "sso": "SSO・SAML",
         "dedicatedSupport": "専任サポート・SLA",
         "annualBilling": "ボリューム・年間請求"
       },
