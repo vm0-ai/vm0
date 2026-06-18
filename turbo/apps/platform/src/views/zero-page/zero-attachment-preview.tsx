@@ -258,7 +258,7 @@ function HtmlSitePreviewCard({
           <iframe
             src={publicUrl}
             title={`Site preview for ${title}`}
-            sandbox="allow-scripts"
+            sandbox="allow-same-origin allow-scripts"
             tabIndex={-1}
             loading="lazy"
             scrolling="no"
