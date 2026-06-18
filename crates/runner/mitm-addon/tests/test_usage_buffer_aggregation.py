@@ -4,6 +4,7 @@ import uuid
 
 import usage
 import usage.buffer as usage_buffer
+from tests.pending_helpers import assert_current_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
@@ -293,7 +294,9 @@ def test_flushes_when_aggregate_bucket_count_reaches_exact_bound(tmp_path):
 
 
 def test_flushes_when_source_event_count_reaches_bound(tmp_path):
+    pending_path = tmp_path / "usage-pending"
     enqueue = RecordingEnqueue()
+    usage.set_pending_path(str(pending_path))
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     events = [
         event(source_key=f"source-{index}", quantity=1)
@@ -321,6 +324,13 @@ def test_flushes_when_source_event_count_reaches_bound(tmp_path):
             "quantity": usage_buffer.MAX_BUFFERED_SOURCE_EVENTS,
         }
     ]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="threshold-flushed",
+    )
 
 
 def test_empty_flush_is_noop():
