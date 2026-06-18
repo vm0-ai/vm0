@@ -132,3 +132,10 @@ def test_join_and_raise_fails_when_thread_is_still_running():
         thread.join(timeout=1)
 
     assert not thread.is_alive()
+
+
+def test_join_and_raise_fails_when_thread_was_not_started():
+    thread = ThreadUnderTest(target=lambda: None)
+
+    with pytest.raises(AssertionError, match="thread was not started"):
+        thread.join_and_raise(timeout=1)
