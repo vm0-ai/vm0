@@ -895,6 +895,9 @@ export class ComputerUseHostRuntime {
           this.deactivateInvalidHostToken("command_poll");
           return;
         }
+        if (response.status === 409) {
+          return;
+        }
         lastError = new ComputerUseHttpError(
           `Computer Use command completion failed: ${response.status}`,
           response,
