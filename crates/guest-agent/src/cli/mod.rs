@@ -46,6 +46,7 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -177,10 +178,23 @@ pub struct CliExecutionResult {
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
 }
 
+/// Heartbeat completion signal observed by [`execute_cli`].
+///
+/// The top-level guest-agent owns the heartbeat task handle so shutdown can
+/// stop it before final telemetry. `execute_cli` only needs this one-shot
+/// status while the CLI process is running.
+pub enum HeartbeatStatus {
+    Failed(AgentError),
+    Stopped,
+    TaskFailed(String),
+}
+
+pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
+
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
 pub async fn execute_cli(
     masker: &SecretMasker,
-    mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
+    mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
@@ -258,7 +272,6 @@ pub async fn execute_cli(
     let initial_prompt_stdin = if behavior.uses_stream_json_stdin() {
         let Some(stdin) = child.stdin.take() else {
             let _ = child.start_kill();
-            heartbeat_handle.abort();
             return Err(AgentError::Execution("no stdin".into()));
         };
         Some(stdin)
@@ -670,10 +683,18 @@ pub async fn execute_cli(
                     );
                 }
             }
-            hb_result = &mut heartbeat_handle, if !heartbeat_done => {
+            heartbeat_result = async {
+                match heartbeat_monitor.as_mut() {
+                    Some(receiver) => receiver.await,
+                    None => {
+                        std::future::pending::<Result<HeartbeatStatus, oneshot::error::RecvError>>()
+                            .await
+                    }
+                }
+            }, if !heartbeat_done => {
                 heartbeat_done = true;
-                match hb_result {
-                    Ok(Err(e)) => {
+                match heartbeat_result {
+                    Ok(HeartbeatStatus::Failed(e)) => {
                         // Heartbeat failed — kill process group
                         if termination_error.is_none() {
                             log_warn!(
@@ -694,16 +715,37 @@ pub async fn execute_cli(
                             );
                         }
                     }
-                    Ok(Ok(())) => {
+                    Ok(HeartbeatStatus::Stopped) => {
                         // Heartbeat shutdown (should not happen before CLI exits)
                         break Ok(());
                     }
-                    Err(e) => {
-                        let error = AgentError::Execution(format!("heartbeat task panicked: {e}"));
+                    Ok(HeartbeatStatus::TaskFailed(message)) => {
+                        let error = AgentError::Execution(format!("heartbeat task panicked: {message}"));
                         if termination_error.is_none() {
                             log_warn!(
                                 LOG_TAG,
                                 "Heartbeat task panicked, SIGTERM pgid={}",
+                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            if let Some(pid) = pgid {
+                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            }
+                            termination_error = Some(error);
+                            termination_state = TerminationState::SigkillPending {
+                                reason: TerminationReason::HeartbeatPanic,
+                            };
+                            termination_deadline.as_mut().reset(
+                                tokio::time::Instant::now()
+                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        let error = AgentError::Execution(format!("heartbeat task stopped before reporting status: {e}"));
+                        if termination_error.is_none() {
+                            log_warn!(
+                                LOG_TAG,
+                                "Heartbeat task stopped before reporting status, SIGTERM pgid={}",
                                 pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
                             if let Some(pid) = pgid {

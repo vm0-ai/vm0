@@ -6,7 +6,6 @@ use guest_agent::cli;
 use guest_agent::complete;
 use guest_agent::control;
 use guest_agent::env;
-use guest_agent::error;
 use guest_agent::heartbeat;
 use guest_agent::http::HttpClient;
 use guest_agent::masker;
@@ -79,11 +78,8 @@ async fn run() -> i32 {
     );
 
     let t = Instant::now();
-    let heartbeat_handle = tokio::spawn({
-        let shutdown = shutdown.clone();
-        let http = http.clone();
-        async move { heartbeat::heartbeat_loop(http, shutdown).await }
-    });
+    let (heartbeat_status_tx, heartbeat_status_rx) = tokio::sync::oneshot::channel();
+    let heartbeat_handle = spawn_heartbeat(shutdown.clone(), http.clone(), heartbeat_status_tx);
     log_info!(LOG_TAG, "Heartbeat started");
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
@@ -100,21 +96,21 @@ async fn run() -> i32 {
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
-    // Execute main logic (init + CLI + checkpoint + cleanup telemetry).
+    // Execute main logic (init + CLI + checkpoint/recovery + /complete).
     // On the success path, `execute` overlaps the pre-checkpoint telemetry
-    // flush with checkpoint creation; the final flush still runs after
-    // `/complete` so the acknowledgement log line is uploaded.
-    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry, http).await;
+    // flush with checkpoint creation. The EOF-consuming final flush runs below,
+    // after background producers stop, so `/complete` logs still upload without
+    // racing metrics or heartbeat writes.
+    let exit_code = execute(&masker, start, Some(heartbeat_status_rx), &telemetry, http).await;
 
-    // Stop all background processes. Telemetry uses its own command
-    // channel; `shutdown` only covers heartbeat/metrics.
-    shutdown.cancel();
-    if let Some(control_handle) = control_handle {
-        control_handle.join();
-    }
-    let _ = metrics_handle.await;
-    telemetry.shutdown().await;
-    log_info!(LOG_TAG, "Background processes stopped");
+    stop_background_and_flush_final_telemetry(
+        shutdown,
+        control_handle,
+        metrics_handle,
+        heartbeat_handle,
+        telemetry,
+    )
+    .await;
 
     if exit_code == 0 {
         log_info!(LOG_TAG, "✓ Sandbox finished successfully");
@@ -125,13 +121,14 @@ async fn run() -> i32 {
     exit_code
 }
 
-/// Main execution logic: working dir, CLI, checkpoint, and cleanup telemetry.
+/// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
 /// The success path overlaps the pre-checkpoint telemetry flush with
-/// checkpoint creation, then runs the final flush after `/complete`.
+/// checkpoint creation. Final telemetry is owned by [`run`] after producer
+/// shutdown.
 async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
-    heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
+    heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
     http: HttpClient,
 ) -> i32 {
@@ -189,7 +186,7 @@ async fn execute(
         error_message,
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
-    ) = match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
+    ) = match cli::execute_cli(masker, heartbeat_monitor, http.clone()).await {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
             let cli_exit_code = cli_result.exit_code;
@@ -717,11 +714,9 @@ async fn complete_execution(
 
     // Checkpoint on success (skip when no API — local/test mode). The
     // pre-checkpoint flush runs in `tokio::join!` with the snapshot work so
-    // its ~1s upload overlaps the ~4s checkpoint. The post-checkpoint flush
-    // catches records checkpoint itself wrote (`session_id_read`, VAS
-    // snapshot timings, `checkpoint_total`, etc.) and is the EOF-consuming
-    // final pass. Both go through the single-writer uploader, so the two
-    // flushes never race the periodic tick on the pos files.
+    // its ~1s upload overlaps the ~4s checkpoint. The EOF-consuming final
+    // pass runs from the top-level shutdown path after telemetry producers
+    // stop, so it can safely catch checkpoint and `/complete` logs.
     let agent_type = env::Framework::from_env().agent_type();
     if should_create_success_checkpoint(cli_exit_code, exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
@@ -747,13 +742,12 @@ async fn complete_execution(
                 // only trigger). Runner still posts /complete after VM
                 // exit; its call is idempotency-short-circuited.
                 //
-                // Serialize /complete before final_telemetry so the ack log
-                // line lands in the file before the telemetry uploader
-                // snapshots its EOF — parallelizing the two hides the ack
-                // from `vm0 logs --system`. The ~hundreds-of-ms we pay for
-                // serialization is invisible to users because the host's
-                // status transition already happened the moment /complete
-                // returned.
+                // Serialize /complete before returning to the top-level final
+                // telemetry pass so the ack log line lands in the file before
+                // the telemetry uploader snapshots its EOF. The
+                // ~hundreds-of-ms we pay for serialization is invisible to
+                // users because the host's status transition already happened
+                // the moment /complete returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
                 complete::report_success(
                     http,
@@ -762,7 +756,6 @@ async fn complete_execution(
                     state.last_event_sequence,
                 )
                 .await;
-                final_telemetry(telemetry).await;
             }
             Err(e) => {
                 let msg = format!("Checkpoint failed: {e}");
@@ -785,7 +778,6 @@ async fn complete_execution(
                 // provider.complete() fallback posts exitCode=1, triggering
                 // the route's "checkpoint not found → failed" branch.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                final_telemetry(telemetry).await;
             }
         }
     } else {
@@ -819,10 +811,63 @@ async fn complete_execution(
         }
 
         log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(telemetry).await;
     }
 
     exit_code
+}
+
+async fn stop_background_and_flush_final_telemetry(
+    shutdown: CancellationToken,
+    control_handle: Option<control::ControlHandle>,
+    metrics_handle: tokio::task::JoinHandle<()>,
+    heartbeat_handle: tokio::task::JoinHandle<()>,
+    telemetry: Telemetry,
+) {
+    // Stop telemetry producers before the EOF-consuming final pass.
+    shutdown.cancel();
+    stop_heartbeat(heartbeat_handle).await;
+    if let Some(control_handle) = control_handle {
+        control_handle.join();
+    }
+    let _ = metrics_handle.await;
+    final_telemetry(telemetry).await;
+    log_info!(LOG_TAG, "Background processes stopped");
+}
+
+fn spawn_heartbeat(
+    shutdown: CancellationToken,
+    http: HttpClient,
+    status_tx: tokio::sync::oneshot::Sender<cli::HeartbeatStatus>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let heartbeat_task = tokio::spawn(heartbeat::heartbeat_loop(http, shutdown));
+        let _abort_on_drop = AbortTaskOnDrop(heartbeat_task.abort_handle());
+        let status = match heartbeat_task.await {
+            Ok(Ok(())) => cli::HeartbeatStatus::Stopped,
+            Ok(Err(error)) => cli::HeartbeatStatus::Failed(error),
+            Err(error) => cli::HeartbeatStatus::TaskFailed(error.to_string()),
+        };
+        let _ = status_tx.send(status);
+    })
+}
+
+struct AbortTaskOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortTaskOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+async fn stop_heartbeat(handle: tokio::task::JoinHandle<()>) {
+    if !handle.is_finished() {
+        handle.abort();
+    }
+    match handle.await {
+        Ok(()) => {}
+        Err(error) if error.is_cancelled() => {}
+        Err(error) => log_warn!(LOG_TAG, "Heartbeat task stopped: {error}"),
+    }
 }
 
 fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool {
@@ -836,10 +881,11 @@ fn setup_working_dir(path: impl AsRef<Path>) -> std::io::Result<()> {
 }
 
 /// Final telemetry upload — best-effort and logs on failure.
-/// The complete API is called by the runner after VM exits, not by guest-agent.
-async fn final_telemetry(telemetry: &Telemetry) {
+/// Success `/complete` reporting has already run before this point; the runner
+/// still keeps its idempotent VM-exit fallback.
+async fn final_telemetry(telemetry: Telemetry) {
     log_info!(LOG_TAG, "Performing final telemetry upload...");
-    if telemetry.flush(UploadMode::Final).await.is_err() {
+    if telemetry.final_flush_and_shutdown().await.is_err() {
         log_error!(LOG_TAG, "Final telemetry upload failed");
     }
 }
@@ -1792,8 +1838,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http);
 
-        final_telemetry(&telemetry).await;
-        telemetry.shutdown().await;
+        final_telemetry(telemetry).await;
 
         telemetry_mock.assert_calls_async(1).await;
         telemetry_mock.delete_async().await;
@@ -1806,6 +1851,86 @@ mod tests {
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
+    }
+
+    #[test]
+    fn final_telemetry_waits_for_background_producers_before_upload() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+                server.reset_async().await;
+                unsafe {
+                    set_test_env(server, None);
+                }
+
+                let marker = "producer_after_shutdown_before_final_upload";
+                let cleanup_paths = [
+                    paths::sandbox_ops_file().to_string(),
+                    paths::telemetry_system_log_pos_file().to_string(),
+                    paths::telemetry_metrics_pos_file().to_string(),
+                    paths::telemetry_sandbox_ops_pos_file().to_string(),
+                ];
+                for path in &cleanup_paths {
+                    let _ = std::fs::remove_file(path);
+                }
+
+                let telemetry_mock = server.mock(|when, then| {
+                    when.method(POST)
+                        .path("/api/webhooks/agent/telemetry")
+                        .body_includes(marker);
+                    then.status(200)
+                        .header("Content-Type", "application/json")
+                        .json_body(json!({}));
+                });
+
+                let shutdown = CancellationToken::new();
+                let producer_shutdown = shutdown.clone();
+                let metrics_handle = tokio::spawn(async move {
+                    producer_shutdown.cancelled().await;
+                    record_sandbox_op(marker, Duration::from_millis(1), true, None);
+                });
+                let heartbeat_handle = tokio::spawn(async {
+                    std::future::pending::<()>().await;
+                });
+                let masker = Arc::new(masker::SecretMasker::from_env());
+                let http = test_http_client(server);
+                let telemetry = Telemetry::spawn(masker, http);
+
+                stop_background_and_flush_final_telemetry(
+                    shutdown,
+                    None,
+                    metrics_handle,
+                    heartbeat_handle,
+                    telemetry,
+                )
+                .await;
+
+                telemetry_mock.assert_calls_async(1).await;
+                telemetry_mock.delete_async().await;
+                for path in cleanup_paths {
+                    let _ = std::fs::remove_file(path);
+                }
+            });
+    }
+
+    #[test]
+    fn stop_heartbeat_aborts_pending_task_promptly() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let heartbeat_handle = tokio::spawn(async {
+                    std::future::pending::<()>().await;
+                });
+                tokio::time::timeout(Duration::from_secs(1), stop_heartbeat(heartbeat_handle))
+                    .await
+                    .expect("stop_heartbeat should not wait for the heartbeat loop");
+            });
     }
 
     #[test]
@@ -1883,7 +2008,7 @@ mod tests {
         }
         paths::write_private(paths::event_error_flag(), "").unwrap();
 
-        let telemetry_mock = server.mock(|when, then| {
+        let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
             then.status(200)
                 .header("Content-Type", "application/json")
@@ -1923,8 +2048,6 @@ mod tests {
             diagnostic.session_history_status,
             SessionHistoryStatus::Missing
         );
-        telemetry_mock.assert_calls_async(1).await;
-
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -1952,7 +2075,7 @@ mod tests {
             let _ = std::fs::remove_file(path);
         }
 
-        let telemetry_mock = server.mock(|when, then| {
+        let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
             then.status(200)
                 .header("Content-Type", "application/json")
@@ -1990,8 +2113,6 @@ mod tests {
             diagnostic.session_history_status,
             SessionHistoryStatus::Missing
         );
-        telemetry_mock.assert_calls_async(1).await;
-
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -2020,7 +2141,7 @@ mod tests {
         }
         paths::write_private(paths::event_error_flag(), "").unwrap();
 
-        let telemetry_mock = server.mock(|when, then| {
+        let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
             then.status(200)
                 .header("Content-Type", "application/json")
@@ -2063,8 +2184,6 @@ mod tests {
             serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
                 .unwrap();
         assert_eq!(diagnostic, failure_diagnostic);
-        telemetry_mock.assert_calls_async(1).await;
-
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -2209,7 +2328,7 @@ mod tests {
                 .header("Content-Type", "application/json")
                 .json_body(json!({"checkpointId": "checkpoint-from-main"}));
         });
-        let telemetry_mock = server.mock(|when, then| {
+        let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
             then.status(200)
                 .header("Content-Type", "application/json")
@@ -2255,7 +2374,6 @@ mod tests {
         prepare_mock.assert_calls_async(1).await;
         upload_mock.assert_calls_async(1).await;
         checkpoint_mock.assert_calls_async(1).await;
-        telemetry_mock.assert_calls_async(1).await;
 
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
