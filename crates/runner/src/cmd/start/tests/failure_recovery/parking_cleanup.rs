@@ -212,7 +212,6 @@ async fn release_destroy_and_wait_for_successful_completion(
     destroy_gate: &MockLifecycleGate,
     run_id: RunId,
     completion_message: &str,
-    no_error_message: Option<&str>,
 ) {
     destroy_gate.release_one();
     let completion = env
@@ -221,9 +220,10 @@ async fn release_destroy_and_wait_for_successful_completion(
         .await
         .expect(completion_message);
     assert_eq!(completion.exit_code, 0);
-    if let Some(message) = no_error_message {
-        assert!(completion.error.is_none(), "{message}");
-    }
+    assert!(
+        completion.error.is_none(),
+        "parking cleanup should not rewrite job result"
+    );
 }
 
 async fn assert_post_destroy_cleanup(
@@ -338,7 +338,6 @@ async fn assert_workspace_cache_after_late_cancellation(
         &destroy_gate,
         run_id,
         "job should complete after destroy finishes",
-        Some("late cleanup cancellation should not rewrite job result"),
     )
     .await;
 
@@ -429,7 +428,6 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         &destroy_gate,
         run_id,
         "job should complete after rejected VM destroy",
-        None,
     )
     .await;
 
@@ -501,7 +499,6 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         &destroy_gate,
         run_id,
         "job should complete after destroy finishes",
-        None,
     )
     .await;
 
@@ -572,7 +569,6 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         &destroy_gate,
         run_id,
         "job should complete after destroy finishes",
-        Some("late cleanup cancellation should not rewrite job result"),
     )
     .await;
 
@@ -640,7 +636,6 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         &destroy_gate,
         run_id,
         "job should complete after destroy finishes",
-        Some("late cleanup cancellation should not rewrite job result"),
     )
     .await;
 
