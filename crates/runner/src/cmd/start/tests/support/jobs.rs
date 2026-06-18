@@ -1,5 +1,6 @@
 use super::super::super::*;
 use super::env::MockRunEnv;
+use super::wait::assert_run_exits_within;
 use crate::provider::JobCandidate;
 use crate::test_fixtures::execution_context_for_test;
 
@@ -30,11 +31,12 @@ pub(in super::super) async fn shutdown(
 ) {
     env.drain();
     env.cancel.cancel();
-    let result = tokio::time::timeout(Duration::from_secs(10), run_handle)
-        .await
-        .expect("run should finish within 10s")
-        .expect("task should not panic");
-    assert!(result.is_ok());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(10),
+        "run should finish within 10s",
+    )
+    .await;
 }
 
 /// ExecutionContext with a resume_session for idle pool testing.
