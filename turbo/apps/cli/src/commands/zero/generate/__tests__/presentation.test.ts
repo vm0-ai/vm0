@@ -198,7 +198,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "zero resource pull <resource-id> --dir ./generated/resources",
     );
-    expect(stdout).toContain('"skill:presentation-deck-tools"');
+    expect(stdout).toContain('"tool:presentation-deck-tools"');
     expect(stdout).toContain('"id": "template:html-ppt-playful-launch"');
     expect(stdout).toContain('"path": "presentation-template/aplocoto"');
     expect(stdout).toContain('"archive"');

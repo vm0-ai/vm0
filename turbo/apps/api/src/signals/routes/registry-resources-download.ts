@@ -6,6 +6,7 @@ import {
   findImageStyle,
   findSkill,
   findTemplate,
+  findTool,
   findVideoTemplate,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
@@ -43,8 +44,8 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
-  "skill:presentation-deck-tools":
-    "a11aab6b73aad5796a77875492564f269d8e4f62c7fbfbf302ab228d43fca5ff",
+  "tool:presentation-deck-tools":
+    "b6ea3b108cb3d710306766fbd75eac537283b166a9a5c5345a0bb884f9af3606",
   "design-system:business-data":
     "c9f7a6246c31da8a50f8e0bedee769416af83fdea4047ec59ccf926b78f18fe9",
   "design-system:botane-organic":
@@ -149,6 +150,7 @@ function privateRegistryResourceArchive(
 function findRegistryResource(id: string): PullableRegistryEntry | undefined {
   return (
     findSkill(id) ??
+    findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
     findColorSystem(id) ??
