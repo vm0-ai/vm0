@@ -158,6 +158,7 @@ FIREWALL_MODULES = {
     "meshy": ("meshy_0",),
     "meta-ads": ("meta_ads_0",),
     "metabase": ("metabase_0",),
+    "microsoft-365": ("microsoft_365_0",),
     "minimax": ("minimax_0",),
     "miro": ("miro_0",),
     "mixpanel": ("mixpanel_0",),
