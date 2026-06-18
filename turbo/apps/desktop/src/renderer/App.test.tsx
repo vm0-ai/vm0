@@ -65,7 +65,6 @@ function createComputerUseState({
       lastError: null,
       recovery: null,
       errorLog: [],
-      recentAuditEvents: [],
       localCommandLog: [],
     },
     keepAwake,

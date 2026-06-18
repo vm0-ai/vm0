@@ -28,16 +28,6 @@ export interface ComputerUseRuntimeRecoveryState {
   readonly retryDelayMs: number;
 }
 
-export interface ComputerUseRuntimeAuditEvent {
-  readonly commandId: string;
-  readonly kind: string;
-  readonly app: string | null;
-  readonly event: "created" | "approved" | "denied" | "completed";
-  readonly approvalOutcome: "approved" | "denied" | null;
-  readonly redactedResult?: Record<string, unknown> | null;
-  readonly createdAt: string;
-}
-
 export type ComputerUseLocalCommandLogStatus =
   | "running"
   | "succeeded"
@@ -57,7 +47,6 @@ export interface ComputerUseLocalCommandLogEntry {
 }
 
 export type ComputerUseRuntimeErrorSource =
-  | "audit"
   | "start"
   | "stop"
   | "heartbeat"
@@ -80,7 +69,6 @@ export interface ComputerUseHostRuntimeState {
   readonly lastError: string | null;
   readonly recovery: ComputerUseRuntimeRecoveryState | null;
   readonly errorLog: readonly ComputerUseRuntimeErrorLogEntry[];
-  readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
   readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
 }
 
@@ -113,6 +101,5 @@ export const OFFLINE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastError: null,
     recovery: null,
     errorLog: [],
-    recentAuditEvents: [],
     localCommandLog: [],
   });

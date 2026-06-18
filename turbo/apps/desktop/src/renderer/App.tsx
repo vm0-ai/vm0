@@ -76,7 +76,6 @@ const COMMAND_STATUS_LABELS = {
 } as const satisfies Record<CommandLogEntry["status"], string>;
 
 const RUNTIME_ERROR_SOURCE_LABELS = {
-  audit: "Audit history",
   start: "Start",
   stop: "Stop",
   heartbeat: "Heartbeat",
