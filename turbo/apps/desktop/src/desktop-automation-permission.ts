@@ -19,7 +19,7 @@ interface AutomationPermissionPromptOptions {
   readonly onError?: (error: unknown) => void;
 }
 
-export interface AutomationPermissionDeniedNotification {
+interface AutomationPermissionDeniedNotification {
   readonly command: ComputerUseCommand;
   readonly failure: ComputerUseCommandFailure;
 }
