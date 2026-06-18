@@ -127,6 +127,30 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
+    def test_named_unknown_event_with_known_non_usage_type_stops_full_extraction(self, monkeypatch):
+        real_extractor = openai_responses.JsonSelectiveExtractor
+        fed_chunks: list[bytes] = []
+
+        class TrackingExtractor:
+            def __init__(self, **kwargs):
+                self._inner = real_extractor(**kwargs)
+
+            def feed(self, chunk: bytes) -> None:
+                fed_chunks.append(chunk)
+                self._inner.feed(chunk)
+
+            def finish(self):
+                return self._inner.finish()
+
+        monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", TrackingExtractor)
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        large_delta = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
+        parse(b"event: response.future_delta\n")
+        parse(b"data: " + large_delta + b"\n\n")
+
+        assert usage == {}
+        assert large_delta not in b"".join(fed_chunks)
+
     def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(

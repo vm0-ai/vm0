@@ -312,6 +312,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._named_event_prefix: bytearray | None = None
         self._data_event_type: _ResponsesEventTypeClassification | None = None
         self._discard_eventless_event = False
+        self._discard_named_event = False
         self._on_parse_error = on_parse_error
 
     def should_capture_event(self, event_name: str | None) -> bool:
@@ -326,10 +327,11 @@ class _OpenAIResponsesSseUsageHandler:
         self._start_full_extractor()
 
     def on_data(self, chunk: bytes) -> None:
-        if self._discard_eventless_event:
+        if self._discard_eventless_event or self._discard_named_event:
             return
         if self._extractor is not None:
-            self._feed_named_event_prefix(chunk)
+            if self._feed_named_event_prefix(chunk):
+                return
             self._extractor.feed(chunk)
             return
         if self._eventless_prefix is not None:
@@ -377,6 +379,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._named_event_prefix = None
         self._data_event_type = None
         self._discard_eventless_event = False
+        self._discard_named_event = False
 
     def _start_full_extractor(self) -> JsonSelectiveExtractor:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
@@ -412,10 +415,10 @@ class _OpenAIResponsesSseUsageHandler:
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
 
-    def _feed_named_event_prefix(self, chunk: bytes) -> None:
+    def _feed_named_event_prefix(self, chunk: bytes) -> bool:
         prefix = self._named_event_prefix
         if prefix is None or self._data_event_type is not None:
-            return
+            return False
 
         remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
         captured_len = min(len(chunk), remaining)
@@ -428,10 +431,15 @@ class _OpenAIResponsesSseUsageHandler:
             and captured_len == len(chunk)
             and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
         ):
-            return
+            return False
 
         self._data_event_type = _resolved_data_event_type(event_type)
         self._named_event_prefix = None
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            self._extractor = None
+            self._discard_named_event = True
+            return True
+        return False
 
     def _fallback_eventless_prefix_to_full_extractor(self) -> None:
         prefix = self._eventless_prefix
