@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.155.0](https://github.com/vm0-ai/vm0/compare/api-v1.154.0...api-v1.155.0) (2026-06-18)
+
+
+### Features
+
+* register nocturne and neo-brutalism presentation resources ([#18209](https://github.com/vm0-ai/vm0/issues/18209)) ([5b76751](https://github.com/vm0-ai/vm0/commit/5b767515121b00104f45a81ecbd145c672e2ee3e))
+
+
+### Bug Fixes
+
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+    * @vm0/core bumped to 8.354.0
+    * @vm0/db bumped to 1.57.1
+
 ## [1.154.0](https://github.com/vm0-ai/vm0/compare/api-v1.153.0...api-v1.154.0) (2026-06-18)
 
 

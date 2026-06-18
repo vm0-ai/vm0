@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.470.0](https://github.com/vm0-ai/vm0/compare/app-v0.469.0...app-v0.470.0) (2026-06-18)
+
+
+### Features
+
+* add Render connector ([#18202](https://github.com/vm0-ai/vm0/issues/18202)) ([d391830](https://github.com/vm0-ai/vm0/commit/d391830ac2006f8c6c9281f3aeeddce2fed14e96))
+
+
+### Bug Fixes
+
+* equalize work-fold header spacing in zero chat ([#18215](https://github.com/vm0-ai/vm0/issues/18215)) ([8128acf](https://github.com/vm0-ai/vm0/commit/8128acf05d2624f2b010087b27edee1a5189aa1c))
+* simplify presentation template detail title ([#18204](https://github.com/vm0-ai/vm0/issues/18204)) ([7a005eb](https://github.com/vm0-ai/vm0/commit/7a005ebb102bad2d50ffd7a1c3368aca07fcc8c3))
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/connectors bumped to 1.90.0
+    * @vm0/core bumped to 8.354.0
+
 ## [0.469.0](https://github.com/vm0-ai/vm0/compare/app-v0.468.0...app-v0.469.0) (2026-06-18)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.432.1](https://github.com/vm0-ai/vm0/compare/web-v12.432.0...web-v12.432.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* support local onboarding proxy and usage popover ([#18212](https://github.com/vm0-ai/vm0/issues/18212)) ([b89ff82](https://github.com/vm0-ai/vm0/commit/b89ff82824347365a4244dcd646048294a97762b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.102.1
+    * @vm0/core bumped to 8.354.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.90.0
+
 ## [12.432.0](https://github.com/vm0-ai/vm0/compare/web-v12.431.5...web-v12.432.0) (2026-06-18)
 
 

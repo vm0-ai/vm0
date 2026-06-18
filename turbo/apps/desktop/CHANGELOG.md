@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.2...desktop-v0.16.0) (2026-06-18)
+
+
+### Features
+
+* productize computer use main window ([#18205](https://github.com/vm0-ai/vm0/issues/18205)) ([3b803ad](https://github.com/vm0-ai/vm0/commit/3b803adff675198989a37ef4dc0f34e4e1b519f3))
+
+
+### Bug Fixes
+
+* **desktop:** guide automation permission failures ([#18220](https://github.com/vm0-ai/vm0/issues/18220)) ([6c4341a](https://github.com/vm0-ai/vm0/commit/6c4341a5de18e84659583b9cc5e9571084e5f155))
+
 ## [0.15.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.15.1...desktop-v0.15.2) (2026-06-18)
 
 

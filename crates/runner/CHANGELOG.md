@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.121.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.120.4...runner-rs-v0.121.0) (2026-06-18)
+
+
+### Features
+
+* add Render connector ([#18202](https://github.com/vm0-ai/vm0/issues/18202)) ([d391830](https://github.com/vm0-ai/vm0/commit/d391830ac2006f8c6c9281f3aeeddce2fed14e96))
+
+
+### Refactoring
+
+* **mitm-addon:** centralize responses event prefilter ([#18213](https://github.com/vm0-ai/vm0/issues/18213)) ([ed43d9f](https://github.com/vm0-ai/vm0/commit/ed43d9fe67cfd3c9c3dad86e0d223f5fb363e286))
+
 ## [0.120.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.120.3...runner-rs-v0.120.4) (2026-06-18)
 
 ## [0.120.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.120.2...runner-rs-v0.120.3) (2026-06-18)
