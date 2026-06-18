@@ -1,0 +1,84 @@
+"""Tests for thread helper failure propagation."""
+
+from __future__ import annotations
+
+import threading
+import traceback
+
+import pytest
+
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
+
+
+def test_join_and_raise_propagates_worker_assertion_with_traceback():
+    def fail_in_worker() -> None:
+        raise AssertionError("worker assertion failed")
+
+    thread = ThreadUnderTest(target=fail_in_worker)
+    thread.start()
+
+    with pytest.raises(AssertionError, match="worker assertion failed") as exc_info:
+        thread.join_and_raise(timeout=1)
+
+    captured_traceback = exc_info.value.__traceback__
+    assert captured_traceback is not None
+    traceback_functions = [frame.name for frame in traceback.extract_tb(captured_traceback)]
+    assert "fail_in_worker" in traceback_functions
+    assert not thread.is_alive()
+
+
+def test_raise_if_failed_reports_completed_worker_failure_without_joining_first():
+    finished = threading.Event()
+
+    def fail_then_signal() -> None:
+        try:
+            raise RuntimeError("worker failed")
+        finally:
+            finished.set()
+
+    thread = ThreadUnderTest(target=fail_then_signal)
+    thread.start()
+    assert finished.wait(timeout=1)
+
+    with pytest.raises(RuntimeError, match="worker failed"):
+        thread.raise_if_failed()
+
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_wait_for_event_raises_worker_failure_before_timeout_message():
+    event = threading.Event()
+
+    def fail_without_signaling() -> None:
+        raise RuntimeError("worker failed before event")
+
+    thread = ThreadUnderTest(target=fail_without_signaling)
+    thread.start()
+
+    with pytest.raises(RuntimeError, match="worker failed before event"):
+        wait_for_event(
+            event,
+            timeout=1,
+            threads=(thread,),
+            message="event was not signaled",
+        )
+
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_join_and_raise_propagates_base_exception_subclasses():
+    class WorkerAbort(BaseException):
+        pass
+
+    def abort_worker() -> None:
+        raise WorkerAbort("abort")
+
+    thread = ThreadUnderTest(target=abort_worker)
+    thread.start()
+
+    with pytest.raises(WorkerAbort, match="abort"):
+        thread.join_and_raise(timeout=1)
+
+    assert not thread.is_alive()

@@ -13,6 +13,7 @@ import logging_utils
 import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 from tests.usage_helpers import install_recording_usage_timer
 
@@ -399,16 +400,24 @@ class TestRunnerUsageFlushSignal:
             [event(source_key="source-1")],
             proxy_log_path,
         )
-        timer_thread = threading.Thread(target=timers[0].callback)
-        timer_thread_started = False
+        timer_thread = ThreadUnderTest(target=timers[0].callback)
 
         try:
             timer_thread.start()
-            timer_thread_started = True
-            assert timer_enqueue_started.wait(timeout=1)
+            wait_for_event(
+                timer_enqueue_started,
+                timeout=1,
+                threads=(timer_thread,),
+                message="timer enqueue did not start",
+            )
 
             mitm_addon._handle_runner_usage_flush_signal(0, None)
-            assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+            wait_for_event(
+                flush_owner_lock.blocking_acquire_started,
+                timeout=1,
+                threads=(timer_thread,),
+                message="runner flush did not wait for the active timer flush",
+            )
             state_before_release = json.loads(runner_usage_flush_files.pending_path.read_text())
             assert "flushRequestId" not in state_before_release
 
@@ -422,7 +431,7 @@ class TestRunnerUsageFlushSignal:
             assert len(timers) == 2
 
             release_timer_enqueue.set()
-            timer_thread.join(timeout=1)
+            timer_thread.join_and_raise(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
             assert not timer_thread.is_alive()
@@ -437,8 +446,7 @@ class TestRunnerUsageFlushSignal:
             )
         finally:
             release_timer_enqueue.set()
-            if timer_thread_started:
-                timer_thread.join(timeout=1)
+            timer_thread.join(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
     def test_signal_retries_failed_active_timer_flush_before_ack_snapshot(
@@ -482,21 +490,29 @@ class TestRunnerUsageFlushSignal:
             except OSError as exc:
                 timer_errors.append(str(exc))
 
-        timer_thread = threading.Thread(target=timer_flush)
-        timer_thread_started = False
+        timer_thread = ThreadUnderTest(target=timer_flush)
 
         try:
             timer_thread.start()
-            timer_thread_started = True
-            assert first_enqueue_started.wait(timeout=1)
+            wait_for_event(
+                first_enqueue_started,
+                timeout=1,
+                threads=(timer_thread,),
+                message="first timer enqueue did not start",
+            )
 
             mitm_addon._handle_runner_usage_flush_signal(0, None)
-            assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+            wait_for_event(
+                flush_owner_lock.blocking_acquire_started,
+                timeout=1,
+                threads=(timer_thread,),
+                message="runner flush did not wait for the failed active timer flush",
+            )
             state_before_release = json.loads(runner_usage_flush_files.pending_path.read_text())
             assert "flushRequestId" not in state_before_release
 
             release_first_enqueue.set()
-            timer_thread.join(timeout=1)
+            timer_thread.join_and_raise(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
             assert not timer_thread.is_alive()
@@ -515,8 +531,7 @@ class TestRunnerUsageFlushSignal:
             )
         finally:
             release_first_enqueue.set()
-            if timer_thread_started:
-                timer_thread.join(timeout=1)
+            timer_thread.join(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
     def test_signal_during_active_flush_runs_follow_up_flush(self):

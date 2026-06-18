@@ -7,6 +7,7 @@ import pytest
 
 import mitm_addon
 import usage
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
 
 class TestDoneHook:
@@ -90,13 +91,22 @@ class TestDoneHook:
             mitm_addon._handle_runner_usage_flush_signal(0, None)
             assert runner_flush_started.wait(timeout=1)
 
-            done_thread = threading.Thread(target=mitm_addon.done)
-            done_thread.start()
-            assert lock.blocking_acquire_started.wait(timeout=1)
-            assert not shutdown_called.is_set()
+            done_thread = ThreadUnderTest(target=mitm_addon.done)
+            try:
+                done_thread.start()
+                wait_for_event(
+                    lock.blocking_acquire_started,
+                    timeout=1,
+                    threads=(done_thread,),
+                    message="done did not wait for the runner flush lock",
+                )
+                assert not shutdown_called.is_set()
 
-            release_runner_flush.set()
-            done_thread.join(timeout=1)
+                release_runner_flush.set()
+                done_thread.join_and_raise(timeout=1)
+            finally:
+                release_runner_flush.set()
+                done_thread.join(timeout=1)
 
         assert not done_thread.is_alive()
         assert calls == [

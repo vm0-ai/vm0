@@ -8,6 +8,7 @@ import pytest
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_current_pending
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
@@ -129,34 +130,50 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
         shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
         shutdown_returned.set()
 
-    timer_thread = threading.Thread(target=timers[0].callback)
-    timer_thread.start()
-    assert timer_enqueue_started.wait(timeout=1)
+    timer_thread = ThreadUnderTest(target=timers[0].callback)
+    shutdown_thread = ThreadUnderTest(target=shutdown_flush)
 
-    shutdown_thread = threading.Thread(target=shutdown_flush)
-    shutdown_thread.start()
-    assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
-    assert not shutdown_returned.is_set()
-    assert enqueue_call_count == 1
+    try:
+        timer_thread.start()
+        wait_for_event(
+            timer_enqueue_started,
+            timeout=1,
+            threads=(timer_thread,),
+            message="timer enqueue did not start",
+        )
 
-    release_timer_enqueue.set()
-    timer_thread.join(timeout=1)
-    shutdown_thread.join(timeout=1)
+        shutdown_thread.start()
+        wait_for_event(
+            flush_owner_lock.blocking_acquire_started,
+            timeout=1,
+            threads=(timer_thread, shutdown_thread),
+            message="shutdown flush did not block on the active timer flush",
+        )
+        assert not shutdown_returned.is_set()
+        assert enqueue_call_count == 1
 
-    assert not timer_thread.is_alive()
-    assert not shutdown_thread.is_alive()
-    assert shutdown_returned.is_set()
-    assert shutdown_results == [1]
-    assert enqueued_runs == ["run-1", "run-2"]
-    assert len(timers) == 2
-    assert timers[1].cancelled is True
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="shutdown-wait-drained",
-    )
+        release_timer_enqueue.set()
+        timer_thread.join_and_raise(timeout=1)
+        shutdown_thread.join_and_raise(timeout=1)
+
+        assert not timer_thread.is_alive()
+        assert not shutdown_thread.is_alive()
+        assert shutdown_returned.is_set()
+        assert shutdown_results == [1]
+        assert enqueued_runs == ["run-1", "run-2"]
+        assert len(timers) == 2
+        assert timers[1].cancelled is True
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="shutdown-wait-drained",
+        )
+    finally:
+        release_timer_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
 
 
 def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(tmp_path):
@@ -205,35 +222,51 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
         shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
         shutdown_returned.set()
 
-    timer_thread = threading.Thread(target=timer_flush)
-    timer_thread.start()
-    assert first_enqueue_started.wait(timeout=1)
+    timer_thread = ThreadUnderTest(target=timer_flush)
+    shutdown_thread = ThreadUnderTest(target=shutdown_flush)
 
-    shutdown_thread = threading.Thread(target=shutdown_flush)
-    shutdown_thread.start()
-    assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
-    assert not shutdown_returned.is_set()
+    try:
+        timer_thread.start()
+        wait_for_event(
+            first_enqueue_started,
+            timeout=1,
+            threads=(timer_thread,),
+            message="first timer enqueue did not start",
+        )
 
-    release_first_enqueue.set()
-    timer_thread.join(timeout=1)
-    shutdown_thread.join(timeout=1)
+        shutdown_thread.start()
+        wait_for_event(
+            flush_owner_lock.blocking_acquire_started,
+            timeout=1,
+            threads=(timer_thread, shutdown_thread),
+            message="shutdown flush did not block on the failed active timer flush",
+        )
+        assert not shutdown_returned.is_set()
 
-    assert not timer_thread.is_alive()
-    assert not shutdown_thread.is_alive()
-    assert timer_errors == ["timer failed"]
-    assert shutdown_results == [1]
-    assert enqueued_run_ids == ["run-1", "run-1"]
-    assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
-    assert len(timers) == 2
-    assert timers[0].cancelled is True
-    assert timers[1].cancelled is True
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="shutdown-retry-drained",
-    )
+        release_first_enqueue.set()
+        timer_thread.join_and_raise(timeout=1)
+        shutdown_thread.join_and_raise(timeout=1)
+
+        assert not timer_thread.is_alive()
+        assert not shutdown_thread.is_alive()
+        assert timer_errors == ["timer failed"]
+        assert shutdown_results == [1]
+        assert enqueued_run_ids == ["run-1", "run-1"]
+        assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
+        assert len(timers) == 2
+        assert timers[0].cancelled is True
+        assert timers[1].cancelled is True
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="shutdown-retry-drained",
+        )
+    finally:
+        release_first_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
 
 
 def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(tmp_path):
@@ -273,45 +306,61 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
         shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
         shutdown_returned.set()
 
-    timer_thread = threading.Thread(target=timers[0].callback)
-    timer_thread.start()
-    assert timer_enqueue_started.wait(timeout=1)
+    timer_thread = ThreadUnderTest(target=timers[0].callback)
+    shutdown_thread = ThreadUnderTest(target=shutdown_flush)
 
-    shutdown_thread = threading.Thread(target=shutdown_flush)
-    shutdown_thread.start()
-    assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+    try:
+        timer_thread.start()
+        wait_for_event(
+            timer_enqueue_started,
+            timeout=1,
+            threads=(timer_thread,),
+            message="timer enqueue did not start",
+        )
 
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-2",
-        [
-            event(source_key=f"source-deferred-{index}", category=f"category-{index}")
-            for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)
-        ],
-        str(tmp_path / "proxy.jsonl"),
-    )
-    assert not shutdown_returned.is_set()
-    assert len(timers) == 2
+        shutdown_thread.start()
+        wait_for_event(
+            flush_owner_lock.blocking_acquire_started,
+            timeout=1,
+            threads=(timer_thread, shutdown_thread),
+            message="shutdown flush did not block on the active timer flush",
+        )
 
-    release_timer_enqueue.set()
-    timer_thread.join(timeout=1)
-    shutdown_thread.join(timeout=1)
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-2",
+            [
+                event(source_key=f"source-deferred-{index}", category=f"category-{index}")
+                for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+        assert not shutdown_returned.is_set()
+        assert len(timers) == 2
 
-    assert not timer_thread.is_alive()
-    assert not shutdown_thread.is_alive()
-    assert shutdown_results == [1]
-    assert enqueued_run_ids == ["run-1", "run-2"]
-    assert len(timers) == 2
-    assert timers[0].cancelled is True
-    assert timers[1].cancelled is True
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="shutdown-threshold-drained",
-    )
+        release_timer_enqueue.set()
+        timer_thread.join_and_raise(timeout=1)
+        shutdown_thread.join_and_raise(timeout=1)
+
+        assert not timer_thread.is_alive()
+        assert not shutdown_thread.is_alive()
+        assert shutdown_results == [1]
+        assert enqueued_run_ids == ["run-1", "run-2"]
+        assert len(timers) == 2
+        assert timers[0].cancelled is True
+        assert timers[1].cancelled is True
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="shutdown-threshold-drained",
+        )
+    finally:
+        release_timer_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
 
 
 def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
