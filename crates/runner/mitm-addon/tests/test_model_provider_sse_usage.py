@@ -345,8 +345,9 @@ class TestModelProviderSseUsage:
         assert webhook.request_count == 0
         assert _model_sse_parse_warnings(flow) == []
 
+    @pytest.mark.parametrize("hook_name", ["response", "error"])
     def test_full_pipeline_openai_eventless_incomplete_terminal_sse_warns(
-        self, tmp_path, real_flow
+        self, tmp_path, real_flow, hook_name
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
@@ -354,7 +355,11 @@ class TestModelProviderSseUsage:
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
 
-        webhook = self._run_response(flow)
+        if hook_name == "error":
+            flow.error = Error("connection reset by peer")
+            webhook = self._run_error(flow)
+        else:
+            webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
