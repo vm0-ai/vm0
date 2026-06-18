@@ -519,15 +519,15 @@ pub(crate) async fn exec_on_shared(
     .await
 }
 
-pub(crate) async fn exec_cleanup_untracked_on_shared_with_write_observer(
+pub(crate) async fn exec_operation_cleanup_untracked_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     command: &str,
     timeout_ms: u32,
     env: &[(&str, &str)],
     sudo: bool,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecResult> {
-    let result = exec_operation_capture_on_shared_with_tracking(
+) -> io::Result<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking(
         shared,
         ExecCaptureRequest {
             timeout_ms,
@@ -544,11 +544,10 @@ pub(crate) async fn exec_cleanup_untracked_on_shared_with_write_observer(
         ExecOperationTracking::Untracked,
         write_observer,
     )
-    .await?;
-    operation_result_to_legacy_exec_result(result)
+    .await
 }
 
-pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
+pub(crate) async fn exec_operation_cleanup_with_composite_on_shared_and_observer(
     shared: &Arc<Shared>,
     command: &str,
     timeout_ms: u32,
@@ -556,8 +555,8 @@ pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
     sudo: bool,
     normal_operation: &mut CompositeNormalOperation,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecResult> {
-    let result = exec_operation_capture_on_shared_with_tracking(
+) -> io::Result<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking(
         shared,
         ExecCaptureRequest {
             timeout_ms,
@@ -574,24 +573,22 @@ pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
         ExecOperationTracking::Composite(normal_operation),
         write_observer,
     )
-    .await?;
-    operation_result_to_legacy_exec_result(result)
+    .await
 }
 
-pub(crate) async fn exec_capture_with_composite_on_shared_and_observer(
+pub(crate) async fn exec_operation_capture_with_composite_on_shared_and_observer(
     shared: &Arc<Shared>,
     request: ExecCaptureRequest<'_>,
     normal_operation: &mut CompositeNormalOperation,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecResult> {
-    let result = exec_operation_capture_on_shared_with_tracking(
+) -> io::Result<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking(
         shared,
         request,
         ExecOperationTracking::Composite(normal_operation),
         write_observer,
     )
-    .await?;
-    operation_result_to_legacy_exec_result(result)
+    .await
 }
 
 pub(crate) async fn exec_capture_on_shared(

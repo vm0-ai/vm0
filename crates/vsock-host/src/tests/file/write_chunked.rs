@@ -101,7 +101,7 @@ impl ChunkedWriteFixture {
 
     fn expected_rename_command(&self) -> String {
         format!(
-            "mv -f -- {} {}",
+            "mv -fT -- {} {}",
             shell_quote_for_test(self.temp_path()),
             shell_quote_for_test(self.target_path)
         )
@@ -131,6 +131,16 @@ fn helper_exec_capture_policy() -> ExecOutputPolicy {
     ExecOutputPolicy::Capture {
         limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
     }
+}
+
+async fn drive_two_chunk_write_to_rename(fixture: &mut ChunkedWriteFixture) -> ExecStartFrame {
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
+
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
+
+    fixture.expect_rename().await
 }
 
 #[tokio::test]
@@ -189,6 +199,40 @@ async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
     let err = host
         .write_file_with_write_observer(
             &path,
+            &content,
+            false,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_eq!(operation_count(&host), 0);
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_chunked_rejects_invalid_guest_path_before_cleanup_or_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/has\0nul",
             &content,
             false,
             FrameWriteObserver::new({
@@ -338,6 +382,7 @@ async fn write_file_chunked_quotes_target_path_with_single_quote() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("permission denied"));
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
 #[tokio::test]
@@ -400,7 +445,7 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
                     .iter()
                     .find_map(|(temp_path, (_marker, chunk_count))| {
                         let expected_command = format!(
-                            "mv -f -- {} {}",
+                            "mv -fT -- {} {}",
                             shell_quote_for_test(temp_path),
                             shell_quote_for_test(target_path)
                         );
@@ -531,7 +576,7 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
         match decoded.label {
             "write-file-rename" => {
                 let expected_command = format!(
-                    "mv -f -- {} {}",
+                    "mv -fT -- {} {}",
                     shell_quote_for_test(success_temp),
                     shell_quote_for_test(target_path)
                 );
@@ -734,6 +779,42 @@ async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_chunk_observer_error_keeps_tracker_fail_closed() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/big.bin",
+            &content,
+            false,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Err(io::Error::other("chunk observer failed"))
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("chunk observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn write_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
@@ -796,6 +877,140 @@ async fn write_file_chunked_rename_error_response_cleans_up_and_releases_tracker
 }
 
 #[tokio::test]
+async fn write_file_chunked_rename_guest_timeout_cleans_up_and_releases_tracker() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
+
+    let rename = drive_two_chunk_write_to_rename(&mut fixture).await;
+    send_exec_result(
+        &mut fixture.guest,
+        rename.seq(),
+        ExecTermination::TimedOut,
+        &[],
+        b"mv timed out",
+    )
+    .await;
+
+    let cleanup = fixture.expect_cleanup().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    let message = err.to_string();
+    assert!(message.contains("rename command timed out"));
+    assert!(message.contains("mv timed out"));
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+}
+
+#[tokio::test]
+async fn write_file_chunked_rename_observer_error_keeps_tracker_fail_closed() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task = {
+        let host = Arc::clone(&fixture.host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    if write_start_count.fetch_add(1, Ordering::SeqCst) == 2 {
+                        return Err(io::Error::other("rename observer failed"));
+                    }
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
+
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("rename observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+
+    let cleanup = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
+        .await
+        .expect("cleanup retry was not sent after rename observer error");
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+}
+
+async fn assert_rename_terminal_failure_reports(
+    termination: ExecTermination,
+    stderr: &'static [u8],
+    expected_message: &'static str,
+) {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
+
+    let rename = drive_two_chunk_write_to_rename(&mut fixture).await;
+    send_exec_result(&mut fixture.guest, rename.seq(), termination, &[], stderr).await;
+
+    let cleanup = fixture.expect_cleanup().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    let message = err.to_string();
+    let stderr_text = String::from_utf8_lossy(stderr);
+    assert!(message.contains(expected_message), "{message}");
+    assert!(message.contains(stderr_text.as_ref()), "{message}");
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+}
+
+#[tokio::test]
+async fn write_file_chunked_rename_terminal_failures_report_distinct_errors() {
+    assert_rename_terminal_failure_reports(
+        ExecTermination::Cancelled,
+        b"guest cancelled rename",
+        "rename command was cancelled",
+    )
+    .await;
+    assert_rename_terminal_failure_reports(
+        ExecTermination::StartFailed,
+        b"spawn failed",
+        "rename command exec start failed",
+    )
+    .await;
+    assert_rename_terminal_failure_reports(
+        ExecTermination::WaitFailed,
+        b"wait failed",
+        "rename command exec wait failed",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
@@ -816,6 +1031,44 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
     let retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
         .await
         .expect("cleanup retry was not sent after cleanup error");
+    send_exec_result(
+        &mut fixture.guest,
+        retry.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn write_file_chunked_cleanup_guest_timeout_retries_untracked_on_drop() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
+
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
+
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
+
+    let cleanup = fixture.expect_cleanup().await;
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::TimedOut,
+        &[],
+        b"cleanup timed out",
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+
+    let retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
+        .await
+        .expect("cleanup retry was not sent after timed out cleanup");
     send_exec_result(
         &mut fixture.guest,
         retry.seq(),

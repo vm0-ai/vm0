@@ -211,6 +211,41 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
 }
 
 #[tokio::test]
+async fn write_file_rejects_invalid_path_before_sending_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    for path in ["", "/tmp/has\0nul"] {
+        let err = host
+            .write_file_with_write_observer(
+                path,
+                b"hello",
+                false,
+                FrameWriteObserver::new({
+                    let write_start_count = Arc::clone(&write_start_count);
+                    move || {
+                        write_start_count.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                }),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn write_file_observer_error_cleans_pending_without_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
