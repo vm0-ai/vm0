@@ -1010,6 +1010,33 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders user html-like text literally", async () => {
+    const threadId = "thread-user-html-like-text";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          role: "user",
+          content: "<span> 123 </span>",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const userBubble = await waitFor(() => {
+      const bubble = document.querySelector(".zero-chat-bubble-user");
+      expect(bubble).toBeInstanceOf(HTMLElement);
+      expect(
+        within(bubble as HTMLElement).getByText("<span> 123 </span>"),
+      ).toBeInTheDocument();
+      return bubble as HTMLElement;
+    });
+
+    expect(userBubble.querySelector("span")).toBeNull();
+  });
+
   it("recalls a queued follow-up while an optimistic new thread settles", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();

@@ -207,7 +207,7 @@ describe("buildSignupRedirectUrl", () => {
     );
   });
 
-  it("routes attributed signup completion into app onboarding", () => {
+  it("routes attributed signup completion into the app onboarding handoff", () => {
     const redirectUrl = buildSignupRedirectUrl(
       "https://app.vm0.ai",
       "vm0_source=homepage&gclid=test-click&utm_source=google&utm_campaign=homepage_search",

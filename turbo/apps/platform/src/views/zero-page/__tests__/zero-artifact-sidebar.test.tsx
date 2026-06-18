@@ -900,6 +900,9 @@ describe("zero artifact sidebar", () => {
     const jsonUrl = "https://cdn.vm7.io/artifacts/test/run-2/status.json";
     const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-2/site.html";
     const hostedSiteUrl = "https://customer-launch-a1b2c3d4.sites.vm7.io";
+    const fencedHostedSiteUrl = "https://deck-summary-d09dae7b.sites.vm7.io";
+    const openFencedHostedSiteUrl =
+      "https://page-content-pack-d09dae7b.sites.vm7.io";
     const fileUrl = "/artifacts/test/run-2/archive.bin";
 
     setupChatThread({
@@ -913,6 +916,10 @@ describe("zero artifact sidebar", () => {
 ${videoUrl}
 \`\`\`
 
+\`\`\`text
+${fencedHostedSiteUrl}
+\`\`\`
+
 ${imageUrl}
 ${videoUrl}
 [Release notes](${markdownUrl})
@@ -920,11 +927,15 @@ ${videoUrl}
 ${jsonUrl}
 [Launch site](${htmlUrl})
 ${hostedSiteUrl}
-Download the archive here: ${fileUrl}.`,
+Download the archive here: ${fileUrl}.
+
+\`\`\`text
+${openFencedHostedSiteUrl}`,
     });
 
     await waitFor(() => {
       expect(screen.getByText("Table keeps URLs as text")).toBeInTheDocument();
+      expect(screen.getByText(videoUrl)).toBeInTheDocument();
       expect(screen.getByAltText("chart.png")).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-markdown")).toHaveAttribute(
@@ -952,9 +963,22 @@ Download the archive here: ${fileUrl}.`,
         "Open html preview for Launch site",
       );
       expect(screen.getByText("Customer Launch")).toBeInTheDocument();
+      expect(screen.getByText("Deck Summary")).toBeInTheDocument();
+      expect(screen.getByText("Page Content Pack")).toBeInTheDocument();
+      const customerLaunchFrame = document.querySelector(
+        'iframe[title="Site preview for Customer Launch"]',
+      );
+      expect(customerLaunchFrame).toBeInTheDocument();
+      expect(customerLaunchFrame).toHaveAttribute(
+        "sandbox",
+        "allow-same-origin allow-scripts",
+      );
+      expect(
+        document.querySelector('iframe[title="Site preview for Deck Summary"]'),
+      ).toBeInTheDocument();
       expect(
         document.querySelector(
-          'iframe[title="Site preview for Customer Launch"]',
+          'iframe[title="Site preview for Page Content Pack"]',
         ),
       ).toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-file")).toHaveAttribute(
