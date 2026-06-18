@@ -434,13 +434,6 @@ async fn run_start_with_home(
     let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
-    // Reserve the DNS proxy port before netns setup so iptables can redirect
-    // to a stable value. dnsmasq starts after runtime creation, once the
-    // backend knows the runner-specific VM-facing interface pattern.
-    let dns_port_reservation =
-        dns::reserve_port().map_err(|e| RunnerError::Internal(format!("dns port: {e}")))?;
-    let dns_port = dns_port_reservation.port();
-
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
@@ -513,47 +506,70 @@ async fn run_start_with_home(
         }
     };
 
-    // Build sandbox runtime with shared resources (netns and NBD device pools).
-    let mut runtime = runtime_provider
-        .create_runtime(sandbox::RuntimeConfig {
-            proxy_port: Some(mitm.port()),
-            dns_port: Some(dns_port),
-        })
-        .await
-        .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
+    // Build sandbox runtime with shared resources (netns and NBD device pools),
+    // then start dnsmasq once the backend exposes the runner-scoped veth
+    // interface pattern. If the reserved DNS port is claimed in the small
+    // release-before-dnsmasq-bind window, rebuild the runtime with a fresh port
+    // so all prewarmed namespace REDIRECT rules stay consistent.
+    const DNS_START_MAX_ATTEMPTS: usize = 3;
+    let mut dns_start_attempt = 1;
+    let (mut runtime, dns_handle) = loop {
+        let dns_port_reservation =
+            dns::reserve_port().map_err(|e| RunnerError::Internal(format!("dns port: {e}")))?;
+        let dns_port = dns_port_reservation.port();
+        let mut runtime = runtime_provider
+            .create_runtime(sandbox::RuntimeConfig {
+                proxy_port: Some(mitm.port()),
+                dns_port: Some(dns_port),
+            })
+            .await
+            .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
 
-    let Some(dns_interface_pattern) = runtime.dns_interface_pattern().await else {
-        memory_prefetch.cancel();
-        runtime.shutdown().await;
-        if let Err(e) = mitm.kill_now().await {
-            warn!(error = %e, "failed to kill proxy after DNS interface resolution failed");
-        }
-        kmsg_handle.stop().await;
-        memory_prefetch.drain().await;
-        return Err(RunnerError::Internal(
-            "sandbox runtime did not provide DNS interface pattern".into(),
-        ));
-    };
-
-    // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
-    // Shares NetworkLogManager with kmsg — both use source IP (peer veth) as key.
-    let dns_handle = match dns::start_on_reserved_port(
-        dns_port_reservation,
-        dns_interface_pattern,
-        network_log_manager.clone(),
-    )
-    .await
-    {
-        Ok(handle) => handle,
-        Err(e) => {
+        let Some(dns_interface_pattern) = runtime.dns_interface_pattern().await else {
             memory_prefetch.cancel();
             runtime.shutdown().await;
-            if let Err(kill_error) = mitm.kill_now().await {
-                warn!(error = %kill_error, "failed to kill proxy after DNS startup failed");
+            if let Err(e) = mitm.kill_now().await {
+                warn!(error = %e, "failed to kill proxy after DNS interface resolution failed");
             }
             kmsg_handle.stop().await;
             memory_prefetch.drain().await;
-            return Err(RunnerError::Internal(format!("dns proxy: {e}")));
+            return Err(RunnerError::Internal(
+                "sandbox runtime did not provide DNS interface pattern".into(),
+            ));
+        };
+
+        match dns::start_on_reserved_port(
+            dns_port_reservation,
+            dns_interface_pattern,
+            network_log_manager.clone(),
+        )
+        .await
+        {
+            Ok(handle) => break (runtime, handle),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::AddrInUse
+                    && dns_start_attempt < DNS_START_MAX_ATTEMPTS =>
+            {
+                warn!(
+                    attempt = dns_start_attempt,
+                    max_attempts = DNS_START_MAX_ATTEMPTS,
+                    port = dns_port,
+                    error = %e,
+                    "dns proxy port was claimed before dnsmasq could bind; retrying with a fresh runtime",
+                );
+                runtime.shutdown().await;
+                dns_start_attempt += 1;
+            }
+            Err(e) => {
+                memory_prefetch.cancel();
+                runtime.shutdown().await;
+                if let Err(kill_error) = mitm.kill_now().await {
+                    warn!(error = %kill_error, "failed to kill proxy after DNS startup failed");
+                }
+                kmsg_handle.stop().await;
+                memory_prefetch.drain().await;
+                return Err(RunnerError::Internal(format!("dns proxy: {e}")));
+            }
         }
     };
     let network_log_drain = NetworkLogDrainCoordinator::new(vec![

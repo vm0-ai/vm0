@@ -204,10 +204,8 @@ async fn try_start(
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     match child.try_wait() {
         Ok(Some(status)) => {
-            let stderr = read_child_stderr_excerpt(&mut child).await;
-            return Err(std::io::Error::other(format!(
-                "dnsmasq exited immediately with {status}{stderr}"
-            )));
+            let stderr = read_child_stderr(&mut child).await;
+            return Err(dnsmasq_immediate_exit_error(status, &stderr));
         }
         Err(e) => {
             let _ = child.kill().await;
@@ -242,7 +240,28 @@ async fn try_start(
     })
 }
 
-async fn read_child_stderr_excerpt(child: &mut tokio::process::Child) -> String {
+fn dnsmasq_immediate_exit_error(status: std::process::ExitStatus, stderr: &str) -> std::io::Error {
+    let trimmed = stderr.trim();
+    let message = if trimmed.is_empty() {
+        format!("dnsmasq exited immediately with {status}")
+    } else {
+        format!("dnsmasq exited immediately with {status}: {trimmed}")
+    };
+    std::io::Error::new(dnsmasq_immediate_exit_error_kind(trimmed), message)
+}
+
+fn dnsmasq_immediate_exit_error_kind(stderr: &str) -> std::io::ErrorKind {
+    if stderr
+        .to_ascii_lowercase()
+        .contains("address already in use")
+    {
+        std::io::ErrorKind::AddrInUse
+    } else {
+        std::io::ErrorKind::Other
+    }
+}
+
+async fn read_child_stderr(child: &mut tokio::process::Child) -> String {
     let Some(mut stderr) = child.stderr.take() else {
         return String::new();
     };
@@ -250,12 +269,7 @@ async fn read_child_stderr_excerpt(child: &mut tokio::process::Child) -> String 
     if stderr.read_to_string(&mut output).await.is_err() {
         return String::new();
     }
-    let trimmed = output.trim();
-    if trimmed.is_empty() {
-        String::new()
-    } else {
-        format!(": {trimmed}")
-    }
+    output
 }
 
 /// Tail dnsmasq stderr and write DNS log entries to per-VM network JSONL.
@@ -1043,6 +1057,28 @@ mod tests {
                 "--log-queries=extra",
                 "--log-facility=-",
             ]
+        );
+    }
+
+    #[test]
+    fn dnsmasq_immediate_exit_error_kind_detects_port_race() {
+        let stderr =
+            "dnsmasq: failed to create listening socket for 127.0.0.1: Address already in use";
+
+        assert_eq!(
+            dnsmasq_immediate_exit_error_kind(stderr),
+            std::io::ErrorKind::AddrInUse
+        );
+    }
+
+    #[test]
+    fn dnsmasq_immediate_exit_error_kind_keeps_non_port_errors_fatal() {
+        let stderr =
+            "dnsmasq: failed to create listening socket for 10.200.52.97: Too many open files";
+
+        assert_eq!(
+            dnsmasq_immediate_exit_error_kind(stderr),
+            std::io::ErrorKind::Other
         );
     }
 
