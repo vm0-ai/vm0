@@ -541,8 +541,14 @@ mod tests {
         let mut child = Some(command.spawn().unwrap());
         let stdout = child.as_mut().unwrap().stdout.take().unwrap();
         let mut ready = String::new();
-        BufReader::new(stdout).read_line(&mut ready).unwrap();
-        assert_eq!(ready, "ready\n");
+        if let Err(e) = BufReader::new(stdout).read_line(&mut ready) {
+            kill_spawned_child(&mut child);
+            panic!("failed to read setsid child ready marker: {e}");
+        }
+        if ready != "ready\n" {
+            kill_spawned_child(&mut child);
+            panic!("setsid child should publish ready marker, got {ready:?}");
+        }
         let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
             Ok(pid) => pid,
             Err(e) => {
