@@ -1,9 +1,4 @@
-import {
-  propagation,
-  SpanKind,
-  SpanStatusCode,
-  trace,
-} from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { schema } from "@vm0/db";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
@@ -15,7 +10,6 @@ import { logger } from "./log";
 import { singleton } from "./singleton";
 import { deriveSqlSpanName } from "./sql-span-name";
 
-const HTTP_ROUTE_BAGGAGE_KEY = "http.route";
 const log = logger("api:db");
 
 const pool = singleton((): Pool => {
@@ -71,12 +65,12 @@ const pool = singleton((): Pool => {
           },
         },
         (span) => {
-          const route = propagation
-            .getActiveBaggage()
-            ?.getEntry(HTTP_ROUTE_BAGGAGE_KEY)?.value;
-          if (route) {
-            span.setAttribute("http.route", route);
-          }
+          // The span parents to whatever request span is active when the
+          // query runs (standard OTel context propagation). Slice DB spans by
+          // route via a `trace_id` join to the `@hono/otel` SERVER span — never
+          // by stamping a request-scoped `http.route` onto these pooled CLIENT
+          // spans, which mis-attributes across concurrent requests.
+          //
           // Promise chain instead of try/catch so this file doesn't have to
           // opt out of `no-restricted-syntax` (the api package centralises
           // guarded operations). `.then(onOk, onErr)` covers both branches in
