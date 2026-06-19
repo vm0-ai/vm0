@@ -37,7 +37,8 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// Wire value for the runner's sandbox-reuse decision.
 ///
 /// `reused` means an idle VM was unparked. Other values name the branch that
-/// caused the runner to create a fresh sandbox instead.
+/// caused the runner to create a fresh sandbox instead, such as `poolMiss` or
+/// `noSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
 /// User prompt payload sent to the guest-agent.
@@ -52,7 +53,8 @@ pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
 /// This runner-owned bootstrap key intentionally does not use the `VM0_`
-/// prefix because Vercel expects this exact environment variable name.
+/// prefix because Vercel expects this exact environment variable name. The
+/// runner omits this key when no bypass secret is configured.
 pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 
 /// Optional CLI session or thread identifier used when resuming a prior agent
@@ -63,6 +65,8 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
+///
+/// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
 /// Sensitive values used by the guest-agent masker.
@@ -73,15 +77,20 @@ pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
 
 /// Comma-separated Claude Code tool names that should be disallowed.
+///
+/// Unset or empty means there is no explicit deny list.
 pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
 
 /// Comma-separated Claude Code tool names that should be allowed.
+///
+/// Unset or empty means there is no explicit allow list.
 pub const TOOLS_ENV: &str = "VM0_TOOLS";
 
 /// Raw Claude Code settings payload passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string and currently emits JSON from
-/// the API execution context.
+/// the API execution context. Unset or empty means there is no settings
+/// override.
 pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
@@ -106,46 +115,57 @@ pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 
 /// JSON map of feature flag names to enabled states.
+///
+/// The runner omits this key when there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 
 /// Guest-agent stuck-tool timeout override in seconds.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
 /// Guest-agent grace period in seconds before sending SIGTERM after the CLI
 /// reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
 ///
 /// This runner-owned bootstrap key intentionally does not use the `VM0_`
-/// prefix because the mock launcher contract uses this exact name.
+/// prefix because the mock launcher contract uses this exact name. The
+/// guest-agent treats exactly `true` as enabled.
 pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Codex
 /// binary.
 ///
 /// This runner-owned bootstrap key intentionally does not use the `VM0_`
-/// prefix because the mock launcher contract uses this exact name.
+/// prefix because the mock launcher contract uses this exact name. The
+/// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 
 /// Optional test/debug override for the mock Claude binary path.
+///
+/// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
 
 /// Optional test/debug override for the mock Codex binary path.
+///
+/// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
