@@ -8,9 +8,9 @@ export const maskdb = {
       "Connect maskdb to run read-only, structured queries against a masked Postgres database. Sensitive columns are returned masked and can never be used to filter or sort.",
     authMethods: {
       "api-token": {
-        label: "Agent Token",
+        label: "Token",
         helpText:
-          "1. Open your [maskdb dashboard](https://github.com/e7h4n/maskdb)\n2. Create or copy a maskdb **agent token** (read-only data plane). It starts with `mk_agent_`\n3. Paste the agent token here",
+          "1. Open your [maskdb dashboard](https://github.com/e7h4n/maskdb)\n2. Mint a maskdb token with the `db:query` and `db:metadata` scopes (read-only). It starts with `mk_`\n3. Paste the token here",
         storage: {
           secrets: ["MASKDB_TOKEN"],
           variables: [],
@@ -19,10 +19,9 @@ export const maskdb = {
           kind: "manual",
           fields: {
             MASKDB_TOKEN: {
-              label: "Agent Token",
+              label: "Token",
               required: true,
-              placeholder:
-                "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
+              placeholder: "mk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
             },
           },
         },
