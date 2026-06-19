@@ -40,6 +40,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
+  clearPermissionDraftInheritedExpiration,
   createPermissionDraftContext,
   explicitGrantStateKey,
   hasAnyPermissionDraftChange,
@@ -344,12 +345,30 @@ function buildExplicitGrantMap(
   return result;
 }
 
-function hasDraftExpirationSelections(draft: PermissionDraftIntent): boolean {
-  return (
-    Object.keys(draft.groupExpirations).length > 0 ||
-    Object.keys(draft.permissionExpirations).length > 0 ||
-    draft.unknownExpiration !== undefined
-  );
+function hasDraftExpirationSelections({
+  context,
+  draft,
+  permissions,
+}: {
+  readonly context: PermissionDraftContext;
+  readonly draft: PermissionDraftIntent;
+  readonly permissions: readonly ConnectorPermission[];
+}): boolean {
+  if (draft.unknownExpiration !== undefined) {
+    return true;
+  }
+  for (const permission of permissions) {
+    if (
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: permission.name,
+      }) !== undefined
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function canApplyPermissionPolicies({
@@ -473,9 +492,8 @@ function MenuItemCheck({ active }: { active: boolean }) {
 function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
   allowGrant: UserPermissionGrantResponse | undefined,
-  hasGroupExpiration = false,
 ): UserPermissionGrantExpiresIn | null {
-  if (value === "always" && !allowGrant?.expiresAt && !hasGroupExpiration) {
+  if (value === "always" && !allowGrant?.expiresAt) {
     return null;
   }
   return value;
@@ -823,6 +841,7 @@ function PermissionRows({
   onSetGroupAll,
   onPolicyChange,
   onGrantExpirationChange,
+  onClearInheritedExpiration,
   onGroupGrantExpirationChange,
   onResetPermission,
   onResetGroup,
@@ -848,6 +867,7 @@ function PermissionRows({
     permission: string,
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
+  onClearInheritedExpiration: (permission: string) => void;
   onGroupGrantExpirationChange: (
     category: string,
     groupPerms: ConnectorPermission[],
@@ -961,6 +981,7 @@ function PermissionRows({
                   saving={saving}
                   onPolicyChange={onPolicyChange}
                   onGrantExpirationChange={onGrantExpirationChange}
+                  onClearInheritedExpiration={onClearInheritedExpiration}
                   onResetPermission={onResetPermission}
                 />
               );
@@ -995,6 +1016,7 @@ function PermissionRows({
             saving={saving}
             onPolicyChange={onPolicyChange}
             onGrantExpirationChange={onGrantExpirationChange}
+            onClearInheritedExpiration={onClearInheritedExpiration}
             onResetPermission={onResetPermission}
           />
         );
@@ -1022,6 +1044,7 @@ function PermissionRow({
   saving,
   onPolicyChange,
   onGrantExpirationChange,
+  onClearInheritedExpiration,
   onResetPermission,
 }: {
   context: PermissionDraftContext;
@@ -1037,6 +1060,7 @@ function PermissionRow({
     permission: string,
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
+  onClearInheritedExpiration: (permission: string) => void;
   onResetPermission: (name: string) => void;
 }) {
   const policy = resolvePermissionDraftPolicy({
@@ -1053,6 +1077,7 @@ function PermissionRow({
   const category = context.metadata.categories?.categories[permission.name];
   const hasGroupExpiration =
     category !== undefined && draft.groupExpirations[category] !== undefined;
+  const allowGrant = grant?.action === "allow" ? grant : undefined;
   const hasPendingChange = hasPermissionDraftPermissionChange({
     context,
     draft,
@@ -1087,25 +1112,25 @@ function PermissionRow({
           saving={saving}
           onAllowClick={() => {
             onPolicyChange(permission.name, "allow");
-            if (policy !== "allow") {
-              onGrantExpirationChange(permission.name, "always");
-            }
           }}
           onClearExpiration={() => {
-            onGrantExpirationChange(
-              permission.name,
-              hasGroupExpiration ? "always" : null,
-            );
+            if (hasGroupExpiration) {
+              onClearInheritedExpiration(permission.name);
+              return;
+            }
+            onGrantExpirationChange(permission.name, null);
           }}
           onAllowDurationChange={(expiresIn) => {
-            onGrantExpirationChange(
-              permission.name,
-              menuOptionExpiresIn(
-                expiresIn,
-                grant?.action === "allow" ? grant : undefined,
-                hasGroupExpiration,
-              ),
-            );
+            const nextExpiresIn = menuOptionExpiresIn(expiresIn, allowGrant);
+            if (
+              expiresIn === "always" &&
+              nextExpiresIn === null &&
+              hasGroupExpiration
+            ) {
+              onClearInheritedExpiration(permission.name);
+              return;
+            }
+            onGrantExpirationChange(permission.name, nextExpiresIn);
           }}
           onPolicyChange={(p) => {
             onPolicyChange(permission.name, p);
@@ -1224,7 +1249,11 @@ function LoadedPermissionsDrawerContent({
       draft,
       permissions,
     });
-  const hasExpirationDraftSelections = hasDraftExpirationSelections(draft);
+  const hasExpirationDraftSelections = hasDraftExpirationSelections({
+    context,
+    draft,
+    permissions,
+  });
   const resetAvailable =
     explicitGrants.size > 0 ||
     hasDefaultPolicyChanges ||
@@ -1280,7 +1309,6 @@ function LoadedPermissionsDrawerContent({
     setDraft(stateKey, (current) => {
       if (policy === "allow") {
         return setPermissionDraftGroupAllowPolicy({
-          context,
           draft: current,
           category,
           permissions: groupPerms,
@@ -1347,6 +1375,15 @@ function LoadedPermissionsDrawerContent({
         draft: current,
         permissionName: permission,
         expiresIn,
+      });
+    });
+  };
+
+  const handleClearInheritedExpiration = (permission: string) => {
+    setDraft(stateKey, (current) => {
+      return clearPermissionDraftInheritedExpiration({
+        draft: current,
+        permissionName: permission,
       });
     });
   };
@@ -1474,6 +1511,7 @@ function LoadedPermissionsDrawerContent({
               onSetGroupAll={handleSetGroupAll}
               onPolicyChange={handlePolicyChange}
               onGrantExpirationChange={handleGrantExpirationChange}
+              onClearInheritedExpiration={handleClearInheritedExpiration}
               onGroupGrantExpirationChange={handleGroupGrantExpirationChange}
               onResetPermission={handleResetPermission}
               onResetGroup={handleResetGroup}
@@ -1508,9 +1546,6 @@ function LoadedPermissionsDrawerContent({
                     policy: "allow",
                   });
                 });
-                if (unknownPolicy !== "allow") {
-                  handleUnknownExpirationChange("always");
-                }
               }}
               onClearExpiration={() => {
                 handleUnknownExpirationChange(null);

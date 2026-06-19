@@ -562,39 +562,20 @@ export function setPermissionDraftGroupPolicy({
 }
 
 export function setPermissionDraftGroupAllowPolicy({
-  context,
   draft,
   category,
   permissions,
 }: {
-  readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly category: string;
   readonly permissions: readonly PermissionLike[];
 }): PermissionDraftIntent {
-  const permissionsToForceAlways = permissions.filter((permission) => {
-    return (
-      resolvePermissionDraftPolicy({
-        context,
-        draft,
-        permissionName: permission.name,
-      }) !== "allow"
-    );
-  });
-  let next = setPermissionDraftGroupPolicy({
+  return setPermissionDraftGroupPolicy({
     draft,
     category,
     permissions,
     policy: "allow",
   });
-  for (const permission of permissionsToForceAlways) {
-    next = setPermissionDraftExpiration({
-      draft: next,
-      permissionName: permission.name,
-      expiresIn: "always",
-    });
-  }
-  return next;
 }
 
 export function restorePermissionDraftGroup({
@@ -725,6 +706,24 @@ export function setPermissionDraftExpiration({
       draft.clearedPermissionExpirations,
       permissionName,
     ),
+    restoredPermissions: omitKey(draft.restoredPermissions, permissionName),
+  };
+}
+
+export function clearPermissionDraftInheritedExpiration({
+  draft,
+  permissionName,
+}: {
+  readonly draft: PermissionDraftIntent;
+  readonly permissionName: string;
+}): PermissionDraftIntent {
+  return {
+    ...draft,
+    permissionExpirations: omitKey(draft.permissionExpirations, permissionName),
+    clearedPermissionExpirations: {
+      ...draft.clearedPermissionExpirations,
+      [permissionName]: true,
+    },
     restoredPermissions: omitKey(draft.restoredPermissions, permissionName),
   };
 }

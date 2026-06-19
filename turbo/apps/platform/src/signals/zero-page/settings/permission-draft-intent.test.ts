@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  clearPermissionDraftInheritedExpiration,
   createEmptyPermissionDraftIntent,
   createPermissionDraftContext,
   hasPermissionDraftResetPersistedEffect,
@@ -140,7 +141,7 @@ describe("permission draft intent", () => {
     );
   });
 
-  it("keeps a permission re-allow explicit instead of inheriting group duration", () => {
+  it("keeps a permission re-allow detached from inherited group duration", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
 
@@ -155,20 +156,14 @@ describe("permission draft intent", () => {
       permissionName: "bookmarks:read",
       policy: "deny",
     });
-    draft = setPermissionDraftExpiration({
+    draft = clearPermissionDraftInheritedExpiration({
       draft,
       permissionName: "bookmarks:read",
-      expiresIn: null,
     });
     draft = setPermissionDraftPolicy({
       draft,
       permissionName: "bookmarks:read",
       policy: "allow",
-    });
-    draft = setPermissionDraftExpiration({
-      draft,
-      permissionName: "bookmarks:read",
-      expiresIn: "always",
     });
 
     expect(
@@ -177,7 +172,7 @@ describe("permission draft intent", () => {
         draft,
         permissionName: "bookmarks:read",
       }),
-    ).toBe("always");
+    ).toBeUndefined();
     expect(
       resolvePermissionDraftGroupExpiration({
         context,
@@ -194,9 +189,11 @@ describe("permission draft intent", () => {
     });
 
     expect(materialized.expiresInByPermission).toMatchObject({
-      "bookmarks:read": "always",
       "channels:read": "7d",
     });
+    expect(materialized.expiresInByPermission).not.toHaveProperty(
+      "bookmarks:read",
+    );
   });
 
   it("lets a row allow always override an inherited group duration", () => {
@@ -257,10 +254,9 @@ describe("permission draft intent", () => {
       permissionName: "bookmarks:read",
       policy: "deny",
     });
-    draft = setPermissionDraftExpiration({
+    draft = clearPermissionDraftInheritedExpiration({
       draft,
       permissionName: "bookmarks:read",
-      expiresIn: "always",
     });
 
     expect(
@@ -305,7 +301,6 @@ describe("permission draft intent", () => {
       permissionName: "bookmarks:read",
     });
     draft = setPermissionDraftGroupAllowPolicy({
-      context,
       draft,
       category: "Read",
       permissions: READ_PERMISSIONS,
@@ -396,7 +391,7 @@ describe("permission draft intent", () => {
     ).toBe("7d");
   });
 
-  it("only forces always for group members that were not already allowed", () => {
+  it("keeps cleared group members detached when allowing a group", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
 
@@ -411,8 +406,11 @@ describe("permission draft intent", () => {
       permissionName: "bookmarks:read",
       policy: "deny",
     });
+    draft = clearPermissionDraftInheritedExpiration({
+      draft,
+      permissionName: "bookmarks:read",
+    });
     draft = setPermissionDraftGroupAllowPolicy({
-      context,
       draft,
       category: "Read",
       permissions: READ_PERMISSIONS,
@@ -425,10 +423,88 @@ describe("permission draft intent", () => {
     });
 
     expect(materialized.expiresInByPermission).toMatchObject({
-      "bookmarks:read": "always",
       "channels:read": "7d",
       "channels:history": "7d",
     });
+    expect(materialized.expiresInByPermission).not.toHaveProperty(
+      "bookmarks:read",
+    );
+  });
+
+  it("inherits group duration when the group duration is set after a row deny", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "deny",
+    });
+    draft = setPermissionDraftExpiration({
+      draft,
+      permissionName: "bookmarks:read",
+      expiresIn: null,
+    });
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "allow",
+    });
+
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "bookmarks:read",
+      }),
+    ).toBe("7d");
+
+    expect(
+      materializePermissionDraftForLegacySave({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+      }).expiresInByPermission,
+    ).toMatchObject({
+      "bookmarks:read": "7d",
+      "channels:read": "7d",
+      "channels:history": "7d",
+    });
+  });
+
+  it("does not materialize always when a row allow reverts a draft deny", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "deny",
+    });
+    draft = setPermissionDraftExpiration({
+      draft,
+      permissionName: "bookmarks:read",
+      expiresIn: null,
+    });
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "allow",
+    });
+
+    expect(
+      materializePermissionDraftForLegacySave({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+      }).expiresInByPermission,
+    ).toStrictEqual({});
   });
 
   it("only clears expiring group grants when selecting allow always", () => {
