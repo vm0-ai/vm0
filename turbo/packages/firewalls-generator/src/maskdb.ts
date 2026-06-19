@@ -5,14 +5,87 @@
  *
  * maskdb authenticates with a single Bearer token (a scoped read-only token):
  *   - `Authorization: Bearer <token>` → MASKDB_TOKEN (secret)
+ *
+ * Permission groups mirror maskdb's own token scopes, so the connector firewall
+ * only lets a token reach the endpoints its capability needs. A reader
+ * connector (db:query + db:metadata) can never hit the control-plane endpoints
+ * (register/remove DB, change policy, mint tokens) even if a broader token is
+ * pasted in.
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://github.com/e7h4n/maskdb";
 // Format: mk_ prefix + 43 url-safe base64 chars
-const PLACEHOLDER_VALUE =
-  "mk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
+const PLACEHOLDER_VALUE = "mk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
+
+// Permission groups named after maskdb scopes. Each rule is `METHOD /path`
+// relative to the API base; `{…}` segments are path parameters.
+const PERMISSIONS: { name: string; description: string; rules: string[] }[] = [
+  {
+    name: "db:query",
+    description: "Run read-only structured queries (results masked).",
+    rules: ["POST /v1/databases/{db}/query"],
+  },
+  {
+    name: "db:metadata",
+    description: "List databases, tables, masked schema, and indexes.",
+    rules: [
+      "GET /v1/databases",
+      "GET /v1/databases/{db}/tables",
+      "GET /v1/databases/{db}/tables/{table}/schema",
+      "GET /v1/databases/{db}/tables/{table}/indexes",
+    ],
+  },
+  {
+    name: "db:manage",
+    description: "Register/remove databases and read the raw (unmasked) schema.",
+    rules: [
+      "POST /v1/databases",
+      "DELETE /v1/databases/{db}",
+      "GET /v1/databases/{db}/schema",
+    ],
+  },
+  {
+    name: "policy:read",
+    description: "Read a database's masking policy.",
+    rules: ["GET /v1/databases/{db}/policy"],
+  },
+  {
+    name: "policy:write",
+    description: "Change a database's masking policy (can unmask columns).",
+    rules: ["PUT /v1/databases/{db}/policy"],
+  },
+  {
+    name: "token:mint",
+    description: "Mint child tokens (scoped subsets).",
+    rules: ["POST /v1/tokens"],
+  },
+  {
+    name: "token:read",
+    description: "List tokens.",
+    rules: ["GET /v1/tokens"],
+  },
+  {
+    name: "token:revoke",
+    description: "Revoke tokens.",
+    rules: ["DELETE /v1/tokens/{id}"],
+  },
+];
+
+function renderPermissionGroups(): string[] {
+  const out: string[] = [];
+  for (const p of PERMISSIONS) {
+    out.push("        {");
+    out.push(`          name: ${JSON.stringify(p.name)},`);
+    out.push(`          description: ${JSON.stringify(p.description)},`);
+    out.push("          rules: [");
+    for (const r of p.rules) out.push(`            ${JSON.stringify(r)},`);
+    out.push("          ],");
+    out.push("        },");
+  }
+  return out;
+}
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -38,7 +111,9 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.MASKDB_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [],",
+    "      permissions: [",
+    ...renderPermissionGroups(),
+    "      ],",
     "    },",
     "  ],",
     "} as const satisfies FirewallConfig;",
