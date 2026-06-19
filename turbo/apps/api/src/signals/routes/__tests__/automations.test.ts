@@ -514,9 +514,10 @@ describe("Automations API", () => {
       }),
     ).toStrictEqual(expect.arrayContaining(["cron", "webhook"]));
 
-    const listed = await accept(mainApi().list({ headers: SESSION_HEADERS }), [
-      200,
-    ]);
+    const listed = await accept(
+      mainApi().list({ headers: SESSION_HEADERS }),
+      [200],
+    );
     expect(listed.body.automations).toHaveLength(1);
     expect(listed.body.automations[0]?.id).toBe(created.automation.id);
     expect(listed.body.automations[0]?.triggers).toHaveLength(2);
@@ -572,9 +573,10 @@ describe("Automations API", () => {
       })
       .returning({ id: zeroWorkflowTriggers.id });
 
-    const listed = await accept(mainApi().list({ headers: SESSION_HEADERS }), [
-      200,
-    ]);
+    const listed = await accept(
+      mainApi().list({ headers: SESSION_HEADERS }),
+      [200],
+    );
     const entry = listed.body.workflowTriggers.find((row) => {
       return row.id === trigger!.id;
     });
