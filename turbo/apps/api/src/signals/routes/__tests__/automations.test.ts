@@ -514,10 +514,9 @@ describe("Automations API", () => {
       }),
     ).toStrictEqual(expect.arrayContaining(["cron", "webhook"]));
 
-    const listed = await accept(
-      mainApi().list({ headers: SESSION_HEADERS }),
-      [200],
-    );
+    const listed = await accept(mainApi().list({ headers: SESSION_HEADERS }), [
+      200,
+    ]);
     expect(listed.body.automations).toHaveLength(1);
     expect(listed.body.automations[0]?.id).toBe(created.automation.id);
     expect(listed.body.automations[0]?.triggers).toHaveLength(2);
@@ -555,7 +554,7 @@ describe("Automations API", () => {
         preference: { version: 1, objective: "ship the release" },
         ownerUserId: fixture.userId,
         displayName: "Goal",
-        description: "Drive the release to merge",
+        description: null,
         createdBy: fixture.userId,
       })
       .returning({ id: zeroWorkflows.id });
@@ -573,10 +572,9 @@ describe("Automations API", () => {
       })
       .returning({ id: zeroWorkflowTriggers.id });
 
-    const listed = await accept(
-      mainApi().list({ headers: SESSION_HEADERS }),
-      [200],
-    );
+    const listed = await accept(mainApi().list({ headers: SESSION_HEADERS }), [
+      200,
+    ]);
     const entry = listed.body.workflowTriggers.find((row) => {
       return row.id === trigger!.id;
     });
@@ -590,7 +588,7 @@ describe("Automations API", () => {
         id: workflow!.id,
         type: "goal",
         displayName: "Goal",
-        description: "Drive the release to merge",
+        description: "ship the release",
       },
     });
   });

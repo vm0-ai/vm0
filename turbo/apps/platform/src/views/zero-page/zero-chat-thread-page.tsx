@@ -986,14 +986,23 @@ export function AutomationMenuButton({
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
+  const allTriggers =
+    workflowTriggersLoadable.state === "hasData"
+      ? workflowTriggersLoadable.data
+      : (lastResolvedTriggers ?? []);
+  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const open = openThreadId === threadId;
 
-  if (automations.length === 0) {
+  // Show the opener when the thread has either an automation or a workflow/goal
+  // trigger — a thread with only a goal must still reach the sidebar.
+  if (automations.length === 0 && workflowTriggers.length === 0) {
     return null;
   }
 

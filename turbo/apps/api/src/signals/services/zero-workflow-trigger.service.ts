@@ -347,7 +347,11 @@ export async function listChatThreadWorkflowTriggers(
           id: workflow.id,
           name: workflow.name,
           displayName: workflow.displayName,
-          description: workflow.description,
+          // Goals carry no `description` column; their human text is the
+          // objective in `preference`. Surface it so the sidebar card is
+          // meaningful instead of blank.
+          description:
+            workflow.description ?? workflow.preference?.objective ?? null,
           type: workflow.type,
         },
       },
