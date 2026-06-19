@@ -16,17 +16,19 @@
 //!
 //! # Coverage
 //!
-//! - End-to-end `send_event` → `capture_session_metadata` → marker write for the
+//! - End-to-end `send_event` → session metadata capture → marker write for the
 //!   codex `thread.started` event shape.
-//! - Marker repair after a partial metadata write.
+//! - Checkpoint metadata remains repairable after a partial metadata write.
 //! - Invalid/non-Codex events do not persist Codex session metadata.
 
 mod common;
 
 use common::SystemLogOverrideGuard;
+use httpmock::prelude::*;
 use serde_json::json;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex, Once};
+use std::time::Duration;
 
 use guest_agent::masker::SecretMasker;
 
@@ -57,7 +59,7 @@ fn setup_env_once() {
 }
 
 /// Serialise tests — they share both LazyLock state and the run-id-scoped
-/// runtime metadata files written by `capture_session_metadata`.
+/// runtime metadata files written by session metadata capture.
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 macro_rules! http_client {
@@ -79,11 +81,41 @@ fn send_event_for_test(
 }
 
 /// Wipe the per-run session-id / history-path files so each test starts
-/// from a clean slate. `capture_session_metadata` is idempotent (first id wins),
+/// from a clean slate. Session metadata capture is idempotent (first id wins),
 /// so leaving stale files would mask real failures.
 fn reset_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+}
+
+fn write_codex_session_file(thread_id: &str, history: &str) -> Result<(), String> {
+    let id_no_dashes = thread_id.replace('-', "");
+    let path = Path::new(guest_agent::env::home_dir())
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("06")
+        .join("18")
+        .join(format!("rollout-2026-06-18T10-00-00-{id_no_dashes}.jsonl"));
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("session path has no parent: {}", path.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("create codex session dir {}: {e}", parent.display()))?;
+    std::fs::write(&path, history)
+        .map_err(|e| format!("write codex session history {}: {e}", path.display()))?;
+    Ok(())
+}
+
+fn checkpoint_http_client(
+    server: &MockServer,
+) -> Result<guest_agent::http::HttpClient, guest_agent::error::AgentError> {
+    guest_agent::http::HttpClient::with_api_config(
+        server.base_url(),
+        "test-token",
+        "",
+        Duration::ZERO,
+    )
 }
 
 #[test]
@@ -181,7 +213,7 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
 }
 
 #[test]
-fn send_event_repairs_missing_codex_history_marker_after_later_event() {
+fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
 
@@ -209,13 +241,71 @@ fn send_event_repairs_missing_codex_history_marker_after_later_event() {
         let stored_id = std::fs::read_to_string(guest_agent::paths::session_id_file())
             .expect("session id kept");
         assert_eq!(stored_id, thread_id);
-        let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
-            .expect("history marker repaired");
-        assert!(
-            marker.ends_with(&format!(":{thread_id}")),
-            "repaired marker should point at the existing thread id, got: {marker}"
-        );
+        if seed_empty_marker {
+            assert_eq!(
+                std::fs::read_to_string(guest_agent::paths::session_history_path_file()).unwrap(),
+                "",
+                "ordinary events must not repair empty history markers"
+            );
+        } else {
+            assert!(
+                !Path::new(guest_agent::paths::session_history_path_file()).exists(),
+                "ordinary events must not create missing history markers"
+            );
+        }
+        assert_eq!(masker.mask_string(thread_id), "***");
     }
+}
+
+#[test]
+fn recovery_checkpoint_derives_missing_codex_history_marker() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let history = r#"{"type":"thread.started"}"#.to_string() + "\n";
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), thread_id)
+        .expect("seed existing session id");
+    write_codex_session_file(thread_id, &history).unwrap();
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build runtime");
+    let server = MockServer::start();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url("/test/codex-derived-history-upload"),
+                "existing": false
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/codex-derived-history-upload")
+            .body(history.as_str());
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{thread_id}"}}"#));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "codex-derived-checkpoint"}));
+    });
+
+    let http = checkpoint_http_client(&server).expect("build http client");
+    let result = runtime.block_on(guest_agent::checkpoint::create_recovery_checkpoint(&http));
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls(1);
+    upload_mock.assert_calls(1);
+    checkpoint_mock.assert_calls(1);
 }
 
 #[test]

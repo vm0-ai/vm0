@@ -379,13 +379,25 @@ async fn create_checkpoint_impl_with_artifacts(
     }
     record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
-    // Read session history. The history-path file's content is either a
-    // literal jsonl path (Claude) or a `CODEX_SEARCH:{dir}:{id}` marker
-    // (codex) — `session_history::read_session_history` abstracts the
-    // difference and decompresses zstd-compressed codex sessions.
+    // Read session history. The persisted or derived marker payload is either
+    // a literal jsonl path (Claude) or a `CODEX_SEARCH:{dir}:{id}` marker
+    // (codex) — `session_history` abstracts the difference and decompresses
+    // zstd-compressed codex sessions.
     let history_read_start = std::time::Instant::now();
+    let history_marker_payload =
+        match crate::session_metadata::resolve_history_marker_payload(&cli_agent_session_id) {
+            Ok(payload) => payload,
+            Err(e) => {
+                return Err(fail(
+                    mode,
+                    "session_history_read",
+                    history_read_start,
+                    e.to_string(),
+                ));
+            }
+        };
     let history_bytes =
-        match session_history::read_session_history(paths::session_history_path_file()) {
+        match session_history::read_session_history_from_payload(&history_marker_payload) {
             Ok(b) => b,
             Err(e) => {
                 return Err(fail(

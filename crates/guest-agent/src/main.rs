@@ -11,6 +11,7 @@ use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
+use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use agent_diagnostics::{
@@ -544,16 +545,12 @@ fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
 }
 
 fn claude_history_target_status() -> SessionHistoryStatus {
-    let raw = match std::fs::read_to_string(paths::session_history_path_file()) {
-        Ok(raw) => raw,
-        Err(e) if e.kind() == ErrorKind::NotFound => return SessionHistoryStatus::Missing,
+    let marker = match session_metadata::resolve_history_marker_payload_for_diagnostics() {
+        Ok(Some(marker)) => marker,
+        Ok(None) => return SessionHistoryStatus::Missing,
         Err(_) => return SessionHistoryStatus::Unknown,
     };
-    let target = raw.trim();
-    if target.is_empty() {
-        return SessionHistoryStatus::Missing;
-    }
-    history_target_status(Path::new(target))
+    history_target_status(Path::new(&marker))
 }
 
 #[cfg(test)]

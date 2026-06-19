@@ -19,6 +19,7 @@ pub mod metrics;
 mod nofollow_fs;
 pub mod paths;
 pub mod session_history;
+pub mod session_metadata;
 pub mod telemetry;
 pub mod timing;
 mod urls;
