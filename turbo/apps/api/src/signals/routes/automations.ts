@@ -11,8 +11,10 @@ import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import { upsertMemberRoleCache$ } from "../services/auth.service";
+import { listChatThreadWorkflowTriggers } from "../services/zero-workflow-trigger.service";
 import {
   addTrigger$,
   createAutomation$,
@@ -187,9 +189,17 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
+  const workflowTriggers = await listChatThreadWorkflowTriggers(set(writeDb$), {
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
+  signal.throwIfAborted();
   return {
     status: 200 as const,
-    body: { automations: views.map(automationResponse) },
+    body: {
+      automations: views.map(automationResponse),
+      workflowTriggers: [...workflowTriggers],
+    },
   };
 });
 
