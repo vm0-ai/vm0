@@ -1246,7 +1246,7 @@ interface AxiomQueryRows {
   readonly events?: readonly Record<string, unknown>[];
   readonly systemLogs?: readonly Record<string, unknown>[];
   readonly metrics?: readonly Record<string, unknown>[];
-  readonly network?: readonly Record<string, unknown>[];
+  readonly network?: readonly unknown[];
   readonly runContext?: readonly Record<string, unknown>[];
 }
 
@@ -1318,6 +1318,58 @@ function agentEvent(
     eventType: "assistant",
     eventData: { type: "assistant", text },
   };
+}
+
+function networkHardeningRows(
+  runId: string,
+  userId: string,
+): readonly unknown[] {
+  return [
+    "not-a-network-log-row",
+    {
+      _time: 123,
+      runId,
+      userId,
+      type: "http",
+      action: "ALLOW",
+      host: "missing-time.example.com",
+    },
+    {
+      _time: "2026-06-10T12:00:00Z",
+      runId,
+      userId,
+      type: "http",
+      action: "MAYBE",
+      host: 42,
+      port: "443",
+      status: "200",
+      browser_user_agent: "true",
+      firewall_params: { owner: "vm0-ai", broken: 5 },
+      connector_diagnostic_env_names: ["FAL_TOKEN", 5],
+      auth_resolved_secrets: ["TOKEN", null],
+      request_headers: { host: "api.example.com", broken: false },
+      request_body_encoding: "utf-16",
+      request_body_truncated: "false",
+      response_body_encoding: "binary",
+    },
+    {
+      _time: "2026-06-10T12:01:00Z",
+      runId,
+      userId,
+      type: "http",
+      action: "BLOCK",
+      host: "blocked.example.com",
+      port: 443,
+      firewall_error: "connector_not_configured",
+    },
+    {
+      _time: "2026-06-10T12:02:00Z",
+      runId,
+      userId,
+      type: "dns",
+      dns_event: "reply",
+    },
+  ];
 }
 
 describe("RUN-04: agent run telemetry families", () => {
@@ -1701,6 +1753,71 @@ describe("RUN-04: agent run telemetry families", () => {
     expectApiError(memberTelemetry.body);
 
     await api.requestCancelRun(actor, pendingRun.runId, [200]);
+  });
+
+  it("hardens network log rows consistently across agent and zero read APIs", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-network-hardening");
+    const agentRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "agent network hardening",
+    });
+    const zeroRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "zero network hardening",
+    });
+
+    dispatchAxiomQueries({
+      [agentRun.runId]: {
+        network: networkHardeningRows(agentRun.runId, actor.userId),
+      },
+      [zeroRun.runId]: {
+        network: networkHardeningRows(zeroRun.runId, actor.userId),
+      },
+    });
+
+    const agentNetwork = await reads.requestRunNetworkLogs(
+      actor,
+      agentRun.runId,
+      { limit: 4, order: "asc" },
+      [200],
+    );
+    const zeroNetwork = await reads.requestZeroRunNetworkLogs(
+      actor,
+      zeroRun.runId,
+      { limit: 4, order: "asc" },
+      [200],
+    );
+    if (agentNetwork.status !== 200 || zeroNetwork.status !== 200) {
+      throw new Error("Expected both network log reads to succeed");
+    }
+
+    const expectedNetworkLogs = [
+      {
+        timestamp: "2026-06-10T12:00:00Z",
+        type: "http",
+        firewall_params: { owner: "vm0-ai" },
+        request_headers: { host: "api.example.com" },
+        response_body_encoding: "binary",
+      },
+      {
+        timestamp: "2026-06-10T12:01:00Z",
+        type: "http",
+        action: "BLOCK",
+        host: "blocked.example.com",
+        port: 443,
+        firewall_error: "connector_not_configured",
+      },
+    ];
+
+    expect(agentNetwork.body).toStrictEqual({
+      networkLogs: expectedNetworkLogs,
+      hasMore: true,
+    });
+    expect(zeroNetwork.body).toStrictEqual({
+      networkLogs: expectedNetworkLogs,
+      hasMore: true,
+    });
   });
 
   it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
