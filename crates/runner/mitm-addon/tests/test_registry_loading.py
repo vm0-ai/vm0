@@ -3,7 +3,6 @@
 import json
 import os
 import queue
-import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +13,7 @@ from tests.registry_helpers import (
     pin_mtime,
     write_simple_registry,
 )
+from tests.thread_helpers import ThreadUnderTest
 
 
 class TestLoadRegistry:
@@ -239,9 +239,9 @@ class TestLoadRegistry:
             with patch.object(registry.ctx, "log", log, create=True):
                 results.put(registry.load_registry_state(str(path)))
 
-        thread = threading.Thread(target=load_state, daemon=True)
+        thread = ThreadUnderTest(target=load_state, daemon=True)
         thread.start()
-        thread.join(1)
+        thread.join_and_raise(1)
 
         assert not thread.is_alive(), "registry load blocked on FIFO"
         state = results.get_nowait()
