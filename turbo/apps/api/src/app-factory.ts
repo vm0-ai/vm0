@@ -1,11 +1,8 @@
 import { httpInstrumentationMiddleware } from "@hono/otel";
-import { context as otelContext, propagation } from "@opentelemetry/api";
 import * as Sentry from "@sentry/node";
 // oxlint-disable-next-line no-restricted-imports -- app-factory owns the Hono instance, confirmed by ethan@vm0.ai
-import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-// oxlint-disable-next-line no-restricted-imports -- app-factory needs the matched route resolver before next(); other signals files use the wrappers from signals/context/hono.
-import { routePath } from "hono/route";
 
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
@@ -18,33 +15,6 @@ import { isAbortError } from "./signals/utils";
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
-
-// Stamp the matched route template into OTel baggage so child spans (db
-// queries, outbound fetches) can carry `http.route` without reaching back
-// into the parent SERVER span. Any code further down the call tree —
-// including the pg pool wrapper in `lib/db.ts` — reads it from
-// `propagation.getActiveBaggage()`.
-//
-// `c.req.routePath` reflects the *current* middleware's pattern (here `"*"`)
-// until next() returns, but we need the matched route *before* next() so the
-// db queries that run inside the handler can pick it up. `routePath(c, -1)`
-// from `hono/route` resolves to the last-matched handler's path even when
-// called from a middleware position — exactly what @hono/otel uses to name
-// its SERVER span.
-const httpRouteBaggage: MiddlewareHandler = async (c, next) => {
-  const route = routePath(c, -1);
-  if (!route || route === "*") {
-    return next();
-  }
-  const current = propagation.getActiveBaggage() ?? propagation.createBaggage();
-  const baggage = current.setEntry("http.route", { value: route });
-  await otelContext.with(
-    propagation.setBaggage(otelContext.active(), baggage),
-    () => {
-      return next();
-    },
-  );
-};
 
 function shouldCaptureError(error: Error): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
@@ -90,11 +60,11 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   app.onError(handleError);
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
-  // route template (e.g. `GET /api/v1/chat-threads/:threadId`). The baggage
-  // middleware then propagates that template down so child spans inherit
-  // `http.route` for direct slicing without trace_id joins.
+  // route template (e.g. `GET /api/v1/chat-threads/:threadId`). Child spans
+  // (db queries, outbound fetches) parent to it via standard context
+  // propagation; correlate them to a route by their `trace_id`, not by
+  // copying `http.route` onto each child span.
   app.use("*", httpInstrumentationMiddleware({ serviceName: "vm0-api" }));
-  app.use("*", httpRouteBaggage);
   // Browser cross-origin requests (e.g. https://app.vm0.ai → api.vm0.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
   // matching a registered method, and so registered route responses receive
