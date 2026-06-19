@@ -426,13 +426,19 @@ impl SubmitPlan {
                 "invalid --active-input: at most {MAX_LOCAL_ACTIVE_INPUTS} entries are supported"
             )));
         }
-        values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                Self::parse_active_input(value, index as u64 + 1, timeout, job_id)
-            })
-            .collect()
+        let mut inputs: Vec<DelayedActiveInput> = Vec::with_capacity(values.len());
+        for (index, value) in values.iter().enumerate() {
+            let input = Self::parse_active_input(value, index as u64 + 1, timeout, job_id)?;
+            if let Some(previous) = inputs.last()
+                && input.after < previous.after
+            {
+                return Err(RunnerError::Config(
+                    "invalid --active-input value: delays must be non-decreasing".to_string(),
+                ));
+            }
+            inputs.push(input);
+        }
+        Ok(inputs)
     }
 
     fn parse_active_input(
@@ -1193,8 +1199,8 @@ mod tests {
         let job_id = RunId::nil();
         let parsed = SubmitPlan::parse_active_inputs(
             &[
-                "after=1s,text=first".to_string(),
-                "after=250ms,text=second,with,commas".to_string(),
+                "after=250ms,text=first".to_string(),
+                "after=1s,text=second,with,commas".to_string(),
             ],
             Duration::from_secs(5),
             job_id,
@@ -1207,13 +1213,13 @@ mod tests {
                 DelayedActiveInput {
                     sequence: 1,
                     message_id: format!("local-active-input-{job_id}-1"),
-                    after: Duration::from_secs(1),
+                    after: Duration::from_millis(250),
                     text: "first".to_string(),
                 },
                 DelayedActiveInput {
                     sequence: 2,
                     message_id: format!("local-active-input-{job_id}-2"),
-                    after: Duration::from_millis(250),
+                    after: Duration::from_secs(1),
                     text: "second,with,commas".to_string(),
                 },
             ]
@@ -1248,6 +1254,17 @@ mod tests {
         let err =
             SubmitPlan::parse_active_inputs(&too_many, Duration::from_secs(5), job_id).unwrap_err();
         assert!(err.to_string().contains("active-input"));
+
+        let err = SubmitPlan::parse_active_inputs(
+            &[
+                "after=2s,text=first".to_string(),
+                "after=1s,text=second".to_string(),
+            ],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("non-decreasing"));
     }
 
     #[tokio::test]
