@@ -99,16 +99,22 @@ enum TargetOutcome {
     SkippedHeadFailed {
         reason: String,
     },
+    SkippedInvalidDownload {
+        reason: String,
+    },
 }
 
 enum DownloadBody {
     Complete(Bytes),
+    Empty,
     OverSize { observed_size: u64 },
 }
 
 enum CachedArchive {
     Hit(Bytes),
     Missing,
+    Empty,
+    Invalid { reason: String },
     OverSize { observed_size: u64 },
 }
 
@@ -282,6 +288,12 @@ async fn process_one(
             return Ok(TargetOutcome::Hit);
         }
         CachedArchive::Missing => {}
+        CachedArchive::Empty => {
+            evict_empty_cache(target, &cache_dir).await?;
+        }
+        CachedArchive::Invalid { reason } => {
+            evict_invalid_cache(target, &cache_dir, &reason).await?;
+        }
         CachedArchive::OverSize { observed_size } => {
             evict_oversized_cache(target, &cache_dir, observed_size).await?;
         }
@@ -293,15 +305,17 @@ async fn process_one(
     // population so same-key runners do not duplicate downloads or race on the
     // staging directory.
     let size = match probe_size(http, &target.archive_url).await {
-        Ok(Some(n)) => n,
-        Ok(None) => {
+        Ok(SizeProbe::Known(n)) => n,
+        Ok(SizeProbe::Unknown(reason)) => {
+            let reason = reason.as_str();
             warn!(
                 name = %target.name,
                 version = %target.version,
-                "storage_cache: probe returned no size header, passthrough"
+                reason,
+                "storage_cache: probe returned no usable size header, passthrough"
             );
             return Ok(TargetOutcome::SkippedHeadFailed {
-                reason: "missing-size-header".to_string(),
+                reason: reason.to_string(),
             });
         }
         Err(e) => {
@@ -330,6 +344,16 @@ async fn process_one(
     let t = Instant::now();
     let bytes = match download_tarball(http, &target.archive_url, CACHE_MAX_SIZE).await? {
         DownloadBody::Complete(bytes) => bytes,
+        DownloadBody::Empty => {
+            warn!(
+                name = %target.name,
+                version = %target.version,
+                "storage_cache: full download returned empty archive, passthrough"
+            );
+            return Ok(TargetOutcome::SkippedInvalidDownload {
+                reason: "empty-download".to_string(),
+            });
+        }
         DownloadBody::OverSize { observed_size } => {
             warn!(
                 name = %target.name,
@@ -345,6 +369,31 @@ async fn process_one(
             )));
         }
     };
+    let observed_size = u64::try_from(bytes.len())
+        .map_err(|_| RunnerError::Internal("downloaded archive length overflow".to_string()))?;
+    if observed_size != size {
+        warn!(
+            name = %target.name,
+            version = %target.version,
+            probe_size = size,
+            observed_size,
+            "storage_cache: full download size differed from probe, passthrough"
+        );
+        return Ok(TargetOutcome::SkippedInvalidDownload {
+            reason: "size-mismatch".to_string(),
+        });
+    }
+    if let Err(reason) = validate_tar_gz_archive(bytes.clone()).await? {
+        warn!(
+            name = %target.name,
+            version = %target.version,
+            error = %reason,
+            "storage_cache: full download returned invalid archive, passthrough"
+        );
+        return Ok(TargetOutcome::SkippedInvalidDownload {
+            reason: "invalid-archive".to_string(),
+        });
+    }
     write_to_cache(&cache_dir, &bytes).await?;
     let guest_path = guest_archive_path(&target.name, &target.version);
     drop(writer);
@@ -359,12 +408,17 @@ async fn process_one(
 
 async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult<CachedArchive> {
     match fs::metadata(archive_path).await {
+        Ok(metadata) if metadata.len() == 0 => Ok(CachedArchive::Empty),
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
             match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
+                    if let Err(reason) = validate_tar_gz_archive(bytes.clone()).await? {
+                        return Ok(CachedArchive::Invalid { reason });
+                    }
                     touch_mtime(cache_dir);
                     Ok(CachedArchive::Hit(bytes))
                 }
+                DownloadBody::Empty => Ok(CachedArchive::Empty),
                 DownloadBody::OverSize { observed_size } => {
                     Ok(CachedArchive::OverSize { observed_size })
                 }
@@ -381,7 +435,41 @@ async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult
     }
 }
 
-async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
+#[derive(Debug, PartialEq, Eq)]
+enum SizeProbe {
+    Known(u64),
+    Unknown(SizeProbeUnknown),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SizeProbeUnknown {
+    MissingSizeHeader,
+    InvalidSizeHeader,
+    MissingContentRange,
+    UnknownSize,
+    InvalidContentRange,
+}
+
+impl SizeProbeUnknown {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::MissingSizeHeader => "missing-size-header",
+            Self::InvalidSizeHeader => "invalid-size-header",
+            Self::MissingContentRange => "missing-content-range",
+            Self::UnknownSize => "unknown-size",
+            Self::InvalidContentRange => "invalid-content-range",
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ProbeContentRange {
+    Known(u64),
+    UnknownSize,
+    Invalid,
+}
+
+async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
     use reqwest::{StatusCode, header};
     let resp = http
         .get(url)
@@ -394,23 +482,36 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
     let status = resp.status();
     if status == StatusCode::PARTIAL_CONTENT {
         // 206: parse total from `Content-Range: bytes 0-0/<total>`.
-        let total = resp
-            .headers()
-            .get(header::CONTENT_RANGE)
-            .and_then(|v| v.to_str().ok())
-            .and_then(parse_content_range_total);
+        let total = match resp.headers().get(header::CONTENT_RANGE) {
+            Some(value) => match value.to_str() {
+                Ok(value) => match parse_probe_content_range_total(value) {
+                    ProbeContentRange::Known(total) => SizeProbe::Known(total),
+                    ProbeContentRange::UnknownSize => {
+                        SizeProbe::Unknown(SizeProbeUnknown::UnknownSize)
+                    }
+                    ProbeContentRange::Invalid => {
+                        SizeProbe::Unknown(SizeProbeUnknown::InvalidContentRange)
+                    }
+                },
+                Err(_) => SizeProbe::Unknown(SizeProbeUnknown::InvalidContentRange),
+            },
+            None => SizeProbe::Unknown(SizeProbeUnknown::MissingContentRange),
+        };
         // Do not drain the body here. Some origins ignore Range while still
         // returning large bodies, and probe safety matters more than reusing
         // this connection.
         return Ok(total);
     }
-    if status.is_success() {
+    if status == StatusCode::OK {
         // 200: server ignored Range. Fall back to Content-Length.
-        let total = resp
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
+        let total = match resp.headers().get(header::CONTENT_LENGTH) {
+            Some(value) => match value.to_str().ok().and_then(parse_ascii_decimal_u64) {
+                Some(0) => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
+                Some(total) => SizeProbe::Known(total),
+                None => SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader),
+            },
+            None => SizeProbe::Unknown(SizeProbeUnknown::MissingSizeHeader),
+        };
         // Drop the response after headers instead of buffering an ignored
         // Range response into memory.
         return Ok(total);
@@ -428,15 +529,60 @@ fn reqwest_error(e: reqwest::Error) -> String {
     e.without_url().to_string()
 }
 
-/// Parse the total size out of a `Content-Range` header value such as
-/// `bytes 0-0/12345`. Returns `None` for `bytes 0-0/*` (server declines to
-/// disclose the total) or any malformed value.
-fn parse_content_range_total(value: &str) -> Option<u64> {
-    let (_, total) = value.rsplit_once('/')?;
+/// Parse the total size from the response to our `Range: bytes=0-0` probe.
+fn parse_probe_content_range_total(value: &str) -> ProbeContentRange {
+    let mut parts = value.split_whitespace();
+    let Some(unit) = parts.next() else {
+        return ProbeContentRange::Invalid;
+    };
+    let Some(range_and_total) = parts.next() else {
+        return ProbeContentRange::Invalid;
+    };
+    if parts.next().is_some() || !unit.eq_ignore_ascii_case("bytes") {
+        return ProbeContentRange::Invalid;
+    }
+
+    let mut range_total_parts = range_and_total.split('/');
+    let Some(range) = range_total_parts.next() else {
+        return ProbeContentRange::Invalid;
+    };
+    let Some(total) = range_total_parts.next() else {
+        return ProbeContentRange::Invalid;
+    };
+    if range_total_parts.next().is_some() {
+        return ProbeContentRange::Invalid;
+    }
+
+    let Some((start, end)) = range.split_once('-') else {
+        return ProbeContentRange::Invalid;
+    };
+    let Some(start) = parse_ascii_decimal_u64(start) else {
+        return ProbeContentRange::Invalid;
+    };
+    let Some(end) = parse_ascii_decimal_u64(end) else {
+        return ProbeContentRange::Invalid;
+    };
+    if start != 0 || end != 0 {
+        return ProbeContentRange::Invalid;
+    }
+
     if total == "*" {
+        return ProbeContentRange::UnknownSize;
+    }
+    let Some(total) = parse_ascii_decimal_u64(total) else {
+        return ProbeContentRange::Invalid;
+    };
+    if total <= end {
+        return ProbeContentRange::Invalid;
+    }
+    ProbeContentRange::Known(total)
+}
+
+fn parse_ascii_decimal_u64(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    total.trim().parse::<u64>().ok()
+    value.parse::<u64>().ok()
 }
 
 async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResult<DownloadBody> {
@@ -472,6 +618,10 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
         }
     }
 
+    if bytes.is_empty() {
+        return Ok(DownloadBody::Empty);
+    }
+
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
 }
 
@@ -504,7 +654,33 @@ async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<Downloa
         }
     }
 
+    if bytes.is_empty() {
+        return Ok(DownloadBody::Empty);
+    }
+
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
+}
+
+async fn validate_tar_gz_archive(bytes: Bytes) -> RunnerResult<Result<(), String>> {
+    // Gzip/tar validation is synchronous CPU work; keep it off the async worker.
+    // The caller only passes bodies already capped by CACHE_MAX_SIZE.
+    tokio::task::spawn_blocking(move || validate_tar_gz_archive_sync(bytes))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("join archive validation: {e}")))
+}
+
+fn validate_tar_gz_archive_sync(bytes: Bytes) -> Result<(), String> {
+    let decoder = flate2::read::GzDecoder::new(io::Cursor::new(bytes));
+    let mut archive = tar::Archive::new(decoder);
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("read archive entries: {e}"))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|e| format!("read archive entry: {e}"))?;
+        io::copy(&mut entry, &mut io::sink())
+            .map_err(|e| format!("read archive entry body: {e}"))?;
+    }
+    Ok(())
 }
 
 fn append_limited_chunk(
@@ -543,6 +719,45 @@ async fn evict_oversized_cache(
     {
         return Err(RunnerError::Internal(format!(
             "remove oversized cache {}: {e}",
+            cache_dir.display()
+        )));
+    }
+    Ok(())
+}
+
+async fn evict_invalid_cache(
+    target: &CacheTarget,
+    cache_dir: &Path,
+    reason: &str,
+) -> RunnerResult<()> {
+    warn!(
+        name = %target.name,
+        version = %target.version,
+        error = %reason,
+        "storage_cache: cached archive is invalid, evicting"
+    );
+    if let Err(e) = fs::remove_dir_all(cache_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(RunnerError::Internal(format!(
+            "remove invalid cache {}: {e}",
+            cache_dir.display()
+        )));
+    }
+    Ok(())
+}
+
+async fn evict_empty_cache(target: &CacheTarget, cache_dir: &Path) -> RunnerResult<()> {
+    warn!(
+        name = %target.name,
+        version = %target.version,
+        "storage_cache: cached archive is empty, evicting"
+    );
+    if let Err(e) = fs::remove_dir_all(cache_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(RunnerError::Internal(format!(
+            "remove empty cache {}: {e}",
             cache_dir.display()
         )));
     }
@@ -676,6 +891,14 @@ fn apply_outcome(
                 Some(reason.as_str()),
             );
         }
+        TargetOutcome::SkippedInvalidDownload { reason } => {
+            telemetry.record(
+                "storage_cache_skipped_invalid_download",
+                Duration::ZERO,
+                true,
+                Some(reason.as_str()),
+            );
+        }
     }
 }
 
@@ -789,8 +1012,22 @@ mod tests {
     }
 
     fn tarball_bytes() -> Vec<u8> {
-        // A small payload is enough — the cache treats it as opaque bytes.
-        b"pretend-tar-gz-bytes".to_vec()
+        let mut bytes = Vec::new();
+        {
+            let encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let content = b"storage cache test file\n";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "file.txt", &content[..])
+                .unwrap();
+            let encoder = builder.into_inner().unwrap();
+            encoder.finish().unwrap();
+        }
+        bytes
     }
 
     fn write_cached_archive(home: &HomePaths, name: &str, version: &str, bytes: &[u8]) {
@@ -937,6 +1174,48 @@ mod tests {
             Ok(())
         });
         (format!("http://{addr}/archive.tar.gz"), handle)
+    }
+
+    fn assert_storage_cache_skipped_reason(ops: &[(String, bool, Option<String>)], expected: &str) {
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref());
+        assert_eq!(
+            reason,
+            Some(expected),
+            "expected storage_cache_skipped_head_failed reason {expected:?} in {ops:?}"
+        );
+    }
+
+    fn assert_storage_cache_skipped_reason_contains(
+        ops: &[(String, bool, Option<String>)],
+        expected: &str,
+    ) {
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(
+            reason.contains(expected),
+            "expected storage_cache_skipped_head_failed reason to contain {expected:?} in {ops:?}"
+        );
+    }
+
+    fn assert_storage_cache_skipped_invalid_download(
+        ops: &[(String, bool, Option<String>)],
+        expected: &str,
+    ) {
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_invalid_download")
+            .and_then(|(_, _, error)| error.as_deref());
+        assert_eq!(
+            reason,
+            Some(expected),
+            "expected storage_cache_skipped_invalid_download reason {expected:?} in {ops:?}"
+        );
     }
 
     #[tokio::test]
@@ -1143,6 +1422,221 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bytes 0-0/1")
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(Vec::<u8>::new());
+            })
+            .await;
+
+        let original = server.url("/empty-body.tar.gz");
+        let name = "empty-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "empty-download");
+    }
+
+    #[tokio::test]
+    async fn invalid_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = b"not a valid tar.gz".to_vec();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/invalid-body.tar.gz");
+        let name = "invalid-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "invalid-archive");
+    }
+
+    #[tokio::test]
+    async fn shorter_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/short-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len() + 1))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/short-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/short-body.tar.gz");
+        let name = "short-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
+    }
+
+    #[tokio::test]
+    async fn longer_full_download_within_limit_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/long-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bytes 0-0/1")
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/long-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/long-body.tar.gz");
+        let name = "long-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
+    }
+
+    #[tokio::test]
     async fn cached_true_entry_is_not_touched() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -1308,6 +1802,130 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_disk_hit_is_evicted_and_revalidated() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let name = "empty-hit";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), b"").unwrap();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-revalidated.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-revalidated.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/empty-revalidated.tar.gz");
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
+            "expected revalidation miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
+            "empty cache file must not be treated as a hit: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_disk_hit_is_evicted_and_revalidated() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let name = "invalid-hit";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), b"not a valid tar.gz").unwrap();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-revalidated.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-revalidated.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/invalid-revalidated.tar.gz");
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
+            "expected revalidation miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
+            "invalid cache file must not be treated as a hit: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn artifacts_are_cached_too() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -1429,7 +2047,163 @@ mod tests {
 
         let _ = release_tx.send(());
         server_task.await.unwrap().unwrap();
-        assert_eq!(result, Some(advertised_size));
+        assert_eq!(result, SizeProbe::Known(advertised_size));
+    }
+
+    #[tokio::test]
+    async fn probe_200_rejects_malformed_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
+        let (url, handle) = raw_http_url(response).await;
+
+        let http = Client::builder().build().unwrap();
+        let result = probe_size(&http, &url).await;
+
+        handle.await.unwrap().unwrap();
+        match result {
+            Ok(SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader)) => {}
+            Err(err) => assert!(err.to_string().contains("probe GET"), "got: {err}"),
+            other => panic!("malformed Content-Length must not become a known size: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_200_malformed_content_length_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
+        let (original, handle) = raw_http_url(response).await;
+        let name = "malformed-length";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        handle.await.unwrap().unwrap();
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(
+            reason == "invalid-size-header" || reason.contains("probe GET"),
+            "unexpected malformed Content-Length reason: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_200_zero_content_length_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/zero-length.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(200).header("content-length", "0");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/zero-length.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(tarball_bytes());
+            })
+            .await;
+
+        let original = server.url("/zero-length.tar.gz");
+        let name = "zero-length";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_reason(&ops, "invalid-size-header");
+    }
+
+    #[tokio::test]
+    async fn probe_non_ok_success_status_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/no-content.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(204).header("content-length", "0");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/no-content.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(tarball_bytes());
+            })
+            .await;
+
+        let original = server.url("/no-content.tar.gz");
+        let name = "no-content";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_reason_contains(&ops, "204");
     }
 
     #[tokio::test]
@@ -1467,7 +2241,7 @@ mod tests {
 
         let _ = release_tx.send(());
         server_task.await.unwrap().unwrap();
-        assert_eq!(result, Some(total_size));
+        assert_eq!(result, SizeProbe::Known(total_size));
     }
 
     #[test]
@@ -1555,6 +2329,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("content-length over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
@@ -1578,6 +2353,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("stream over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
@@ -1597,6 +2373,7 @@ mod tests {
                     bytes.len()
                 )
             }
+            DownloadBody::Empty => panic!("cached file over limit must not be empty"),
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
     }
@@ -2009,7 +2786,7 @@ mod tests {
     #[tokio::test]
     async fn probe_206_without_content_range_is_passthrough() {
         // Server returns 206 but omits Content-Range entirely. Probe can't
-        // extract a total → Ok(None) → passthrough (SkippedHeadFailed).
+        // extract a total, so the entry must stay passthrough.
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -2024,25 +2801,38 @@ mod tests {
                 then.status(206).body(b"x");
             })
             .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/nosize.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(tarball_bytes());
+            })
+            .await;
 
         let original = server.url("/nosize.tar.gz");
-        let mut manifest = manifest_single_storage(original.clone(), "nosize", "v1");
+        let name = "nosize";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
 
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
         probe.assert_async().await;
+        full.assert_calls_async(0).await;
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
             Some(original.as_str())
         );
-        let ops = telemetry.pending_ops_snapshot();
         assert!(
-            ops.iter()
-                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
-            "expected storage_cache_skipped_head_failed in {ops:?}"
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
         );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_reason(&ops, "missing-content-range");
     }
 
     #[tokio::test]
@@ -2095,52 +2885,85 @@ mod tests {
                 .exists()
         );
         let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter()
-                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
-            "expected storage_cache_skipped_head_failed in {ops:?}"
-        );
+        assert_storage_cache_skipped_reason(&ops, "unknown-size");
     }
 
     #[tokio::test]
     async fn probe_malformed_content_range_is_passthrough() {
-        // 206 with a Content-Range value that can't be parsed into a total
-        // must fall back to passthrough, not silently treat the archive as
-        // zero-sized.
-        let temp = tempfile::tempdir().unwrap();
-        let home = home_at(&temp);
-        let sandbox = MockSandbox::new("test");
-        let mut telemetry = new_telemetry();
-        let server = MockServer::start_async().await;
+        let cases = [
+            ("bogus-no-slash", "no-slash"),
+            ("bogus/7", "bogus-slash"),
+            ("bytes */7", "wildcard-range"),
+            ("bytes 1-0/7", "reversed-range"),
+            ("bytes 0-1/7", "wrong-range"),
+            ("items 0-0/7", "wrong-unit"),
+            ("bytes 0-0/0", "empty-total"),
+            ("bytes -0/7", "empty-start"),
+            ("bytes 0-/7", "empty-end"),
+            ("bytes 0-0/", "empty-size"),
+            ("bytes 0-0/7/8", "extra-slash"),
+            ("bytes 0-0/7 extra", "extra-token"),
+            ("bytes 0-0/18446744073709551616", "overflow-total"),
+            ("bytes +0-0/7", "plus-start"),
+            ("bytes 0-+0/7", "plus-end"),
+            ("bytes 0-0/+7", "plus-total"),
+        ];
 
-        let probe = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path("/garbage.tar.gz")
-                    .header("range", "bytes=0-0");
-                then.status(206)
-                    .header("content-range", "bogus-no-slash")
-                    .body(b"x");
-            })
-            .await;
+        for (content_range, slug) in cases {
+            let temp = tempfile::tempdir().unwrap();
+            let home = home_at(&temp);
+            let sandbox = MockSandbox::new("test");
+            let mut telemetry = new_telemetry();
+            let server = MockServer::start_async().await;
+            let path = format!("/{slug}.tar.gz");
+            let probe_path = path.clone();
+            let full_path = path.clone();
+            let probe_content_range = content_range.to_string();
 
-        let original = server.url("/garbage.tar.gz");
-        let mut manifest = manifest_single_storage(original.clone(), "garbage", "v1");
+            let probe = server
+                .mock_async(move |when, then| {
+                    when.method(GET)
+                        .path(probe_path.as_str())
+                        .header("range", "bytes=0-0");
+                    then.status(206)
+                        .header("content-range", probe_content_range)
+                        .body(b"x");
+                })
+                .await;
+            let full = server
+                .mock_async(move |when, then| {
+                    when.method(GET)
+                        .path(full_path.as_str())
+                        .header_missing("range");
+                    then.status(200).body(tarball_bytes());
+                })
+                .await;
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+            let original = server.url(path.as_str());
+            let name = format!("garbage-{slug}");
+            let version = "v1";
+            let mut manifest = manifest_single_storage(original.clone(), name.as_str(), version);
 
-        probe.assert_async().await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter()
-                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
-            "expected storage_cache_skipped_head_failed in {ops:?}"
-        );
+            populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+
+            probe.assert_async().await;
+            full.assert_calls_async(0).await;
+            assert_eq!(
+                manifest.storages[0].archive_url.as_deref(),
+                Some(original.as_str()),
+                "{content_range} must stay passthrough"
+            );
+            assert!(
+                !home
+                    .storage_cache_dir(name.as_str(), version)
+                    .join("archive.tar.gz")
+                    .exists(),
+                "{content_range} must not write a cache archive"
+            );
+            let ops = telemetry.pending_ops_snapshot();
+            assert_storage_cache_skipped_reason(&ops, "invalid-content-range");
+        }
     }
 }
