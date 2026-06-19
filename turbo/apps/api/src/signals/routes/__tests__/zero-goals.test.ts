@@ -370,9 +370,12 @@ describe("zero goals", () => {
         chatThreadId: fixture.threadId,
         nextRunAt: null,
       }),
-    ).rejects.toThrow(
-      /idx_zero_workflow_triggers_thread_idle_thread_unique|duplicate key|unique/i,
-    );
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        code: "23505",
+        constraint: "idx_zero_workflow_triggers_thread_idle_thread_unique",
+      }),
+    });
   });
 
   it("provisions a chat thread when the current run has none", async () => {
