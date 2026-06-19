@@ -2,15 +2,20 @@ use super::*;
 
 use std::future::Future;
 
+use base64::Engine;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
-use vsock_host::{NormalOperationFenceRejection, VsockHost};
-use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
+use vsock_proto::{
+    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+};
 
 use crate::control::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus, send_exec, send_terminate,
 };
+use crate::exec_result_compat::EXEC_TIMEOUT_EXIT_CODE;
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
 };
@@ -112,6 +117,47 @@ fn exec_request(command: &str) -> ExecRequest {
     }
 }
 
+fn control_exec_result(
+    termination: ExecTermination,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    diagnostic: &str,
+) -> vsock_host::ExecOperationResult {
+    vsock_host::ExecOperationResult {
+        termination,
+        duration_ms: 10,
+        stdout: ExecOwnedCapturedOutput::Captured {
+            bytes: stdout,
+            truncated: true,
+        },
+        stderr: ExecOwnedCapturedOutput::Captured {
+            bytes: stderr,
+            truncated: false,
+        },
+        diagnostic: diagnostic.to_string(),
+        stream_overflowed: false,
+    }
+}
+
+fn expect_exec_success(response: ExecResponse) -> (i32, Vec<u8>, Vec<u8>, bool, bool) {
+    match response {
+        ExecResponse::Success {
+            exit_code,
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
+        } => (
+            exit_code,
+            BASE64.decode(stdout).expect("stdout should decode"),
+            BASE64.decode(stderr).expect("stderr should decode"),
+            stdout_truncated,
+            stderr_truncated,
+        ),
+        ExecResponse::Error { error } => panic!("expected success response, got error: {error}"),
+    }
+}
+
 fn test_gate(guest: GuestState) -> GuestOperationStartGate {
     GuestOperationStartGate::new(guest, ParkCoordinator::new())
 }
@@ -145,6 +191,114 @@ fn bind_test_server(
     guest_operations: GuestOperationStartGate,
 ) -> io::Result<BoundControlServer> {
     bind_server(sock_path, guest_operations, test_termination_handle())
+}
+
+#[test]
+fn control_exec_result_preserves_ordinary_exit_compatibility() {
+    let response = exec_response_from_operation_result(control_exec_result(
+        ExecTermination::Exited { exit_code: 7 },
+        b"out".to_vec(),
+        b"err".to_vec(),
+        "ignored",
+    ))
+    .expect("ordinary exit should convert");
+
+    let (exit_code, stdout, stderr, stdout_truncated, stderr_truncated) =
+        expect_exec_success(response);
+    assert_eq!(exit_code, 7);
+    assert_eq!(stdout, b"out");
+    assert_eq!(stderr, b"err");
+    assert!(stdout_truncated);
+    assert!(!stderr_truncated);
+}
+
+#[test]
+fn control_exec_result_preserves_terminal_state_compatibility_mapping() {
+    for (termination, diagnostic, expected_code, expected_stderr) in [
+        (
+            ExecTermination::TimedOut,
+            "",
+            EXEC_TIMEOUT_EXIT_CODE,
+            "Timeout",
+        ),
+        (
+            ExecTermination::Cancelled,
+            "cancel diagnostic",
+            1,
+            "Cancelled\ncancel diagnostic",
+        ),
+        (
+            ExecTermination::StartFailed,
+            "spawn failed",
+            1,
+            "spawn failed",
+        ),
+        (
+            ExecTermination::WaitFailed,
+            "wait failed",
+            1,
+            "stderr clue\nwait failed",
+        ),
+    ] {
+        let stderr = if matches!(termination, ExecTermination::WaitFailed) {
+            b"stderr clue".to_vec()
+        } else {
+            Vec::new()
+        };
+        let response = exec_response_from_operation_result(control_exec_result(
+            termination,
+            Vec::new(),
+            stderr,
+            diagnostic,
+        ))
+        .expect("terminal state should convert to compatibility response");
+
+        let (exit_code, _, stderr, _, _) = expect_exec_success(response);
+        assert_eq!(exit_code, expected_code);
+        assert_eq!(String::from_utf8(stderr).unwrap(), expected_stderr);
+    }
+}
+
+#[test]
+fn control_exec_result_rejects_invalid_capture_state() {
+    let overflow = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+        stream_overflowed: true,
+        ..control_exec_result(
+            ExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+            "",
+        )
+    })
+    .expect_err("stream overflow should fail");
+    assert_eq!(overflow.kind(), io::ErrorKind::InvalidData);
+    assert!(overflow.to_string().contains("overflowed a stream queue"));
+
+    let stdout_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+        stdout: ExecOwnedCapturedOutput::Discarded,
+        ..control_exec_result(
+            ExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+            "",
+        )
+    })
+    .expect_err("discarded stdout should fail");
+    assert_eq!(stdout_discarded.kind(), io::ErrorKind::InvalidData);
+    assert!(stdout_discarded.to_string().contains("discarded stdout"));
+
+    let stderr_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+        stderr: ExecOwnedCapturedOutput::Discarded,
+        ..control_exec_result(
+            ExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            Vec::new(),
+            "",
+        )
+    })
+    .expect_err("discarded stderr should fail");
+    assert_eq!(stderr_discarded.kind(), io::ErrorKind::InvalidData);
+    assert!(stderr_discarded.to_string().contains("discarded stderr"));
 }
 
 async fn recv_termination_request(
@@ -549,12 +703,47 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
         ExecResponse::Success { .. } => panic!("expected gate-closed error"),
     }
     assert!(
-        exec_seen_rx.try_recv().is_err(),
-        "control exec should not send a guest command while the gate is closing"
+        matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
+        "control exec should not send a guest command while the gate is closing or drop the mock guest"
     );
 
     handle.shutdown().await;
     fixture.coordinator.abort_prepare_park(&attempt).unwrap();
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
+async fn control_exec_rejects_zero_timeout_without_guest_exec() {
+    let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
+    let fixture =
+        VsockExecFixture::connect(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
+            .await;
+    let mut handle = fixture.spawn_server();
+    let request = ExecRequest {
+        command: "echo should-not-run".into(),
+        timeout_secs: 0,
+        sudo: false,
+    };
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    match response {
+        ExecResponse::Error { error } => {
+            assert_eq!(
+                error,
+                "exec failed: exec requires a positive timeout; use supervised exec for unbounded commands"
+            );
+        }
+        ExecResponse::Success { .. } => panic!("expected zero-timeout validation error"),
+    }
+    assert!(
+        matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
+        "control exec should not send a guest command with zero timeout or drop the mock guest"
+    );
+
+    handle.shutdown().await;
     fixture.guest_task.abort();
     let _ = fixture.guest_task.await;
 }
