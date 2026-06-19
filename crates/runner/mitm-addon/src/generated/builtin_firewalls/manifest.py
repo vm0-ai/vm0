@@ -152,6 +152,7 @@ FIREWALL_MODULES = {
     "make": ("make_0",),
     "manus": ("manus_0",),
     "mapbox": ("mapbox_0",),
+    "maskdb": ("maskdb_0",),
     "massive": ("massive_0",),
     "mathpix": ("mathpix_0",),
     "mem0": ("mem0_0",),

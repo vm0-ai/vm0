@@ -185,6 +185,7 @@ const CONNECTOR_ICON_COLORFUL = {
   mailchimp: true,
   mailsac: true,
   manus: true,
+  maskdb: true,
   massive: true,
   meshy: true,
   "meta-ads": true,

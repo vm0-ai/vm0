@@ -579,6 +579,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import mapbox_0
 
         return (mapbox_0.JSON_PART,)
+    if name == "maskdb":
+        from . import maskdb_0
+
+        return (maskdb_0.JSON_PART,)
     if name == "massive":
         from . import massive_0
 

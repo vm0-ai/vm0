@@ -183,6 +183,7 @@ import { make } from "./connectors/make";
 import { manus } from "./connectors/manus";
 import { mapbox } from "./connectors/mapbox";
 import { massive } from "./connectors/massive";
+import { maskdb } from "./connectors/maskdb";
 import { mathpix } from "./connectors/mathpix";
 import { mem0 } from "./connectors/mem0";
 import { mercury } from "./connectors/mercury";
@@ -1218,6 +1219,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...manus,
   ...mapbox,
   ...massive,
+  ...maskdb,
   ...mathpix,
   ...mem0,
   ...mercury,
