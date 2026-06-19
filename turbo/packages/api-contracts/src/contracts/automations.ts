@@ -99,6 +99,9 @@ export const chatThreadWorkflowTriggerSchema = z.object({
     name: z.string(),
     displayName: z.string().nullable(),
     description: z.string().nullable(),
+    // The goal's objective (from `preference`); null for non-goal workflows.
+    // The UI shows this for goals, which carry no `description`.
+    objective: z.string().nullable(),
     type: z.enum(["workflow", "goal"]),
   }),
 });

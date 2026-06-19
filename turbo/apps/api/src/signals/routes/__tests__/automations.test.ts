@@ -588,7 +588,8 @@ describe("Automations API", () => {
         id: workflow!.id,
         type: "goal",
         displayName: "Goal",
-        description: "ship the release",
+        description: null,
+        objective: "ship the release",
       },
     });
   });

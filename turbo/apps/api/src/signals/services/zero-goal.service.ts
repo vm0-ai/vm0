@@ -16,6 +16,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
+import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import type { TriggerRow } from "./zero-workflow-trigger-run.service";
 
 export type GoalResult =
@@ -33,7 +34,11 @@ export type GoalResult =
   | { readonly kind: "conflict"; readonly message: string };
 
 type GoalRowResult =
-  | { readonly kind: "ok"; readonly row: ActiveGoalRow }
+  | {
+      readonly kind: "ok";
+      readonly row: ActiveGoalRow;
+      readonly threadId: string;
+    }
   | Exclude<GoalResult, { readonly kind: "ok" }>;
 
 interface CurrentGoalContext {
@@ -257,6 +262,7 @@ export async function createGoalForCurrentThread(
         preference: workflow.preference,
       } satisfies ActiveGoalRow,
       trigger,
+      threadId,
     };
   });
 
@@ -266,6 +272,13 @@ export async function createGoalForCurrentThread(
       message: "Complete the existing goal before creating a new one",
     };
   }
+
+  // Refresh any client viewing the thread's automation sidebar so the new goal
+  // shows up live (same realtime signal automations use).
+  await publishChatThreadAutomationsChangedSafely(
+    args.userId,
+    created.threadId,
+  );
 
   return {
     kind: "ok",
@@ -314,6 +327,7 @@ export async function completeCurrentGoal(
     .update(zeroWorkflows)
     .set({ active: false, updatedAt: completedAt })
     .where(eq(zeroWorkflows.id, goal.row.workflowId));
+  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
@@ -335,6 +349,7 @@ export async function blockCurrentGoal(
     .update(zeroWorkflowTriggers)
     .set({ enabled: false, updatedAt: blockedAt })
     .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
@@ -356,6 +371,7 @@ export async function resumeCurrentGoal(
     .update(zeroWorkflowTriggers)
     .set({ enabled: true, consecutiveFailures: 0, updatedAt: resumedAt })
     .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
@@ -382,5 +398,5 @@ async function loadGoalForAuth(
   if (!row) {
     return { kind: "not-found" };
   }
-  return { kind: "ok", row };
+  return { kind: "ok", row, threadId: context.threadId };
 }

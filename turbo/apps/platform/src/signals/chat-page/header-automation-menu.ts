@@ -82,6 +82,7 @@ export interface HeaderWorkflowTriggerEntry {
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
+  readonly workflowObjective: string | null;
   readonly workflowType: "workflow" | "goal";
   readonly summary: string;
 }
@@ -115,6 +116,7 @@ export const headerWorkflowTriggers$ = computed(
         workflowName: trigger.workflow.name,
         workflowDisplayName: trigger.workflow.displayName,
         workflowDescription: trigger.workflow.description,
+        workflowObjective: trigger.workflow.objective,
         workflowType: trigger.workflow.type,
         summary: workflowTriggerSummary(trigger),
       };

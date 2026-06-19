@@ -2112,7 +2112,11 @@ function HeaderWorkflowTriggerCard({
   trigger: HeaderWorkflowTriggerEntry;
 }) {
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
-  const description = trigger.workflowDescription?.trim();
+  // Goals have no description — their human text is the objective. Workflows use
+  // their description.
+  const description = (
+    trigger.workflowObjective ?? trigger.workflowDescription
+  )?.trim();
   return (
     <article
       className={cn(
