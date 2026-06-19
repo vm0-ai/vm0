@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.48](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.47...sandbox-fc-v0.37.48) (2026-06-19)
+
+
+### Bug Fixes
+
+* restrict runner dnsmasq listener ([#18292](https://github.com/vm0-ai/vm0/issues/18292)) ([dacb3fb](https://github.com/vm0-ai/vm0/commit/dacb3fb70df2812c3e2e790e01f588c8f8f8a4f0))
+
 ## [0.37.47](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.46...sandbox-fc-v0.37.47) (2026-06-18)
 
 ## [0.37.46](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.45...sandbox-fc-v0.37.46) (2026-06-18)

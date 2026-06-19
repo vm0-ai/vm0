@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.8](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.7...sandbox-v0.19.8) (2026-06-19)
+
+
+### Bug Fixes
+
+* restrict runner dnsmasq listener ([#18292](https://github.com/vm0-ai/vm0/issues/18292)) ([dacb3fb](https://github.com/vm0-ai/vm0/commit/dacb3fb70df2812c3e2e790e01f588c8f8f8a4f0))
+
 ## [0.19.7](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.6...sandbox-v0.19.7) (2026-06-18)
 
 
