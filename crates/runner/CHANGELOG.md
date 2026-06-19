@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.124.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.124.0...runner-rs-v0.124.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* restrict runner dnsmasq listener ([#18292](https://github.com/vm0-ai/vm0/issues/18292)) ([dacb3fb](https://github.com/vm0-ai/vm0/commit/dacb3fb70df2812c3e2e790e01f588c8f8f8a4f0))
+
 ## [0.124.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.123.0...runner-rs-v0.124.0) (2026-06-19)
 
 
