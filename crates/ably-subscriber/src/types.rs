@@ -188,31 +188,10 @@ pub struct TimingConfig {
     ///
     /// Matches ably-js `realtimeRequestTimeout`.
     pub realtime_request_timeout: Duration,
-    /// Legacy base interval for the first retry attempt.
-    ///
-    /// Kept for API compatibility; the Ably-aligned state machine uses
-    /// [`disconnected_retry_timeout`](Self::disconnected_retry_timeout) and
-    /// [`suspended_retry_timeout`](Self::suspended_retry_timeout).
-    pub initial_retry_interval: Duration,
-    /// Legacy cap on exponential backoff between retries.
-    ///
-    /// Kept for API compatibility.
-    pub max_retry_interval: Duration,
     /// Minimum spacing between reconnect attempts after transport-level
     /// disconnects. This mirrors ably-js' guard against tight reconnect loops
     /// when a server or proxy repeatedly closes otherwise healthy sockets.
     pub min_reconnect_interval: Duration,
-    /// Legacy maximum number of consecutive reconnection attempts before giving up.
-    ///
-    /// Kept for API compatibility. Ably-js retries disconnected/suspended
-    /// connections indefinitely, so this field is not used by the current state
-    /// machine.
-    pub max_retry_attempts: u32,
-
-    // -- Channel re-attach ---------------------------------------------------
-    /// Legacy re-attach window used by the previous reconnect-on-repeat-detach
-    /// behavior. Kept for API compatibility.
-    pub reattach_window: Duration,
 
     // -- Token renewal -------------------------------------------------------
     /// How early before token expiry to start proactive renewal.
@@ -244,12 +223,7 @@ impl Default for TimingConfig {
             suspended_retry_timeout: Duration::from_secs(30),
             channel_retry_timeout: Duration::from_secs(15),
             realtime_request_timeout: Duration::from_secs(10),
-            initial_retry_interval: Duration::from_secs(1),
-            max_retry_interval: Duration::from_secs(15),
             min_reconnect_interval: Duration::from_secs(1),
-            max_retry_attempts: 40,
-            // Channel re-attach
-            reattach_window: Duration::from_secs(15),
             // Token renewal
             token_renewal_margin: Duration::from_secs(300),
             token_renewal_retry_delay: Duration::from_secs(30),
