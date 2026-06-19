@@ -218,6 +218,54 @@ describe("permission draft intent", () => {
     });
   });
 
+  it("lets a denied row break inherited group duration", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "deny",
+    });
+    draft = setPermissionDraftExpiration({
+      draft,
+      permissionName: "bookmarks:read",
+      expiresIn: "always",
+    });
+
+    expect(
+      resolvePermissionDraftGroupExpiration({
+        context,
+        draft,
+        category: "Read",
+        permissions: READ_PERMISSIONS,
+      }),
+    ).toBeUndefined();
+
+    const materialized = materializePermissionDraftForLegacySave({
+      context,
+      draft,
+      permissions: READ_PERMISSIONS,
+    });
+
+    expect(materialized.policies.slack?.policies["bookmarks:read"]).toBe(
+      "deny",
+    );
+    expect(materialized.expiresInByPermission).toMatchObject({
+      "channels:read": "7d",
+      "channels:history": "7d",
+    });
+    expect(materialized.expiresInByPermission).not.toHaveProperty(
+      "bookmarks:read",
+    );
+  });
+
   it("clears row expiration overrides when setting a group duration", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();

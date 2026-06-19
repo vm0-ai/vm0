@@ -1090,7 +1090,10 @@ function PermissionRow({
             }
           }}
           onClearExpiration={() => {
-            onGrantExpirationChange(permission.name, null);
+            onGrantExpirationChange(
+              permission.name,
+              hasInheritedExpiration ? "always" : null,
+            );
           }}
           onAllowDurationChange={(expiresIn) => {
             onGrantExpirationChange(
