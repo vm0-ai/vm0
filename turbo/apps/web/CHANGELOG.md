@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.433.0](https://github.com/vm0-ai/vm0/compare/web-v12.432.4...web-v12.433.0) (2026-06-18)
+
+
+### Features
+
+* add workflow schedule trigger management surface and test run ([#18311](https://github.com/vm0-ai/vm0/issues/18311)) ([2af4f58](https://github.com/vm0-ai/vm0/commit/2af4f58e0c9ac33167d8eb2b3c7acd7df4b71902)), closes [#18258](https://github.com/vm0-ai/vm0/issues/18258)
+* **api:** add workflow schedule trigger persistence and management endpoints ([#18272](https://github.com/vm0-ai/vm0/issues/18272)) ([7e86c2d](https://github.com/vm0-ai/vm0/commit/7e86c2db0526fac21abc6704371406bb56ad7e32))
+* **api:** add workflow schedule trigger scheduler and execution ([#18297](https://github.com/vm0-ai/vm0/issues/18297)) ([f1275d0](https://github.com/vm0-ai/vm0/commit/f1275d0fb851ba2a73c4439fbd357b8fc2b11567)), closes [#18257](https://github.com/vm0-ai/vm0/issues/18257)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.104.0
+    * @vm0/core bumped to 8.357.0
+
 ## [12.432.4](https://github.com/vm0-ai/vm0/compare/web-v12.432.3...web-v12.432.4) (2026-06-18)
 
 
