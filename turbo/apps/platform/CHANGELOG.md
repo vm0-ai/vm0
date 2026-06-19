@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.475.0](https://github.com/vm0-ai/vm0/compare/app-v0.474.0...app-v0.475.0) (2026-06-19)
+
+
+### Features
+
+* add goal workflows continuation ([#18328](https://github.com/vm0-ai/vm0/issues/18328)) ([969d660](https://github.com/vm0-ai/vm0/commit/969d66023b20059ab874d08c1e293be87641d5ab))
+
+
+### Bug Fixes
+
+* retry permission action card loads ([#18327](https://github.com/vm0-ai/vm0/issues/18327)) ([d08a39d](https://github.com/vm0-ai/vm0/commit/d08a39d31b8385f42626f987af4fbc07b49b66dc))
+
+
+### Performance Improvements
+
+* cache grouped chat messages ([#18326](https://github.com/vm0-ai/vm0/issues/18326)) ([87aa10e](https://github.com/vm0-ai/vm0/commit/87aa10edc285e470f98d7886d66d9b19fbde861d))
+* make permission drawer use sparse draft state ([#18290](https://github.com/vm0-ai/vm0/issues/18290)) ([ace7a68](https://github.com/vm0-ai/vm0/commit/ace7a6848641e284356c505d676bfe9162c0c444))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.105.0
+    * @vm0/connectors bumped to 1.95.0
+    * @vm0/core bumped to 8.358.0
+
 ## [0.474.0](https://github.com/vm0-ai/vm0/compare/app-v0.473.0...app-v0.474.0) (2026-06-19)
 
 
