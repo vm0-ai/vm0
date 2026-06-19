@@ -18,6 +18,7 @@ import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type RunFailure,
+  type RunWorkflowTriggerResult,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
 
@@ -382,5 +383,37 @@ export const continueGoalIfIdle$ = command(
       consecutiveFailures: failureUpdate.consecutiveFailures,
       error,
     };
+  },
+);
+
+/**
+ * Kick off the very first run of a goal whose thread was just provisioned by
+ * goal creation. A normal goal continues itself off the thread-idle event when
+ * an in-flight run terminates, but a brand-new empty thread has no such run, so
+ * the first turn must be enqueued explicitly. Subsequent turns continue through
+ * `continueGoalIfIdle$` like any other goal.
+ */
+export const bootstrapGoalRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly trigger: TriggerRow;
+      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+    },
+    signal: AbortSignal,
+  ): Promise<RunWorkflowTriggerResult> => {
+    return set(
+      runWorkflowTriggerNow$,
+      {
+        due: { trigger: args.trigger, workflowName: "goal" },
+        apiStartTime: now(),
+        triggerSource: "workflow-event",
+        appendSystemPrompt: buildGoalContinuationSystemPrompt(),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(args.trigger),
+        recordLastRunAt: true,
+        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+      },
+      signal,
+    );
   },
 );
