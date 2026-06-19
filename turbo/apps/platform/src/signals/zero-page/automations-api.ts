@@ -4,6 +4,7 @@ import {
   automationTriggersContract,
   type AutomationResponse,
   type AutomationTriggerResponse,
+  type ChatThreadWorkflowTrigger,
   type UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
@@ -199,6 +200,22 @@ export async function listAutomations(
     }
   }
   return views;
+}
+
+/**
+ * List the workflow + goal triggers bound to the caller's chat threads. Surfaced
+ * in the chat-thread automation sidebar; consumers filter by `chatThreadId`.
+ */
+export async function listThreadWorkflowTriggers(
+  client: ZeroClientFactory,
+  fetchOptions?: RequestInit,
+): Promise<ChatThreadWorkflowTrigger[]> {
+  const result = await accept(
+    client(automationsMainContract).list({ fetchOptions }),
+    [200],
+    { toast: false },
+  );
+  return result.body.workflowTriggers;
 }
 
 async function createAutomation(

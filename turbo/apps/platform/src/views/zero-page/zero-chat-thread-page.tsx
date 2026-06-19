@@ -178,9 +178,12 @@ import {
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
   headerAutomationMenu$,
+  headerWorkflowTriggers$,
   reloadHeaderAutomationMenu$,
   automationsForThread,
+  workflowTriggersForThread,
   type HeaderAutomationEntry,
+  type HeaderWorkflowTriggerEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import {
   closeHeaderAutomationSidebar$,
@@ -2090,17 +2093,89 @@ function HeaderAutomationSidebarCard({
   );
 }
 
+function workflowTriggerTypeLabel(
+  trigger: HeaderWorkflowTriggerEntry,
+): string {
+  return trigger.workflowType === "goal" ? "Goal" : "Workflow";
+}
+
+function HeaderWorkflowTriggerCard({
+  trigger,
+}: {
+  trigger: HeaderWorkflowTriggerEntry;
+}) {
+  const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
+  const description = trigger.workflowDescription?.trim();
+  return (
+    <article
+      className={cn(
+        "rounded-lg border border-border bg-background p-4 transition-colors",
+        !trigger.enabled && "opacity-75",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p
+          className={cn(
+            "line-clamp-1 text-sm font-medium leading-snug",
+            trigger.enabled ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {title}
+        </p>
+        <span className="shrink-0 rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {workflowTriggerTypeLabel(trigger)}
+        </span>
+      </div>
+      {description ? (
+        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
+
+      <dl className="mt-3 text-xs">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">Status</dt>
+          <dd
+            className={cn(
+              "font-medium",
+              trigger.enabled ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {trigger.enabled ? "Active" : "Paused"}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">Trigger</dt>
+          <dd className="min-w-0 truncate text-right font-medium text-foreground">
+            {trigger.summary}
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
   const close = useSet(closeHeaderAutomationSidebar$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
+  const allTriggers =
+    workflowTriggersLoadable.state === "hasData"
+      ? workflowTriggersLoadable.data
+      : (lastResolvedTriggers ?? []);
+  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
+  const isEmpty = automations.length === 0 && workflowTriggers.length === 0;
   const loading =
-    automationsLoadable.state === "loading" && automations.length === 0;
+    isEmpty &&
+    (automationsLoadable.state === "loading" ||
+      workflowTriggersLoadable.state === "loading");
 
   return (
     <aside
@@ -2130,20 +2205,39 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
             <Skeleton className="h-36 rounded-lg" />
             <Skeleton className="h-36 rounded-lg" />
           </div>
-        ) : automations.length === 0 ? (
+        ) : isEmpty ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
             No automations yet.
           </div>
         ) : (
-          <div className="grid gap-3">
-            {automations.map((automation) => {
-              return (
-                <HeaderAutomationSidebarCard
-                  key={automation.id}
-                  automation={automation}
-                />
-              );
-            })}
+          <div className="grid gap-6">
+            {automations.length > 0 ? (
+              <div className="grid gap-3">
+                {automations.map((automation) => {
+                  return (
+                    <HeaderAutomationSidebarCard
+                      key={automation.id}
+                      automation={automation}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+            {workflowTriggers.length > 0 ? (
+              <div className="grid gap-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Workflows &amp; Goals
+                </div>
+                {workflowTriggers.map((trigger) => {
+                  return (
+                    <HeaderWorkflowTriggerCard
+                      key={trigger.id}
+                      trigger={trigger}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
