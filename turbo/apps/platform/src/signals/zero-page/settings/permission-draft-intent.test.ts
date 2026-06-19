@@ -175,6 +175,49 @@ describe("permission draft intent", () => {
     });
   });
 
+  it("lets a row allow always override an inherited group duration", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = setPermissionDraftExpiration({
+      draft,
+      permissionName: "bookmarks:read",
+      expiresIn: "always",
+    });
+
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "bookmarks:read",
+      }),
+    ).toBe("always");
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "channels:read",
+      }),
+    ).toBe("7d");
+
+    const materialized = materializePermissionDraftForLegacySave({
+      context,
+      draft,
+      permissions: READ_PERMISSIONS,
+    });
+
+    expect(materialized.expiresInByPermission).toMatchObject({
+      "bookmarks:read": "always",
+      "channels:read": "7d",
+    });
+  });
+
   it("clears row expiration overrides when setting a group duration", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();

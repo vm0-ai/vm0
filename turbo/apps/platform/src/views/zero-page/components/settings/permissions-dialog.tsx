@@ -471,8 +471,9 @@ function MenuItemCheck({ active }: { active: boolean }) {
 function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
   allowGrant: UserPermissionGrantResponse | undefined,
+  hasInheritedExpiration = false,
 ): UserPermissionGrantExpiresIn | null {
-  if (value === "always" && !allowGrant?.expiresAt) {
+  if (value === "always" && !allowGrant?.expiresAt && !hasInheritedExpiration) {
     return null;
   }
   return value;
@@ -1047,6 +1048,9 @@ function PermissionRow({
     draft,
     permissionName: permission.name,
   });
+  const hasInheritedExpiration =
+    selected !== undefined &&
+    draft.permissionExpirations[permission.name] === undefined;
   const hasPendingChange = hasPermissionDraftPermissionChange({
     context,
     draft,
@@ -1094,6 +1098,7 @@ function PermissionRow({
               menuOptionExpiresIn(
                 expiresIn,
                 grant?.action === "allow" ? grant : undefined,
+                hasInheritedExpiration,
               ),
             );
           }}
