@@ -372,6 +372,7 @@ impl SubmitPlan {
         let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let timeout = Self::validate_timeout(timeout)?;
+        Self::validate_active_input_agent(&cli_agent_type, &active_inputs)?;
         let group_dir = home.groups_dir().join(&group);
         local_queue::ensure_profile_jobs_dir(&group_dir, &profile).map_err(|e| {
             RunnerError::Config(format!("create job dir for profile {profile}: {e}"))
@@ -512,6 +513,18 @@ impl SubmitPlan {
         } else {
             Duration::from_secs(amount)
         })
+    }
+
+    fn validate_active_input_agent(
+        cli_agent_type: &str,
+        active_inputs: &[String],
+    ) -> RunnerResult<()> {
+        if active_inputs.is_empty() || matches!(cli_agent_type, "" | "claude-code") {
+            return Ok(());
+        }
+        Err(RunnerError::Config(format!(
+            "invalid --active-input: active input is only supported with claude-code (got {cli_agent_type})"
+        )))
     }
 
     fn validate_timeout(timeout: u64) -> RunnerResult<Duration> {
@@ -1288,6 +1301,22 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("serialized payload"));
+    }
+
+    #[test]
+    fn rejects_active_input_for_non_claude_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let mut args = submit_args_for_test();
+        args.cli_agent_type = "codex".to_string();
+        args.active_inputs = vec!["after=1ms,text=hello".to_string()];
+
+        let err = match SubmitPlan::from_args(args, home) {
+            Ok(_) => panic!("codex active input should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(err.to_string().contains("only supported with claude-code"));
     }
 
     #[tokio::test]
