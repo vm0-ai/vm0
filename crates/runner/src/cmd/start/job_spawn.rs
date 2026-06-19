@@ -100,6 +100,7 @@ struct ExecutorInvocation {
     cancel: CancellationToken,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
+    active_input_source: Option<crate::active_input::ActiveInputSource>,
 }
 
 struct ExecutorPhaseOutcome {
@@ -123,6 +124,7 @@ impl ExecutorInvocation {
             cancel,
             sandbox_token,
             sandbox_prepared,
+            active_input_source,
         } = self;
         let exec_config_for_panic = Arc::clone(&exec_config);
         let cancel_for_executor = cancel.clone();
@@ -131,12 +133,13 @@ impl ExecutorInvocation {
         // still reports completion and releases budget.
         let inner = tokio::spawn(async move {
             if let Some(idle_entry) = reuse_entry {
-                executor::execute_job_reuse(
+                executor::execute_job_reuse_with_active_input_source(
                     idle_entry,
                     context,
                     &exec_config,
                     &params,
                     cancel_for_executor,
+                    active_input_source,
                 )
                 .await
             } else {
@@ -150,7 +153,10 @@ impl ExecutorInvocation {
                     &exec_config,
                     &params,
                     cancel_for_executor,
-                    sandbox_prepared,
+                    executor::ExecutionHooks {
+                        sandbox_prepared,
+                        active_input_source,
+                    },
                 )
                 .await
             }
@@ -430,7 +436,7 @@ pub(super) fn spawn_job(
         reuse_result,
         active_cli_agent_session_guard,
     } = request;
-    let (context, completion_auth) = claimed.into_parts();
+    let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
@@ -518,6 +524,7 @@ pub(super) fn spawn_job(
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
+        active_input_source,
     };
     let finalization = FinalizationPhase {
         run_id,

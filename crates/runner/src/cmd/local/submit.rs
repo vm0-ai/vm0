@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use clap::Args;
 
+use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
@@ -59,6 +60,9 @@ pub struct SubmitArgs {
     /// Timeout in seconds waiting for a runner to complete the job (max: 24 hours)
     #[arg(long, default_value_t = DEFAULT_LOCAL_SUBMIT_TIMEOUT_SECS)]
     timeout: u64,
+    /// Delayed active input for local smoke tests (repeatable, format: after=1s,text=hello)
+    #[arg(long = "active-input")]
+    active_inputs: Vec<String>,
 }
 
 /// Detect the system timezone from the `TZ` env var or `/etc/timezone`.
@@ -97,6 +101,7 @@ struct PublishedMarker {
     ino: u64,
 }
 
+#[derive(Clone)]
 struct SubmitQueueEntry {
     job_id: RunId,
     group_dir: PathBuf,
@@ -124,6 +129,7 @@ impl SubmitQueueEntry {
     fn cleanup_completed(&self) {
         let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
             .remove_job_files_if_present(self.job_id);
+        self.cleanup_active_inputs();
         let _ = remove_file_if_exists(&self.cancel);
         let _ = remove_file_if_exists(&self.claim);
         if jobs_removed {
@@ -138,6 +144,7 @@ impl SubmitQueueEntry {
         let has_claim =
             local_queue::marker_file_exists(&self.claim, "local claim marker").unwrap_or(true);
         if jobs_removed && !has_claim {
+            self.cleanup_active_inputs();
             let _ = remove_file_if_exists(&self.claim);
             let _ = remove_file_if_exists(&self.cancel);
             if marker.is_some() {
@@ -151,6 +158,22 @@ impl SubmitQueueEntry {
     fn abandon(&self, error: &str) {
         let marker = write_abandoned_result_marker(&self.result, self.job_id, error);
         self.cleanup_abandoned(marker.as_ref());
+    }
+
+    fn cleanup_active_inputs(&self) {
+        local_queue::LocalQueue::new(self.group_dir.clone())
+            .cleanup_active_inputs_sync(self.job_id);
+    }
+
+    fn can_write_active_input(&self) -> bool {
+        if local_queue::private_file_has_content(&self.result, "local result file").unwrap_or(false)
+        {
+            return false;
+        }
+        if local_queue::marker_path_occupied(&self.claim, "local claim marker").unwrap_or(false) {
+            return true;
+        }
+        local_queue::marker_file_exists(&self.job, "local job file").unwrap_or(false)
     }
 }
 
@@ -250,6 +273,70 @@ struct SubmitPlan {
     queue: SubmitQueueEntry,
     timeout: Duration,
     request_json: Vec<u8>,
+    active_inputs: Vec<DelayedActiveInput>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DelayedActiveInput {
+    sequence: u64,
+    message_id: String,
+    after: Duration,
+    text: String,
+}
+
+struct ActiveInputProducer {
+    stop: tokio_util::sync::CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl ActiveInputProducer {
+    fn start(queue: SubmitQueueEntry, inputs: Vec<DelayedActiveInput>) -> Option<Self> {
+        if inputs.is_empty() {
+            return None;
+        }
+        let stop = tokio_util::sync::CancellationToken::new();
+        let stop_for_task = stop.clone();
+        let task = tokio::spawn(async move {
+            let started_at = tokio::time::Instant::now();
+            for input in inputs {
+                let sleep_for = input.after.saturating_sub(started_at.elapsed());
+                tokio::select! {
+                    () = stop_for_task.cancelled() => return,
+                    () = tokio::time::sleep(sleep_for) => {
+                        if !queue.can_write_active_input() {
+                            return;
+                        }
+                        let entry = local_queue::ActiveInputEntry {
+                            run_id: queue.job_id,
+                            sequence: input.sequence,
+                            message_id: input.message_id,
+                            text: input.text,
+                        };
+                        let queue_state = local_queue::LocalQueue::new(queue.group_dir.clone());
+                        let write_result = tokio::task::spawn_blocking(move || {
+                            queue_state.write_active_input_sync(&entry)
+                        })
+                        .await
+                        .unwrap_or_else(|error| Err(std::io::Error::other(error.to_string())));
+                        if let Err(error) = write_result {
+                            if error.kind() != std::io::ErrorKind::NotFound {
+                                eprintln!("warn: failed to write local active input: {error}");
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        Some(Self { stop, task })
+    }
+
+    async fn stop(self) {
+        self.stop.cancel();
+        if let Err(error) = self.task.await {
+            eprintln!("warn: local active input producer task failed: {error}");
+        }
+    }
 }
 
 enum SubmitOutcome {
@@ -269,6 +356,7 @@ impl SubmitPlan {
             env,
             secret_env,
             timeout,
+            active_inputs,
         } = args;
 
         crate::group::validate_or_err(&group)?;
@@ -286,6 +374,7 @@ impl SubmitPlan {
         let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let timeout = Self::validate_timeout(timeout)?;
+        Self::validate_active_input_agent(&cli_agent_type, &active_inputs)?;
         let group_dir = home.groups_dir().join(&group);
         local_queue::ensure_profile_jobs_dir(&group_dir, &profile).map_err(|e| {
             RunnerError::Config(format!("create job dir for profile {profile}: {e}"))
@@ -297,6 +386,7 @@ impl SubmitPlan {
             .map_err(|e| RunnerError::Config(format!("create cancels dir: {e}")))?;
 
         let job_id = RunId::new_v4();
+        let active_inputs = Self::parse_active_inputs(&active_inputs, timeout, job_id)?;
         let request = JobRequest {
             job_id,
             prompt,
@@ -308,6 +398,7 @@ impl SubmitPlan {
             profile: Some(profile.clone()),
             session_id,
             feature_flags,
+            active_input: (!active_inputs.is_empty()).then_some(true),
         };
 
         let request_json = serde_json::to_vec(&request)
@@ -320,7 +411,125 @@ impl SubmitPlan {
             queue,
             timeout,
             request_json,
+            active_inputs,
         })
+    }
+
+    fn parse_active_inputs(
+        values: &[String],
+        timeout: Duration,
+        job_id: RunId,
+    ) -> RunnerResult<Vec<DelayedActiveInput>> {
+        let mut inputs: Vec<DelayedActiveInput> = Vec::with_capacity(values.len());
+        for (index, value) in values.iter().enumerate() {
+            let input = Self::parse_active_input(value, index as u64 + 1, timeout, job_id)?;
+            if let Some(previous) = inputs.last()
+                && input.after < previous.after
+            {
+                return Err(RunnerError::Config(
+                    "invalid --active-input value: delays must be non-decreasing".to_string(),
+                ));
+            }
+            inputs.push(input);
+        }
+        Ok(inputs)
+    }
+
+    fn parse_active_input(
+        value: &str,
+        sequence: u64,
+        timeout: Duration,
+        job_id: RunId,
+    ) -> RunnerResult<DelayedActiveInput> {
+        let rest = value.strip_prefix("after=").ok_or_else(|| {
+            RunnerError::Config(
+                "invalid --active-input value: expected after=<duration>,text=<text>".to_string(),
+            )
+        })?;
+        let (after, text) = rest.split_once(",text=").ok_or_else(|| {
+            RunnerError::Config(
+                "invalid --active-input value: expected after=<duration>,text=<text>".to_string(),
+            )
+        })?;
+        let after = Self::parse_active_input_delay(after)?;
+        if after >= timeout {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input value: delay must be less than submit timeout ({timeout:?})"
+            )));
+        }
+        if text.is_empty() {
+            return Err(RunnerError::Config(
+                "invalid --active-input value: text must not be empty".to_string(),
+            ));
+        }
+        if text.contains('\0') {
+            return Err(RunnerError::Config(
+                "invalid --active-input value: text must not contain NUL characters".to_string(),
+            ));
+        }
+        let payload_len = active_input_payload_len(text).map_err(|e| {
+            RunnerError::Internal(format!(
+                "serialize active-input payload for validation: {e}"
+            ))
+        })?;
+        if payload_len > ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input value: serialized payload must be <= {ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES} bytes"
+            )));
+        }
+        Ok(DelayedActiveInput {
+            sequence,
+            message_id: format!("local-active-input-{job_id}-{sequence}"),
+            after,
+            text: text.to_owned(),
+        })
+    }
+
+    fn parse_active_input_delay(value: &str) -> RunnerResult<Duration> {
+        let (digits, unit) = if let Some(digits) = value.strip_suffix("ms") {
+            (digits, "ms")
+        } else if let Some(digits) = value.strip_suffix('s') {
+            (digits, "s")
+        } else {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input duration '{value}': expected positive integer ms or s"
+            )));
+        };
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input duration '{value}': expected positive integer"
+            )));
+        }
+        let amount = digits.parse::<u64>().map_err(|_| {
+            RunnerError::Config(format!(
+                "invalid --active-input duration '{value}': out of range"
+            ))
+        })?;
+        if amount == 0 {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input duration '{value}': must be greater than zero"
+            )));
+        }
+        Ok(if unit == "ms" {
+            Duration::from_millis(amount)
+        } else {
+            Duration::from_secs(amount)
+        })
+    }
+
+    fn validate_active_input_agent(
+        cli_agent_type: &str,
+        active_inputs: &[String],
+    ) -> RunnerResult<()> {
+        // Guest-agent treats unknown CLI_AGENT_TYPE values as Claude Code.
+        // Keep local submit validation aligned and only reject the known
+        // non-Claude framework.
+        if active_inputs.is_empty() || cli_agent_type != "codex" {
+            return Ok(());
+        }
+        Err(RunnerError::Config(format!(
+            "invalid --active-input: active input is not supported with {cli_agent_type}"
+        )))
     }
 
     fn validate_timeout(timeout: u64) -> RunnerResult<Duration> {
@@ -446,6 +655,10 @@ impl SubmitPlan {
         Ok(())
     }
 
+    fn start_active_input_producer(&self) -> Option<ActiveInputProducer> {
+        ActiveInputProducer::start(self.queue.clone(), self.active_inputs.clone())
+    }
+
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
         let started_at = tokio::time::Instant::now();
 
@@ -529,7 +742,15 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult<ExitCode> {
     let plan = SubmitPlan::from_args(args, home)?;
     plan.write_job_file()?;
-    match plan.wait_for_result().await? {
+    let producer = plan.start_active_input_producer();
+    let outcome = plan.wait_for_result().await;
+    if let Some(producer) = producer {
+        producer.stop().await;
+    }
+    if matches!(outcome, Err(_) | Ok(SubmitOutcome::Cancelled)) {
+        plan.queue.cleanup_abandoned(None);
+    }
+    match outcome? {
         SubmitOutcome::Completed(buf) => plan.finish_completed(&buf),
         SubmitOutcome::Cancelled => Ok(ExitCode::FAILURE),
     }
@@ -543,6 +764,8 @@ mod tests {
 
     /// Serialize tests that mutate environment variables to prevent UB.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
+    const TEST_QUEUE_WATCH_TIMEOUT: Duration = Duration::from_secs(5);
+    const TEST_QUEUE_WATCH_INTERVAL: Duration = Duration::from_millis(1);
 
     fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
         SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
@@ -817,6 +1040,52 @@ mod tests {
         wait_for_job_and_write_result(group_dir, profile, 0, None).await
     }
 
+    async fn wait_for_active_inputs_and_write_success(
+        group_dir: std::path::PathBuf,
+        profile: String,
+        expected_inputs: usize,
+    ) -> (JobRequest, Vec<local_queue::ActiveInputEntry>) {
+        let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile).unwrap();
+        let queue = local_queue::LocalQueue::new(group_dir.clone());
+        let deadline = tokio::time::Instant::now() + TEST_QUEUE_WATCH_TIMEOUT;
+        let mut last_seen_inputs = 0;
+        loop {
+            if let Ok(entries) = std::fs::read_dir(&job_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+                    if path.extension().and_then(|ext| ext.to_str()) != Some("job") {
+                        continue;
+                    }
+                    let request: JobRequest =
+                        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                    let inputs =
+                        queue.read_active_input_entries_from_sequence_sync(request.job_id, 0);
+                    last_seen_inputs = last_seen_inputs.max(inputs.len());
+                    if inputs.len() < expected_inputs {
+                        continue;
+                    }
+                    let response = JobResponse {
+                        run_id: request.job_id,
+                        exit_code: 0,
+                        error: None,
+                    };
+                    let result_path = local_queue::result_path(&group_dir, request.job_id);
+                    std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+                    std::fs::write(&result_path, serde_json::to_vec(&response).unwrap()).unwrap();
+                    return (request, inputs);
+                }
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {expected_inputs} local active inputs in {} (last seen: {last_seen_inputs})",
+                    job_dir.display()
+                );
+            }
+            tokio::time::sleep(TEST_QUEUE_WATCH_INTERVAL).await;
+        }
+    }
+
     fn submit_args_for_test() -> SubmitArgs {
         SubmitArgs {
             group: "test/group".into(),
@@ -828,6 +1097,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 1,
+            active_inputs: vec![],
         }
     }
 
@@ -853,6 +1123,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -892,6 +1163,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -925,6 +1197,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -939,6 +1212,226 @@ mod tests {
         assert_eq!(request.session_id.as_deref(), Some("sess-123"));
         assert_eq!(flags.get("alpha"), Some(&true));
         assert_eq!(flags.get("beta"), Some(&false));
+    }
+
+    #[test]
+    fn parses_active_input_specs() {
+        let job_id = RunId::nil();
+        let parsed = SubmitPlan::parse_active_inputs(
+            &[
+                "after=250ms,text=first".to_string(),
+                "after=1s,text=second,with,commas".to_string(),
+            ],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            vec![
+                DelayedActiveInput {
+                    sequence: 1,
+                    message_id: format!("local-active-input-{job_id}-1"),
+                    after: Duration::from_millis(250),
+                    text: "first".to_string(),
+                },
+                DelayedActiveInput {
+                    sequence: 2,
+                    message_id: format!("local-active-input-{job_id}-2"),
+                    after: Duration::from_secs(1),
+                    text: "second,with,commas".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_more_than_eight_active_input_specs() {
+        let job_id = RunId::nil();
+        let values = (1..=9)
+            .map(|sequence| format!("after={sequence}ms,text=input-{sequence}"))
+            .collect::<Vec<_>>();
+        let parsed =
+            SubmitPlan::parse_active_inputs(&values, Duration::from_secs(5), job_id).unwrap();
+
+        assert_eq!(parsed.len(), 9);
+        assert_eq!(parsed[8].sequence, 9);
+        assert_eq!(
+            parsed[8].message_id,
+            format!("local-active-input-{job_id}-9")
+        );
+        assert_eq!(parsed[8].text, "input-9");
+    }
+
+    #[test]
+    fn rejects_invalid_active_input_specs() {
+        let job_id = RunId::nil();
+        for value in [
+            "text=missing-after",
+            "after=1m,text=bad-unit",
+            "after=0s,text=zero",
+            "after=1s,text=",
+            "after=5s,text=timeout",
+            "after=1s,text=bad\0nul",
+        ] {
+            let err = SubmitPlan::parse_active_inputs(
+                &[value.to_string()],
+                Duration::from_secs(5),
+                job_id,
+            )
+            .unwrap_err();
+
+            assert!(
+                err.to_string().contains("active-input"),
+                "value={value}, got: {err}"
+            );
+        }
+
+        let err = SubmitPlan::parse_active_inputs(
+            &[
+                "after=2s,text=first".to_string(),
+                "after=1s,text=second".to_string(),
+            ],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("non-decreasing"));
+
+        let oversized_text = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES);
+        let err = SubmitPlan::parse_active_inputs(
+            &[format!("after=1s,text={oversized_text}")],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("serialized payload"));
+    }
+
+    #[test]
+    fn rejects_active_input_for_non_claude_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let mut args = submit_args_for_test();
+        args.cli_agent_type = "codex".to_string();
+        args.active_inputs = vec!["after=1ms,text=hello".to_string()];
+
+        let err = match SubmitPlan::from_args(args, home) {
+            Ok(_) => panic!("codex active input should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(err.to_string().contains("not supported with codex"));
+    }
+
+    #[test]
+    fn accepts_active_input_for_custom_agent_that_defaults_to_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let mut args = submit_args_for_test();
+        args.cli_agent_type = "custom-agent".to_string();
+        args.active_inputs = vec!["after=1ms,text=hello".to_string()];
+
+        SubmitPlan::from_args(args, home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn active_inputs_are_written_after_job_publication_and_cleaned_on_completion() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_active_inputs_and_write_success(
+            group_dir.clone(),
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+            9,
+        ));
+        let mut args = submit_args_for_test();
+        args.group = group.into();
+        args.timeout = 5;
+        args.active_inputs = (1..=9)
+            .map(|sequence| {
+                let text = if sequence == 2 {
+                    "second,with,comma".to_string()
+                } else {
+                    format!("input-{sequence}")
+                };
+                format!("after={sequence}ms,text={text}")
+            })
+            .collect();
+        let expected_inputs = (1..=9)
+            .map(|sequence| {
+                let text = if sequence == 2 {
+                    "second,with,comma".to_string()
+                } else {
+                    format!("input-{sequence}")
+                };
+                (sequence, text)
+            })
+            .collect::<Vec<_>>();
+
+        let code = run_submit_with_home(args, home).await.unwrap();
+        let (request, inputs) = watcher.await.unwrap();
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+        assert_eq!(request.active_input, Some(true));
+        assert_eq!(
+            inputs
+                .iter()
+                .map(|entry| (entry.sequence, entry.text.clone()))
+                .collect::<Vec<_>>(),
+            expected_inputs
+        );
+        assert!(
+            !local_queue::run_inputs_dir(&group_dir, request.job_id).exists(),
+            "completed submit cleanup should remove local active-input files"
+        );
+    }
+
+    #[tokio::test]
+    async fn active_input_producer_stops_after_write_failure_to_preserve_sequence_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        local_queue::ensure_run_inputs_dir(group_dir, job_id).unwrap();
+        std::fs::write(
+            local_queue::active_input_path(group_dir, job_id, 1),
+            b"not-json",
+        )
+        .unwrap();
+
+        let producer = ActiveInputProducer::start(
+            queue,
+            vec![
+                DelayedActiveInput {
+                    sequence: 1,
+                    message_id: "msg-1".to_string(),
+                    after: Duration::from_millis(1),
+                    text: "first".to_string(),
+                },
+                DelayedActiveInput {
+                    sequence: 2,
+                    message_id: "msg-2".to_string(),
+                    after: Duration::from_millis(1),
+                    text: "second".to_string(),
+                },
+            ],
+        )
+        .unwrap();
+
+        tokio::time::timeout(TEST_QUEUE_WATCH_TIMEOUT, producer.task)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            !local_queue::active_input_path(group_dir, job_id, 2).exists(),
+            "producer should not create a sequence gap after an active-input write failure"
+        );
     }
 
     #[tokio::test]
@@ -1087,6 +1580,7 @@ mod tests {
             timeout: Duration::ZERO,
             request_json: br#"{"secretEnvironment":{"ANTHROPIC_API_KEY":"sk-local-secret"}}"#
                 .to_vec(),
+            active_inputs: vec![],
         };
 
         plan.write_job_file().unwrap();
@@ -1113,6 +1607,7 @@ mod tests {
             queue,
             timeout: Duration::ZERO,
             request_json: b"{}".to_vec(),
+            active_inputs: vec![],
         };
 
         let err = plan.write_job_file().unwrap_err();
@@ -1145,6 +1640,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -1185,6 +1681,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -1219,6 +1716,7 @@ mod tests {
                 env: vec![],
                 secret_env: vec![],
                 timeout: 5,
+                active_inputs: vec![],
             },
             home,
         )
@@ -1379,6 +1877,14 @@ mod tests {
         std::fs::write(&queue.job, b"{}").unwrap();
         std::fs::write(&queue.cancel, b"").unwrap();
         std::fs::write(&queue.claim, b"").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
 
         queue.abandon("timed out");
         let response: JobResponse =
@@ -1395,6 +1901,10 @@ mod tests {
             "abandoned cleanup must not delete files while a runner owns the claim"
         );
         assert!(queue.claim.exists());
+        assert!(
+            local_queue::run_inputs_dir(group_dir, job_id).exists(),
+            "abandoned cleanup must leave active inputs for claimed jobs"
+        );
     }
 
     #[test]
@@ -1409,6 +1919,14 @@ mod tests {
 
         std::fs::write(&queue.job, b"{}").unwrap();
         std::fs::write(&queue.cancel, b"").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
 
         queue.abandon("timed out");
 
@@ -1418,6 +1936,10 @@ mod tests {
         assert!(
             !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
+        );
+        assert!(
+            !local_queue::run_inputs_dir(group_dir, job_id).exists(),
+            "abandoned cleanup should remove active inputs for unclaimed jobs"
         );
     }
 
@@ -1484,6 +2006,62 @@ mod tests {
 
         queue.cleanup_abandoned(Some(&marker));
 
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_unclaimed_active_inputs_when_job_already_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let marker =
+            write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned").unwrap();
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "one".to_string(),
+            })
+            .unwrap();
+
+        queue.cleanup_abandoned(Some(&marker));
+
+        assert!(!local_queue::run_inputs_dir(group_dir, job_id).exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_late_unclaimed_active_inputs_after_job_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+
+        queue.abandon("timed out");
+        local_queue::LocalQueue::new(group_dir.to_path_buf())
+            .write_active_input_sync(&local_queue::ActiveInputEntry {
+                run_id: job_id,
+                sequence: 1,
+                message_id: "msg-1".to_string(),
+                text: "late".to_string(),
+            })
+            .unwrap();
+
+        queue.cleanup_abandoned(None);
+
+        assert!(!local_queue::run_inputs_dir(group_dir, job_id).exists());
         assert!(!queue.result.exists());
         assert!(!queue.cancel.exists());
         assert!(!queue.claim.exists());
@@ -1696,6 +2274,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 1,
+            active_inputs: vec![],
         };
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -1718,6 +2297,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 0,
+            active_inputs: vec![],
         };
         // Should pass validation and fail later (HomePaths or timeout), not on profile.
         let dir = tempfile::tempdir().unwrap();
@@ -1740,6 +2320,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 1,
+            active_inputs: vec![],
         };
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -1759,6 +2340,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 1,
+            active_inputs: vec![],
         };
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -1783,6 +2365,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 0,
+            active_inputs: vec![],
         };
 
         let err = run_submit_with_home(args, home).await.unwrap_err();
@@ -1855,6 +2438,7 @@ mod tests {
             env: vec![],
             secret_env: vec![],
             timeout: 0,
+            active_inputs: vec![],
         };
 
         let err = run_submit_with_home(args, home).await.unwrap_err();

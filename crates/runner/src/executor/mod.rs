@@ -23,6 +23,7 @@ use futures_util::future::BoxFuture;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
 
+mod active_input;
 mod agent_run;
 mod diagnostics;
 mod env;
@@ -34,7 +35,8 @@ mod telemetry;
 
 pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
 
-use agent_run::ProcessCancelTimeouts;
+use crate::active_input::ActiveInputSource;
+use agent_run::{ProcessCancelTimeouts, RunControls};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
@@ -175,6 +177,21 @@ impl SandboxPreparedNotifier {
 
     async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) {
         (self.callback)(run_id, sandbox_id).await;
+    }
+}
+
+pub(crate) struct ExecutionHooks {
+    pub(crate) sandbox_prepared: Option<SandboxPreparedNotifier>,
+    pub(crate) active_input_source: Option<ActiveInputSource>,
+}
+
+impl ExecutionHooks {
+    #[cfg(test)]
+    fn none() -> Self {
+        Self {
+            sandbox_prepared: None,
+            active_input_source: None,
+        }
     }
 }
 
@@ -372,8 +389,16 @@ pub async fn execute_job(
     params: &JobParams,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
-    execute_job_with_prepared_notifier(factory, context, dispatch, config, params, cancel, None)
-        .await
+    execute_job_with_prepared_notifier(
+        factory,
+        context,
+        dispatch,
+        config,
+        params,
+        cancel,
+        ExecutionHooks::none(),
+    )
+    .await
 }
 
 pub(crate) async fn execute_job_with_prepared_notifier(
@@ -383,7 +408,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
-    sandbox_prepared: Option<SandboxPreparedNotifier>,
+    hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -417,8 +442,8 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
-                cancel,
-                sandbox_prepared: sandbox_prepared.as_ref(),
+                controls: RunControls::new(cancel, hooks.active_input_source),
+                sandbox_prepared: hooks.sandbox_prepared.as_ref(),
             },
         )
         .await
@@ -446,12 +471,25 @@ pub(crate) async fn execute_job_with_prepared_notifier(
 /// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start/job_spawn.rs`)
 /// must flush telemetry after firing `provider.complete`, matching the fresh
 /// sandbox path's completion ordering.
+#[cfg(test)]
 pub async fn execute_job_reuse(
     idle_sandbox: ReusableIdleSandbox,
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
+) -> (ExecuteOutcome, JobTelemetry) {
+    execute_job_reuse_with_active_input_source(idle_sandbox, context, config, params, cancel, None)
+        .await
+}
+
+pub(crate) async fn execute_job_reuse_with_active_input_source(
+    idle_sandbox: ReusableIdleSandbox,
+    context: ExecutionContext,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    cancel: CancellationToken,
+    active_input_source: Option<ActiveInputSource>,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -595,7 +633,7 @@ pub async fn execute_job_reuse(
             config,
             &prev_storage,
             &mut telemetry,
-            cancel,
+            RunControls::new(cancel, active_input_source),
         )
         .await;
         outcome.workspace_promotable = workspace_image_promotable(

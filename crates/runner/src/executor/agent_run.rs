@@ -27,6 +27,7 @@ use super::{
     agent_exit_failure_message, job_terminal_wait_timeout, normalize_failure_exit_code,
     normalize_timeout_failure_exit_code,
 };
+use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -121,13 +122,30 @@ pub(super) struct RunStart<'a> {
     pub(super) prev_storage: Option<&'a crate::storage_fingerprints::StorageFingerprints>,
 }
 
+pub(super) struct RunControls {
+    pub(super) cancel: CancellationToken,
+    pub(super) active_input_source: Option<ActiveInputSource>,
+}
+
+impl RunControls {
+    pub(super) fn new(
+        cancel: CancellationToken,
+        active_input_source: Option<ActiveInputSource>,
+    ) -> Self {
+        Self {
+            cancel,
+            active_input_source,
+        }
+    }
+}
+
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    cancel: CancellationToken,
+    controls: RunControls,
 ) -> RunnerResult<AgentExecutionResult> {
     run_in_sandbox_with_process_cancel_timeouts(
         sandbox,
@@ -135,7 +153,7 @@ pub(super) async fn run_in_sandbox(
         config,
         start,
         telemetry,
-        cancel,
+        controls,
         PROCESS_CANCEL_TIMEOUTS,
     )
     .await
@@ -147,9 +165,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    cancel: CancellationToken,
+    controls: RunControls,
     process_cancel_timeouts: ProcessCancelTimeouts,
 ) -> RunnerResult<AgentExecutionResult> {
+    let RunControls {
+        cancel,
+        active_input_source,
+    } = controls;
+
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
     if start.restore_guest_state {
@@ -265,6 +288,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
+    let active_input_forwarder = super::active_input::ActiveInputForwarder::start(
+        context.run_id,
+        active_input_source,
+        handle.control_handle(),
+        cancel.clone(),
+    );
+
     // Spawn background task to drain stdout chunks and write to the host stream log file.
     let host_log_path = config.log_paths.system_stream_log(context.run_id);
     let stream_task = handle
@@ -354,6 +384,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             }
         }
     };
+
+    if let Some(forwarder) = active_input_forwarder {
+        forwarder.stop().await;
+    }
 
     // Wait for streaming to finish (channel closes when process exits).
     // On cancel/timeout/crash the stream channel may not close — abort to

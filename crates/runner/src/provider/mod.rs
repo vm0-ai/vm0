@@ -18,6 +18,7 @@ use sandbox::SandboxId;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use crate::active_input::ActiveInputSource;
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
@@ -111,6 +112,7 @@ impl JobCandidate {
 pub struct ClaimedJob {
     context: ExecutionContext,
     completion_auth: CompletionAuth,
+    active_input_source: Option<ActiveInputSource>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -144,26 +146,44 @@ impl ClaimedJob {
         Ok(Self {
             context,
             completion_auth,
+            active_input_source: None,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn local(
         expected_run_id: RunId,
         context: ExecutionContext,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::local_with_active_input_source(expected_run_id, context, None)
+    }
+
+    pub(crate) fn local_with_active_input_source(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+        active_input_source: Option<ActiveInputSource>,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         Ok(Self {
             context,
             completion_auth: CompletionAuth::local(),
+            active_input_source,
         })
     }
 
-    pub(crate) fn into_parts(self) -> (ExecutionContext, CompletionAuth) {
-        (self.context, self.completion_auth)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (ExecutionContext, CompletionAuth, Option<ActiveInputSource>) {
+        (self.context, self.completion_auth, self.active_input_source)
     }
 
     pub(crate) fn context(&self) -> &ExecutionContext {
         &self.context
+    }
+
+    #[cfg(test)]
+    pub(crate) fn active_input_source(&self) -> Option<&ActiveInputSource> {
+        self.active_input_source.as_ref()
     }
 }
 
@@ -324,9 +344,10 @@ mod tests {
 
         let claimed =
             ClaimedJob::api(run_id, minimal_context(run_id)).expect("matching context is valid");
-        let (context, completion_auth) = claimed.into_parts();
+        let (context, completion_auth, active_input_source) = claimed.into_parts();
 
         assert_eq!(context.run_id, run_id);
+        assert!(active_input_source.is_none());
         assert!(completion_auth.matches_sandbox_token_for_test(run_id, "sandbox-token"));
     }
 }

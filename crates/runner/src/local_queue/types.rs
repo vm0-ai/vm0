@@ -23,6 +23,8 @@ pub(crate) struct JobRequest {
     pub(crate) session_id: Option<String>,
     #[serde(default)]
     pub(crate) feature_flags: Option<HashMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) active_input: Option<bool>,
 }
 
 /// Job response written by the runner as a `{job_id}.result` file.
@@ -31,4 +33,14 @@ pub(crate) struct JobResponse {
     pub(crate) run_id: RunId,
     pub(crate) exit_code: i32,
     pub(crate) error: Option<String>,
+}
+
+/// Active input written by local producers for a claimed live run.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ActiveInputEntry {
+    pub(crate) run_id: RunId,
+    pub(crate) sequence: u64,
+    pub(crate) message_id: String,
+    pub(crate) text: String,
 }

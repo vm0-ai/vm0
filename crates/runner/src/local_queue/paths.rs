@@ -49,6 +49,18 @@ pub(crate) fn cancel_path(group_dir: &Path, run_id: RunId) -> PathBuf {
     cancels_dir(group_dir).join(format!("{run_id}.cancel"))
 }
 
+pub(crate) fn inputs_dir(group_dir: &Path) -> PathBuf {
+    group_dir.join("inputs")
+}
+
+pub(crate) fn run_inputs_dir(group_dir: &Path, run_id: RunId) -> PathBuf {
+    inputs_dir(group_dir).join(run_id.to_string())
+}
+
+pub(crate) fn active_input_path(group_dir: &Path, run_id: RunId, sequence: u64) -> PathBuf {
+    run_inputs_dir(group_dir, run_id).join(format!("{sequence:020}.json"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

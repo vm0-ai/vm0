@@ -231,7 +231,13 @@ impl JobProvider for LocalProvider {
             billable_firewalls: vec![],
             model_usage_provider: None,
         };
-        match ClaimedJob::local(run_id, context) {
+        let active_input_source = req.active_input.unwrap_or(false).then(|| {
+            crate::active_input::ActiveInputSource::local_queue(
+                self.queue.group_dir().to_path_buf(),
+                run_id,
+            )
+        });
+        match ClaimedJob::local_with_active_input_source(run_id, context, active_input_source) {
             Ok(claimed) => {
                 self.cancel_scanner.mark_owned_claim(run_id).await;
                 info!(run_id = %run_id, "local: job claimed");
@@ -402,12 +408,41 @@ mod tests {
         write_job_in_partition(dir, partition, job_id, prompt, profile);
     }
 
+    fn write_job_with_active_input(dir: &std::path::Path, job_id: RunId, prompt: &str) {
+        write_job_in_partition_with_active_input(
+            dir,
+            crate::profile::DEFAULT_PROFILE,
+            job_id,
+            prompt,
+            Some(crate::profile::DEFAULT_PROFILE),
+            Some(true),
+        );
+    }
+
     fn write_job_in_partition(
         dir: &std::path::Path,
         partition_profile: &str,
         job_id: RunId,
         prompt: &str,
         json_profile: Option<&str>,
+    ) {
+        write_job_in_partition_with_active_input(
+            dir,
+            partition_profile,
+            job_id,
+            prompt,
+            json_profile,
+            None,
+        );
+    }
+
+    fn write_job_in_partition_with_active_input(
+        dir: &std::path::Path,
+        partition_profile: &str,
+        job_id: RunId,
+        prompt: &str,
+        json_profile: Option<&str>,
+        active_input: Option<bool>,
     ) {
         let req = JobRequest {
             job_id,
@@ -420,6 +455,7 @@ mod tests {
             profile: json_profile.map(String::from),
             session_id: None,
             feature_flags: None,
+            active_input,
         };
         let json = serde_json::to_vec(&req).unwrap();
         let job_dir = local_queue::profile_jobs_dir(dir, partition_profile).unwrap();
@@ -448,6 +484,7 @@ mod tests {
             profile: Some(crate::profile::DEFAULT_PROFILE.into()),
             session_id: None,
             feature_flags: None,
+            active_input: None,
         };
         let json = serde_json::to_vec(&req).unwrap();
         let job_dir = local_queue::profile_jobs_dir(dir, crate::profile::DEFAULT_PROFILE).unwrap();
@@ -482,6 +519,7 @@ mod tests {
         assert_eq!(candidate.profile_name(), crate::profile::DEFAULT_PROFILE);
 
         let claimed = provider.claim(candidate).await.unwrap();
+        assert!(claimed.active_input_source().is_none());
         let ctx = claimed.context();
         assert_eq!(ctx.run_id, job_id);
         assert_eq!(ctx.prompt, "hello world");
@@ -497,6 +535,25 @@ mod tests {
             !job_path.exists(),
             "complete() should remove the completed local job file"
         );
+    }
+
+    #[tokio::test]
+    async fn claim_attaches_active_input_source_when_requested() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let job_id = RunId::new_v4();
+        write_job_with_active_input(dir.path(), job_id, "hello with active input");
+
+        let candidate = provider.discover().await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+
+        assert!(matches!(
+            claimed.active_input_source(),
+            Some(crate::active_input::ActiveInputSource::LocalQueue(source))
+                if source.run_id == job_id && source.group_dir == dir.path()
+        ));
     }
 
     #[tokio::test]

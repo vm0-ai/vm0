@@ -189,6 +189,17 @@ pub struct ProcessCancelCall {
     pub timeout: Duration,
 }
 
+/// Captured process-control request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessControlCall {
+    /// Message id supplied to the process-control handle.
+    pub message_id: String,
+    /// Payload bytes supplied to the process-control handle.
+    pub payload: Vec<u8>,
+    /// Timeout supplied to the process-control handle.
+    pub timeout: Duration,
+}
+
 /// Captured `write_file` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WriteFileCall {
@@ -523,6 +534,13 @@ pub struct MockSandboxOverrides {
     process_cancel_notify: tokio::sync::Notify,
     /// FIFO queue of process cancel errors consumed by cancel handles.
     process_cancel_errors: Mutex<VecDeque<String>>,
+    /// Recorded process-control calls across all sandboxes built from this
+    /// override set.
+    process_control_calls: Mutex<Vec<ProcessControlCall>>,
+    /// Wakes tests waiting for process-control calls to be recorded.
+    process_control_notify: tokio::sync::Notify,
+    /// FIFO queue of process-control errors consumed by control handles.
+    process_control_errors: Mutex<VecDeque<(std::io::ErrorKind, String)>>,
     /// Whether a successful process cancel releases the configured
     /// `wait_process` gate. Tests can disable this to exercise bounded wait
     /// timeout paths after cancel is sent.
@@ -570,6 +588,9 @@ impl MockSandboxOverrides {
             process_cancel_calls: Mutex::new(Vec::new()),
             process_cancel_notify: tokio::sync::Notify::new(),
             process_cancel_errors: Mutex::new(VecDeque::new()),
+            process_control_calls: Mutex::new(Vec::new()),
+            process_control_notify: tokio::sync::Notify::new(),
+            process_control_errors: Mutex::new(VecDeque::new()),
             process_cancel_releases_wait_gate: Mutex::new(true),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
@@ -865,6 +886,15 @@ impl MockSandboxOverrides {
         self.process_cancel_calls.lock_ignoring_poison().clone()
     }
 
+    /// Return recorded process-control calls across all sandboxes built from
+    /// this override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Control
+    /// attempts are recorded before any queued control send error is returned.
+    pub fn process_control_calls(&self) -> Vec<ProcessControlCall> {
+        self.process_control_calls.lock_ignoring_poison().clone()
+    }
+
     /// Wait until at least `expected` process cancel calls have been recorded.
     pub async fn wait_for_process_cancel_calls(&self, expected: usize, timeout: Duration) -> bool {
         tokio::time::timeout(timeout, async {
@@ -880,11 +910,42 @@ impl MockSandboxOverrides {
         .is_ok()
     }
 
+    /// Wait until at least `expected` process-control calls have been recorded.
+    pub async fn wait_for_process_control_calls(&self, expected: usize, timeout: Duration) -> bool {
+        tokio::time::timeout(timeout, async {
+            loop {
+                let notified = self.process_control_notify.notified();
+                if self.process_control_calls.lock_ignoring_poison().len() >= expected {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .is_ok()
+    }
+
     /// Queue a process cancel send error consumed by the next cancel handle.
     pub fn push_process_cancel_error(&self, message: impl Into<String>) {
         self.process_cancel_errors
             .lock_ignoring_poison()
             .push_back(message.into());
+    }
+
+    /// Queue a process-control send error consumed by the next control handle.
+    pub fn push_process_control_error(&self, message: impl Into<String>) {
+        self.push_process_control_io_error(std::io::ErrorKind::Other, message);
+    }
+
+    /// Queue a process-control send error with a specific I/O kind.
+    pub fn push_process_control_io_error(
+        &self,
+        kind: std::io::ErrorKind,
+        message: impl Into<String>,
+    ) {
+        self.process_control_errors
+            .lock_ignoring_poison()
+            .push_back((kind, message.into()));
     }
 
     /// Configure whether successful process cancellation releases a configured
@@ -1436,8 +1497,29 @@ impl Sandbox for MockSandbox {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
         let control = (request.control == ProcessControlMode::Enabled).then(|| {
-            GuestProcessControlHandle::new(|message_id, _payload, _timeout| {
-                Box::pin(async move { Ok(ProcessControlAck { message_id }) })
+            let overrides = self.overrides.clone();
+            GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                let overrides = overrides.clone();
+                Box::pin(async move {
+                    if let Some(overrides) = overrides {
+                        overrides.process_control_calls.lock_ignoring_poison().push(
+                            ProcessControlCall {
+                                message_id: message_id.clone(),
+                                payload,
+                                timeout,
+                            },
+                        );
+                        overrides.process_control_notify.notify_waiters();
+                        if let Some((kind, message)) = overrides
+                            .process_control_errors
+                            .lock_ignoring_poison()
+                            .pop_front()
+                        {
+                            return Err(std::io::Error::new(kind, message));
+                        }
+                    }
+                    Ok(ProcessControlAck { message_id })
+                })
             })
         });
         let process_cancel = self.overrides.as_ref().and_then(|overrides| {
@@ -3289,6 +3371,74 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ack.message_id, "msg-1");
+    }
+
+    #[tokio::test]
+    async fn process_control_calls_are_recorded_when_overrides_are_enabled() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::Enabled,
+            })
+            .await
+            .unwrap();
+        let control = handle
+            .control_handle()
+            .expect("enabled control should expose a handle");
+
+        control
+            .control("msg-1", b"payload", Duration::from_millis(250))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            overrides.process_control_calls(),
+            vec![ProcessControlCall {
+                message_id: "msg-1".to_string(),
+                payload: b"payload".to_vec(),
+                timeout: Duration::from_millis(250),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn queued_process_control_errors_are_consumed_fifo() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_process_control_error("control failed");
+        let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::Enabled,
+            })
+            .await
+            .unwrap();
+        let control = handle
+            .control_handle()
+            .expect("enabled control should expose a handle");
+
+        let err = control
+            .control("msg-1", b"payload-1", Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        let ack = control
+            .control("msg-2", b"payload-2", Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        assert!(err.to_string().contains("control failed"));
+        assert_eq!(ack.message_id, "msg-2");
+        assert_eq!(overrides.process_control_calls().len(), 2);
     }
 
     #[tokio::test]
