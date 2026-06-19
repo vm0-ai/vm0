@@ -491,7 +491,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("hides Stripe when the connector switch is disabled", async () => {
+  it("shows Stripe CLI when the connector switch is disabled", async () => {
     mockConnectors([]);
 
     detachedSetupPage({
@@ -504,9 +504,11 @@ describe("connectors page", () => {
     await fill(searchInput, "stripe");
 
     await waitFor(() => {
-      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Stripe")).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Connect Stripe")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/No connectors matching/),
+    ).not.toBeInTheDocument();
   });
 
   it("starts Stripe OAuth from the connect dialog", async () => {
@@ -549,6 +551,7 @@ describe("connectors page", () => {
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;
     const originalOauth = authMethods.oauth;
     const originalApiToken = authMethods["api-token"];
+    const originalCli = authMethods.cli;
 
     restoreConnectorRegistry.push(() => {
       Object.defineProperty(authMethods, "oauth", {
@@ -558,6 +561,11 @@ describe("connectors page", () => {
       });
       Object.defineProperty(authMethods, "api-token", {
         value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "cli", {
+        value: originalCli,
         configurable: true,
         enumerable: true,
       });
@@ -573,6 +581,14 @@ describe("connectors page", () => {
     Object.defineProperty(authMethods, "api-token", {
       value: {
         ...originalApiToken,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(authMethods, "cli", {
+      value: {
+        ...originalCli,
         visible: false,
       } satisfies ConnectorAuthMethodConfig,
       configurable: true,
