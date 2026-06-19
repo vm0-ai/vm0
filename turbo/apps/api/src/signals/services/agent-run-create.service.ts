@@ -77,7 +77,7 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@vm0/core/storage-names";
-import { GOAL_SEED_SKILL, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -505,16 +505,8 @@ function skillMountPath(
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
-  featureSwitchContext: FeatureSwitchContext,
 ): readonly AdditionalVolume[] {
-  const goalEnabled = isFeatureEnabled(
-    FeatureSwitchKey.GoalWorkflows,
-    featureSwitchContext,
-  );
-  const seedSkillNames = SEED_SKILLS.filter((skillName) => {
-    return skillName !== GOAL_SEED_SKILL || goalEnabled;
-  });
-  const allSkillNames = [...new Set([...seedSkillNames, ...connectorTypes])];
+  const allSkillNames = [...new Set([...SEED_SKILLS, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
@@ -550,17 +542,12 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: CreateAgentRunArgs,
   framework: SupportedFramework,
-  featureSwitchContext: FeatureSwitchContext,
 ): readonly AdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
-    ...buildSystemSkillVolumes(
-      args.allowedConnectorTypes ?? [],
-      framework,
-      featureSwitchContext,
-    ),
+    ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
     ...buildWorkflowSkillVolumes(
       args.injectSkillVolumes.workflowNames,
       framework,
@@ -4115,11 +4102,7 @@ function prepareRunContext(
         bodyArtifacts: body.artifacts,
       });
       const additionalVolumes = mergeAdditionalVolumes({
-        prepend: buildInjectedSkillVolumes(
-          args,
-          framework,
-          featureSwitchContext,
-        ),
+        prepend: buildInjectedSkillVolumes(args, framework),
         base: body.additionalVolumes ?? resolved.additionalVolumes,
       });
 

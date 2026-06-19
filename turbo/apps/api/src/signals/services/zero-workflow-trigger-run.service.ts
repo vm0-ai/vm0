@@ -180,6 +180,11 @@ export const runWorkflowTriggerNow$ = command(
       readonly due: DueWorkflowTrigger;
       readonly apiStartTime: number;
       readonly sessionId?: string;
+      // Overrides the default `/<workflowName>` slash-command prompt. Goals pass
+      // a rendered continuation template here so the turn is plain instruction
+      // text — a bare `/goal` would collide with the harness's built-in `/goal`
+      // slash command and no-op.
+      readonly prompt?: string;
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
       readonly callbacks?: readonly InternalRunCallbackInput[];
@@ -233,7 +238,7 @@ export const runWorkflowTriggerNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    const prompt = `/${workflowName}`;
+    const prompt = args.prompt ?? `/${workflowName}`;
     const result = await set(
       createZeroRun$,
       {

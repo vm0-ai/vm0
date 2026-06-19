@@ -569,9 +569,12 @@ describe("zero workflow trigger scheduler", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
       triggerSource: "workflow-event",
-      prompt: "/goal",
       continuedFromSessionId: terminal.sessionId,
     });
+    // The continuation prompt is the rendered Codex-style template carrying the
+    // objective, not a `/goal` slash command (which the harness would intercept).
+    expect(runs[0]!.prompt).toContain("Ship the goal workflow");
+    expect(runs[0]!.prompt).not.toBe("/goal");
 
     const callbacks = await db
       .select({ internalKind: agentRunCallbacks.internalKind })
@@ -594,7 +597,7 @@ describe("zero workflow trigger scheduler", () => {
       .where(eq(chatMessages.chatThreadId, terminal.threadId));
     expect(
       messages.some((message) => {
-        return message.content === "/goal";
+        return message.content?.includes("Ship the goal workflow");
       }),
     ).toBeTruthy();
   });
