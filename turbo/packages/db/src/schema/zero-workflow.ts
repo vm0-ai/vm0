@@ -206,6 +206,11 @@ export const zeroWorkflowTriggers = pgTable(
       index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
       index("idx_zero_workflow_triggers_org").on(table.orgId),
       index("idx_zero_workflow_triggers_chat_thread").on(table.chatThreadId),
+      uniqueIndex("idx_zero_workflow_triggers_thread_idle_thread_unique")
+        .on(table.orgId, table.chatThreadId)
+        .where(
+          sql`chat_thread_id IS NOT NULL AND kind = 'event' AND event_type = 'thread-idle'`,
+        ),
       // Partial index for the time poller: enabled triggers with a due next run.
       index("idx_zero_workflow_triggers_next_run")
         .on(table.nextRunAt)
