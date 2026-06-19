@@ -11,7 +11,8 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://github.com/e7h4n/maskdb";
 // Format: mk_agent_ prefix + 43 url-safe base64 chars
-const PLACEHOLDER_VALUE = "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
+const PLACEHOLDER_VALUE =
+  "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
 
 function generateTypeScript(): string {
   const lines: string[] = [
