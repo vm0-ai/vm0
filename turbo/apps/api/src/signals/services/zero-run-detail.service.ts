@@ -319,14 +319,15 @@ ${paginationFilter}
       )
     ).slice() as unknown as AxiomAgentEvent[];
 
-    const hasMore = events.length > limit;
-    const resultEvents = hasMore ? events.slice(0, limit) : events;
+    const pageHasMore = events.length > limit;
+    const resultEvents = pageHasMore ? events.slice(0, limit) : events;
     const nextCursor = nextSequenceCursor(
       resultEvents,
-      hasMore,
+      pageHasMore,
       order,
       previousCursorValue,
     );
+    const hasMore = nextCursor !== null;
 
     return {
       events: resultEvents.map((e) => {

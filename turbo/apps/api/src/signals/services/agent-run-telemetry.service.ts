@@ -357,14 +357,15 @@ ${paginationFilter}
         ),
       )
     ).slice() as unknown as AxiomAgentEvent[];
-    const hasMore = events.length > params.limit;
-    const resultEvents = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const resultEvents = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextSequenceCursor(
       resultEvents,
-      hasMore,
+      pageHasMore,
       params.order,
       previousCursorValue,
     );
+    const hasMore = nextCursor !== null;
 
     return {
       events: resultEvents.map(toRunEvent),
@@ -398,14 +399,15 @@ ${buildTimePaginationFilters(params)}
     const events = (
       await get(queryAxiom(apl))
     ).slice() as unknown as AxiomSystemLogEvent[];
-    const hasMore = events.length > params.limit;
-    const records = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const records = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextTimeCursor(
       records,
-      hasMore,
+      pageHasMore,
       params.order,
       previousCursorTimestamp,
     );
+    const hasMore = nextCursor !== null;
 
     return {
       systemLog: records
@@ -442,14 +444,15 @@ ${buildTimePaginationFilters(params)}
     const events = (
       await get(queryAxiom(apl))
     ).slice() as unknown as AxiomMetricEvent[];
-    const hasMore = events.length > params.limit;
-    const records = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const records = pageHasMore ? events.slice(0, params.limit) : events;
     const nextCursor = nextTimeCursor(
       records,
-      hasMore,
+      pageHasMore,
       params.order,
       previousCursorTimestamp,
     );
+    const hasMore = nextCursor !== null;
 
     return {
       metrics: records.map((event) => {

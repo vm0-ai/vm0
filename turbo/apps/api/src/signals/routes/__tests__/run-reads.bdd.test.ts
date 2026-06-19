@@ -1948,14 +1948,174 @@ describe("RUN-04: agent run telemetry families", () => {
         firewall_error: "connector_not_configured",
       },
     ];
+    const expectedNextCursor = timeLogCursor("asc", "2026-06-10T12:01:00Z");
 
     expect(agentNetwork.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
+      nextCursor: expectedNextCursor,
     });
     expect(zeroNetwork.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
+      nextCursor: expectedNextCursor,
+    });
+  });
+
+  it("does not advertise another telemetry page when the cursor cannot advance", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-unpageable");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit an unpageable boundary",
+    });
+    const runId = run.runId;
+    const boundaryTime = "2026-06-10T12:00:00Z";
+
+    dispatchAxiomQueries({
+      [runId]: {
+        events: [
+          agentEvent(runId, 0, "already returned", boundaryTime),
+          agentEvent(runId, 1, "later", "2026-06-10T12:00:01Z"),
+        ],
+        systemLogs: [
+          { _time: boundaryTime, runId, log: "already returned\n" },
+          { _time: "2026-06-10T12:00:01Z", runId, log: "later\n" },
+        ],
+        metrics: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            cpu: 0.4,
+            mem_used: 40,
+            mem_total: 100,
+            disk_used: 50,
+            disk_total: 200,
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.5,
+            mem_used: 41,
+            mem_total: 100,
+            disk_used: 51,
+            disk_total: 200,
+          },
+        ],
+        network: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "api.example.com",
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "later.example.com",
+          },
+        ],
+      },
+    });
+
+    const agentEvents = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
+      [200],
+    );
+    if (agentEvents.status !== 200) {
+      throw new Error("Expected the agent events read to succeed");
+    }
+    expect(agentEvents.body.events).toHaveLength(1);
+    expect(agentEvents.body.hasMore).toBeFalsy();
+    expect(agentEvents.body.nextCursor).toBeUndefined();
+
+    const systemLog = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      [200],
+    );
+    expect(systemLog.body).toStrictEqual({
+      systemLog: "already returned\n",
+      hasMore: false,
+    });
+
+    const metrics = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metrics.body).toStrictEqual({
+      metrics: [
+        {
+          ts: boundaryTime,
+          cpu: 0.4,
+          mem_used: 40,
+          mem_total: 100,
+          disk_used: 50,
+          disk_total: 200,
+        },
+      ],
+      hasMore: false,
+    });
+
+    const networkLogs = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      [200],
+    );
+    expect(networkLogs.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp: boundaryTime,
+          type: "http",
+          action: "ALLOW",
+          host: "api.example.com",
+        },
+      ],
+      hasMore: false,
+    });
+
+    const zeroEvents = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
+      [200],
+    );
+    if (zeroEvents.status !== 200) {
+      throw new Error("Expected the zero agent events read to succeed");
+    }
+    expect(zeroEvents.body.events).toHaveLength(1);
+    expect(zeroEvents.body.hasMore).toBeFalsy();
+    expect(zeroEvents.body.nextCursor).toBeUndefined();
+
+    const zeroNetworkLogs = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkLogs.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp: boundaryTime,
+          type: "http",
+          action: "ALLOW",
+          host: "api.example.com",
+        },
+      ],
+      hasMore: false,
     });
   });
 
