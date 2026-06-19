@@ -165,19 +165,25 @@ async fn forward_entries(
             }
             Err(error) => {
                 let retry = should_retry_control_error(&error);
-                warn!(
-                    run_id = %run_id,
-                    sequence = entry.sequence,
-                    message_id = %entry.message_id,
-                    error = %error,
-                    retry,
-                    "failed to forward active input"
-                );
-                if !retry {
+                if retry {
+                    debug!(
+                        run_id = %run_id,
+                        sequence = entry.sequence,
+                        message_id = %entry.message_id,
+                        error = %error,
+                        "active-input forward failed; will retry"
+                    );
+                    break;
+                } else {
+                    warn!(
+                        run_id = %run_id,
+                        sequence = entry.sequence,
+                        message_id = %entry.message_id,
+                        error = %error,
+                        "active-input forward failed; dropping input"
+                    );
                     state.seen_message_ids.insert(entry.message_id);
                     state.consume_sequence();
-                } else {
-                    break;
                 }
             }
         }
