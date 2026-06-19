@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.161.0](https://github.com/vm0-ai/vm0/compare/api-v1.160.0...api-v1.161.0) (2026-06-19)
+
+
+### Features
+
+* drive goal continuation from a rendered prompt and provision a thread for thread-less runs ([#18337](https://github.com/vm0-ai/vm0/issues/18337)) ([80658ce](https://github.com/vm0-ai/vm0/commit/80658cec994aa96a915b54f26e443560e08934a9))
+
+
+### Bug Fixes
+
+* harden firewall permission insight aggregation ([#18335](https://github.com/vm0-ai/vm0/issues/18335)) ([85ae73c](https://github.com/vm0-ai/vm0/commit/85ae73c6186426893960beb170fc5c266428a798))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.359.0
+
 ## [1.160.0](https://github.com/vm0-ai/vm0/compare/api-v1.159.0...api-v1.160.0) (2026-06-19)
 
 
