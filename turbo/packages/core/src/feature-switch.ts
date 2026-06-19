@@ -334,6 +334,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.GoalWorkflows]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation. Individuals opt in via feature-switch overrides.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

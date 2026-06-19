@@ -137,6 +137,25 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates goal capabilities behind the goal workflows feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.GoalWorkflows]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "goal:read",
+    );
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "goal:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:read");
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:write");
+  });
+
   it("gates computer-use capability on an explicit host grant", () => {
     const defaultToken = generateZeroToken(
       "user_zero",

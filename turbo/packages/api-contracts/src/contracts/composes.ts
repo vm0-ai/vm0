@@ -45,6 +45,8 @@ export const ZERO_CAPABILITIES = [
   "automation:read",
   "automation:write",
   "automation:delete",
+  "goal:read",
+  "goal:write",
   "github:read",
   "github:write",
   "slack:write",
@@ -95,6 +97,8 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       group: "Automations",
       label: "Delete automations",
     },
+    "goal:read": { group: "Goals", label: "Read thread goals" },
+    "goal:write": { group: "Goals", label: "Create and update thread goals" },
     "github:read": {
       group: "Integrations",
       label: "Download GitHub files",

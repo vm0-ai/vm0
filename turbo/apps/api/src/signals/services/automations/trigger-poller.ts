@@ -12,7 +12,7 @@ import { settle } from "../../utils";
 import {
   postAutomationUserMessage,
   resolveAutomationChatThreadModelPin,
-} from "../../routes/zero-chat-messages";
+} from "../zero-chat-automation-message.service";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,

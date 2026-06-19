@@ -67,15 +67,17 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { GOAL_SEED_SKILL, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -503,8 +505,16 @@ function skillMountPath(
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
+  featureSwitchContext: FeatureSwitchContext,
 ): readonly AdditionalVolume[] {
-  const allSkillNames = [...new Set([...SEED_SKILLS, ...connectorTypes])];
+  const goalEnabled = isFeatureEnabled(
+    FeatureSwitchKey.GoalWorkflows,
+    featureSwitchContext,
+  );
+  const seedSkillNames = SEED_SKILLS.filter((skillName) => {
+    return skillName !== GOAL_SEED_SKILL || goalEnabled;
+  });
+  const allSkillNames = [...new Set([...seedSkillNames, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
@@ -540,12 +550,17 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: CreateAgentRunArgs,
   framework: SupportedFramework,
+  featureSwitchContext: FeatureSwitchContext,
 ): readonly AdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
-    ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
+    ...buildSystemSkillVolumes(
+      args.allowedConnectorTypes ?? [],
+      framework,
+      featureSwitchContext,
+    ),
     ...buildWorkflowSkillVolumes(
       args.injectSkillVolumes.workflowNames,
       framework,
@@ -4100,7 +4115,11 @@ function prepareRunContext(
         bodyArtifacts: body.artifacts,
       });
       const additionalVolumes = mergeAdditionalVolumes({
-        prepend: buildInjectedSkillVolumes(args, framework),
+        prepend: buildInjectedSkillVolumes(
+          args,
+          framework,
+          featureSwitchContext,
+        ),
         base: body.additionalVolumes ?? resolved.additionalVolumes,
       });
 

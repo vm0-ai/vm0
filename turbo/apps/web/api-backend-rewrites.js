@@ -454,6 +454,10 @@ const ZERO_BILLING_RESTORE_REWRITE_SOURCE = "/api/zero/billing/restore";
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
+const ZERO_GOAL_REWRITE_SOURCE = "/api/zero/goal";
+const ZERO_GOAL_BLOCK_REWRITE_SOURCE = "/api/zero/goal/block";
+const ZERO_GOAL_COMPLETE_REWRITE_SOURCE = "/api/zero/goal/complete";
+const ZERO_GOAL_RESUME_REWRITE_SOURCE = "/api/zero/goal/resume";
 
 export const API_BACKEND_REWRITES = [
   [LEGACY_FILE_REWRITE_SOURCE, "/f/:userId/:id/:filename", LEGACY_FILE_PATH_RE],
@@ -1276,6 +1280,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
   ["/api/zero/memory/dev-refresh", "/api/zero/memory/dev-refresh"],
+  [ZERO_GOAL_REWRITE_SOURCE, "/api/zero/goal"],
+  [ZERO_GOAL_BLOCK_REWRITE_SOURCE, "/api/zero/goal/block"],
+  [ZERO_GOAL_COMPLETE_REWRITE_SOURCE, "/api/zero/goal/complete"],
+  [ZERO_GOAL_RESUME_REWRITE_SOURCE, "/api/zero/goal/resume"],
   ["/api/zero/workflows", "/api/zero/workflows"],
   [
     ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,

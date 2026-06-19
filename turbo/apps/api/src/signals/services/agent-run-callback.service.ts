@@ -47,6 +47,7 @@ import {
   handleWorkflowTriggerInternalCallback,
   handleWorkflowTriggerInternalCallback$,
 } from "./zero-workflow-trigger-run-callback.service";
+import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
 
@@ -367,6 +368,24 @@ export const dispatchRunCallbacks$ = command(
           });
       signal.throwIfAborted();
       results.push(dispatchResult);
+    }
+    const goalContinuationResult = await settle(
+      set(
+        continueGoalIfIdle$,
+        {
+          db,
+          runId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
+        signal,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!goalContinuationResult.ok) {
+      L.error("Goal continuation dispatch failed", {
+        runId,
+        error: goalContinuationResult.error,
+      });
     }
     return results;
   },

@@ -37,10 +37,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
-import {
-  publishThreadListChanged,
-  publishUserSignal,
-} from "../external/realtime";
+import { publishUserSignal } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import {
   badRequestMessage,
@@ -1104,38 +1101,6 @@ async function resolveStoredModelFirstPin(params: {
       selectedModel: params.pin.selectedModel,
     },
   });
-}
-
-/**
- * Resolve the model pin for a chat-mode automation run from its linked thread:
- * the thread's stored pin, else its first-run pin, else the org default. This
- * is deliberately decoupled from session state (an automation run is always
- * fresh) — do NOT route automation runs through `resolveRunModelPin`, which falls
- * back to the org default whenever the session is fresh.
- */
-export async function resolveAutomationChatThreadModelPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly threadId: string;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-> {
-  const existing = await existingModelFirstThreadPin(
-    params.db,
-    params.threadId,
-  );
-  if (existing) {
-    return resolveStoredModelFirstPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      pin: existing,
-    });
-  }
-  return resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
 }
 
 async function persistThreadPinIfUnset(
@@ -2263,54 +2228,6 @@ function scheduleAssociatedUserMessage(params: {
       // and the terminal callback broadcasts to other clients.
     })(),
   );
-}
-
-/**
- * Post an automation run's prompt as a user chat message into its linked
- * thread and publish the realtime signals so the client surfaces the run.
- * Posts the chat bubble for an automation-fired run: the prompt is the
- * automation `instruction`. A time-automation fire passes the chip fields
- * (`automationId` links the source automation for navigation;
- * `automationSnapshot` keeps the label rendering after edits/deletes); a
- * webhook fire omits them.
- * Like a time fire it preserves the thread draft (the
- * post is not user-initiated typing) and is awaited so the caller sees it
- * persisted.
- */
-export async function postAutomationUserMessage(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly prompt: string;
-  readonly appendQueueMarker: boolean;
-  readonly automationTitle?: string;
-  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
-}): Promise<void> {
-  await appendAssociatedUserMessage({
-    db: params.db,
-    threadId: params.threadId,
-    userId: params.userId,
-    prompt: params.prompt,
-    runId: params.runId,
-    attachFiles: undefined,
-    clientMessageId: undefined,
-    revokesMessageId: undefined,
-    generationTemplate: undefined,
-    appendQueueMarker: params.appendQueueMarker,
-    clearDraft: false,
-    automationTitle: params.automationTitle,
-    automationSnapshot: params.automationSnapshot,
-  });
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
 }
 
 function scheduleCreatedChatRunSideEffects(params: {

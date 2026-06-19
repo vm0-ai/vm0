@@ -3668,10 +3668,10 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     );
   });
 
-  it("does not include Stripe without OAuth runtime env", () => {
+  it("includes Stripe manual grant without OAuth runtime env", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
-    expect(runtimeAvailableTypes).not.toContain("stripe");
+    expect(runtimeAvailableTypes).toContain("stripe");
   });
 
   it("returns connector types in sorted order", () => {

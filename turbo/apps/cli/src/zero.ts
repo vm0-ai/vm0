@@ -19,6 +19,7 @@ import { zeroPhoneCommand } from "./commands/zero/phone";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 import { zeroWorkflowCommand } from "./commands/zero/workflow";
+import { zeroGoalCommand } from "./commands/zero/goal";
 import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
@@ -50,6 +51,7 @@ const COMMAND_CAPABILITY_MAP: Record<
 > = {
   agent: "agent:read",
   workflow: "agent:read",
+  goal: ["goal:read", "goal:write"],
   connector: "connector:read",
   // "schedule" is deliberately absent: the rename stub stays out of
   // token-scoped (agent) help but remains invokable and visible to humans.
@@ -98,6 +100,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroResourceCommand,
   zeroWhoamiCommand,
   zeroWorkflowCommand,
+  zeroGoalCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
   generateCommand,

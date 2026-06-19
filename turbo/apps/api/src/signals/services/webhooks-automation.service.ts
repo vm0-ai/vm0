@@ -15,7 +15,7 @@ import { safeJsonParse, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { postAutomationUserMessage } from "../routes/zero-chat-messages";
+import { postAutomationUserMessage } from "./zero-chat-automation-message.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   DefaultInterpreter,

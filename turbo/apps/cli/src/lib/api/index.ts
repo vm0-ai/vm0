@@ -126,6 +126,15 @@ export {
   setWorkflowAgents,
 } from "./domains/zero-workflows";
 
+// Domain modules - Zero Goals
+export {
+  createGoal,
+  getGoal,
+  completeGoal,
+  blockGoal,
+  resumeGoal,
+} from "./domains/zero-goals";
+
 // Domain modules - Zero Connectors
 export {
   listZeroConnectors,
