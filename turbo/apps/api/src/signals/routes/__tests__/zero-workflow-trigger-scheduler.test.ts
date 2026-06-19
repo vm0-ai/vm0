@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -8,6 +10,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflowTriggers,
@@ -19,12 +22,13 @@ import { and, eq } from "drizzle-orm";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
 import { writeDb$, type Db } from "../../external/db";
+import { dispatchRunCallbacks$ } from "../../services/agent-run-callback.service";
 import { executeDueWorkflowTriggers$ } from "../../services/zero-workflow-trigger-poller.service";
 import { handleWorkflowTriggerInternalCallback } from "../../services/zero-workflow-trigger-run-callback.service";
 import {
@@ -159,6 +163,142 @@ async function seedTrigger(
     })
     .returning({ id: zeroWorkflowTriggers.id });
   return { triggerId: trigger!.id, threadId: thread!.id };
+}
+
+async function enableGoalFeature(scenario: Scenario): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: scenario.fixture.orgId,
+    userId: scenario.fixture.userId,
+    switches: { [FeatureSwitchKey.GoalWorkflows]: true },
+  });
+}
+
+async function seedThreadRun(
+  scenario: Scenario,
+  opts: {
+    readonly status:
+      | "queued"
+      | "pending"
+      | "running"
+      | "completed"
+      | "failed"
+      | "timeout"
+      | "cancelled";
+    readonly threadId?: string;
+    readonly prompt?: string;
+    readonly result?: Record<string, unknown> | null;
+  },
+): Promise<{ runId: string; threadId: string; sessionId: string }> {
+  const db = store.set(writeDb$);
+  const threadId =
+    opts.threadId ??
+    (
+      await db
+        .insert(chatThreads)
+        .values({
+          userId: scenario.fixture.userId,
+          agentComposeId: scenario.agentId,
+          title: "goal thread",
+        })
+        .returning({ id: chatThreads.id })
+    )[0]!.id;
+  const [compose] = await db
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, scenario.agentId))
+    .limit(1);
+  if (!compose?.headVersionId) {
+    throw new Error("Expected seeded agent to have a head compose version");
+  }
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: scenario.fixture.userId,
+      orgId: scenario.fixture.orgId,
+      agentComposeId: scenario.agentId,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("Failed to seed agent session");
+  }
+  const [run] = await db
+    .insert(agentRuns)
+    .values({
+      userId: scenario.fixture.userId,
+      orgId: scenario.fixture.orgId,
+      agentComposeVersionId: compose.headVersionId,
+      sessionId: session.id,
+      status: opts.status,
+      prompt: opts.prompt ?? "goal terminal run",
+      result: opts.result ?? { agentSessionId: session.id },
+      completedAt: ["completed", "failed", "timeout", "cancelled"].includes(
+        opts.status,
+      )
+        ? nowDate()
+        : null,
+    })
+    .returning({ id: agentRuns.id });
+  if (!run) {
+    throw new Error("Failed to seed agent run");
+  }
+  await db.insert(zeroRuns).values({
+    id: run.id,
+    triggerSource: "web",
+    chatThreadId: threadId,
+  });
+  return { runId: run.id, threadId, sessionId: session.id };
+}
+
+async function seedGoalTrigger(
+  scenario: Scenario,
+  args: {
+    readonly threadId: string;
+    readonly consecutiveFailures?: number;
+    readonly enabled?: boolean;
+  },
+): Promise<{ workflowId: string; triggerId: string }> {
+  const db = store.set(writeDb$);
+  const [workflow] = await db
+    .insert(zeroWorkflows)
+    .values({
+      orgId: scenario.fixture.orgId,
+      name: `goal-${randomUUID().slice(0, 8)}`,
+      visibility: "private",
+      type: "goal",
+      active: true,
+      preference: { version: 1, objective: "Ship the goal workflow" },
+      ownerUserId: scenario.fixture.userId,
+      displayName: "Goal",
+      createdBy: scenario.fixture.userId,
+    })
+    .returning({ id: zeroWorkflows.id });
+  if (!workflow) {
+    throw new Error("Failed to seed goal workflow");
+  }
+  const [trigger] = await db
+    .insert(zeroWorkflowTriggers)
+    .values({
+      orgId: scenario.fixture.orgId,
+      workflowId: workflow.id,
+      agentId: scenario.agentId,
+      ownerUserId: scenario.fixture.userId,
+      kind: "event",
+      eventType: "thread-idle",
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      enabled: args.enabled ?? true,
+      chatThreadId: args.threadId,
+      nextRunAt: null,
+      consecutiveFailures: args.consecutiveFailures ?? 0,
+    })
+    .returning({ id: zeroWorkflowTriggers.id });
+  if (!trigger) {
+    throw new Error("Failed to seed goal trigger");
+  }
+  return { workflowId: workflow.id, triggerId: trigger.id };
 }
 
 async function loadTrigger(db: Db, triggerId: string) {
@@ -398,6 +538,149 @@ describe("zero workflow trigger scheduler", () => {
         return m.content === `/${WORKFLOW_NAME}`;
       }),
     ).toBeTruthy();
+  });
+
+  it("continues an active goal from the terminal callback when the thread is idle", async () => {
+    const scenario = await setup();
+    await enableGoalFeature(scenario);
+    const terminal = await seedThreadRun(scenario, { status: "completed" });
+    const { triggerId } = await seedGoalTrigger(scenario, {
+      threadId: terminal.threadId,
+      consecutiveFailures: 2,
+    });
+
+    const db = store.set(writeDb$);
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: terminal.runId, status: "completed" },
+      context.signal,
+    );
+
+    const runs = await db
+      .select({
+        id: zeroRuns.id,
+        triggerSource: zeroRuns.triggerSource,
+        prompt: agentRuns.prompt,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+      })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      triggerSource: "workflow-event",
+      prompt: "/goal",
+      continuedFromSessionId: terminal.sessionId,
+    });
+
+    const callbacks = await db
+      .select({ internalKind: agentRunCallbacks.internalKind })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, runs[0]!.id));
+    expect(
+      callbacks.map((callback) => {
+        return callback.internalKind;
+      }),
+    ).toStrictEqual(["chat"]);
+
+    const trigger = await loadTrigger(db, triggerId);
+    expect(trigger?.lastRunId).toBe(runs[0]?.id);
+    expect(trigger?.lastRunAt).not.toBeNull();
+    expect(trigger?.consecutiveFailures).toBe(0);
+
+    const messages = await db
+      .select({ content: chatMessages.content })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, terminal.threadId));
+    expect(
+      messages.some((message) => {
+        return message.content === "/goal";
+      }),
+    ).toBeTruthy();
+  });
+
+  it("does not continue a goal when another run is already queued on the thread", async () => {
+    const scenario = await setup();
+    await enableGoalFeature(scenario);
+    const terminal = await seedThreadRun(scenario, { status: "completed" });
+    const { triggerId } = await seedGoalTrigger(scenario, {
+      threadId: terminal.threadId,
+    });
+    await seedThreadRun(scenario, {
+      status: "queued",
+      threadId: terminal.threadId,
+      prompt: "user queued turn",
+    });
+
+    const db = store.set(writeDb$);
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: terminal.runId, status: "completed" },
+      context.signal,
+    );
+
+    const runs = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(runs).toHaveLength(0);
+  });
+
+  it("auto-stops a goal after three consecutive failed goal turns", async () => {
+    const scenario = await setup();
+    await enableGoalFeature(scenario);
+    const terminal = await seedThreadRun(scenario, { status: "failed" });
+    const { triggerId } = await seedGoalTrigger(scenario, {
+      threadId: terminal.threadId,
+      consecutiveFailures: 2,
+    });
+
+    const db = store.set(writeDb$);
+    await store.set(
+      dispatchRunCallbacks$,
+      {
+        db,
+        runId: terminal.runId,
+        status: "failed",
+        error: "run failed",
+      },
+      context.signal,
+    );
+
+    const trigger = await loadTrigger(db, triggerId);
+    expect(trigger?.enabled).toBeFalsy();
+    expect(trigger?.consecutiveFailures).toBe(3);
+
+    const runs = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(runs).toHaveLength(0);
+  });
+
+  it("pauses a goal when the user cancels the terminal run", async () => {
+    const scenario = await setup();
+    await enableGoalFeature(scenario);
+    const terminal = await seedThreadRun(scenario, { status: "cancelled" });
+    const { triggerId } = await seedGoalTrigger(scenario, {
+      threadId: terminal.threadId,
+    });
+
+    const db = store.set(writeDb$);
+    await store.set(
+      dispatchRunCallbacks$,
+      {
+        db,
+        runId: terminal.runId,
+        status: "failed",
+        error: "Run cancelled",
+      },
+      context.signal,
+    );
+
+    const trigger = await loadTrigger(db, triggerId);
+    expect(trigger?.enabled).toBeFalsy();
+    expect(trigger?.consecutiveFailures).toBe(0);
   });
 
   it("disables triggers when the workflow is detached from the agent", async () => {

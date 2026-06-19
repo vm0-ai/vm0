@@ -51,6 +51,7 @@ export const triggerSourceSchema = z.enum([
   "agent",
   "webhook",
   "workflow-schedule",
+  "workflow-event",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;

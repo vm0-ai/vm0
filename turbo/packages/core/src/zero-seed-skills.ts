@@ -3,6 +3,8 @@ import {
   CONNECTOR_TYPES,
 } from "@vm0/connectors/connectors";
 
+export const GOAL_SEED_SKILL = "goal";
+
 /**
  * Default skills always included in zero agent composes.
  * Source: https://github.com/vm0-ai/the-seed
@@ -27,6 +29,7 @@ export const SEED_SKILLS: readonly string[] = [
   "flux-analysis",
   "gaap-reporting",
   "gen",
+  GOAL_SEED_SKILL,
   "issue-triage",
   "journal-entries",
   "kb-authoring",

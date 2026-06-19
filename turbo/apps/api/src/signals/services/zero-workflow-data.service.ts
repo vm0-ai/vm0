@@ -86,6 +86,7 @@ export async function loadVisibleWorkflow(
       and(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.name, args.name),
+        eq(zeroWorkflows.type, "workflow"),
         visibleWorkflowCondition(args.userId),
       ),
     )
@@ -183,6 +184,7 @@ export function zeroWorkflowList(args: {
       .where(
         and(
           eq(zeroWorkflows.orgId, args.orgId),
+          eq(zeroWorkflows.type, "workflow"),
           visibleWorkflowCondition(args.member.userId),
         ),
       )
@@ -215,6 +217,7 @@ export async function loadWorkflowNamesForRun(
       and(
         eq(zeroWorkflowAgents.orgId, args.orgId),
         eq(zeroWorkflowAgents.agentId, args.agentId),
+        eq(zeroWorkflows.type, "workflow"),
         visibleWorkflowCondition(args.userId),
       ),
     )

@@ -138,6 +138,9 @@ function summarizeSchedule(schedule: ZeroWorkflowSchedule): string {
 }
 
 function rowToSchedule(row: TriggerRow): ZeroWorkflowSchedule {
+  if (row.kind !== "schedule" || row.scheduleType === null) {
+    throw new Error(`Workflow trigger is not a schedule trigger: ${row.id}`);
+  }
   if (row.scheduleType === "cron") {
     return {
       type: "cron",
@@ -248,6 +251,7 @@ async function loadVisibleTriggerWorkflow(
       and(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.id, args.workflowId),
+        eq(zeroWorkflows.type, "workflow"),
         visibleWorkflowCondition(args.userId),
       ),
     )
@@ -287,6 +291,7 @@ export async function loadWorkflowTriggers(
       and(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.workflowId, args.workflowId),
+        eq(zeroWorkflowTriggers.kind, "schedule"),
       ),
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
@@ -310,6 +315,9 @@ export async function getWorkflowTrigger(
     triggerId: args.triggerId,
   });
   if (!trigger) {
+    return null;
+  }
+  if (trigger.kind !== "schedule") {
     return null;
   }
   const visible = await loadVisibleTriggerWorkflow(db, {
@@ -412,6 +420,8 @@ export const createWorkflowTrigger$ = command(
           workflowId: workflow.id,
           agentId: agent.id,
           ownerUserId: args.member.userId,
+          kind: "schedule",
+          eventType: null,
           scheduleType: cols.scheduleType,
           cronExpression: cols.cronExpression,
           intervalSeconds: cols.intervalSeconds,
@@ -451,6 +461,9 @@ async function loadOwnedTrigger(
     triggerId: args.triggerId,
   });
   if (!trigger) {
+    return { kind: "not-found" };
+  }
+  if (trigger.kind !== "schedule") {
     return { kind: "not-found" };
   }
   const visible = await loadVisibleTriggerWorkflow(db, {
@@ -704,6 +717,7 @@ export async function disableTriggersForDetachedAgent(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.workflowId, args.workflowId),
         eq(zeroWorkflowTriggers.agentId, args.agentId),
+        eq(zeroWorkflowTriggers.kind, "schedule"),
       ),
     );
 }

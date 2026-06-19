@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   ConnectorReconnectReasons = "connectorReconnectReasons",
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
+  GoalWorkflows = "goalWorkflows",
 }

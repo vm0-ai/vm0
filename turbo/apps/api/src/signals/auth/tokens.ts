@@ -25,6 +25,8 @@ const PAT_TOKEN_PREFIX = "vm0_pat_";
 const CONDITIONAL_CAPABILITIES = [
   ["computer-use:write", FeatureSwitchKey.ComputerUse],
   ["banking:read", FeatureSwitchKey.Banking],
+  ["goal:read", FeatureSwitchKey.GoalWorkflows],
+  ["goal:write", FeatureSwitchKey.GoalWorkflows],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

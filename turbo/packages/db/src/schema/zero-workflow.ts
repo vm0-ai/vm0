@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   index,
   check,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
@@ -22,6 +23,15 @@ import { chatThreads } from "./chat-thread";
  * stored through the existing custom-skill volume storage name.
  */
 export type ZeroWorkflowVisibility = "public" | "private";
+export type ZeroWorkflowType = "workflow" | "goal";
+
+export interface ZeroGoalPreference {
+  readonly version: 1;
+  readonly objective: string;
+  readonly tokenBudget?: number;
+}
+
+export type ZeroWorkflowPreference = ZeroGoalPreference;
 
 /**
  * Zero Workflows table
@@ -38,6 +48,12 @@ export const zeroWorkflows = pgTable(
       .$type<ZeroWorkflowVisibility>()
       .notNull()
       .default("private"),
+    type: varchar("type", { length: 16 })
+      .$type<ZeroWorkflowType>()
+      .notNull()
+      .default("workflow"),
+    active: boolean("active").default(true).notNull(),
+    preference: jsonb("preference").$type<ZeroWorkflowPreference>(),
     ownerUserId: text("owner_user_id").notNull(),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
@@ -118,16 +134,18 @@ export const zeroWorkflowAgents = pgTable(
  * primitives (`TimeTrigger`) can be reused.
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
+export type ZeroWorkflowTriggerKind = "schedule" | "event";
+export type ZeroWorkflowEventType = "thread-idle";
 
 /**
- * Workflow schedule triggers.
+ * Workflow triggers.
  *
  * A trigger answers "when" (schedule) and "where" (agent) a workflow runs; the
  * workflow's SKILL.md is the "what". Each trigger binds to its own chat thread
  * and runs under its `owner_user_id` identity.
  *
- * The top-level trigger kind is always `schedule` for now (future: event /
- * webhook); the stored discriminator is `schedule_type`.
+ * Schedule triggers are polled by `next_run_at`. Event triggers keep
+ * `next_run_at = NULL` and fire from their event-specific junction.
  */
 export const zeroWorkflowTriggers = pgTable(
   "zero_workflow_triggers",
@@ -153,9 +171,16 @@ export const zeroWorkflowTriggers = pgTable(
     // Execution identity: runs fire as (org_id, owner_user_id), resolving the
     // owner's secrets / connectors / credits.
     ownerUserId: text("owner_user_id").notNull(),
-    scheduleType: varchar("schedule_type", { length: 16 })
-      .$type<ZeroWorkflowScheduleType>()
-      .notNull(),
+    kind: varchar("kind", { length: 16 })
+      .$type<ZeroWorkflowTriggerKind>()
+      .notNull()
+      .default("schedule"),
+    eventType: varchar("event_type", {
+      length: 64,
+    }).$type<ZeroWorkflowEventType>(),
+    scheduleType: varchar("schedule_type", {
+      length: 16,
+    }).$type<ZeroWorkflowScheduleType>(),
     cronExpression: varchar("cron_expression", { length: 100 }),
     intervalSeconds: integer("interval_seconds"),
     atTime: timestamp("at_time"),
@@ -185,12 +210,26 @@ export const zeroWorkflowTriggers = pgTable(
       index("idx_zero_workflow_triggers_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
-      // Each schedule_type carries exactly its own config; the others are null.
+      // Each trigger kind carries exactly its own config.
       check(
         "zero_workflow_triggers_schedule_config_check",
-        sql`(schedule_type = 'cron' AND cron_expression IS NOT NULL AND interval_seconds IS NULL AND at_time IS NULL)
-          OR (schedule_type = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
-          OR (schedule_type = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)`,
+        sql`(
+            kind = 'schedule'
+            AND event_type IS NULL
+            AND (
+              (schedule_type = 'cron' AND cron_expression IS NOT NULL AND interval_seconds IS NULL AND at_time IS NULL)
+              OR (schedule_type = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
+              OR (schedule_type = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
+            )
+          )
+          OR (
+            kind = 'event'
+            AND event_type = 'thread-idle'
+            AND schedule_type IS NULL
+            AND cron_expression IS NULL
+            AND interval_seconds IS NULL
+            AND at_time IS NULL
+          )`,
       ),
     ];
   },

@@ -21,7 +21,7 @@ import { visibleJoinedZeroAgentCondition } from "../zero-agent-data.service";
 import {
   postAutomationUserMessage,
   resolveAutomationChatThreadModelPin,
-} from "../../routes/zero-chat-messages";
+} from "../zero-chat-automation-message.service";
 
 // The automation chip on the run's chat bubble: the snapshot keeps the label
 // rendering after the automation is renamed, edited, or deleted.

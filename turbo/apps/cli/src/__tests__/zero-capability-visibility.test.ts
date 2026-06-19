@@ -35,6 +35,7 @@ function buildCommands(): Command[] {
     new Command("host"),
     new Command("maps"),
     new Command("banking"),
+    new Command("goal"),
   ];
 }
 
@@ -166,6 +167,7 @@ describe("registerZeroCommands", () => {
       "host",
       "maps",
       "banking",
+      "goal",
     ]);
   });
 
@@ -438,6 +440,31 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("banking");
+  });
+
+  it("should show goal when goal capabilities are present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["goal:read", "goal:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("goal");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide goal when goal capabilities are missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("goal");
   });
 
   it("should show credit when billing:write capability is present", () => {

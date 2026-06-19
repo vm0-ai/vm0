@@ -1442,6 +1442,18 @@ export {
   type UploadPrepareResponse,
 } from "./zero-uploads";
 export {
+  zeroGoalsContract,
+  zeroGoalCreateRequestSchema,
+  zeroGoalPreferenceSchema,
+  zeroGoalResponseSchema,
+  zeroGoalStatusSchema,
+  type ZeroGoalCreateRequest,
+  type ZeroGoalPreference,
+  type ZeroGoalResponse,
+  type ZeroGoalStatus,
+  type ZeroGoalsContract,
+} from "./zero-goals";
+export {
   zeroHostContract,
   hostedSiteFileSchema,
   hostedSitePrepareRequestSchema,
