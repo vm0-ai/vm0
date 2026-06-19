@@ -233,6 +233,54 @@ describe("chat message action cards", () => {
     });
   });
 
+  it("does not retry non-transient permission action loading failures", async () => {
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
+    let listRequests = 0;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      listRequests += 1;
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden",
+        },
+      });
+    });
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-load-forbidden`,
+      threadTitle: "Permission load forbidden",
+      chatMessages: [
+        {
+          id: "msg-user-permission-load-forbidden",
+          role: "user",
+          content: "Allow Gmail modification",
+          runId: "run-permission-load-forbidden",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-load-forbidden-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-load-forbidden",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-load-forbidden`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(
+        buttonByText("Failed to load permissions", permissionCard),
+      ).toBeDisabled();
+    });
+    expect(listRequests).toBe(1);
+  });
+
   it("lets users change permission duration before confirming", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
