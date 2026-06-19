@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.1...guest-agent-v0.38.2) (2026-06-19)
+
+
+### Performance Improvements
+
+* **guest-agent:** resolve session markers at checkpoint time ([#18295](https://github.com/vm0-ai/vm0/issues/18295)) ([6ed71a3](https://github.com/vm0-ai/vm0/commit/6ed71a319d804f5fc58c90fc250dab81875dc5b6))
+
 ## [0.38.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.0...guest-agent-v0.38.1) (2026-06-18)
 
 ## [0.38.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.37.5...guest-agent-v0.38.0) (2026-06-18)

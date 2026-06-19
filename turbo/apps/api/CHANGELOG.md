@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.159.0](https://github.com/vm0-ai/vm0/compare/api-v1.158.0...api-v1.159.0) (2026-06-19)
+
+
+### Features
+
+* restore stripe api-token connector auth method ([#18316](https://github.com/vm0-ai/vm0/issues/18316)) ([9a47ef4](https://github.com/vm0-ai/vm0/commit/9a47ef481d4f6a63706986ae60c014a05ecdc4df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.104.1
+    * @vm0/connectors bumped to 1.94.0
+    * @vm0/core bumped to 8.357.1
+    * @vm0/db bumped to 1.58.1
+
 ## [1.158.0](https://github.com/vm0-ai/vm0/compare/api-v1.157.0...api-v1.158.0) (2026-06-18)
 
 

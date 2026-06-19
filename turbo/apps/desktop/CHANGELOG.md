@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.1...desktop-v0.16.2) (2026-06-19)
+
+
+### Bug Fixes
+
+* **desktop:** clarify computer use capture failures ([#18319](https://github.com/vm0-ai/vm0/issues/18319)) ([0454829](https://github.com/vm0-ai/vm0/commit/045482955894363890f61c417e4947280785aab6))
+
 ## [0.16.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.0...desktop-v0.16.1) (2026-06-18)
 
 

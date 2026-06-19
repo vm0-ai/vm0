@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.474.0](https://github.com/vm0-ai/vm0/compare/app-v0.473.0...app-v0.474.0) (2026-06-19)
+
+
+### Features
+
+* add maskdb connector ([#18320](https://github.com/vm0-ai/vm0/issues/18320)) ([c7b5ae4](https://github.com/vm0-ai/vm0/commit/c7b5ae4f44579fb9b166022e858dbe7c920078aa))
+* restore stripe api-token connector auth method ([#18316](https://github.com/vm0-ai/vm0/issues/18316)) ([9a47ef4](https://github.com/vm0-ai/vm0/commit/9a47ef481d4f6a63706986ae60c014a05ecdc4df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.104.1
+    * @vm0/connectors bumped to 1.94.0
+    * @vm0/core bumped to 8.357.1
+
 ## [0.473.0](https://github.com/vm0-ai/vm0/compare/app-v0.472.0...app-v0.473.0) (2026-06-18)
 
 
