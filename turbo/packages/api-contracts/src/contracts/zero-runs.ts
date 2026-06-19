@@ -14,6 +14,7 @@ import {
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
   logsSearchResponseSchema,
+  telemetrySinceCursorSchema,
 } from "./runs";
 import { sandboxReuseResultSchema } from "./webhooks";
 
@@ -252,7 +253,7 @@ export const zeroRunNetworkLogsContract = c.router({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
-      since: z.coerce.number().optional(),
+      since: telemetrySinceCursorSchema,
       limit: z.coerce.number().min(1).max(500).default(500),
       order: z.enum(["asc", "desc"]).default("asc"),
     }),

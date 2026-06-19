@@ -12,6 +12,27 @@ import { orgTierSchema } from "./orgs";
 const c = initContract();
 export type DirectRunModelProviderType = Exclude<ModelProviderType, "vm0">;
 
+/**
+ * Largest absolute epoch-millisecond value JavaScript `Date` can represent
+ * (ECMA-262 time-clip: ±8.64e15). A finite `since` cursor outside this range
+ * survives plain number coercion but makes the time-based telemetry services
+ * throw `RangeError: Invalid time value` from `new Date(since).toISOString()`,
+ * turning a bad client query into a 500. Bounding the cursor here rejects such
+ * values at request validation time with a 400 instead.
+ */
+const MAX_EPOCH_MS = 8_640_000_000_000_000;
+
+/**
+ * `since` cursor for time-based telemetry reads: a coerced epoch-millisecond
+ * value constrained to the representable `Date` range so the service layer can
+ * safely build `datetime(...)` filters.
+ */
+export const telemetrySinceCursorSchema = z.coerce
+  .number()
+  .min(-MAX_EPOCH_MS)
+  .max(MAX_EPOCH_MS)
+  .optional();
+
 const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
   (type) => {
     return type !== "vm0";
@@ -556,12 +577,13 @@ export const runSystemLogContract = c.router({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
-      since: z.coerce.number().optional(),
+      since: telemetrySinceCursorSchema,
       limit: z.coerce.number().min(1).max(100).default(5),
       order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: systemLogResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -585,12 +607,13 @@ export const runMetricsContract = c.router({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
-      since: z.coerce.number().optional(),
+      since: telemetrySinceCursorSchema,
       limit: z.coerce.number().min(1).max(100).default(5),
       order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: metricsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -643,12 +666,13 @@ export const runNetworkLogsContract = c.router({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
-      since: z.coerce.number().optional(),
+      since: telemetrySinceCursorSchema,
       limit: z.coerce.number().min(1).max(100).default(5),
       order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: networkLogsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
