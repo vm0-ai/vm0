@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.358.0](https://github.com/vm0-ai/vm0/compare/core-v8.357.1...core-v8.358.0) (2026-06-19)
+
+
+### Features
+
+* add goal workflows continuation ([#18328](https://github.com/vm0-ai/vm0/issues/18328)) ([969d660](https://github.com/vm0-ai/vm0/commit/969d66023b20059ab874d08c1e293be87641d5ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.105.0
+    * @vm0/connectors bumped to 1.95.0
+
 ## [8.357.1](https://github.com/vm0-ai/vm0/compare/core-v8.357.0...core-v8.357.1) (2026-06-19)
 
 

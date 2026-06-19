@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.199.0](https://github.com/vm0-ai/vm0/compare/cli-v9.198.2...cli-v9.199.0) (2026-06-19)
+
+
+### Features
+
+* add goal workflows continuation ([#18328](https://github.com/vm0-ai/vm0/issues/18328)) ([969d660](https://github.com/vm0-ai/vm0/commit/969d66023b20059ab874d08c1e293be87641d5ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.105.0
+    * @vm0/connectors bumped to 1.95.0
+    * @vm0/core bumped to 8.358.0
+
 ## [9.198.2](https://github.com/vm0-ai/vm0/compare/cli-v9.198.1...cli-v9.198.2) (2026-06-19)
 
 
