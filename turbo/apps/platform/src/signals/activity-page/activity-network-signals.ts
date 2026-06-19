@@ -133,7 +133,7 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
   const extra = extraRunMatch ? pg.logs : [];
   const hasMore =
     extraRunMatch && pg.pageCount > 0 ? pg.hasMore : first.hasMore;
-  const loading = pg.loading;
+  const loading = extraRunMatch ? pg.loading : false;
 
   return {
     networkLogs: [...first.logs, ...extra],

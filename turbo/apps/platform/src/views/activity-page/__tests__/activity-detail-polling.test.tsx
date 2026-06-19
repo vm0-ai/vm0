@@ -2061,6 +2061,16 @@ describe("activity detail polling", () => {
       activityRunId: secondRunId,
     });
 
+    await waitFor(async () => {
+      const data = await context.store.get(zeroActivityNetworkLogs$);
+      expect(
+        data.networkLogs.some((entry) => {
+          return entry.url === "https://second.example.test/start";
+        }),
+      ).toBeTruthy();
+      expect(data.loading).toBeFalsy();
+    });
+
     const secondLoad = context.store.set(
       loadNetworkLogsNextPage$,
       context.signal,
