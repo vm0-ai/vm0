@@ -78,7 +78,7 @@ function createContext() {
   });
 }
 
-describe("permission draft intent", () => {
+describe("permission draft intent keys", () => {
   it("fingerprints resolved initial permission policies", () => {
     const initialAllowContext = createPermissionDraftContext({
       metadata: METADATA,
@@ -100,7 +100,9 @@ describe("permission draft intent", () => {
       permissionDraftInitialPolicyKey(initialDenyContext),
     );
   });
+});
 
+describe("permission draft intent materialization", () => {
   it("does not materialize inherited expiration for denied permissions", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
@@ -195,7 +197,9 @@ describe("permission draft intent", () => {
       "bookmarks:read",
     );
   });
+});
 
+describe("permission draft intent row duration overrides", () => {
   it("lets a row allow always override an inherited group duration", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
@@ -285,7 +289,9 @@ describe("permission draft intent", () => {
       "bookmarks:read",
     );
   });
+});
 
+describe("permission draft intent row restore", () => {
   it("keeps a restored row detached from group duration after group allow", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
@@ -357,7 +363,9 @@ describe("permission draft intent", () => {
       }),
     ).toBe("7d");
   });
+});
 
+describe("permission draft intent group duration", () => {
   it("clears row expiration overrides when setting a group duration", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
@@ -430,7 +438,9 @@ describe("permission draft intent", () => {
       "bookmarks:read",
     );
   });
+});
 
+describe("permission draft intent group duration ordering", () => {
   it("inherits group duration when the group duration is set after a row deny", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();
@@ -506,7 +516,9 @@ describe("permission draft intent", () => {
       }).expiresInByPermission,
     ).toStrictEqual({});
   });
+});
 
+describe("permission draft intent allow always selection", () => {
   it("only clears expiring group grants when selecting allow always", () => {
     const context = createContext();
     const explicitGrants = new Map([
@@ -563,7 +575,9 @@ describe("permission draft intent", () => {
       "bookmarks:read": "always",
     });
   });
+});
 
+describe("permission draft intent reset persistence", () => {
   it("does not keep apply enabled when a connector restore is undone back to initial grants", () => {
     const explicitGrants = new Map([
       ["bookmarks:read", createGrant("bookmarks:read", "deny")],
