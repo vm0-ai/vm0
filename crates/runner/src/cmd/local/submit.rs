@@ -30,6 +30,9 @@ const MAX_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 /// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
+/// Local active input is only used by smoke tests, so keep producer fan-out bounded.
+const MAX_LOCAL_ACTIVE_INPUTS: usize = 16;
+
 #[derive(Args)]
 pub struct SubmitArgs {
     /// Runner group name (writes job to the group's local queue)
@@ -418,6 +421,11 @@ impl SubmitPlan {
         timeout: Duration,
         job_id: RunId,
     ) -> RunnerResult<Vec<DelayedActiveInput>> {
+        if values.len() > MAX_LOCAL_ACTIVE_INPUTS {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input: at most {MAX_LOCAL_ACTIVE_INPUTS} entries are supported"
+            )));
+        }
         values
             .iter()
             .enumerate()
@@ -1235,6 +1243,11 @@ mod tests {
                 "value={value}, got: {err}"
             );
         }
+
+        let too_many = vec!["after=1s,text=ok".to_string(); MAX_LOCAL_ACTIVE_INPUTS + 1];
+        let err =
+            SubmitPlan::parse_active_inputs(&too_many, Duration::from_secs(5), job_id).unwrap_err();
+        assert!(err.to_string().contains("active-input"));
     }
 
     #[tokio::test]
