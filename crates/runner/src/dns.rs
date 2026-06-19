@@ -7,6 +7,8 @@
 //! Defense-in-depth:
 //! - Layer 1: iptables REDIRECT → dnsmasq port (working path, preserves source IP)
 //! - Layer 2: iptables DROP external UDP 53 / TCP 853 (bypass prevention)
+//! - Layer 3: dnsmasq binds to VM-facing veth interfaces instead of external
+//!   host interfaces (listener restriction)
 //!
 //! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
 //! target. The REDIRECT rule in PREROUTING intercepts all UDP 53 from the VM
@@ -18,7 +20,7 @@
 use std::{borrow::Cow, process::Stdio};
 
 use chrono::{DateTime, Utc};
-use tokio::io::AsyncBufRead;
+use tokio::io::{AsyncBufRead, AsyncReadExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -95,8 +97,8 @@ impl Drop for DnsProxy {
     /// Kill dnsmasq and abort the log task if `stop()` was never called.
     ///
     /// Prevents orphaned dnsmasq processes when `run_start()` fails after
-    /// `dns::start()` (e.g., runtime creation error). Harmless if `stop()`
-    /// already ran — `start_kill` on an exited child is a no-op.
+    /// `start_on_reserved_port()` (e.g., live-runner publish error). Harmless
+    /// if `stop()` already ran — `start_kill` on an exited child is a no-op.
     fn drop(&mut self) {
         if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
@@ -106,27 +108,73 @@ impl Drop for DnsProxy {
     }
 }
 
-/// Find an available port by binding to port 0.
-///
-/// Checks both TCP and UDP because dnsmasq binds both protocols.
-fn find_available_port() -> std::io::Result<u16> {
-    const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
-
-    find_available_port_from(
-        (0..MAX_PORT_PROBE_ATTEMPTS).map(|_| std::net::TcpListener::bind("0.0.0.0:0")),
-    )
+/// Reserved TCP/UDP port for the runner-managed dnsmasq process.
+pub(crate) struct DnsPortReservation {
+    port: u16,
+    _tcp: ReservedTcpPort,
+    _udp: std::net::UdpSocket,
 }
 
+impl DnsPortReservation {
+    /// Return the reserved port.
+    pub(crate) fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+struct ReservedTcpPort {
+    port: u16,
+    _socket: tokio::net::TcpSocket,
+}
+
+impl ReservedTcpPort {
+    fn bind(port: u16) -> std::io::Result<Self> {
+        let socket = tokio::net::TcpSocket::new_v4()?;
+        socket.bind(std::net::SocketAddr::from(([0, 0, 0, 0], port)))?;
+        Ok(Self {
+            port: socket.local_addr()?.port(),
+            _socket: socket,
+        })
+    }
+
+    fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+/// Reserve an available port by binding to port 0 without listening.
+///
+/// Checks both TCP and UDP because dnsmasq binds both protocols.
+pub(crate) fn reserve_port() -> std::io::Result<DnsPortReservation> {
+    const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
+
+    reserve_port_from((0..MAX_PORT_PROBE_ATTEMPTS).map(|_| ReservedTcpPort::bind(0)))
+}
+
+#[cfg(test)]
 fn find_available_port_from<I>(tcp_candidates: I) -> std::io::Result<u16>
 where
-    I: IntoIterator<Item = std::io::Result<std::net::TcpListener>>,
+    I: IntoIterator<Item = std::io::Result<ReservedTcpPort>>,
+{
+    Ok(reserve_port_from(tcp_candidates)?.port())
+}
+
+fn reserve_port_from<I>(tcp_candidates: I) -> std::io::Result<DnsPortReservation>
+where
+    I: IntoIterator<Item = std::io::Result<ReservedTcpPort>>,
 {
     let mut last_addr_in_use = None;
     for tcp in tcp_candidates {
         let tcp = tcp?;
-        let port = tcp.local_addr()?.port();
+        let port = tcp.port();
         match std::net::UdpSocket::bind(("0.0.0.0", port)) {
-            Ok(_udp) => return Ok(port),
+            Ok(udp) => {
+                return Ok(DnsPortReservation {
+                    port,
+                    _tcp: tcp,
+                    _udp: udp,
+                });
+            }
             Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
                 last_addr_in_use = Some(err);
             }
@@ -145,51 +193,26 @@ where
 /// Start dnsmasq and spawn a background task to parse its query log.
 ///
 /// dnsmasq listens on a dynamically allocated port and forwards to upstream DNS.
-/// Retries up to 3 times with a fresh port if the initial bind fails (TOCTOU race).
-pub async fn start(network_log_manager: NetworkLogManager) -> std::io::Result<DnsProxy> {
-    const MAX_ATTEMPTS: u32 = 3;
-    let mut last_err = None;
-    for attempt in 1..=MAX_ATTEMPTS {
-        let port = match find_available_port() {
-            Ok(p) => p,
-            Err(e) => {
-                warn!(attempt, error = %e, "failed to find available port");
-                last_err = Some(e);
-                continue;
-            }
-        };
-        match try_start(port, network_log_manager.clone()).await {
-            Ok(proxy) => return Ok(proxy),
-            Err(e) => {
-                if attempt < MAX_ATTEMPTS {
-                    warn!(port, attempt, error = %e, "dnsmasq failed to start, retrying with new port");
-                } else {
-                    warn!(port, attempt, error = %e, "dnsmasq failed to start, all attempts exhausted");
-                }
-                last_err = Some(e);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| std::io::Error::other("dnsmasq failed to start")))
+/// The port is reserved before netns setup so iptables can redirect to a stable
+/// value, then released immediately before spawning dnsmasq.
+pub async fn start_on_reserved_port(
+    reservation: DnsPortReservation,
+    interface_pattern: String,
+    network_log_manager: NetworkLogManager,
+) -> std::io::Result<DnsProxy> {
+    let port = reservation.port();
+    drop(reservation);
+    try_start(port, &interface_pattern, network_log_manager).await
 }
 
 /// Try to start dnsmasq on the given port. Returns the proxy handle on success.
-async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io::Result<DnsProxy> {
-    let port_str = port.to_string();
-
+async fn try_start(
+    port: u16,
+    interface_pattern: &str,
+    network_log_manager: NetworkLogManager,
+) -> std::io::Result<DnsProxy> {
     let mut child = tokio::process::Command::new("dnsmasq")
-        .args([
-            "--no-daemon",
-            "--no-resolv",
-            "--port",
-            &port_str,
-            "--server",
-            "8.8.8.8",
-            "--server",
-            "8.8.4.4",
-            "--log-queries=extra",
-            "--log-facility=-",
-        ])
+        .args(dnsmasq_args(port, interface_pattern))
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -200,9 +223,8 @@ async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     match child.try_wait() {
         Ok(Some(status)) => {
-            return Err(std::io::Error::other(format!(
-                "dnsmasq exited immediately with {status}"
-            )));
+            let stderr = read_child_stderr(&mut child).await;
+            return Err(dnsmasq_immediate_exit_error(status, &stderr));
         }
         Err(e) => {
             let _ = child.kill().await;
@@ -235,6 +257,38 @@ async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io
         drain,
         port,
     })
+}
+
+fn dnsmasq_immediate_exit_error(status: std::process::ExitStatus, stderr: &str) -> std::io::Error {
+    let trimmed = stderr.trim();
+    let message = if trimmed.is_empty() {
+        format!("dnsmasq exited immediately with {status}")
+    } else {
+        format!("dnsmasq exited immediately with {status}: {trimmed}")
+    };
+    std::io::Error::new(dnsmasq_immediate_exit_error_kind(trimmed), message)
+}
+
+fn dnsmasq_immediate_exit_error_kind(stderr: &str) -> std::io::ErrorKind {
+    if stderr
+        .to_ascii_lowercase()
+        .contains("address already in use")
+    {
+        std::io::ErrorKind::AddrInUse
+    } else {
+        std::io::ErrorKind::Other
+    }
+}
+
+async fn read_child_stderr(child: &mut tokio::process::Child) -> String {
+    let Some(mut stderr) = child.stderr.take() else {
+        return String::new();
+    };
+    let mut output = String::new();
+    if stderr.read_to_string(&mut output).await.is_err() {
+        return String::new();
+    }
+    output
 }
 
 /// Tail dnsmasq stderr and write DNS log entries to per-VM network JSONL.
@@ -521,6 +575,24 @@ fn network_log_row(entry: &DnsLogEntry<'_>, timestamp: DateTime<Utc>) -> serde_j
     }
 
     json
+}
+
+fn dnsmasq_args(port: u16, interface_pattern: &str) -> Vec<String> {
+    vec![
+        "--no-daemon".into(),
+        "--no-resolv".into(),
+        "--port".into(),
+        port.to_string(),
+        // VM host-side veth devices are created after dnsmasq starts.
+        format!("--interface={interface_pattern}"),
+        "--bind-dynamic".into(),
+        "--server".into(),
+        "8.8.8.8".into(),
+        "--server".into(),
+        "8.8.4.4".into(),
+        "--log-queries=extra".into(),
+        "--log-facility=-".into(),
+    ]
 }
 
 #[cfg(test)]
@@ -977,18 +1049,71 @@ mod tests {
     }
 
     #[test]
-    fn find_available_port_returns_nonzero() {
-        let port = find_available_port().unwrap();
-        assert!(port > 0);
+    fn dnsmasq_args_restrict_listener_to_vm_interface_pattern() {
+        let args = dnsmasq_args(5353, "vm0-ve-0a-*");
+
+        assert!(args.contains(&"--interface=vm0-ve-0a-*".to_string()));
+        assert!(args.contains(&"--bind-dynamic".to_string()));
     }
 
-    fn bind_tcp_udp_pair() -> std::io::Result<(std::net::TcpListener, std::net::UdpSocket)> {
+    #[test]
+    fn dnsmasq_args_preserve_port_upstream_and_logging_config() {
+        let args = dnsmasq_args(5353, "vm0-ve-0a-*");
+
+        assert_eq!(
+            args,
+            vec![
+                "--no-daemon",
+                "--no-resolv",
+                "--port",
+                "5353",
+                "--interface=vm0-ve-0a-*",
+                "--bind-dynamic",
+                "--server",
+                "8.8.8.8",
+                "--server",
+                "8.8.4.4",
+                "--log-queries=extra",
+                "--log-facility=-",
+            ]
+        );
+    }
+
+    #[test]
+    fn dnsmasq_immediate_exit_error_kind_detects_port_race() {
+        let stderr =
+            "dnsmasq: failed to create listening socket for 127.0.0.1: Address already in use";
+
+        assert_eq!(
+            dnsmasq_immediate_exit_error_kind(stderr),
+            std::io::ErrorKind::AddrInUse
+        );
+    }
+
+    #[test]
+    fn dnsmasq_immediate_exit_error_kind_keeps_non_port_errors_fatal() {
+        let stderr =
+            "dnsmasq: failed to create listening socket for 10.200.52.97: Too many open files";
+
+        assert_eq!(
+            dnsmasq_immediate_exit_error_kind(stderr),
+            std::io::ErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn reserve_port_returns_nonzero() {
+        let reservation = reserve_port().unwrap();
+        assert!(reservation.port() > 0);
+    }
+
+    fn bind_tcp_udp_pair() -> std::io::Result<(ReservedTcpPort, std::net::UdpSocket)> {
         const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
 
         let mut last_addr_in_use = None;
         for _ in 0..MAX_PORT_PROBE_ATTEMPTS {
-            let tcp = std::net::TcpListener::bind("0.0.0.0:0")?;
-            let port = tcp.local_addr()?.port();
+            let tcp = ReservedTcpPort::bind(0)?;
+            let port = tcp.port();
             match std::net::UdpSocket::bind(("0.0.0.0", port)) {
                 Ok(udp) => return Ok((tcp, udp)),
                 Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
@@ -1010,7 +1135,7 @@ mod tests {
     fn find_available_port_retries_when_udp_candidate_is_in_use() {
         let (busy_tcp, _busy_udp) = bind_tcp_udp_pair().unwrap();
         let (free_tcp, free_udp_probe) = bind_tcp_udp_pair().unwrap();
-        let free_port = free_tcp.local_addr().unwrap().port();
+        let free_port = free_tcp.port();
         drop(free_udp_probe);
 
         let port = find_available_port_from([Ok(busy_tcp), Ok(free_tcp)]).unwrap();

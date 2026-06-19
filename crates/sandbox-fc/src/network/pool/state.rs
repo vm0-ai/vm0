@@ -19,7 +19,7 @@ use super::host::{
     NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
     enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
 };
-use super::naming::MAX_NAMESPACES;
+use super::naming::{MAX_NAMESPACES, format_hex_index};
 use super::types::{
     CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
 };
@@ -309,6 +309,11 @@ impl NetnsPoolState {
         let id = PendingId(self.next_pending_id);
         self.next_pending_id += 1;
         id
+    }
+
+    fn host_device_pattern(&self) -> String {
+        let pool_idx = format_hex_index(self.pool_index);
+        format!("vm0-ve-{pool_idx}-*")
     }
 
     fn creation_notifier(&self) -> CreationNotifier {
@@ -887,6 +892,11 @@ impl NetnsPoolInner {
         }
     }
 
+    async fn host_device_pattern(&self) -> String {
+        let state = self.state.lock().await;
+        state.host_device_pattern()
+    }
+
     #[cfg(test)]
     fn with_state_for_test<R>(&self, f: impl FnOnce(&mut NetnsPoolState) -> R) -> R {
         let mut state = self
@@ -1008,6 +1018,10 @@ impl NetnsPoolHandle {
     pub(crate) async fn cleanup(&self) -> Result<()> {
         self.inner.cleanup().await
     }
+
+    pub(crate) async fn host_device_pattern(&self) -> String {
+        self.inner.host_device_pattern().await
+    }
 }
 
 fn spawn_creation_worker<F>(id: PendingId, kind: NetnsKind, notifier: CreationNotifier, future: F)
@@ -1072,6 +1086,15 @@ mod tests {
 
     fn test_info(name: &str) -> NetnsInfo {
         NetnsInfo::new(name.into(), "test-ve".into(), "10.200.0.2".into())
+    }
+
+    #[tokio::test]
+    async fn host_device_pattern_scopes_to_pool_index() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.pool_index = 10;
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
+
+        assert_eq!(handle.host_device_pattern().await, "vm0-ve-0a-*");
     }
 
     #[tokio::test]
