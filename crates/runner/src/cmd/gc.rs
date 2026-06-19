@@ -3939,6 +3939,30 @@ mod tests {
         assert!(freed > 0);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn try_delete_orphan_rootfs_skips_symlink_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.images_dir()).unwrap();
+
+        let outside_rootfs = dir.path().join("outside-rootfs");
+        std::fs::create_dir_all(&outside_rootfs).unwrap();
+        std::fs::write(outside_rootfs.join("rootfs.ext4"), b"outside").unwrap();
+
+        let rootfs_link = home.images_dir().join("rootfs_replaced");
+        std::os::unix::fs::symlink(&outside_rootfs, &rootfs_link).unwrap();
+
+        let freed = try_delete_orphan_rootfs(&rootfs_link, "rootfs_replaced", false).await;
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&rootfs_link, "symlink replacement must remain");
+        assert!(
+            outside_rootfs.join("rootfs.ext4").exists(),
+            "orphan-rootfs recheck must not delete a symlink replacement target"
+        );
+    }
+
     /// Dry-run over an orphaned rootfs (no `snapshots/` subdir) must count the
     /// would-be-freed bytes via `try_delete_orphan_rootfs`. Regression guard
     /// for the silent-zero bug where dry-run returned 0 and `run_gc` printed
