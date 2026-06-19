@@ -12,12 +12,33 @@ use crate::local_queue::ActiveInputEntry;
 const ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
 
 #[derive(serde::Serialize)]
 struct ActiveInputPayload<'a> {
     #[serde(rename = "type")]
     payload_type: &'static str,
     text: &'a str,
+}
+
+struct ForwardState {
+    seen_message_ids: HashSet<String>,
+    next_sequence: u64,
+}
+
+impl Default for ForwardState {
+    fn default() -> Self {
+        Self {
+            seen_message_ids: HashSet::new(),
+            next_sequence: FIRST_ACTIVE_INPUT_SEQUENCE,
+        }
+    }
+}
+
+impl ForwardState {
+    fn consume_sequence(&mut self) {
+        self.next_sequence = self.next_sequence.saturating_add(1);
+    }
 }
 
 pub(super) struct ActiveInputForwarder {
@@ -66,14 +87,14 @@ async fn run_forwarder(
     job_cancel: CancellationToken,
     stop: CancellationToken,
 ) {
-    let mut seen = HashSet::new();
+    let mut state = ForwardState::default();
     loop {
         tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
             entries = read_entries(run_id, source.clone()) => {
-                forward_entries(run_id, &control, entries, &mut seen).await;
+                forward_entries(run_id, &control, entries, &mut state).await;
             }
         }
 
@@ -100,10 +121,17 @@ async fn forward_entries(
     run_id: RunId,
     control: &GuestProcessControlHandle,
     entries: Vec<ActiveInputEntry>,
-    seen: &mut HashSet<String>,
+    state: &mut ForwardState,
 ) {
     for entry in entries {
-        if seen.contains(&entry.message_id) {
+        if entry.sequence < state.next_sequence {
+            continue;
+        }
+        if entry.sequence > state.next_sequence {
+            break;
+        }
+        if state.seen_message_ids.contains(&entry.message_id) {
+            state.consume_sequence();
             continue;
         }
         let payload = ActiveInputPayload {
@@ -120,6 +148,7 @@ async fn forward_entries(
                     error = %error,
                     "failed to serialize active-input payload"
                 );
+                state.consume_sequence();
                 continue;
             }
         };
@@ -134,7 +163,8 @@ async fn forward_entries(
                     message_id = %entry.message_id,
                     "forwarded active input"
                 );
-                seen.insert(entry.message_id);
+                state.seen_message_ids.insert(entry.message_id);
+                state.consume_sequence();
             }
             Err(error) => {
                 let retry = should_retry_control_error(&error);
@@ -147,7 +177,8 @@ async fn forward_entries(
                     "failed to forward active input"
                 );
                 if !retry {
-                    seen.insert(entry.message_id);
+                    state.seen_message_ids.insert(entry.message_id);
+                    state.consume_sequence();
                 } else {
                     break;
                 }
@@ -164,4 +195,84 @@ fn should_retry_control_error(error: &std::io::Error) -> bool {
             | std::io::ErrorKind::TimedOut
             | std::io::ErrorKind::WouldBlock
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use sandbox::ProcessControlAck;
+
+    use super::*;
+
+    fn recording_control(calls: Arc<Mutex<Vec<String>>>) -> GuestProcessControlHandle {
+        GuestProcessControlHandle::new(move |message_id, _payload, _timeout| {
+            let calls = Arc::clone(&calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(message_id.clone());
+                Ok(ProcessControlAck { message_id })
+            })
+        })
+    }
+
+    fn entry(sequence: u64, message_id: &str, text: &str) -> ActiveInputEntry {
+        ActiveInputEntry {
+            run_id: RunId::nil(),
+            sequence,
+            message_id: message_id.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn forward_entries_waits_for_missing_earlier_sequence() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let control = recording_control(Arc::clone(&calls));
+        let mut state = ForwardState::default();
+
+        forward_entries(
+            RunId::nil(),
+            &control,
+            vec![entry(2, "msg-2", "second")],
+            &mut state,
+        )
+        .await;
+        assert!(calls.lock().unwrap().is_empty());
+
+        forward_entries(
+            RunId::nil(),
+            &control,
+            vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")],
+            &mut state,
+        )
+        .await;
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            ["msg-1".to_string(), "msg-2".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn forward_entries_consumes_duplicate_message_id_sequences() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let control = recording_control(Arc::clone(&calls));
+        let mut state = ForwardState::default();
+
+        forward_entries(
+            RunId::nil(),
+            &control,
+            vec![
+                entry(1, "msg-dup", "first"),
+                entry(2, "msg-dup", "duplicate"),
+                entry(3, "msg-3", "third"),
+            ],
+            &mut state,
+        )
+        .await;
+
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            ["msg-dup".to_string(), "msg-3".to_string()]
+        );
+    }
 }
