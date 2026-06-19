@@ -21,7 +21,7 @@ export const maskdb = {
             MASKDB_TOKEN: {
               label: "Agent Token",
               required: true,
-              placeholder: "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+              placeholder: "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
             },
           },
         },
