@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.2...process-control-ipc-v0.3.0) (2026-06-19)
+
+
+### Features
+
+* add runner local active input forwarding ([#18286](https://github.com/vm0-ai/vm0/issues/18286)) ([a798b1a](https://github.com/vm0-ai/vm0/commit/a798b1abc04cfaa960d63bee7ce8d52b8300737a))
+
 ## [0.2.2](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.1...process-control-ipc-v0.2.2) (2026-06-15)
 
 

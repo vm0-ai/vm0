@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.162.1](https://github.com/vm0-ai/vm0/compare/api-v1.162.0...api-v1.162.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **api:** harden network log reads ([#18339](https://github.com/vm0-ai/vm0/issues/18339)) ([7a05a59](https://github.com/vm0-ai/vm0/commit/7a05a597902f628b02871eaf51d0837ae7ec4a05))
+* enforce one active goal per chat thread ([#18351](https://github.com/vm0-ai/vm0/issues/18351)) ([b477c39](https://github.com/vm0-ai/vm0/commit/b477c391b5da1af0d20042d80e7d1020b84cd588))
+* restore stripe cli device auth ([#18336](https://github.com/vm0-ai/vm0/issues/18336)) ([fe7ad84](https://github.com/vm0-ai/vm0/commit/fe7ad84a8ca9aa1918f39c6c986bdb4ca1d47df5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.105.1
+    * @vm0/connectors bumped to 1.95.1
+    * @vm0/core bumped to 8.359.1
+    * @vm0/db bumped to 1.59.1
+
 ## [1.162.0](https://github.com/vm0-ai/vm0/compare/api-v1.161.0...api-v1.162.0) (2026-06-19)
 
 

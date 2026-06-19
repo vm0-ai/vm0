@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.3...guest-agent-v0.39.0) (2026-06-19)
+
+
+### Features
+
+* add runner local active input forwarding ([#18286](https://github.com/vm0-ai/vm0/issues/18286)) ([a798b1a](https://github.com/vm0-ai/vm0/commit/a798b1abc04cfaa960d63bee7ce8d52b8300737a))
+
 ## [0.38.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.2...guest-agent-v0.38.3) (2026-06-19)
 
 ## [0.38.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.38.1...guest-agent-v0.38.2) (2026-06-19)

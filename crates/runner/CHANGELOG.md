@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.125.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.124.3...runner-rs-v0.125.0) (2026-06-19)
+
+
+### Features
+
+* add runner local active input forwarding ([#18286](https://github.com/vm0-ai/vm0/issues/18286)) ([a798b1a](https://github.com/vm0-ai/vm0/commit/a798b1abc04cfaa960d63bee7ce8d52b8300737a))
+
+
+### Bug Fixes
+
+* **runner:** avoid following symlinked gc cache dirs ([#18333](https://github.com/vm0-ai/vm0/issues/18333)) ([c1adb14](https://github.com/vm0-ai/vm0/commit/c1adb1433f5388887b5acb3078a0bc9b8bcc44f5))
+
 ## [0.124.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.124.2...runner-rs-v0.124.3) (2026-06-19)
 
 ## [0.124.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.124.1...runner-rs-v0.124.2) (2026-06-19)

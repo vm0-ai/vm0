@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.39...vsock-guest-v0.19.0) (2026-06-19)
+
+
+### Features
+
+* add runner local active input forwarding ([#18286](https://github.com/vm0-ai/vm0/issues/18286)) ([a798b1a](https://github.com/vm0-ai/vm0/commit/a798b1abc04cfaa960d63bee7ce8d52b8300737a))
+
 ## [0.18.39](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.38...vsock-guest-v0.18.39) (2026-06-19)
 
 ## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.37...vsock-guest-v0.18.38) (2026-06-18)
