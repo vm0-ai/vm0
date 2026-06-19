@@ -17,6 +17,7 @@ import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
+import { retryTransientLoad } from "./utils.ts";
 
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
@@ -42,8 +43,10 @@ function createAgentByIdFactory(): (
     const atom$ = computed(async (get) => {
       get(internalAgentByIdReload$);
       const client = get(zeroClient$)(zeroAgentsByIdContract);
-      const result = await accept(client.get({ params: { id } }), [200], {
-        toast: false,
+      const result = await retryTransientLoad(() => {
+        return accept(client.get({ params: { id } }), [200], {
+          toast: false,
+        });
       });
       return result.body;
     });

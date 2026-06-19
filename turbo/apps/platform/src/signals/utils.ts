@@ -282,6 +282,60 @@ export function toVoid<T>(p: Promise<T>): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Bounded async load retry
+// ---------------------------------------------------------------------------
+
+const DEFAULT_RETRY_DELAYS_MS = [250, 750] as const;
+
+function errorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  if ("status" in error && typeof error.status === "number") {
+    return error.status;
+  }
+  if ("statusCode" in error && typeof error.statusCode === "number") {
+    return error.statusCode;
+  }
+  return null;
+}
+
+function isRetryableError(error: unknown): boolean {
+  const status = errorStatus(error);
+  if (status === null) {
+    return true;
+  }
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
+  return Promise.resolve().then(load);
+}
+
+/**
+ * Retry idempotent read/lazy-load operations that can fail on transient
+ * network or chunk-loading errors. Do not wrap mutations: `load` may run more
+ * than once.
+ */
+export async function retryTransientLoad<T>(
+  load: () => Promise<T>,
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    const result = await settle(runRetriedLoad(load));
+    if (result.ok) {
+      return result.value;
+    }
+    const delayMs = DEFAULT_RETRY_DELAYS_MS[attempt];
+    if (delayMs === undefined || !isRetryableError(result.error)) {
+      throw result.error;
+    }
+    attempt += 1;
+    await delay(IN_VITEST ? 0 : delayMs);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Polling loop with fibonacci backoff
 // ---------------------------------------------------------------------------
 const FIB_DELAYS_MS = [
