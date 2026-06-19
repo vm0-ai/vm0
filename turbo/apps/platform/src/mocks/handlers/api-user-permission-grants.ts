@@ -21,22 +21,51 @@ function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
   return grant.expiresAt === null || new Date(grant.expiresAt) > checkedAt;
 }
 
-function resolvedMockExpiresAt(
-  existing: UserPermissionGrantResponse | undefined,
-  action: UserPermissionGrantResponse["action"],
-  expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0],
-  now: Date,
-): string | null {
+function resolvedMockExpiresAt({
+  existing,
+  action,
+  expiresIn,
+  expiresAt,
+  preserveExisting,
+  now,
+}: {
+  readonly existing: UserPermissionGrantResponse | undefined;
+  readonly action: UserPermissionGrantResponse["action"];
+  readonly expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0];
+  readonly expiresAt: string | undefined;
+  readonly preserveExisting: boolean;
+  readonly now: Date;
+}): string | null {
   if (action !== "allow") {
     return null;
   }
   if (expiresIn !== undefined) {
     return userPermissionGrantExpiresAt(expiresIn, now.getTime());
   }
-  if (existing?.action === "allow" && isActiveGrant(existing, now)) {
+  if (expiresAt !== undefined) {
+    return expiresAt;
+  }
+  if (
+    preserveExisting &&
+    existing?.action === "allow" &&
+    isActiveGrant(existing, now)
+  ) {
     return existing.expiresAt;
   }
   return null;
+}
+
+function shouldPersistMockAppliedGrant(
+  action: UserPermissionGrantResponse["action"],
+  requestedExpiresAt: string | undefined,
+  resolvedExpiresAt: string | null,
+  now: Date,
+): boolean {
+  return (
+    action !== "allow" ||
+    requestedExpiresAt === undefined ||
+    (resolvedExpiresAt !== null && new Date(resolvedExpiresAt) > now)
+  );
 }
 
 export function resetMockUserPermissionGrants(): void {
@@ -66,12 +95,14 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: resolvedMockExpiresAt(
+      expiresAt: resolvedMockExpiresAt({
         existing,
-        body.action,
-        body.expiresIn,
+        action: body.action,
+        expiresIn: body.expiresIn,
+        expiresAt: undefined,
+        preserveExisting: true,
         now,
-      ),
+      }),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -99,19 +130,32 @@ export const apiUserPermissionGrantsHandlers = [
         return [grant.permission, grant] as const;
       }),
     );
-    const grants = body.grants.map((appliedGrant) => {
+    const grants = body.grants.flatMap((appliedGrant) => {
       const existing = existingGrantsByPermission.get(appliedGrant.permission);
+      const expiresAt = resolvedMockExpiresAt({
+        existing,
+        action: appliedGrant.action,
+        expiresIn: appliedGrant.expiresIn,
+        expiresAt: appliedGrant.expiresAt,
+        preserveExisting: false,
+        now,
+      });
+      if (
+        !shouldPersistMockAppliedGrant(
+          appliedGrant.action,
+          appliedGrant.expiresAt,
+          expiresAt,
+          now,
+        )
+      ) {
+        return [];
+      }
       return {
         agentId: body.agentId,
         connectorRef: body.connectorRef,
         permission: appliedGrant.permission,
         action: appliedGrant.action,
-        expiresAt: resolvedMockExpiresAt(
-          existing,
-          appliedGrant.action,
-          appliedGrant.expiresIn,
-          now,
-        ),
+        expiresAt,
         createdAt: existing?.createdAt ?? now.toISOString(),
         updatedAt: now.toISOString(),
       };

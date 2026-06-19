@@ -58,10 +58,12 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
   applyUserPermissionGrantBaseSchema.extend({
     action: z.literal("allow"),
     expiresIn: userPermissionGrantExpiresInSchema.optional(),
+    expiresAt: z.string().datetime({ offset: true }).optional(),
   }),
   applyUserPermissionGrantBaseSchema.extend({
     action: z.literal("deny"),
     expiresIn: z.never().optional(),
+    expiresAt: z.never().optional(),
   }),
 ]);
 

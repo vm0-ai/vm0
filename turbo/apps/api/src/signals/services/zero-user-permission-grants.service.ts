@@ -152,13 +152,30 @@ function validateGrantTarget(
 function validateGrantExpiration(grant: {
   readonly action: UserPermissionGrantAction;
   readonly expiresIn?: UserPermissionGrantExpiresIn;
+  readonly expiresAt?: string;
 }): ValidationErrorResponse | null {
-  if (grant.action === "allow" || grant.expiresIn === undefined) {
-    return null;
+  if (grant.action !== "allow") {
+    return grant.expiresIn === undefined && grant.expiresAt === undefined
+      ? null
+      : validationError(
+          "Permission grant expiration is only supported for allow grants",
+        );
   }
-  return validationError(
-    "Permission grant expiration is only supported for allow grants",
-  );
+
+  if (grant.expiresIn !== undefined && grant.expiresAt !== undefined) {
+    return validationError(
+      "Permission grant expiration must use either expiresIn or expiresAt",
+    );
+  }
+
+  if (
+    grant.expiresAt !== undefined &&
+    !Number.isFinite(Date.parse(grant.expiresAt))
+  ) {
+    return validationError("Invalid permission grant expiresAt");
+  }
+
+  return null;
 }
 
 function activeGrantCondition(checkedAt: Date) {
@@ -219,6 +236,41 @@ function resolvedExpiresAt({
   return preservedActiveGrantExpiresAt(
     existing?.action === "allow" ? existing.expiresAt : null,
     timestamp,
+  );
+}
+
+function resolveAppliedExpiresAt({
+  action,
+  expiresIn,
+  expiresAt,
+  timestamp,
+}: {
+  readonly action: UserPermissionGrantAction;
+  readonly expiresIn: UserPermissionGrantExpiresIn | undefined;
+  readonly expiresAt: string | undefined;
+  readonly timestamp: Date;
+}): Date | null {
+  if (action !== "allow") {
+    return null;
+  }
+  if (expiresIn !== undefined) {
+    return resolveGrantExpiresAt(expiresIn, timestamp);
+  }
+  if (expiresAt !== undefined) {
+    return new Date(expiresAt);
+  }
+  return null;
+}
+
+function shouldPersistAppliedGrant(
+  grant: ApplyUserPermissionGrant,
+  expiresAt: Date | null,
+  timestamp: Date,
+): boolean {
+  return (
+    grant.action !== "allow" ||
+    grant.expiresAt === undefined ||
+    (expiresAt !== null && expiresAt.getTime() > timestamp.getTime())
   );
 }
 
@@ -452,25 +504,36 @@ async function applyVisibleGrantRows(
         return [row.permission, row] as const;
       }),
     );
-    const values = args.apply.grants.map((grant: ApplyUserPermissionGrant) => {
-      const existing = existingRowsByPermission.get(grant.permission);
-      return {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.apply.agentId,
-        connectorRef: args.apply.connectorRef,
-        permission: grant.permission,
-        action: grant.action,
-        expiresAt: resolvedExpiresAt({
+    const values = args.apply.grants.flatMap(
+      (grant: ApplyUserPermissionGrant) => {
+        const existing = existingRowsByPermission.get(grant.permission);
+        const expiresAt = resolveAppliedExpiresAt({
           action: grant.action,
           expiresIn: grant.expiresIn,
-          existing,
+          expiresAt: grant.expiresAt,
           timestamp,
-        }),
-        createdAt: existing?.createdAt ?? timestamp,
-        updatedAt: timestamp,
-      };
-    });
+        });
+        if (!shouldPersistAppliedGrant(grant, expiresAt, timestamp)) {
+          return [];
+        }
+        return [
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId: args.apply.agentId,
+            connectorRef: args.apply.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt,
+            createdAt: existing?.createdAt ?? timestamp,
+            updatedAt: timestamp,
+          },
+        ];
+      },
+    );
+    if (values.length === 0) {
+      return [];
+    }
 
     return await tx.insert(userPermissionGrants).values(values).returning();
   });

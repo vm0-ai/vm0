@@ -532,6 +532,7 @@ describe("zero user permission grants", () => {
             {
               permission: SLACK_READ_PERMISSION,
               action: "allow",
+              expiresAt: oldExpiresAt.toISOString(),
             },
             {
               permission: SLACK_WRITE_PERMISSION,
@@ -657,6 +658,100 @@ describe("zero user permission grants", () => {
       },
     );
     expect(denyExpiration.status).toBe(400);
+
+    const conflictingExpiration = await app.request(
+      "/api/zero/user-permission-grants/apply",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "allow",
+              expiresIn: "1h",
+              expiresAt: "2099-01-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      },
+    );
+    expect(conflictingExpiration.status).toBe(400);
+
+    const invalidExpiresAt = await app.request(
+      "/api/zero/user-permission-grants/apply",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "allow",
+              expiresAt: "not-a-date",
+            },
+          ],
+        }),
+      },
+    );
+    expect(invalidExpiresAt.status).toBe(400);
+  });
+
+  it("does not persist stale absolute expirations during connector apply", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const db = store.set(writeDb$);
+    mockNow(new Date("2026-02-01T12:00:00.000Z"));
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2026-02-01T11:59:59.000Z"),
+    });
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    const applied = await accept(
+      client.apply({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "allow",
+              expiresAt: "2026-02-01T11:59:59.000Z",
+            },
+          ],
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    expect(applied.body).toStrictEqual([]);
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toBeNull();
   });
 
   it("rejects connector-scoped apply for invisible agents", async () => {

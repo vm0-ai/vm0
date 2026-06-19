@@ -682,7 +682,11 @@ function applyGrantFromExistingGrant(
   grant: UserPermissionGrantResponse,
 ): ApplyUserPermissionGrant {
   return grant.action === "allow"
-    ? { permission: grant.permission, action: "allow" }
+    ? {
+        permission: grant.permission,
+        action: "allow",
+        ...(grant.expiresAt ? { expiresAt: grant.expiresAt } : {}),
+      }
     : { permission: grant.permission, action: "deny" };
 }
 
