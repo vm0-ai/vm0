@@ -17,6 +17,7 @@ import {
   restorePermissionDraftPermission,
   restorePermissionDraftUnknown,
   setPermissionDraftExpiration,
+  setPermissionDraftGroupAllowExpiration,
   setPermissionDraftGroupAllowPolicy,
   setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
@@ -54,13 +55,14 @@ const INITIAL_POLICIES = {} satisfies FirewallPolicies;
 function createGrant(
   permission: string,
   action: UserPermissionGrantResponse["action"],
+  expiresAt: string | null = null,
 ): UserPermissionGrantResponse {
   return {
     agentId: "agent",
     connectorRef: "slack",
     permission,
     action,
-    expiresAt: null,
+    expiresAt,
     createdAt: "2026-03-01T00:00:00.000Z",
     updatedAt: "2026-03-01T00:00:00.000Z",
   };
@@ -238,6 +240,63 @@ describe("permission draft intent", () => {
       "bookmarks:read": "always",
       "channels:read": "7d",
       "channels:history": "7d",
+    });
+  });
+
+  it("only clears expiring group grants when selecting allow always", () => {
+    const context = createContext();
+    const explicitGrants = new Map([
+      [
+        "bookmarks:read",
+        createGrant("bookmarks:read", "allow", "2026-03-01T01:00:00.000Z"),
+      ],
+      ["channels:read", createGrant("channels:read", "allow")],
+    ]);
+    let draft = setPermissionDraftGroupPolicy({
+      draft: createEmptyPermissionDraftIntent(),
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      policy: "allow",
+    });
+
+    draft = setPermissionDraftGroupAllowExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      explicitGrants,
+      expiresIn: "always",
+    });
+
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "bookmarks:read",
+      }),
+    ).toBe("always");
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "channels:read",
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePermissionDraftGroupExpiration({
+        context,
+        draft,
+        category: "Read",
+        permissions: READ_PERMISSIONS,
+      }),
+    ).toBeUndefined();
+    expect(
+      materializePermissionDraftForLegacySave({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+      }).expiresInByPermission,
+    ).toStrictEqual({
+      "bookmarks:read": "always",
     });
   });
 

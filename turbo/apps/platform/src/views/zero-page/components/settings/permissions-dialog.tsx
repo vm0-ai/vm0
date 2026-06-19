@@ -60,8 +60,8 @@ import {
   restorePermissionDraftUnknown,
   setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
+  setPermissionDraftGroupAllowExpiration,
   setPermissionDraftGroupAllowPolicy,
-  setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
   setPermissionDraftUnknownExpiration,
@@ -476,21 +476,6 @@ function menuOptionExpiresIn(
     return null;
   }
   return value;
-}
-
-function groupMenuOptionExpiresIn(
-  value: UserPermissionGrantExpiresIn,
-  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>,
-  permissions: readonly ConnectorPermission[],
-): UserPermissionGrantExpiresIn | null {
-  if (value !== "always") {
-    return value;
-  }
-  const hasExpiringGrant = permissions.some((permission) => {
-    const grant = explicitGrants.get(permission.name);
-    return grant?.action === "allow" && Boolean(grant.expiresAt);
-  });
-  return hasExpiringGrant ? "always" : null;
 }
 
 function isDurationMenuOptionActive({
@@ -947,11 +932,7 @@ function PermissionRows({
                 onGroupGrantExpirationChange(
                   group.category,
                   group.permissions,
-                  groupMenuOptionExpiresIn(
-                    expiresIn,
-                    explicitGrants,
-                    group.permissions,
-                  ),
+                  expiresIn,
                 );
               }}
               onPolicyChange={(p) => {
@@ -1366,10 +1347,11 @@ function LoadedPermissionsDrawerContent({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => {
     setDraft(stateKey, (current) => {
-      return setPermissionDraftGroupExpiration({
+      return setPermissionDraftGroupAllowExpiration({
         draft: current,
         category,
         permissions: groupPerms,
+        explicitGrants: effectiveExplicitGrants,
         expiresIn,
       });
     });

@@ -719,6 +719,47 @@ export function setPermissionDraftGroupExpiration({
   };
 }
 
+export function setPermissionDraftGroupAllowExpiration({
+  draft,
+  category,
+  permissions,
+  explicitGrants,
+  expiresIn,
+}: {
+  readonly draft: PermissionDraftIntent;
+  readonly category: string;
+  readonly permissions: readonly PermissionLike[];
+  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly expiresIn: UserPermissionGrantExpiresIn | null;
+}): PermissionDraftIntent {
+  if (expiresIn !== "always") {
+    return setPermissionDraftGroupExpiration({
+      draft,
+      category,
+      permissions,
+      expiresIn,
+    });
+  }
+
+  let next = setPermissionDraftGroupExpiration({
+    draft,
+    category,
+    permissions,
+    expiresIn: null,
+  });
+  for (const permission of permissions) {
+    const grant = explicitGrants.get(permission.name);
+    if (grant?.action === "allow" && grant.expiresAt) {
+      next = setPermissionDraftExpiration({
+        draft: next,
+        permissionName: permission.name,
+        expiresIn: "always",
+      });
+    }
+  }
+  return next;
+}
+
 export function setPermissionDraftUnknownExpiration({
   draft,
   expiresIn,
