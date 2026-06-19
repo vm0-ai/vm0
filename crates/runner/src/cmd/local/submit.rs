@@ -31,11 +31,6 @@ const MAX_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 /// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
-/// Local active input is only used by smoke tests. Keep this at or below the
-/// guest-agent active-input queue capacity so rapid inputs cannot be rejected
-/// after the local job has already started.
-const MAX_LOCAL_ACTIVE_INPUTS: usize = 8;
-
 #[derive(Args)]
 pub struct SubmitArgs {
     /// Runner group name (writes job to the group's local queue)
@@ -291,7 +286,7 @@ struct DelayedActiveInput {
 
 struct ActiveInputProducer {
     stop: tokio_util::sync::CancellationToken,
-    tasks: Vec<tokio::task::JoinHandle<()>>,
+    task: tokio::task::JoinHandle<()>,
 }
 
 impl ActiveInputProducer {
@@ -300,14 +295,14 @@ impl ActiveInputProducer {
             return None;
         }
         let stop = tokio_util::sync::CancellationToken::new();
-        let mut tasks = Vec::with_capacity(inputs.len());
-        for input in inputs {
-            let queue = queue.clone();
-            let stop = stop.clone();
-            tasks.push(tokio::spawn(async move {
+        let stop_for_task = stop.clone();
+        let task = tokio::spawn(async move {
+            let started_at = tokio::time::Instant::now();
+            for input in inputs {
+                let sleep_for = input.after.saturating_sub(started_at.elapsed());
                 tokio::select! {
-                    () = stop.cancelled() => {}
-                    () = tokio::time::sleep(input.after) => {
+                    () = stop_for_task.cancelled() => return,
+                    () = tokio::time::sleep(sleep_for) => {
                         if !queue.can_write_active_input() {
                             return;
                         }
@@ -329,17 +324,15 @@ impl ActiveInputProducer {
                         }
                     }
                 }
-            }));
-        }
-        Some(Self { stop, tasks })
+            }
+        });
+        Some(Self { stop, task })
     }
 
     async fn stop(self) {
         self.stop.cancel();
-        for task in self.tasks {
-            if let Err(error) = task.await {
-                eprintln!("warn: local active input producer task failed: {error}");
-            }
+        if let Err(error) = self.task.await {
+            eprintln!("warn: local active input producer task failed: {error}");
         }
     }
 }
@@ -424,11 +417,6 @@ impl SubmitPlan {
         timeout: Duration,
         job_id: RunId,
     ) -> RunnerResult<Vec<DelayedActiveInput>> {
-        if values.len() > MAX_LOCAL_ACTIVE_INPUTS {
-            return Err(RunnerError::Config(format!(
-                "invalid --active-input: at most {MAX_LOCAL_ACTIVE_INPUTS} entries are supported"
-            )));
-        }
         let mut inputs: Vec<DelayedActiveInput> = Vec::with_capacity(values.len());
         for (index, value) in values.iter().enumerate() {
             let input = Self::parse_active_input(value, index as u64 + 1, timeout, job_id)?;
@@ -1240,6 +1228,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_more_than_eight_active_input_specs() {
+        let job_id = RunId::nil();
+        let values = (1..=9)
+            .map(|sequence| format!("after={sequence}ms,text=input-{sequence}"))
+            .collect::<Vec<_>>();
+        let parsed =
+            SubmitPlan::parse_active_inputs(&values, Duration::from_secs(5), job_id).unwrap();
+
+        assert_eq!(parsed.len(), 9);
+        assert_eq!(parsed[8].sequence, 9);
+        assert_eq!(
+            parsed[8].message_id,
+            format!("local-active-input-{job_id}-9")
+        );
+        assert_eq!(parsed[8].text, "input-9");
+    }
+
+    #[test]
     fn rejects_invalid_active_input_specs() {
         let job_id = RunId::nil();
         for value in [
@@ -1262,11 +1268,6 @@ mod tests {
                 "value={value}, got: {err}"
             );
         }
-
-        let too_many = vec!["after=1s,text=ok".to_string(); MAX_LOCAL_ACTIVE_INPUTS + 1];
-        let err =
-            SubmitPlan::parse_active_inputs(&too_many, Duration::from_secs(5), job_id).unwrap_err();
-        assert!(err.to_string().contains("active-input"));
 
         let err = SubmitPlan::parse_active_inputs(
             &[
@@ -1298,15 +1299,31 @@ mod tests {
         let watcher = tokio::spawn(wait_for_active_inputs_and_write_success(
             group_dir.clone(),
             crate::profile::DEFAULT_PROFILE.to_owned(),
-            2,
+            9,
         ));
         let mut args = submit_args_for_test();
         args.group = group.into();
         args.timeout = 5;
-        args.active_inputs = vec![
-            "after=1ms,text=first".to_string(),
-            "after=2ms,text=second,with,comma".to_string(),
-        ];
+        args.active_inputs = (1..=9)
+            .map(|sequence| {
+                let text = if sequence == 2 {
+                    "second,with,comma".to_string()
+                } else {
+                    format!("input-{sequence}")
+                };
+                format!("after={sequence}ms,text={text}")
+            })
+            .collect();
+        let expected_inputs = (1..=9)
+            .map(|sequence| {
+                let text = if sequence == 2 {
+                    "second,with,comma".to_string()
+                } else {
+                    format!("input-{sequence}")
+                };
+                (sequence, text)
+            })
+            .collect::<Vec<_>>();
 
         let code = run_submit_with_home(args, home).await.unwrap();
         let (request, inputs) = watcher.await.unwrap();
@@ -1317,9 +1334,9 @@ mod tests {
         assert_eq!(
             inputs
                 .iter()
-                .map(|entry| (entry.sequence, entry.text.as_str()))
+                .map(|entry| (entry.sequence, entry.text.clone()))
                 .collect::<Vec<_>>(),
-            vec![(1, "first"), (2, "second,with,comma")]
+            expected_inputs
         );
         assert!(
             !local_queue::run_inputs_dir(&group_dir, request.job_id).exists(),
