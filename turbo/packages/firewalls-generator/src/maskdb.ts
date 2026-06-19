@@ -3,16 +3,16 @@
  *
  * Data source: https://github.com/e7h4n/maskdb
  *
- * maskdb authenticates with a single Bearer token (a read-only agent token):
+ * maskdb authenticates with a single Bearer token (a scoped read-only token):
  *   - `Authorization: Bearer <token>` → MASKDB_TOKEN (secret)
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://github.com/e7h4n/maskdb";
-// Format: mk_agent_ prefix + 43 url-safe base64 chars
+// Format: mk_ prefix + 43 url-safe base64 chars
 const PLACEHOLDER_VALUE =
-  "mk_agent_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
+  "mk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
 
 function generateTypeScript(): string {
   const lines: string[] = [
