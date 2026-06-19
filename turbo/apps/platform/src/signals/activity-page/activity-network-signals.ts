@@ -180,7 +180,11 @@ export const loadNetworkLogsNextPage$ = command(
 
     const clearLoading = () => {
       set(pagination$, (current) => {
-        return current.loading ? { ...current, loading: false } : current;
+        return current.runId === runId &&
+          current.cursor === pg.cursor &&
+          current.loading
+          ? { ...current, loading: false }
+          : current;
       });
     };
 
@@ -194,6 +198,10 @@ export const loadNetworkLogsNextPage$ = command(
     signal.throwIfAborted();
 
     set(pagination$, (current) => {
+      if (current.runId !== runId || current.cursor !== pg.cursor) {
+        return current;
+      }
+
       const repeatedCursor =
         nextCursor !== null && nextCursor === current.cursor;
       return {
