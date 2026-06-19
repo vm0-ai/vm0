@@ -830,6 +830,15 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "axiom",
+        permission: "datasets|read",
+        action: "allow",
+        expiresAt: isoFromNowMs(-60 * 1000),
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
         permission: "legacy|removed",
         action: "deny",
         expiresAt: null,
