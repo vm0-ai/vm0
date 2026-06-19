@@ -2126,63 +2126,35 @@ func currentConsoleSessionUnavailable() -> Bool {
     return onConsole == false
 }
 
-func targetWindowLabel(appName: String, target: WindowTarget) -> String {
-    let title = target.title.map { " \"\($0)\"" } ?? ""
-    return "\(appName) window\(title) \(target.windowNumber)"
-}
-
 func targetWindowScreenshotFailureMessage(appName: String, target: WindowTarget) -> String {
-    let label = targetWindowLabel(appName: appName, target: target)
-    let base = "Zero has Screen Recording permission, but macOS could not capture the selected \(label)."
-    let retry = "Ask the user to bring that window to the current desktop, keep it visible and unminimized, then retry."
-
-    if currentConsoleSessionUnavailable() {
-        return "\(base) The Mac appears to be locked or not on the active console. Ask the user to unlock the Mac and retry."
+    let isConsoleSessionUnavailable = currentConsoleSessionUnavailable()
+    let record: TargetWindowScreenshotFailureRecord?
+    if isConsoleSessionUnavailable {
+        record = nil
+    } else {
+        record = cgWindowRecord(windowNumber: target.windowNumber).map { record in
+            TargetWindowScreenshotFailureRecord(
+                ownerPID: (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                frame: cgWindowBounds(record[kCGWindowBounds as String]),
+                alpha: cgWindowAlpha(record[kCGWindowAlpha as String]),
+                isOnScreen: cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
+                layer: (record[kCGWindowLayer as String] as? NSNumber)?.intValue
+            )
+        }
     }
-
-    guard let record = cgWindowRecord(windowNumber: target.windowNumber) else {
-        return "\(base) The target window disappeared before capture, likely because the app closed, reopened, or replaced the window. \(retry)"
-    }
-
-    if let ownerPID = (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
-       ownerPID != target.pid
-    {
-        return "\(base) The target window id now belongs to another process, so the previous window is stale. \(retry)"
-    }
-
-    let freshFrame = cgWindowBounds(record[kCGWindowBounds as String])
-    if let freshFrame, freshFrame.width <= 0 || freshFrame.height <= 0 {
-        return "\(base) macOS reports the target window has no drawable size. \(retry)"
-    }
-
-    let alpha = cgWindowAlpha(record[kCGWindowAlpha as String])
-    if alpha <= 0.01 {
-        return "\(base) macOS reports the target window is hidden or fully transparent. \(retry)"
-    }
-
-    let isOnScreen = cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String])
-    if target.onCurrentSpace == false && !isOnScreen {
-        let currentSpace = target.currentSpaceId.map(String.init) ?? "unknown"
-        let windowSpaces = formatSpaceIds(target.spaceIds)
-        return "\(base) The target window is on another macOS Space (current Space \(currentSpace), window Spaces \(windowSpaces)) and is not visible on screen. \(retry)"
-    }
-
-    if !isOnScreen {
-        return "\(base) macOS reports the target window is not visible on screen, which usually means it is minimized, hidden, offscreen, or on another Space. \(retry)"
-    }
-
-    if target.onCurrentSpace == false {
-        let currentSpace = target.currentSpaceId.map(String.init) ?? "unknown"
-        let windowSpaces = formatSpaceIds(target.spaceIds)
-        return "\(base) macOS reports the target window is on another Space (current Space \(currentSpace), window Spaces \(windowSpaces)). \(retry)"
-    }
-
-    let layer = (record[kCGWindowLayer as String] as? NSNumber)?.intValue
-    if let layer, layer != 0 {
-        return "\(base) macOS reports the selected window is not a normal app window layer. \(retry)"
-    }
-
-    return "\(base) The window still exists and appears visible, so this is likely a transient WindowServer capture failure or a protected/rapidly changing window. Retry once; if it keeps happening, ask the user to restart Zero Desktop and keep the target window visible."
+    return ComputerUseHelperCore.targetWindowScreenshotFailureMessage(
+        appName: appName,
+        target: TargetWindowScreenshotFailureTarget(
+            pid: target.pid,
+            windowNumber: target.windowNumber,
+            title: target.title,
+            onCurrentSpace: target.onCurrentSpace,
+            currentSpaceId: target.currentSpaceId,
+            spaceIds: target.spaceIds
+        ),
+        record: record,
+        currentConsoleSessionUnavailable: isConsoleSessionUnavailable
+    )
 }
 
 func visualPointerWindowStack() -> [VisualPointerStackWindow] {
