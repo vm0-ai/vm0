@@ -39,7 +39,8 @@ const PERMISSIONS: { name: string; description: string; rules: string[] }[] = [
   },
   {
     name: "db:manage",
-    description: "Register/remove databases and read the raw (unmasked) schema.",
+    description:
+      "Register/remove databases and read the raw (unmasked) schema.",
     rules: [
       "POST /v1/databases",
       "DELETE /v1/databases/{db}",
