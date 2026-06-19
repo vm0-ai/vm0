@@ -18,7 +18,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
-import { retryAsync } from "../utils.ts";
+import { retryTransientLoad } from "../utils.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ function createUserPermissionGrantsByAgentFactory(): (
     const atom$ = computed(async (get) => {
       get(internalUserPermissionGrantsReload$);
       const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-      const result = await retryAsync(() => {
+      const result = await retryTransientLoad(() => {
         return accept(
           client.list({ query: { agentId: params.agentId } }),
           [200],

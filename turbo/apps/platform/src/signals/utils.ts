@@ -282,19 +282,20 @@ export function toVoid<T>(p: Promise<T>): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Bounded async retry
+// Bounded async load retry
 // ---------------------------------------------------------------------------
 
 const DEFAULT_RETRY_DELAYS_MS = [250, 750] as const;
 
 function errorStatus(error: unknown): number | null {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-  ) {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  if ("status" in error && typeof error.status === "number") {
     return error.status;
+  }
+  if ("statusCode" in error && typeof error.statusCode === "number") {
+    return error.statusCode;
   }
   return null;
 }
@@ -311,9 +312,13 @@ function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
   return Promise.resolve().then(load);
 }
 
-export async function retryAsync<T>(
+/**
+ * Retry idempotent read/lazy-load operations that can fail on transient
+ * network or chunk-loading errors. Do not wrap mutations: `load` may run more
+ * than once.
+ */
+export async function retryTransientLoad<T>(
   load: () => Promise<T>,
-  delaysMs: readonly number[] = DEFAULT_RETRY_DELAYS_MS,
 ): Promise<T> {
   let attempt = 0;
   while (true) {
@@ -321,7 +326,7 @@ export async function retryAsync<T>(
     if (result.ok) {
       return result.value;
     }
-    const delayMs = delaysMs[attempt];
+    const delayMs = DEFAULT_RETRY_DELAYS_MS[attempt];
     if (delayMs === undefined || !isRetryableError(result.error)) {
       throw result.error;
     }

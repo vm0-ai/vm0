@@ -212,7 +212,7 @@ describe("chat message action cards", () => {
     ).toBeInTheDocument();
 
     await waitForButtonByText("Confirm", permissionCard);
-    expect(listRequests).toBeGreaterThanOrEqual(2);
+    expect(listRequests).toBe(2);
     expect(
       within(permissionCard).queryByText("Failed to load permissions"),
     ).not.toBeInTheDocument();

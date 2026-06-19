@@ -4,7 +4,7 @@ import {
   loadFirewallPermissionMetadata,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
-import { retryAsync } from "./utils.ts";
+import { retryTransientLoad } from "./utils.ts";
 
 interface FirewallPermissionMetadataParams {
   readonly connectorType: string;
@@ -27,7 +27,7 @@ function createFirewallPermissionMetadataFactory(): (
       if (!isFirewallMetadataConnectorType(params.connectorType)) {
         return null;
       }
-      return await retryAsync(() => {
+      return await retryTransientLoad(() => {
         return loadFirewallPermissionMetadata(params.connectorType);
       });
     });
