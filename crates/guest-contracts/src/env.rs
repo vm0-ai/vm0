@@ -1,35 +1,185 @@
 //! Runner-to-guest environment variable name contract.
+//!
+//! The runner uses these names to bootstrap the guest-agent process. User,
+//! model-provider, and connector environment is a separate payload loaded
+//! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
+//! bootstrap controls directly.
+//!
+//! The `VM0_` namespace is runner-owned, including keys defined in sibling
+//! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
+//! filtering should treat current, future, and retired `VM0_` keys as
+//! protected. A small set of non-`VM0_` bootstrap keys is also runner-owned
+//! because existing runner, guest-agent, or integration contracts use those
+//! exact names.
+//!
+//! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
+//! selected runner-owned keys may cross the local user-env boundary as
+//! guest-agent timing overrides.
 
+/// Backend API base URL provided to the guest-agent.
+///
+/// This is the only runner bootstrap key intentionally exposed to CLI child
+/// processes by the guest-agent's curated child environment.
 pub const API_URL_ENV: &str = "VM0_API_URL";
+
+/// Stable run identifier used by guest-agent logs, telemetry, and runtime
+/// file path resolution.
 pub const RUN_ID_ENV: &str = "VM0_RUN_ID";
+
+/// Sensitive backend API bearer token for guest-agent calls.
+///
+/// This value is runner-owned and must not be exposed through user-provided
+/// environment or CLI child env.
 pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
+
+/// Sandbox identifier assigned by the runner.
 pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
+
+/// Wire value for the runner's sandbox-reuse decision.
+///
+/// `reused` means an idle VM was unparked. Other values name the branch that
+/// caused the runner to create a fresh sandbox instead, such as `poolMiss` or
+/// `noSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
+
+/// User prompt payload sent to the guest-agent.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
+
+/// Optional extra system prompt text.
+///
+/// The runner omits this key when the append-system-prompt value is absent or
+/// empty.
 pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
+
+/// Sensitive Vercel protection bypass secret for guest API calls.
+///
+/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// prefix because the guest-agent HTTP client uses this established name to
+/// attach the Vercel bypass header. The runner omits this key when no bypass
+/// secret is configured.
 pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
+
+/// Optional CLI session or thread identifier used when resuming a prior agent
+/// session.
+///
+/// The runner normalizes Codex thread ids before emitting this key.
 pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
+
+/// Optional Unix epoch millisecond timestamp for when the API accepted the
+/// run.
+///
+/// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
+
+/// Sensitive values used by the guest-agent masker.
+///
+/// The payload is a comma-separated list of base64-encoded secret values, not
+/// secret names. The runner includes the sandbox token so event payloads and
+/// CLI diagnostics can redact it.
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
+
+/// Comma-separated Claude Code tool names that should be disallowed.
+///
+/// Unset or empty means there is no explicit deny list.
 pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
+
+/// Comma-separated Claude Code tool names that should be allowed.
+///
+/// Unset or empty means there is no explicit allow list.
 pub const TOOLS_ENV: &str = "VM0_TOOLS";
+
+/// Raw Claude Code settings payload passed to the guest-agent.
+///
+/// The runner treats this as an opaque string and currently emits JSON from
+/// the API execution context. Unset or empty means there is no settings
+/// override.
 pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
+
+/// CLI framework selector, for example `claude-code` or `codex`.
+///
+/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// prefix because the runner and guest-agent framework selection contract uses
+/// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
+
+/// Path to the private user environment JSON file written by the runner.
+///
+/// The guest-agent validates that the path points at its per-run private
+/// runtime directory, parses it as a `HashMap<String, String>`, and removes the
+/// file after loading. Unset or empty means there is no user environment
+/// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
+
+/// JSON array describing artifact mounts prepared by the runner.
+///
+/// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
+/// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
+/// are no artifact mounts.
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
+
+/// JSON map of feature flag names to enabled states.
+///
+/// The runner omits this key when there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+
+/// Guest-agent stuck-tool timeout override in seconds.
+///
+/// This is a tuning key: local execution may pass it through user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
+
+/// Guest-agent grace period in seconds before sending SIGTERM after the CLI
+/// reports a final result.
+///
+/// This is a tuning key: local execution may pass it through user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
+
+/// Guest-agent grace period in seconds before escalating from SIGTERM to
+/// SIGKILL after the CLI reports a final result.
+///
+/// This is a tuning key: local execution may pass it through user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
+
+/// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
+/// binary.
+///
+/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// prefix because the mock launcher contract uses this exact name. The
+/// guest-agent treats exactly `true` as enabled.
 pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
+
+/// Test/debug bootstrap switch that makes the guest-agent use the mock Codex
+/// binary.
+///
+/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// prefix because the mock launcher contract uses this exact name. The
+/// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
+
+/// Optional test/debug override for the mock Claude binary path.
+///
+/// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
+
+/// Optional test/debug override for the mock Codex binary path.
+///
+/// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
 /// boundary.
 pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 
+/// Runner-owned guest-agent tuning keys that local user env may provide.
+///
+/// These are the only `VM0_` keys intentionally allowed to cross the local
+/// user-env boundary. They tune guest-agent timing behavior and are copied into
+/// the bootstrap env separately from the general user environment payload.
 pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
     STUCK_TOOL_TIMEOUT_SECS_ENV,
     POST_RESULT_SIGTERM_GRACE_SECS_ENV,
@@ -61,14 +211,31 @@ pub fn is_shell_identifier_env_key(key: &str) -> bool {
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+/// Returns whether `key` is a supported guest-agent tuning override.
+///
+/// Local submission uses this allowlist to permit selected runner-owned timing
+/// controls while continuing to reject general runner bootstrap keys from user
+/// env.
 pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
     GUEST_AGENT_TUNING_ENV_KEYS.contains(&key)
 }
 
+/// Returns whether `key` belongs to the runner-owned bootstrap namespace.
+///
+/// This covers every `VM0_` key, including future and retired names, plus the
+/// explicit non-`VM0_` bootstrap keys required by established runner,
+/// guest-agent, or integration contracts. Runner and local-submit code use
+/// this predicate to scrub or reject user-provided env keys before the
+/// guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
+/// Escapes and bounds a user-controlled env key for diagnostics.
+///
+/// The returned string contains `escape_debug` output truncated to 128
+/// characters, with `...` appended when truncation happens. This keeps control
+/// characters and very long keys from producing confusing errors or log lines.
 pub fn sanitize_user_env_key_for_diagnostic(key: &str) -> String {
     let mut chars = key.escape_debug();
     let mut truncated = String::new();
