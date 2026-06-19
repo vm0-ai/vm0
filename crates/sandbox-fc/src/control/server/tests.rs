@@ -4,6 +4,7 @@ use std::future::Future;
 
 use base64::Engine;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
 use vsock_proto::{
@@ -702,8 +703,8 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
         ExecResponse::Success { .. } => panic!("expected gate-closed error"),
     }
     assert!(
-        exec_seen_rx.try_recv().is_err(),
-        "control exec should not send a guest command while the gate is closing"
+        matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
+        "control exec should not send a guest command while the gate is closing or drop the mock guest"
     );
 
     handle.shutdown().await;
@@ -738,8 +739,8 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
         ExecResponse::Success { .. } => panic!("expected zero-timeout validation error"),
     }
     assert!(
-        exec_seen_rx.try_recv().is_err(),
-        "control exec should not send a guest command with zero timeout"
+        matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
+        "control exec should not send a guest command with zero timeout or drop the mock guest"
     );
 
     handle.shutdown().await;
