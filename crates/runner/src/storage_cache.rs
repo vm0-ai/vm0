@@ -114,6 +114,7 @@ enum CachedArchive {
     Hit(Bytes),
     Missing,
     Empty,
+    Invalid { reason: String },
     OverSize { observed_size: u64 },
 }
 
@@ -290,6 +291,9 @@ async fn process_one(
         CachedArchive::Empty => {
             evict_empty_cache(target, &cache_dir).await?;
         }
+        CachedArchive::Invalid { reason } => {
+            evict_invalid_cache(target, &cache_dir, &reason).await?;
+        }
         CachedArchive::OverSize { observed_size } => {
             evict_oversized_cache(target, &cache_dir, observed_size).await?;
         }
@@ -379,6 +383,17 @@ async fn process_one(
             reason: "size-mismatch".to_string(),
         });
     }
+    if let Err(reason) = validate_tar_gz_archive(bytes.clone()).await? {
+        warn!(
+            name = %target.name,
+            version = %target.version,
+            error = %reason,
+            "storage_cache: full download returned invalid archive, passthrough"
+        );
+        return Ok(TargetOutcome::SkippedInvalidDownload {
+            reason: "invalid-archive".to_string(),
+        });
+    }
     write_to_cache(&cache_dir, &bytes).await?;
     let guest_path = guest_archive_path(&target.name, &target.version);
     drop(writer);
@@ -397,6 +412,9 @@ async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
             match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
+                    if let Err(reason) = validate_tar_gz_archive(bytes.clone()).await? {
+                        return Ok(CachedArchive::Invalid { reason });
+                    }
                     touch_mtime(cache_dir);
                     Ok(CachedArchive::Hit(bytes))
                 }
@@ -643,6 +661,28 @@ async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<Downloa
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
 }
 
+async fn validate_tar_gz_archive(bytes: Bytes) -> RunnerResult<Result<(), String>> {
+    // Gzip/tar validation is synchronous CPU work; keep it off the async worker.
+    // The caller only passes bodies already capped by CACHE_MAX_SIZE.
+    tokio::task::spawn_blocking(move || validate_tar_gz_archive_sync(bytes))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("join archive validation: {e}")))
+}
+
+fn validate_tar_gz_archive_sync(bytes: Bytes) -> Result<(), String> {
+    let decoder = flate2::read::GzDecoder::new(io::Cursor::new(bytes));
+    let mut archive = tar::Archive::new(decoder);
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("read archive entries: {e}"))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|e| format!("read archive entry: {e}"))?;
+        io::copy(&mut entry, &mut io::sink())
+            .map_err(|e| format!("read archive entry body: {e}"))?;
+    }
+    Ok(())
+}
+
 fn append_limited_chunk(
     bytes: &mut Vec<u8>,
     downloaded: &mut u64,
@@ -679,6 +719,28 @@ async fn evict_oversized_cache(
     {
         return Err(RunnerError::Internal(format!(
             "remove oversized cache {}: {e}",
+            cache_dir.display()
+        )));
+    }
+    Ok(())
+}
+
+async fn evict_invalid_cache(
+    target: &CacheTarget,
+    cache_dir: &Path,
+    reason: &str,
+) -> RunnerResult<()> {
+    warn!(
+        name = %target.name,
+        version = %target.version,
+        error = %reason,
+        "storage_cache: cached archive is invalid, evicting"
+    );
+    if let Err(e) = fs::remove_dir_all(cache_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(RunnerError::Internal(format!(
+            "remove invalid cache {}: {e}",
             cache_dir.display()
         )));
     }
@@ -950,8 +1012,22 @@ mod tests {
     }
 
     fn tarball_bytes() -> Vec<u8> {
-        // A small payload is enough — the cache treats it as opaque bytes.
-        b"pretend-tar-gz-bytes".to_vec()
+        let mut bytes = Vec::new();
+        {
+            let encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let content = b"storage cache test file\n";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "file.txt", &content[..])
+                .unwrap();
+            let encoder = builder.into_inner().unwrap();
+            encoder.finish().unwrap();
+        }
+        bytes
     }
 
     fn write_cached_archive(home: &HomePaths, name: &str, version: &str, bytes: &[u8]) {
@@ -1399,6 +1475,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_full_download_is_passthrough_without_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = b"not a valid tar.gz".to_vec();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-body.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-body.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body);
+            })
+            .await;
+
+        let original = server.url("/invalid-body.tar.gz");
+        let name = "invalid-body";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_storage_cache_skipped_invalid_download(&ops, "invalid-archive");
+    }
+
+    #[tokio::test]
     async fn shorter_full_download_is_passthrough_without_cache_write() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -1730,6 +1860,68 @@ mod tests {
         assert!(
             !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
             "empty cache file must not be treated as a hit: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_disk_hit_is_evicted_and_revalidated() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let name = "invalid-hit";
+        let version = "v1";
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), b"not a valid tar.gz").unwrap();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-revalidated.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-revalidated.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/invalid-revalidated.tar.gz");
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
+            "expected revalidation miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
+            "invalid cache file must not be treated as a hit: {ops:?}"
         );
     }
 
