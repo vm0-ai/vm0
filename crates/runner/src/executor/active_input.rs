@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 
 use sandbox::GuestProcessControlHandle;
@@ -12,10 +12,12 @@ use crate::local_queue::ActiveInputEntry;
 const ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
 
 struct ForwardState {
     seen_message_ids: HashSet<String>,
+    seen_message_id_order: VecDeque<String>,
     next_sequence: u64,
 }
 
@@ -23,6 +25,7 @@ impl Default for ForwardState {
     fn default() -> Self {
         Self {
             seen_message_ids: HashSet::new(),
+            seen_message_id_order: VecDeque::new(),
             next_sequence: FIRST_ACTIVE_INPUT_SEQUENCE,
         }
     }
@@ -31,6 +34,19 @@ impl Default for ForwardState {
 impl ForwardState {
     fn consume_sequence(&mut self) {
         self.next_sequence = self.next_sequence.saturating_add(1);
+    }
+
+    fn remember_message_id(&mut self, message_id: String) {
+        if !self.seen_message_ids.insert(message_id.clone()) {
+            return;
+        }
+        self.seen_message_id_order.push_back(message_id);
+        while self.seen_message_ids.len() > ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY {
+            let Some(oldest) = self.seen_message_id_order.pop_front() else {
+                break;
+            };
+            self.seen_message_ids.remove(&oldest);
+        }
     }
 }
 
@@ -160,7 +176,7 @@ async fn forward_entries(
                     message_id = %entry.message_id,
                     "forwarded active input"
                 );
-                state.seen_message_ids.insert(entry.message_id);
+                state.remember_message_id(entry.message_id);
                 state.consume_sequence();
             }
             Err(error) => {
@@ -182,7 +198,7 @@ async fn forward_entries(
                         error = %error,
                         "active-input forward failed; dropping input"
                     );
-                    state.seen_message_ids.insert(entry.message_id);
+                    state.remember_message_id(entry.message_id);
                     state.consume_sequence();
                 }
             }
@@ -294,6 +310,39 @@ mod tests {
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             ["msg-dup".to_string(), "msg-3".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn forward_entries_bounds_seen_message_id_cache() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let control = recording_control(Arc::clone(&calls));
+        let mut state = ForwardState::default();
+        let entries: Vec<_> = (0..=ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY)
+            .map(|index| {
+                entry(
+                    index as u64 + FIRST_ACTIVE_INPUT_SEQUENCE,
+                    &format!("msg-{index}"),
+                    "input",
+                )
+            })
+            .collect();
+
+        forward_entries(RunId::nil(), &control, entries, &mut state).await;
+
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY + 1
+        );
+        assert_eq!(
+            state.seen_message_ids.len(),
+            ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY
+        );
+        assert!(!state.seen_message_ids.contains("msg-0"));
+        assert!(
+            state
+                .seen_message_ids
+                .contains(&format!("msg-{ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY}"))
         );
     }
 
