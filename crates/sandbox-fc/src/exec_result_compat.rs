@@ -30,7 +30,7 @@ pub(crate) fn captured_exec_output_bytes(
     }
 }
 
-pub(crate) fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
+fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
     if diagnostic.is_empty() {
         return;
     }
