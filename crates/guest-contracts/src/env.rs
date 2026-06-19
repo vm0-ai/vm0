@@ -9,7 +9,8 @@
 //! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
 //! filtering should treat current, future, and retired `VM0_` keys as
 //! protected. A small set of non-`VM0_` bootstrap keys is also runner-owned
-//! because external tools expect those exact names.
+//! because existing runner, guest-agent, or integration contracts use those
+//! exact names.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -53,8 +54,9 @@ pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
 /// This runner-owned bootstrap key intentionally does not use the `VM0_`
-/// prefix because Vercel expects this exact environment variable name. The
-/// runner omits this key when no bypass secret is configured.
+/// prefix because the guest-agent HTTP client uses this established name to
+/// attach the Vercel bypass header. The runner omits this key when no bypass
+/// secret is configured.
 pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 
 /// Optional CLI session or thread identifier used when resuming a prior agent
@@ -96,7 +98,8 @@ pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 /// CLI framework selector, for example `claude-code` or `codex`.
 ///
 /// This runner-owned bootstrap key intentionally does not use the `VM0_`
-/// prefix because downstream CLI setup uses this exact name.
+/// prefix because the runner and guest-agent framework selection contract uses
+/// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
 /// Path to the private user environment JSON file written by the runner.
@@ -220,9 +223,10 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
 /// This covers every `VM0_` key, including future and retired names, plus the
-/// explicit non-`VM0_` bootstrap keys that external tools require. Runner and
-/// local-submit code use this predicate to scrub or reject user-provided env
-/// keys before the guest-agent starts.
+/// explicit non-`VM0_` bootstrap keys required by established runner,
+/// guest-agent, or integration contracts. Runner and local-submit code use
+/// this predicate to scrub or reject user-provided env keys before the
+/// guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
