@@ -156,6 +156,10 @@ fn control_response_from_active_input(
             process_control_ipc::ControlResponseStatus::Rejected,
             diagnostic.to_owned(),
         ),
+        ActiveInputControlOutcome::QueueFull { diagnostic } => (
+            process_control_ipc::ControlResponseStatus::QueueFull,
+            diagnostic.to_owned(),
+        ),
         ActiveInputControlOutcome::Error { diagnostic } => (
             process_control_ipc::ControlResponseStatus::Error,
             diagnostic.to_owned(),

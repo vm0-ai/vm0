@@ -17,6 +17,7 @@ const FRAME_RESPONSE: u8 = 0x03;
 const RESPONSE_ACCEPTED: u8 = 0x00;
 const RESPONSE_REJECTED: u8 = 0x01;
 const RESPONSE_ERROR: u8 = 0x02;
+const RESPONSE_QUEUE_FULL: u8 = 0x03;
 
 /// Write the required hello frame to a connected stream.
 ///
@@ -139,6 +140,7 @@ pub fn write_response(stream: &mut UnixStream, response: &ControlResponse) -> io
         ControlResponseStatus::Accepted => RESPONSE_ACCEPTED,
         ControlResponseStatus::Rejected => RESPONSE_REJECTED,
         ControlResponseStatus::Error => RESPONSE_ERROR,
+        ControlResponseStatus::QueueFull => RESPONSE_QUEUE_FULL,
     });
     payload.extend_from_slice(&(diagnostic.len() as u16).to_be_bytes());
     payload.extend_from_slice(diagnostic);
@@ -259,6 +261,7 @@ fn decode_response(payload: &[u8]) -> io::Result<ControlResponse> {
         RESPONSE_ACCEPTED => ControlResponseStatus::Accepted,
         RESPONSE_REJECTED => ControlResponseStatus::Rejected,
         RESPONSE_ERROR => ControlResponseStatus::Error,
+        RESPONSE_QUEUE_FULL => ControlResponseStatus::QueueFull,
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -377,6 +380,27 @@ mod tests {
         };
         write_response(&mut b, &response).unwrap();
         assert_eq!(read_response(&mut a).unwrap(), response);
+    }
+
+    #[test]
+    fn response_status_roundtrip() {
+        for status in [
+            ControlResponseStatus::Accepted,
+            ControlResponseStatus::Rejected,
+            ControlResponseStatus::QueueFull,
+            ControlResponseStatus::Error,
+        ] {
+            let (mut a, mut b) = UnixStream::pair().unwrap();
+            let response = ControlResponse {
+                message_id: "msg-1".to_string(),
+                status,
+                diagnostic: format!("{status:?}"),
+            };
+
+            write_response(&mut a, &response).unwrap();
+
+            assert_eq!(read_response(&mut b).unwrap(), response);
+        }
     }
 
     #[test]

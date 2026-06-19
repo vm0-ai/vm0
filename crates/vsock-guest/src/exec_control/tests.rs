@@ -415,6 +415,18 @@ fn non_terminal_control_responses_do_not_close_sink() {
         .unwrap();
 
         let request = process_control_ipc::read_request(&mut stream).unwrap();
+        assert_eq!(request.message_id, "msg-queue-full");
+        process_control_ipc::write_response(
+            &mut stream,
+            &process_control_ipc::ControlResponse {
+                message_id: request.message_id,
+                status: process_control_ipc::ControlResponseStatus::QueueFull,
+                diagnostic: "pending inputs full".to_owned(),
+            },
+        )
+        .unwrap();
+
+        let request = process_control_ipc::read_request(&mut stream).unwrap();
         assert_eq!(request.message_id, "msg-error");
         process_control_ipc::write_response(
             &mut stream,
@@ -454,10 +466,20 @@ fn non_terminal_control_responses_do_not_close_sink() {
     assert_eq!(diagnostic, "denied");
 
     let payload =
-        vsock_proto::encode_exec_control(11, forward_nonce, "msg-error", b"payload", 5000).unwrap();
+        vsock_proto::encode_exec_control(11, forward_nonce, "msg-queue-full", b"payload", 5000)
+            .unwrap();
     handle_exec_control(22, &payload, &registry, &writer).unwrap();
     let (_, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(seq, 22);
+    assert_eq!(status, ExecControlStatus::QueueFull);
+    assert_eq!(message_id, "msg-queue-full");
+    assert_eq!(diagnostic, "pending inputs full");
+
+    let payload =
+        vsock_proto::encode_exec_control(11, forward_nonce, "msg-error", b"payload", 5000).unwrap();
+    handle_exec_control(23, &payload, &registry, &writer).unwrap();
+    let (_, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
+    assert_eq!(seq, 23);
     assert_eq!(status, ExecControlStatus::SinkError);
     assert_eq!(message_id, "msg-error");
     assert_eq!(diagnostic, "temporary error");
@@ -465,9 +487,9 @@ fn non_terminal_control_responses_do_not_close_sink() {
     let payload =
         vsock_proto::encode_exec_control(11, forward_nonce, "msg-after-error", b"payload", 5000)
             .unwrap();
-    handle_exec_control(23, &payload, &registry, &writer).unwrap();
+    handle_exec_control(24, &payload, &registry, &writer).unwrap();
     let (_, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
-    assert_eq!(seq, 23);
+    assert_eq!(seq, 24);
     assert_eq!(status, ExecControlStatus::Delivered);
     assert_eq!(message_id, "msg-after-error");
     assert_eq!(diagnostic, "");

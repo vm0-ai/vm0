@@ -314,6 +314,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn forward_entries_retries_queue_full_before_forwarding_later_inputs() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let errors = Arc::new(Mutex::new(VecDeque::from([std::io::ErrorKind::WouldBlock])));
+        let control = recording_control_with_errors(Arc::clone(&calls), errors);
+        let mut state = ForwardState::default();
+
+        let entries = vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")];
+        forward_entries(RunId::nil(), &control, entries.clone(), &mut state).await;
+        assert_eq!(calls.lock().unwrap().as_slice(), ["msg-1".to_string()]);
+
+        forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            [
+                "msg-1".to_string(),
+                "msg-1".to_string(),
+                "msg-2".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn forward_entries_consumes_non_retryable_failure_and_continues() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let errors = Arc::new(Mutex::new(VecDeque::from([

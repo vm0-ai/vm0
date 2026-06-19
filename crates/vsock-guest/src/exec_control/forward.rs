@@ -226,6 +226,11 @@ fn forward_to_connected_sink(
                 diagnostic: response.diagnostic,
                 sink_disposition: ControlSinkDisposition::Keep,
             },
+            ControlResponseStatus::QueueFull => ControlForwardOutcome {
+                status: ExecControlStatus::QueueFull,
+                diagnostic: response.diagnostic,
+                sink_disposition: ControlSinkDisposition::Keep,
+            },
             ControlResponseStatus::Error => ControlForwardOutcome {
                 status: ExecControlStatus::SinkError,
                 diagnostic: response.diagnostic,

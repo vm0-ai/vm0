@@ -139,6 +139,12 @@ pub enum ControlResponseStatus {
     /// the sink connection as broken.
     Rejected,
 
+    /// The control sink is temporarily full and the caller may retry later.
+    ///
+    /// `vsock-guest` maps this to the outer queue-full status without treating
+    /// the sink connection as broken.
+    QueueFull,
+
     /// The control sink failed while processing the request.
     ///
     /// `vsock-guest` maps this to the outer sink-error status. This status is
