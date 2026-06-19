@@ -1495,6 +1495,9 @@ describe("RUN-04: agent run telemetry families", () => {
             response_size: null,
             firewall_params: null,
             auth_resolved_secrets: null,
+            request_headers: ["not", "a", "record"],
+            request_body_encoding: "not-valid",
+            response_headers: { ok: true },
             error: null,
           },
           {
