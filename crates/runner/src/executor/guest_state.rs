@@ -2,9 +2,11 @@
 
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
-use super::storage::format_command_output_excerpt;
-use super::storage::format_guest_exec_failure;
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use crate::helper_exec::{
+    format_command_output_excerpt, format_helper_exec_failure, helper_exec_succeeded,
+    helper_exec_termination_label,
+};
 use crate::types::ExecutionContext;
 
 pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
@@ -26,8 +28,8 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
-    if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format_guest_exec_failure(
+    if !helper_exec_succeeded(&result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
             "guest clock sync",
             &result,
         )));
@@ -64,11 +66,10 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
         })
         .await?;
 
-    if result.exit_code != 0 {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(RunnerError::Internal(format!(
-            "guest-reseed failed (exit code {}): {stderr}",
-            result.exit_code
+    if !helper_exec_succeeded(&result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "guest-reseed",
+            &result,
         )));
     }
 
@@ -119,7 +120,7 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
         })
         .await
     {
-        Ok(result) if result.exit_code != 0 => {
+        Ok(result) if !helper_exec_succeeded(&result) => {
             let stderr_excerpt =
                 format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
             let stdout_excerpt =
@@ -127,6 +128,7 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
             tracing::warn!(
                 run_id = %context.run_id,
                 tz = %tz,
+                termination = helper_exec_termination_label(&result),
                 exit_code = result.exit_code,
                 stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
                 stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),

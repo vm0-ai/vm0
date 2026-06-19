@@ -100,6 +100,48 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
 }
 
 #[tokio::test]
+async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
+    overrides.add_exec_result_matcher(
+        "dmesg",
+        ExecResult {
+            termination: ProcessTerminationKind::TimedOut,
+            exit_code: 0,
+            stdout: b"Out of memory: Killed process 1234".to_vec(),
+            stderr: b"Timeout".to_vec(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        },
+    );
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
+    assert_eq!(failure.error.as_str(), "Agent exited with code 137");
+    assert!(failure.resource_diagnostics.is_none());
+}
+
+#[tokio::test]
 async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -715,6 +757,48 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
     assert!(call.sudo);
     assert!(call.stdin_bytes.is_none());
     assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+}
+
+#[tokio::test]
+async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+    overrides.add_exec_result_matcher(
+        "guest-agent-binary",
+        ExecResult {
+            termination: ProcessTerminationKind::WaitFailed,
+            exit_code: 0,
+            stdout: b"/dev/root       7.8G  7.4G   20K 100% /\n/dev/vdb         16G   24K   15G   1% /home/user/workspace\nMem:            3934        3310         255           0         552         624\n".to_vec(),
+            stderr: b"wait failed".to_vec(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        },
+    );
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 126);
+    assert_eq!(failure.error, "Agent exited with code 126");
+    assert!(failure.resource_diagnostics.is_none());
 }
 
 #[tokio::test]

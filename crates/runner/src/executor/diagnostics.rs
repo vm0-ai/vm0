@@ -19,6 +19,7 @@ use super::{
     ResourceFailureKind, SMALL_GUEST_FILE_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER,
     STDOUT_STREAM_OVERFLOW_MARKER, SandboxReuseResult, guest_runtime_path,
 };
+use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::ids::RunId;
 use crate::paths::{LogPaths, diagnostic_session_fingerprint};
 use crate::types::ExecutionContext;
@@ -312,7 +313,10 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
         Ok(result) => {
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
-            let resource_diagnostics = parse_agent_abnormal_exit_resource_diagnostics(&stdout);
+            let diagnostic_succeeded = helper_exec_succeeded(&result);
+            let resource_diagnostics = diagnostic_succeeded
+                .then(|| parse_agent_abnormal_exit_resource_diagnostics(&stdout))
+                .flatten();
             let resource_failure_kind = resource_diagnostics
                 .and_then(|diagnostics| diagnostics.failure_kind)
                 .map(ResourceFailureKind::as_str);
@@ -331,6 +335,8 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
                 sandbox_id = %sandbox_id,
                 sandbox_reuse_result = reuse_result.as_wire(),
                 exit_code,
+                diagnostic_termination = helper_exec_termination_label(&result),
+                diagnostic_succeeded,
                 diagnostic_exit_code = result.exit_code,
                 diagnostic_stdout_len = result.stdout.len(),
                 diagnostic_stderr_len = result.stderr.len(),

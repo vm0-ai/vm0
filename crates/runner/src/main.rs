@@ -7,6 +7,7 @@ mod dns;
 mod error;
 mod executor;
 mod group;
+mod helper_exec;
 mod host;
 mod host_env;
 mod host_file;

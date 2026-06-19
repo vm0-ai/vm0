@@ -1,4 +1,4 @@
-use sandbox::{ExecResult, Sandbox};
+use sandbox::{ExecResult, ProcessTerminationKind, Sandbox};
 use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
@@ -41,6 +41,35 @@ async fn fix_guest_clock_fails_on_nonzero_exit() {
     );
     assert!(
         message.contains("stderr (captured): date stderr"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("stdout (captured): date stdout"),
+        "got: {message}"
+    );
+}
+
+#[tokio::test]
+async fn fix_guest_clock_fails_on_non_exited_zero_exit_code() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ProcessTerminationKind::WaitFailed,
+        exit_code: 0,
+        stdout: b"date stdout".to_vec(),
+        stderr: b"wait failed".to_vec(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+
+    let result = fix_guest_clock(&sandbox).await;
+
+    let message = result.unwrap_err().to_string();
+    assert!(
+        message.contains("guest clock sync failed (wait failed; compatibility exit code 0)"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("stderr (captured): wait failed"),
         "got: {message}"
     );
     assert!(
@@ -213,6 +242,10 @@ async fn sync_guest_timezone_logs_nonzero_exit() {
         Some("America/New_York")
     );
     assert_eq!(event.fields.get("exit_code").map(String::as_str), Some("2"));
+    assert_eq!(
+        event.fields.get("termination").map(String::as_str),
+        Some("exited")
+    );
     assert!(
         event
             .fields
@@ -225,6 +258,44 @@ async fn sync_guest_timezone_logs_nonzero_exit() {
             .fields
             .get("stdout_excerpt")
             .is_some_and(|value| value.contains("timezone stdout")),
+        "event={event:#?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sync_guest_timezone_logs_non_exited_zero_exit_code() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ProcessTerminationKind::StartFailed,
+        exit_code: 0,
+        stdout: b"timezone stdout".to_vec(),
+        stderr: b"start failed".to_vec(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+    let mut ctx = minimal_context();
+    ctx.user_timezone = Some("America/New_York".into());
+
+    let events = capture_sync_guest_timezone_events(&sandbox, &ctx).await;
+    let event = events
+        .iter()
+        .find(|event| {
+            event.level == Level::WARN
+                && event.fields.get("message").map(String::as_str)
+                    == Some("failed to set guest timezone")
+        })
+        .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+
+    assert_eq!(
+        event.fields.get("termination").map(String::as_str),
+        Some("start_failed")
+    );
+    assert_eq!(event.fields.get("exit_code").map(String::as_str), Some("0"));
+    assert!(
+        event
+            .fields
+            .get("stderr_excerpt")
+            .is_some_and(|value| value.contains("start failed")),
         "event={event:#?}"
     );
 }

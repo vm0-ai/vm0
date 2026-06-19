@@ -3,8 +3,8 @@
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox, SandboxError};
 use tracing::{info, warn};
 
-use super::storage::format_guest_exec_failure;
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -250,9 +250,9 @@ fi"#;
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
-    if result.exit_code != 0 {
+    if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(redact_session_restore_diagnostic(
-            format_guest_exec_failure("codex session cleanup", &result),
+            format_helper_exec_failure("codex session cleanup", &result),
             &[session_id],
             session_path,
         )));

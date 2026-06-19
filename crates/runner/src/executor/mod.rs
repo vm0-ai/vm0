@@ -80,7 +80,6 @@ const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
 const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
-const GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES: usize = 8 * 1024;
 const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
     b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =

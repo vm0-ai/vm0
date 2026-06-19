@@ -3,10 +3,8 @@
 use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecRequest, Sandbox};
 use tracing::info;
 
-use super::{
-    DEFAULT_EXEC_TIMEOUT, GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES, RunnerError, RunnerResult,
-    guest_runtime_dir,
-};
+use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir};
+use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::guest;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
@@ -168,7 +166,7 @@ pub(super) async fn download_storages(
         })
         .await?;
 
-    if result.exit_code != 0 {
+    if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(format_guest_download_failure(
             &result,
         )));
@@ -177,121 +175,5 @@ pub(super) async fn download_storages(
 }
 
 pub(super) fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {
-    format_guest_exec_failure("storage download", result)
-}
-
-pub(super) fn format_guest_exec_failure(operation: &str, result: &sandbox::ExecResult) -> String {
-    let mut message = format!("{operation} failed (exit code {})", result.exit_code);
-
-    if let Some(stderr) =
-        format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated)
-    {
-        message.push_str("; ");
-        message.push_str(&stderr);
-    }
-    if let Some(stdout) =
-        format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated)
-    {
-        message.push_str("; ");
-        message.push_str(&stdout);
-    }
-
-    message
-}
-
-pub(super) fn format_command_output_excerpt(
-    label: &str,
-    bytes: &[u8],
-    sandbox_truncated: bool,
-) -> Option<String> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    // Redact before excerpting so a suffix cannot start inside a URL query and expose it.
-    let output = String::from_utf8_lossy(bytes);
-    let output = sanitize_command_output_for_diagnostic(output.trim());
-    let output = output.trim();
-    let (excerpt, omitted_prefix) = diagnostic_output_excerpt(output);
-    let excerpt = excerpt.trim();
-    if excerpt.is_empty() {
-        return None;
-    }
-
-    let mut qualifiers = Vec::new();
-    if omitted_prefix {
-        qualifiers.push("last 8192 bytes");
-    } else {
-        qualifiers.push("captured");
-    }
-    if sandbox_truncated {
-        qualifiers.push("sandbox-truncated");
-    }
-
-    Some(format!("{label} ({}): {excerpt}", qualifiers.join(", ")))
-}
-
-fn diagnostic_output_excerpt(input: &str) -> (&str, bool) {
-    if input.len() <= GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES {
-        return (input, false);
-    }
-
-    let mut start = input.len() - GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
-    while !input.is_char_boundary(start) {
-        start += 1;
-    }
-    (&input[start..], true)
-}
-
-fn sanitize_command_output_for_diagnostic(input: &str) -> String {
-    redact_url_query_strings(input)
-}
-
-fn redact_url_query_strings(input: &str) -> String {
-    let mut redacted = String::with_capacity(input.len());
-    let mut cursor = 0;
-
-    while cursor < input.len() {
-        let Some(scheme) = url_scheme_at(input, cursor) else {
-            let Some(ch) = input[cursor..].chars().next() else {
-                break;
-            };
-            redacted.push(ch);
-            cursor += ch.len_utf8();
-            continue;
-        };
-
-        let url_start = cursor;
-        let url_body_start = url_start + scheme.len();
-        let url_end = find_url_token_end(input, url_body_start);
-        let Some(query_offset) = input[url_body_start..url_end].find('?') else {
-            redacted.push_str(&input[url_start..url_end]);
-            cursor = url_end;
-            continue;
-        };
-
-        let query_start = url_body_start + query_offset;
-        let query_value_start = query_start + '?'.len_utf8();
-        redacted.push_str(&input[url_start..query_value_start]);
-        redacted.push_str("<redacted>");
-        cursor = url_end;
-    }
-
-    redacted.push_str(&input[cursor..]);
-    redacted
-}
-
-fn url_scheme_at(input: &str, index: usize) -> Option<&'static str> {
-    ["https://", "http://"].into_iter().find(|scheme| {
-        input[index..]
-            .get(..scheme.len())
-            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(scheme))
-    })
-}
-
-fn find_url_token_end(input: &str, start: usize) -> usize {
-    input[start..]
-        .char_indices()
-        .find_map(|(index, ch)| ch.is_whitespace().then_some(start + index))
-        .unwrap_or(input.len())
+    format_helper_exec_failure("storage download", result)
 }

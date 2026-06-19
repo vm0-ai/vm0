@@ -4,6 +4,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 
 const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
@@ -43,18 +44,13 @@ async fn run_workspace_drive_command(
         })
         .await
         .map_err(RunnerError::from)?;
-    if result.exit_code == 0 {
+    if helper_exec_succeeded(&result) {
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    let stdout = String::from_utf8_lossy(&result.stdout);
-    Err(RunnerError::Internal(format!(
-        "{operation} failed for {diagnostic_id} with exit code {}: stderr={} stdout={}",
-        result.exit_code,
-        stderr.trim(),
-        stdout.trim()
-    )))
+    let mut message = format_helper_exec_failure(operation, &result);
+    message.push_str(&format!("; diagnostic id: {diagnostic_id}"));
+    Err(RunnerError::Internal(message))
 }
 
 fn shell_quote(value: &str) -> String {

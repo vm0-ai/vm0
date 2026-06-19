@@ -4,14 +4,13 @@ use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootP
 use sandbox::{ExecResult, ProcessTerminationKind};
 use sandbox_mock::MockSandbox;
 
-use super::super::GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
 use super::super::guest_runtime_dir;
 use super::super::storage::{
-    download_storages, filter_unchanged_storages, format_command_output_excerpt,
-    format_guest_download_failure, guest_download_command, guest_download_env,
-    guest_download_has_work,
+    download_storages, filter_unchanged_storages, format_guest_download_failure,
+    guest_download_command, guest_download_env, guest_download_has_work,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
+use crate::helper_exec::{HELPER_EXEC_OUTPUT_EXCERPT_BYTES, format_command_output_excerpt};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
 
@@ -89,6 +88,34 @@ async fn download_storages_nonzero_exit_code() {
     assert!(msg.contains("stdout (captured): stdout clue"));
 }
 
+#[tokio::test]
+async fn download_storages_fails_on_non_exited_zero_exit_code() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ProcessTerminationKind::TimedOut,
+        exit_code: 0,
+        stdout: b"partial stdout".to_vec(),
+        stderr: b"Timeout".to_vec(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+    let ctx = minimal_context();
+    let manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+    };
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+
+    assert!(msg.contains("storage download failed (timed out; compatibility exit code 0)"));
+    assert!(msg.contains("stderr (captured): Timeout"));
+    assert!(msg.contains("stdout (captured): partial stdout"));
+}
+
 #[test]
 fn guest_download_failure_output_redacts_url_queries() {
     let result = ExecResult {
@@ -115,7 +142,7 @@ fn guest_download_failure_redacts_url_query_before_excerpting() {
     let secret_value = "secret-value-that-must-not-leak";
     let suffix = " download failed";
     let boundary_offset = "X-Amz-".len();
-    let padding_len = GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES + boundary_offset
+    let padding_len = HELPER_EXEC_OUTPUT_EXCERPT_BYTES + boundary_offset
         - query_key.len()
         - secret_value.len()
         - suffix.len();
