@@ -4,7 +4,10 @@ import { getZeroRunAgentEvents, type RunEvent } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../../lib/events/event-renderer";
-import { paginate } from "../../../lib/utils/paginate";
+import {
+  collectLogItems,
+  parsePositiveLogCount,
+} from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
 import { listCommand } from "./list";
@@ -36,72 +39,33 @@ async function showAgentEvents(
     order: "asc" | "desc";
   },
 ): Promise<void> {
-  const firstResponse = await getZeroRunAgentEvents(runId, {
-    since: options.since,
-    limit: PAGE_LIMIT,
+  let framework = "claude-code";
+  const events = await collectLogItems<RunEvent>({
+    fetchPage: async (request) => {
+      const response = await getZeroRunAgentEvents(runId, request);
+      framework = response.framework;
+      return {
+        items: response.events,
+        hasMore: response.hasMore,
+        nextCursor: response.nextCursor,
+      };
+    },
+    sinceTime: options.since,
+    targetCount: options.targetCount,
     order: options.order,
+    pageLimit: PAGE_LIMIT,
   });
 
-  if (firstResponse.events.length === 0) {
+  if (events.length === 0) {
     console.log(chalk.yellow("No agent events found for this run"));
     return;
   }
-
-  let allEvents: RunEvent[];
-
-  if (
-    !firstResponse.hasMore ||
-    (options.targetCount !== "all" &&
-      firstResponse.events.length >= options.targetCount)
-  ) {
-    allEvents =
-      options.targetCount === "all"
-        ? firstResponse.events
-        : firstResponse.events.slice(0, options.targetCount);
-  } else {
-    const lastEvent = firstResponse.events[firstResponse.events.length - 1];
-    const firstPageTimestamp = lastEvent
-      ? new Date(lastEvent.createdAt).getTime()
-      : undefined;
-
-    const remainingEvents = await paginate<RunEvent>({
-      fetchPage: async (since) => {
-        const response = await getZeroRunAgentEvents(runId, {
-          since,
-          limit: PAGE_LIMIT,
-          order: options.order,
-        });
-        return { items: response.events, hasMore: response.hasMore };
-      },
-      getTimestamp: (event) => {
-        return new Date(event.createdAt).getTime();
-      },
-      targetCount:
-        options.targetCount === "all"
-          ? "all"
-          : options.targetCount - firstResponse.events.length,
-      initialSince: firstPageTimestamp,
-    });
-
-    allEvents = [...firstResponse.events, ...remainingEvents];
-
-    if (
-      options.targetCount !== "all" &&
-      allEvents.length > options.targetCount
-    ) {
-      allEvents = allEvents.slice(0, options.targetCount);
-    }
-  }
-
-  const events =
-    options.order === "desc" ? [...allEvents].reverse() : allEvents;
 
   const renderer = new EventRenderer({
     showTimestamp: true,
     verbose: true,
   });
   const normalizer = new EventStreamNormalizer();
-  const framework = firstResponse.framework;
 
   for (const event of events) {
     renderAgentEvent(event, renderer, normalizer, framework);
@@ -182,9 +146,9 @@ Examples:
         if (isAll) {
           targetCount = "all";
         } else if (isHead) {
-          targetCount = Math.max(1, parseInt(options.head!, 10));
+          targetCount = parsePositiveLogCount(options.head!, "--head");
         } else if (isTail) {
-          targetCount = Math.max(1, parseInt(options.tail!, 10));
+          targetCount = parsePositiveLogCount(options.tail!, "--tail");
         } else {
           targetCount = 5;
         }

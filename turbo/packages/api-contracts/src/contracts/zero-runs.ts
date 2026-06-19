@@ -14,6 +14,7 @@ import {
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
   logsSearchResponseSchema,
+  createLogPaginationQuerySchema,
 } from "./runs";
 import { sandboxReuseResultSchema } from "./webhooks";
 
@@ -43,6 +44,17 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
   });
 
 const c = initContract();
+
+const zeroLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "sequence",
+});
+
+const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "time",
+  maxLimit: 500,
+  defaultLimit: 500,
+  defaultOrder: "asc",
+});
 
 /**
  * Zero runs main contract (POST /api/zero/runs)
@@ -145,13 +157,10 @@ export const zeroRunAgentEventsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: zeroLogPaginationQuerySchema,
     responses: {
       200: agentEventsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -251,11 +260,7 @@ export const zeroRunNetworkLogsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(500).default(500),
-      order: z.enum(["asc", "desc"]).default("asc"),
-    }),
+    query: zeroNetworkLogPaginationQuerySchema,
     responses: {
       200: networkLogsResponseSchema,
       400: apiErrorSchema,

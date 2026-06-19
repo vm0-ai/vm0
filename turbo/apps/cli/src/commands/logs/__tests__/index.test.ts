@@ -16,6 +16,22 @@ function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
 }
 
+function makeAgentEvent(sequenceNumber: number) {
+  return {
+    sequenceNumber,
+    eventType: "assistant",
+    createdAt: new Date(
+      Date.UTC(2024, 0, 15, 10, 30, sequenceNumber),
+    ).toISOString(),
+    eventData: {
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text: `message-${sequenceNumber}` }],
+      },
+    },
+  };
+}
+
 describe("logs command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -97,9 +113,9 @@ describe("logs command", () => {
           ({ request }) => {
             requestCount++;
             const url = new URL(request.url);
-            const since = url.searchParams.get("since");
+            const cursor = url.searchParams.get("cursor");
 
-            if (!since) {
+            if (!cursor) {
               // First page
               return HttpResponse.json({
                 events: [
@@ -115,6 +131,7 @@ describe("logs command", () => {
                 ],
                 framework: "claude-code",
                 hasMore: true,
+                nextCursor: "cursor-page-2",
               });
             } else {
               // Second page
@@ -208,9 +225,9 @@ describe("logs command", () => {
           ({ request }) => {
             requestCount++;
             const url = new URL(request.url);
-            const since = url.searchParams.get("since");
+            const cursor = url.searchParams.get("cursor");
 
-            if (!since) {
+            if (!cursor) {
               return HttpResponse.json({
                 events: [
                   {
@@ -238,6 +255,7 @@ describe("logs command", () => {
                 ],
                 framework: "claude-code",
                 hasMore: true,
+                nextCursor: "cursor-page-2",
               });
             } else {
               return HttpResponse.json({
@@ -285,16 +303,18 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("Page2-Event2");
     });
 
-    it("should pass correct since cursor to subsequent pages", async () => {
+    it("should pass server cursor to subsequent pages", async () => {
+      const capturedCursorValues: (string | null)[] = [];
       const capturedSinceValues: (string | null)[] = [];
       server.use(
         http.get(
           "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
           ({ request }) => {
             const url = new URL(request.url);
+            capturedCursorValues.push(url.searchParams.get("cursor"));
             capturedSinceValues.push(url.searchParams.get("since"));
 
-            if (capturedSinceValues.length === 1) {
+            if (capturedCursorValues.length === 1) {
               return HttpResponse.json({
                 events: [
                   {
@@ -309,6 +329,7 @@ describe("logs command", () => {
                 ],
                 framework: "claude-code",
                 hasMore: true,
+                nextCursor: "sequence:desc:1",
               });
             } else {
               return HttpResponse.json({
@@ -333,11 +354,55 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
 
+      expect(capturedCursorValues).toHaveLength(2);
+      expect(capturedCursorValues[0]).toBeNull();
+      expect(capturedCursorValues[1]).toBe("sequence:desc:1");
       expect(capturedSinceValues).toHaveLength(2);
-      expect(capturedSinceValues[0]).toBeNull(); // First page has no since
-      // Second page should have since = timestamp of last event from first page
-      expect(capturedSinceValues[1]).toBe(
-        new Date("2024-01-15T10:30:00Z").getTime().toString(),
+      expect(capturedSinceValues).toStrictEqual([null, null]);
+    });
+
+    it("should return the latest large tail across descending cursor pages", async () => {
+      const capturedCursors: (string | null)[] = [];
+      const capturedLimits: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+            capturedCursors.push(cursor);
+            capturedLimits.push(url.searchParams.get("limit"));
+
+            if (!cursor) {
+              return HttpResponse.json({
+                events: Array.from({ length: 100 }, (_, index) => {
+                  return makeAgentEvent(200 - index);
+                }),
+                framework: "claude-code",
+                hasMore: true,
+                nextCursor: "sequence:desc:101",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [makeAgentEvent(100)],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "101"]);
+
+      expect(capturedCursors).toStrictEqual([null, "sequence:desc:101"]);
+      expect(capturedLimits).toStrictEqual(["100", "1"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("message-100");
+      expect(logCalls).toContain("message-200");
+      expect(logCalls).not.toContain("message-99");
+      expect(logCalls.indexOf("message-100")).toBeLessThan(
+        logCalls.indexOf("message-200"),
       );
     });
 
@@ -349,9 +414,9 @@ describe("logs command", () => {
           ({ request }) => {
             requestCount++;
             const url = new URL(request.url);
-            const since = url.searchParams.get("since");
+            const cursor = url.searchParams.get("cursor");
 
-            if (!since) {
+            if (!cursor) {
               return HttpResponse.json({
                 events: [
                   {
@@ -366,6 +431,7 @@ describe("logs command", () => {
                 ],
                 framework: "claude-code",
                 hasMore: true,
+                nextCursor: "cursor-page-2",
               });
             } else {
               // API says hasMore but returns no items - should stop
@@ -387,6 +453,50 @@ describe("logs command", () => {
       expect(logCalls).toContain("Event 1");
     });
 
+    it("should stop pagination when API repeats the same cursor", async () => {
+      let requestCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            requestCount++;
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: cursor ? 2 : 1,
+                  eventType: "assistant",
+                  createdAt: cursor
+                    ? "2024-01-15T10:31:00Z"
+                    : "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        { type: "text", text: cursor ? "Event 2" : "Event 1" },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: true,
+              nextCursor: "repeated-cursor",
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+
+      expect(requestCount).toBe(2);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Event 1");
+      expect(logCalls).toContain("Event 2");
+    });
+
     it("should fail entirely when pagination encounters API error", async () => {
       let requestCount = 0;
       server.use(
@@ -395,9 +505,9 @@ describe("logs command", () => {
           ({ request }) => {
             requestCount++;
             const url = new URL(request.url);
-            const since = url.searchParams.get("since");
+            const cursor = url.searchParams.get("cursor");
 
-            if (!since) {
+            if (!cursor) {
               return HttpResponse.json({
                 events: [
                   {
@@ -412,6 +522,7 @@ describe("logs command", () => {
                 ],
                 framework: "claude-code",
                 hasMore: true,
+                nextCursor: "cursor-page-2",
               });
             } else {
               // Second page fails
@@ -1158,7 +1269,7 @@ describe("logs command", () => {
           "http://localhost:3000/api/agent/runs/:id/telemetry/system-log",
           () => {
             return HttpResponse.json({
-              systemLog: null,
+              systemLog: "",
               hasMore: false,
             });
           },
@@ -1169,6 +1280,86 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No system log found");
+    });
+
+    it("should paginate system log pages with server cursor", async () => {
+      const capturedCursors: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/system-log",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+            capturedCursors.push(cursor);
+
+            if (!cursor) {
+              return HttpResponse.json({
+                systemLog: "first page\n",
+                hasMore: true,
+                nextCursor: "time:desc:1",
+              });
+            }
+
+            return HttpResponse.json({
+              systemLog: "second page\n",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync([
+        "node",
+        "cli",
+        "run-123",
+        "--system",
+        "--all",
+      ]);
+
+      expect(capturedCursors).toStrictEqual([null, "time:desc:1"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("first page");
+      expect(logCalls).toContain("second page");
+    });
+
+    it("should continue system log pagination past empty pages with cursors", async () => {
+      const capturedCursors: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/system-log",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+            capturedCursors.push(cursor);
+
+            if (!cursor) {
+              return HttpResponse.json({
+                systemLog: "",
+                hasMore: true,
+                nextCursor: "time:desc:1",
+              });
+            }
+
+            return HttpResponse.json({
+              systemLog: "second page\n",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync([
+        "node",
+        "cli",
+        "run-123",
+        "--system",
+        "--all",
+      ]);
+
+      expect(capturedCursors).toStrictEqual([null, "time:desc:1"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("second page");
+      expect(logCalls).not.toContain("No system log found");
     });
   });
 
@@ -1636,6 +1827,52 @@ describe("logs command", () => {
         expect.stringContaining("mutually exclusive"),
       );
     });
+
+    it("should exit with error when --tail is not a positive integer", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--tail",
+          "abc",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Option --tail must be a positive integer"),
+      );
+
+      mockExit.mockClear();
+      mockConsoleError.mockClear();
+
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--tail",
+          "1e2",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Option --tail must be a positive integer"),
+      );
+    });
+
+    it("should exit with error when --head is not a positive integer", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "0"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Option --head must be a positive integer"),
+      );
+    });
   });
 
   describe("error handling", () => {
@@ -1980,7 +2217,7 @@ describe("logs command", () => {
   });
 
   describe("time and limit options", () => {
-    it("should pass --since option to API", async () => {
+    it("should pass --since option to API as sinceTime", async () => {
       let capturedQuery: Record<string, unknown> | undefined;
       server.use(
         http.get(
@@ -1999,7 +2236,8 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--since", "5m"]);
 
-      expect(capturedQuery?.since).toBeDefined();
+      expect(capturedQuery?.sinceTime).toBeDefined();
+      expect(capturedQuery?.since).toBeUndefined();
     });
 
     it("should pass --tail option to API with desc order", async () => {
@@ -2021,8 +2259,8 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "20"]);
 
-      // Per-page limit is always PAGE_LIMIT (100), targetCount is 20
-      expect(capturedQuery?.limit).toBe("100");
+      // Small finite requests only fetch the remaining target count.
+      expect(capturedQuery?.limit).toBe("20");
       expect(capturedQuery?.order).toBe("desc");
     });
 
@@ -2045,8 +2283,8 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "10"]);
 
-      // Per-page limit is always PAGE_LIMIT (100), targetCount is 10
-      expect(capturedQuery?.limit).toBe("100");
+      // Small finite requests only fetch the remaining target count.
+      expect(capturedQuery?.limit).toBe("10");
       expect(capturedQuery?.order).toBe("asc");
     });
 
@@ -2123,7 +2361,8 @@ describe("logs command", () => {
         "5m",
       ]);
 
-      expect(capturedQuery?.since).toBeDefined();
+      expect(capturedQuery?.sinceTime).toBeDefined();
+      expect(capturedQuery?.since).toBeUndefined();
       expect(capturedQuery?.limit).toBe("100");
     });
   });

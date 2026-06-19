@@ -1372,6 +1372,10 @@ function networkHardeningRows(
   ];
 }
 
+function timeLogCursor(order: "asc" | "desc", timestamp: string): string {
+  return `time:${order}:${encodeURIComponent(timestamp)}`;
+}
+
 describe("RUN-04: agent run telemetry families", () => {
   it("serves run events and telemetry families from axiom with watermark waits", async () => {
     const actor = await entitledActor();
@@ -1405,7 +1409,7 @@ describe("RUN-04: agent run telemetry families", () => {
           agentEvent(runId, 3, "gapped"),
         ],
         systemLogs: [
-          { _time: "2026-06-10T10:30:00Z", runId, log: "boot\n" },
+          { _time: "2026-06-10T10:30:00.123456Z", runId, log: "boot\n" },
           { _time: "2026-06-10T10:31:00Z", runId, log: "ready\n" },
         ],
         metrics: [
@@ -1617,11 +1621,75 @@ describe("RUN-04: agent run telemetry families", () => {
     }
     expect(ascEvents.body.events).toHaveLength(2);
     expect(ascEvents.body.hasMore).toBeTruthy();
+    expect(ascEvents.body.nextCursor).toBe("sequence:asc:1");
     expect(ascEvents.body.framework).toBe("claude-code");
     expect(axiomCallCount()).toBe(ascStart + 2);
     const ascApl = axiomCallAt(ascStart + 1)[0];
     expect(ascApl).toContain("| where sequenceNumber > 0");
     expect(ascApl).toContain("| order by sequenceNumber asc");
+
+    await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
+      [200],
+    );
+    const cursorAgentApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(cursorAgentApl).toContain("| where sequenceNumber < 2");
+    expect(cursorAgentApl).toContain("| order by sequenceNumber desc");
+
+    const agentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: agentSinceTime, limit: 1, order: "asc" },
+      [200],
+    );
+    const agentSinceTimeApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(agentSinceTimeApl).toContain(
+      `| where _time > datetime("${new Date(agentSinceTime).toISOString()}")`,
+    );
+    expect(agentSinceTimeApl).toContain("| order by sequenceNumber asc");
+
+    const malformedAgentCursor = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "not-a-cursor", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(malformedAgentCursor.body);
+
+    const wrongAgentCursorKind = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "time:desc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongAgentCursorKind.body);
+
+    const outOfRangeAgentSince = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 2_147_483_648, limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(outOfRangeAgentSince.body);
+
+    const outOfRangeAgentCursor = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(outOfRangeAgentCursor.body);
+
+    const decimalAgentLimit = await reads.requestRunAgentEvents(
+      actor,
+      runId,
+      { since: 0, limit: 1.5, order: "asc" },
+      [400],
+    );
+    expectApiError(decimalAgentLimit.body);
 
     const descStart = axiomCallCount();
     const descEvents = await reads.requestRunAgentEvents(
@@ -1648,11 +1716,81 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(systemAsc.body).toStrictEqual({
       systemLog: "boot\n",
       hasMore: true,
+      nextCursor: timeLogCursor("asc", "2026-06-10T10:30:00.123456Z"),
     });
     const systemApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(systemApl).toContain("sandbox-telemetry-system");
     expect(systemApl).toContain(new Date(sinceMs).toISOString());
     expect(systemApl).toContain("| order by _time asc");
+
+    const highPrecisionSystemCursor = "2026-06-10T10:31:00.987654Z";
+    await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("desc", highPrecisionSystemCursor),
+        limit: 1,
+        order: "desc",
+        sinceTime: sinceMs,
+      },
+      [200],
+    );
+    const systemCursorApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(systemCursorApl).toContain(new Date(sinceMs).toISOString());
+    expect(systemCursorApl).toContain(
+      `| where _time < datetime("${highPrecisionSystemCursor}")`,
+    );
+
+    const wrongSystemCursorOrder = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongSystemCursorOrder.body);
+
+    const invalidSystemSince = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { since: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSince.body);
+
+    const invalidSystemSinceTime = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSinceTime.body);
+
+    const emptySystemSinceTime = await reads.rawApiRequest(
+      actor,
+      `/api/agent/runs/${runId}/telemetry/system-log?sinceTime=`,
+    );
+    expect(emptySystemSinceTime.status).toBe(400);
+    expectApiError(emptySystemSinceTime.body);
+
+    const invalidSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:8640000000000001", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemCursor.body);
+
+    const invalidCalendarSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("asc", "2026-02-30T00:00:00Z"),
+        limit: 1,
+        order: "asc",
+      },
+      [400],
+    );
+    expectApiError(invalidCalendarSystemCursor.body);
 
     const systemEmpty = await reads.requestRunSystemLog(
       actor,
@@ -1687,6 +1825,7 @@ describe("RUN-04: agent run telemetry families", () => {
         },
       ],
       hasMore: true,
+      nextCursor: timeLogCursor("desc", "2026-06-10T10:30:00Z"),
     });
     const metricsApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(metricsApl).toContain("sandbox-telemetry-metrics");
@@ -2211,8 +2350,19 @@ describe("RUN-04: agent run telemetry families", () => {
     }
     expect(pagedNetwork.body.networkLogs).toHaveLength(2);
     expect(pagedNetwork.body.hasMore).toBeTruthy();
+    expect(pagedNetwork.body.nextCursor).toBe(
+      timeLogCursor("asc", "2026-06-10T11:00:01Z"),
+    );
     const networkApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(networkApl).toContain(new Date(sinceMs).toISOString());
+
+    const wrongNetworkCursorKind = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: "sequence:asc:1", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(wrongNetworkCursorKind.body);
 
     const emptyNetwork = await reads.requestZeroRunNetworkLogs(
       actor,
@@ -2269,6 +2419,54 @@ describe("RUN-04: agent run telemetry families", () => {
     }
     expect(ascPage.body.events).toHaveLength(1);
     expect(ascPage.body.hasMore).toBeTruthy();
+    expect(ascPage.body.nextCursor).toBe("sequence:asc:0");
+
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
+      [200],
+    );
+    const zeroCursorApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroCursorApl).toContain("| where sequenceNumber < 2");
+    expect(zeroCursorApl).toContain("| order by sequenceNumber desc");
+
+    const zeroAgentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: zeroAgentSinceTime, limit: 1, order: "asc" },
+      [200],
+    );
+    const zeroAgentSinceTimeApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroAgentSinceTimeApl).toContain(
+      `| where _time > datetime("${new Date(zeroAgentSinceTime).toISOString()}")`,
+    );
+    expect(zeroAgentSinceTimeApl).toContain("| order by sequenceNumber asc");
+
+    const wrongZeroAgentCursorKind = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "time:desc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongZeroAgentCursorKind.body);
+
+    const outOfRangeZeroAgentCursor = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(outOfRangeZeroAgentCursor.body);
+
+    const invalidZeroAgentSinceTime = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidZeroAgentSinceTime.body);
 
     const memberEvents = await reads.requestZeroRunAgentEvents(
       member,

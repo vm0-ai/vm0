@@ -14,7 +14,10 @@ import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
 import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
-import { paginate } from "../../lib/utils/paginate";
+import {
+  collectLogItems,
+  parsePositiveLogCount,
+} from "../../lib/utils/log-pagination";
 import { searchCommand } from "./search";
 import { withErrorHandler } from "../../lib/command";
 
@@ -407,9 +410,9 @@ export const logsCommand = new Command()
         if (isAll) {
           targetCount = "all";
         } else if (isHead) {
-          targetCount = Math.max(1, parseInt(options.head!, 10));
+          targetCount = parsePositiveLogCount(options.head!, "--head");
         } else if (isTail) {
-          targetCount = Math.max(1, parseInt(options.tail!, 10));
+          targetCount = parsePositiveLogCount(options.tail!, "--tail");
         } else {
           // Default: show last 5 entries
           targetCount = 5;
@@ -456,76 +459,31 @@ async function showAgentEvents(
   },
   platformUrl: string,
 ): Promise<void> {
-  // Fetch first page to get framework info
-  const firstResponse = await getAgentEvents(runId, {
-    since: options.since,
-    limit: PAGE_LIMIT,
+  let framework = "claude-code";
+  const events = await collectLogItems<RunEvent>({
+    fetchPage: async (request) => {
+      const response = await getAgentEvents(runId, request);
+      framework = response.framework;
+      return {
+        items: response.events,
+        hasMore: response.hasMore,
+        nextCursor: response.nextCursor,
+      };
+    },
+    sinceTime: options.since,
+    targetCount: options.targetCount,
     order: options.order,
+    pageLimit: PAGE_LIMIT,
   });
 
-  if (firstResponse.events.length === 0) {
+  if (events.length === 0) {
     console.log(chalk.yellow("No agent events found for this run"));
     return;
   }
 
-  // Use pagination to collect all needed events
-  let allEvents: RunEvent[];
-
-  if (
-    !firstResponse.hasMore ||
-    (options.targetCount !== "all" &&
-      firstResponse.events.length >= options.targetCount)
-  ) {
-    // Single page is enough
-    allEvents =
-      options.targetCount === "all"
-        ? firstResponse.events
-        : firstResponse.events.slice(0, options.targetCount);
-  } else {
-    // Need to paginate
-    const lastEvent = firstResponse.events[firstResponse.events.length - 1];
-    const firstPageTimestamp = lastEvent
-      ? new Date(lastEvent.createdAt).getTime()
-      : undefined;
-
-    const remainingEvents = await paginate<RunEvent>({
-      fetchPage: async (since) => {
-        const response = await getAgentEvents(runId, {
-          since,
-          limit: PAGE_LIMIT,
-          order: options.order,
-        });
-        return { items: response.events, hasMore: response.hasMore };
-      },
-      getTimestamp: (event) => {
-        return new Date(event.createdAt).getTime();
-      },
-      targetCount:
-        options.targetCount === "all"
-          ? "all"
-          : options.targetCount - firstResponse.events.length,
-      initialSince: firstPageTimestamp,
-    });
-
-    allEvents = [...firstResponse.events, ...remainingEvents];
-
-    // Trim to target count if needed
-    if (
-      options.targetCount !== "all" &&
-      allEvents.length > options.targetCount
-    ) {
-      allEvents = allEvents.slice(0, options.targetCount);
-    }
-  }
-
-  // Reverse for chronological display when using desc order (--tail)
-  const events =
-    options.order === "desc" ? [...allEvents].reverse() : allEvents;
-
   // Create renderer for log viewing (with timestamps, always verbose)
   const renderer = createLogRenderer(true);
   const normalizer = new EventStreamNormalizer();
-  const framework = firstResponse.framework;
 
   for (const event of events) {
     renderAgentEvent(event, renderer, normalizer, framework);
@@ -551,25 +509,50 @@ async function showSystemLog(
     order: "asc" | "desc";
   },
 ): Promise<void> {
-  // For system log, we fetch with a high limit to get more batches
-  // The API aggregates batches into a single string
-  const limit =
-    options.targetCount === "all"
-      ? PAGE_LIMIT
-      : Math.min(options.targetCount, PAGE_LIMIT);
+  const pages: string[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  let remainingBatches =
+    options.targetCount === "all" ? undefined : options.targetCount;
 
-  const response = await getSystemLog(runId, {
-    since: options.since,
-    limit,
-    order: options.order,
-  });
+  while (true) {
+    const limit =
+      remainingBatches === undefined
+        ? PAGE_LIMIT
+        : Math.min(remainingBatches, PAGE_LIMIT);
+    const response = await getSystemLog(runId, {
+      sinceTime: options.since,
+      cursor,
+      limit,
+      order: options.order,
+    });
 
-  if (!response.systemLog) {
+    if (response.systemLog) {
+      pages.push(response.systemLog);
+    }
+
+    if (remainingBatches !== undefined) {
+      remainingBatches -= limit;
+      if (remainingBatches <= 0) {
+        break;
+      }
+    }
+
+    const nextCursor = response.nextCursor ?? null;
+    if (!response.hasMore || !nextCursor || seenCursors.has(nextCursor)) {
+      break;
+    }
+
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  if (pages.length === 0) {
     console.log(chalk.yellow("No system log found for this run"));
     return;
   }
 
-  console.log(response.systemLog);
+  console.log(pages.join(""));
 }
 
 /**
@@ -583,71 +566,25 @@ async function showMetrics(
     order: "asc" | "desc";
   },
 ): Promise<void> {
-  // Fetch first page
-  const firstResponse = await getMetrics(runId, {
-    since: options.since,
-    limit: PAGE_LIMIT,
+  const metrics = await collectLogItems<TelemetryMetric>({
+    fetchPage: async (request) => {
+      const response = await getMetrics(runId, request);
+      return {
+        items: response.metrics,
+        hasMore: response.hasMore,
+        nextCursor: response.nextCursor,
+      };
+    },
+    sinceTime: options.since,
+    targetCount: options.targetCount,
     order: options.order,
+    pageLimit: PAGE_LIMIT,
   });
 
-  if (firstResponse.metrics.length === 0) {
+  if (metrics.length === 0) {
     console.log(chalk.yellow("No metrics found for this run"));
     return;
   }
-
-  // Use pagination to collect all needed metrics
-  let allMetrics: TelemetryMetric[];
-
-  if (
-    !firstResponse.hasMore ||
-    (options.targetCount !== "all" &&
-      firstResponse.metrics.length >= options.targetCount)
-  ) {
-    // Single page is enough
-    allMetrics =
-      options.targetCount === "all"
-        ? firstResponse.metrics
-        : firstResponse.metrics.slice(0, options.targetCount);
-  } else {
-    // Need to paginate
-    const lastMetric = firstResponse.metrics[firstResponse.metrics.length - 1];
-    const firstPageTimestamp = lastMetric
-      ? new Date(lastMetric.ts).getTime()
-      : undefined;
-
-    const remainingMetrics = await paginate<TelemetryMetric>({
-      fetchPage: async (since) => {
-        const response = await getMetrics(runId, {
-          since,
-          limit: PAGE_LIMIT,
-          order: options.order,
-        });
-        return { items: response.metrics, hasMore: response.hasMore };
-      },
-      getTimestamp: (metric) => {
-        return new Date(metric.ts).getTime();
-      },
-      targetCount:
-        options.targetCount === "all"
-          ? "all"
-          : options.targetCount - firstResponse.metrics.length,
-      initialSince: firstPageTimestamp,
-    });
-
-    allMetrics = [...firstResponse.metrics, ...remainingMetrics];
-
-    // Trim to target count if needed
-    if (
-      options.targetCount !== "all" &&
-      allMetrics.length > options.targetCount
-    ) {
-      allMetrics = allMetrics.slice(0, options.targetCount);
-    }
-  }
-
-  // Reverse for chronological display when using desc order (--tail)
-  const metrics =
-    options.order === "desc" ? [...allMetrics].reverse() : allMetrics;
 
   for (const metric of metrics) {
     console.log(formatMetric(metric));
@@ -665,14 +602,22 @@ async function showNetworkLogs(
     order: "asc" | "desc";
   },
 ): Promise<void> {
-  // Fetch first page
-  const firstResponse = await getNetworkLogs(runId, {
-    since: options.since,
-    limit: PAGE_LIMIT,
+  const networkLogs = await collectLogItems<NetworkLogEntry>({
+    fetchPage: async (request) => {
+      const response = await getNetworkLogs(runId, request);
+      return {
+        items: response.networkLogs,
+        hasMore: response.hasMore,
+        nextCursor: response.nextCursor,
+      };
+    },
+    sinceTime: options.since,
+    targetCount: options.targetCount,
     order: options.order,
+    pageLimit: PAGE_LIMIT,
   });
 
-  if (firstResponse.networkLogs.length === 0) {
+  if (networkLogs.length === 0) {
     console.log(
       chalk.yellow(
         "No network logs found for this run. Network logs are only captured when using a runner with proxy enabled",
@@ -680,61 +625,6 @@ async function showNetworkLogs(
     );
     return;
   }
-
-  // Use pagination to collect all needed network logs
-  let allNetworkLogs: NetworkLogEntry[];
-
-  if (
-    !firstResponse.hasMore ||
-    (options.targetCount !== "all" &&
-      firstResponse.networkLogs.length >= options.targetCount)
-  ) {
-    // Single page is enough
-    allNetworkLogs =
-      options.targetCount === "all"
-        ? firstResponse.networkLogs
-        : firstResponse.networkLogs.slice(0, options.targetCount);
-  } else {
-    // Need to paginate
-    const lastLog =
-      firstResponse.networkLogs[firstResponse.networkLogs.length - 1];
-    const firstPageTimestamp = lastLog
-      ? new Date(lastLog.timestamp).getTime()
-      : undefined;
-
-    const remainingLogs = await paginate<NetworkLogEntry>({
-      fetchPage: async (since) => {
-        const response = await getNetworkLogs(runId, {
-          since,
-          limit: PAGE_LIMIT,
-          order: options.order,
-        });
-        return { items: response.networkLogs, hasMore: response.hasMore };
-      },
-      getTimestamp: (entry) => {
-        return new Date(entry.timestamp).getTime();
-      },
-      targetCount:
-        options.targetCount === "all"
-          ? "all"
-          : options.targetCount - firstResponse.networkLogs.length,
-      initialSince: firstPageTimestamp,
-    });
-
-    allNetworkLogs = [...firstResponse.networkLogs, ...remainingLogs];
-
-    // Trim to target count if needed
-    if (
-      options.targetCount !== "all" &&
-      allNetworkLogs.length > options.targetCount
-    ) {
-      allNetworkLogs = allNetworkLogs.slice(0, options.targetCount);
-    }
-  }
-
-  // Reverse for chronological display when using desc order (--tail)
-  const networkLogs =
-    options.order === "desc" ? [...allNetworkLogs].reverse() : allNetworkLogs;
 
   for (const entry of networkLogs) {
     console.log(formatNetworkLog(entry));

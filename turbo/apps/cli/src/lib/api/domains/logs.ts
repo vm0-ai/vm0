@@ -21,9 +21,17 @@ export type {
   LogsSearchResponse,
 } from "@vm0/api-contracts/contracts/runs";
 
+interface LogPaginationOptions {
+  readonly since?: number;
+  readonly sinceTime?: number;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly order?: "asc" | "desc";
+}
+
 export async function getSystemLog(
   runId: string,
-  options?: { since?: number; limit?: number; order?: "asc" | "desc" },
+  options?: LogPaginationOptions,
 ): Promise<SystemLogResponse> {
   const config = await getClientConfig();
   const client = initClient(runSystemLogContract, config);
@@ -32,6 +40,8 @@ export async function getSystemLog(
     params: { id: runId },
     query: {
       since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
       limit: options?.limit,
       order: options?.order,
     },
@@ -46,7 +56,7 @@ export async function getSystemLog(
 
 export async function getMetrics(
   runId: string,
-  options?: { since?: number; limit?: number; order?: "asc" | "desc" },
+  options?: LogPaginationOptions,
 ): Promise<MetricsResponse> {
   const config = await getClientConfig();
   const client = initClient(runMetricsContract, config);
@@ -55,6 +65,8 @@ export async function getMetrics(
     params: { id: runId },
     query: {
       since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
       limit: options?.limit,
       order: options?.order,
     },
@@ -69,7 +81,7 @@ export async function getMetrics(
 
 export async function getAgentEvents(
   runId: string,
-  options?: { since?: number; limit?: number; order?: "asc" | "desc" },
+  options?: LogPaginationOptions,
 ): Promise<AgentEventsResponse> {
   const config = await getClientConfig();
   const client = initClient(runAgentEventsContract, config);
@@ -78,6 +90,8 @@ export async function getAgentEvents(
     params: { id: runId },
     query: {
       since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
       limit: options?.limit,
       order: options?.order,
     },
@@ -92,7 +106,7 @@ export async function getAgentEvents(
 
 export async function getNetworkLogs(
   runId: string,
-  options?: { since?: number; limit?: number; order?: "asc" | "desc" },
+  options?: LogPaginationOptions,
 ): Promise<NetworkLogsResponse> {
   const config = await getClientConfig();
   const client = initClient(runNetworkLogsContract, config);
@@ -101,6 +115,8 @@ export async function getNetworkLogs(
     params: { id: runId },
     query: {
       since: options?.since,
+      sinceTime: options?.sinceTime,
+      cursor: options?.cursor,
       limit: options?.limit,
       order: options?.order,
     },

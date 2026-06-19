@@ -160,7 +160,6 @@
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/platform/src/mocks/ably.ts",
     "apps/platform/src/mocks/idb.ts",
-    "apps/cli/src/lib/utils/paginate.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
     "scripts/analyze-cpuprofile.mjs",
