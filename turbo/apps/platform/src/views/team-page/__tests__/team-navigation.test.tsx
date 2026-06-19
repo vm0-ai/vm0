@@ -803,6 +803,7 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "cloudflare",
+        reset: false,
         grants: [
           {
             permission: "memberships.read",
@@ -870,11 +871,9 @@ describe("team page navigation", () => {
               permission: grant.permission,
               action: grant.action,
               expiresAt:
-                grant.action === "allow" && grant.expiresAt
-                  ? grant.expiresAt
-                  : grant.action === "allow" && grant.expiresIn !== "always"
-                    ? isoFromNowMs(60 * 60 * 1000)
-                    : null,
+                grant.action === "allow" && grant.expiresIn !== "always"
+                  ? isoFromNowMs(60 * 60 * 1000)
+                  : null,
               createdAt: "2026-03-01T00:00:00.000Z",
               updatedAt: "2026-03-01T00:30:00.000Z",
             };
@@ -925,16 +924,12 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "axiom",
+        reset: false,
         grants: [
           {
             permission: "annotations|create",
             action: "allow",
             expiresIn: "always",
-          },
-          {
-            permission: "dashboards|read",
-            action: "allow",
-            expiresAt: isoFromNowMs(2 * 60 * 60 * 1000),
           },
         ],
       },

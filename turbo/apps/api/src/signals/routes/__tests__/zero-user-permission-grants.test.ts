@@ -421,7 +421,12 @@ describe("zero user permission grants", () => {
 
     const applied = await accept(
       client.apply({
-        body: { agentId, connectorRef: SLACK_CONNECTOR, grants: [] },
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          reset: true,
+          grants: [],
+        },
         headers: AUTH_HEADERS,
       }),
       [200],
@@ -475,7 +480,7 @@ describe("zero user permission grants", () => {
     ).resolves.toMatchObject({ action: "deny" });
   });
 
-  it("applies one connector grant set transactionally", async () => {
+  it("applies one connector's changed grants transactionally", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
@@ -528,11 +533,11 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: false,
           grants: [
             {
               permission: SLACK_READ_PERMISSION,
               action: "allow",
-              expiresAt: oldExpiresAt.toISOString(),
             },
             {
               permission: SLACK_WRITE_PERMISSION,
@@ -566,7 +571,20 @@ describe("zero user permission grants", () => {
         connectorRef: SLACK_CONNECTOR,
         permission: "channels:history",
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ action: "deny" });
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toMatchObject({
+      action: "allow",
+      expiresAt: oldExpiresAt,
+      createdAt: oldTimestamp,
+    });
     await expect(
       readStoredGrant({
         orgId: fixture.orgId,
@@ -598,6 +616,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: "not-a-real-connector",
+          reset: false,
           grants: [],
         },
         headers: AUTH_HEADERS,
@@ -611,6 +630,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: false,
           grants: [
             { permission: SLACK_READ_PERMISSION, action: "allow" },
             { permission: SLACK_READ_PERMISSION, action: "deny" },
@@ -627,6 +647,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: false,
           grants: [{ permission: "not-a-real-permission", action: "allow" }],
         },
         headers: AUTH_HEADERS,
@@ -647,6 +668,7 @@ describe("zero user permission grants", () => {
         body: JSON.stringify({
           agentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: false,
           grants: [
             {
               permission: SLACK_READ_PERMISSION,
@@ -658,70 +680,31 @@ describe("zero user permission grants", () => {
       },
     );
     expect(denyExpiration.status).toBe(400);
-
-    const conflictingExpiration = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          grants: [
-            {
-              permission: SLACK_READ_PERMISSION,
-              action: "allow",
-              expiresIn: "1h",
-              expiresAt: "2099-01-01T00:00:00.000Z",
-            },
-          ],
-        }),
-      },
-    );
-    expect(conflictingExpiration.status).toBe(400);
-
-    const invalidExpiresAt = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          grants: [
-            {
-              permission: SLACK_READ_PERMISSION,
-              action: "allow",
-              expiresAt: "not-a-date",
-            },
-          ],
-        }),
-      },
-    );
-    expect(invalidExpiresAt.status).toBe(400);
   });
 
-  it("does not persist stale absolute expirations during connector apply", async () => {
+  it("resets then applies changed grants when requested", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const db = store.set(writeDb$);
-    mockNow(new Date("2026-02-01T12:00:00.000Z"));
-    await db.insert(userPermissionGrants).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      agentId,
-      connectorRef: SLACK_CONNECTOR,
-      permission: SLACK_READ_PERMISSION,
-      action: "allow",
-      expiresAt: new Date("2026-02-01T11:59:59.000Z"),
-    });
+    await db.insert(userPermissionGrants).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "allow",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: "channels:history",
+        action: "deny",
+      },
+    ]);
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
     const applied = await accept(
@@ -729,11 +712,11 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: true,
           grants: [
             {
-              permission: SLACK_READ_PERMISSION,
-              action: "allow",
-              expiresAt: "2026-02-01T11:59:59.000Z",
+              permission: SLACK_WRITE_PERMISSION,
+              action: "deny",
             },
           ],
         },
@@ -742,7 +725,9 @@ describe("zero user permission grants", () => {
       [200],
     );
 
-    expect(applied.body).toStrictEqual([]);
+    expect(applied.body).toMatchObject([
+      { permission: SLACK_WRITE_PERMISSION, action: "deny" },
+    ]);
     await expect(
       readStoredGrant({
         orgId: fixture.orgId,
@@ -750,6 +735,15 @@ describe("zero user permission grants", () => {
         agentId,
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: "channels:history",
       }),
     ).resolves.toBeNull();
   });
@@ -771,6 +765,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId: privateAgentId,
           connectorRef: SLACK_CONNECTOR,
+          reset: false,
           grants: [],
         },
         headers: AUTH_HEADERS,

@@ -8,7 +8,6 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
-  ApplyUserPermissionGrant,
   ApplyUserPermissionGrantsRequest,
   UpsertUserPermissionGrantRequest,
   UserPermissionGrantExpiresIn,
@@ -152,27 +151,13 @@ function validateGrantTarget(
 function validateGrantExpiration(grant: {
   readonly action: UserPermissionGrantAction;
   readonly expiresIn?: UserPermissionGrantExpiresIn;
-  readonly expiresAt?: string;
 }): ValidationErrorResponse | null {
   if (grant.action !== "allow") {
-    return grant.expiresIn === undefined && grant.expiresAt === undefined
+    return grant.expiresIn === undefined
       ? null
       : validationError(
           "Permission grant expiration is only supported for allow grants",
         );
-  }
-
-  if (grant.expiresIn !== undefined && grant.expiresAt !== undefined) {
-    return validationError(
-      "Permission grant expiration must use either expiresIn or expiresAt",
-    );
-  }
-
-  if (
-    grant.expiresAt !== undefined &&
-    !Number.isFinite(Date.parse(grant.expiresAt))
-  ) {
-    return validationError("Invalid permission grant expiresAt");
   }
 
   return null;
@@ -236,41 +221,6 @@ function resolvedExpiresAt({
   return preservedActiveGrantExpiresAt(
     existing?.action === "allow" ? existing.expiresAt : null,
     timestamp,
-  );
-}
-
-function resolveAppliedExpiresAt({
-  action,
-  expiresIn,
-  expiresAt,
-  timestamp,
-}: {
-  readonly action: UserPermissionGrantAction;
-  readonly expiresIn: UserPermissionGrantExpiresIn | undefined;
-  readonly expiresAt: string | undefined;
-  readonly timestamp: Date;
-}): Date | null {
-  if (action !== "allow") {
-    return null;
-  }
-  if (expiresIn !== undefined) {
-    return resolveGrantExpiresAt(expiresIn, timestamp);
-  }
-  if (expiresAt !== undefined) {
-    return new Date(expiresAt);
-  }
-  return null;
-}
-
-function shouldPersistAppliedGrant(
-  grant: ApplyUserPermissionGrant,
-  expiresAt: Date | null,
-  timestamp: Date,
-): boolean {
-  return (
-    grant.action !== "allow" ||
-    grant.expiresAt === undefined ||
-    (expiresAt !== null && expiresAt.getTime() > timestamp.getTime())
   );
 }
 
@@ -471,71 +421,80 @@ async function applyVisibleGrantRows(
     }
 
     const timestamp = nowDate();
-    const existingRows = await tx
-      .select()
-      .from(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, args.orgId),
-          eq(userPermissionGrants.userId, args.userId),
-          eq(userPermissionGrants.agentId, args.apply.agentId),
-          eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
-        ),
-      )
-      .for("update");
+    const connectorScopeCondition = and(
+      eq(userPermissionGrants.orgId, args.orgId),
+      eq(userPermissionGrants.userId, args.userId),
+      eq(userPermissionGrants.agentId, args.apply.agentId),
+      eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+    );
 
-    await tx
-      .delete(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, args.orgId),
-          eq(userPermissionGrants.userId, args.userId),
-          eq(userPermissionGrants.agentId, args.apply.agentId),
-          eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
-        ),
-      );
+    if (args.apply.reset) {
+      await tx.delete(userPermissionGrants).where(connectorScopeCondition);
+    }
 
     if (args.apply.grants.length === 0) {
       return [];
     }
 
+    const existingRows = args.apply.reset
+      ? []
+      : await tx
+          .select()
+          .from(userPermissionGrants)
+          .where(connectorScopeCondition)
+          .for("update");
     const existingRowsByPermission = new Map(
       existingRows.map((row) => {
         return [row.permission, row] as const;
       }),
     );
-    const values = args.apply.grants.flatMap(
-      (grant: ApplyUserPermissionGrant) => {
-        const existing = existingRowsByPermission.get(grant.permission);
-        const expiresAt = resolveAppliedExpiresAt({
-          action: grant.action,
-          expiresIn: grant.expiresIn,
-          expiresAt: grant.expiresAt,
-          timestamp,
-        });
-        if (!shouldPersistAppliedGrant(grant, expiresAt, timestamp)) {
-          return [];
-        }
-        return [
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            agentId: args.apply.agentId,
-            connectorRef: args.apply.connectorRef,
-            permission: grant.permission,
-            action: grant.action,
-            expiresAt,
-            createdAt: existing?.createdAt ?? timestamp,
-            updatedAt: timestamp,
-          },
-        ];
-      },
-    );
-    if (values.length === 0) {
-      return [];
+    const rows: UserPermissionGrantRow[] = [];
+    for (const grant of args.apply.grants) {
+      const existing = existingRowsByPermission.get(grant.permission);
+      const expiresAt = resolvedExpiresAt({
+        action: grant.action,
+        expiresIn: grant.expiresIn,
+        existing,
+        timestamp,
+      });
+      const [row] = existing
+        ? await tx
+            .update(userPermissionGrants)
+            .set({
+              action: grant.action,
+              expiresAt,
+              updatedAt: timestamp,
+            })
+            .where(
+              and(
+                eq(userPermissionGrants.orgId, args.orgId),
+                eq(userPermissionGrants.userId, args.userId),
+                eq(userPermissionGrants.agentId, args.apply.agentId),
+                eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+                eq(userPermissionGrants.permission, grant.permission),
+              ),
+            )
+            .returning()
+        : await tx
+            .insert(userPermissionGrants)
+            .values({
+              orgId: args.orgId,
+              userId: args.userId,
+              agentId: args.apply.agentId,
+              connectorRef: args.apply.connectorRef,
+              permission: grant.permission,
+              action: grant.action,
+              expiresAt,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            })
+            .returning();
+      if (!row) {
+        throw new Error("User permission grant apply did not return a row");
+      }
+      rows.push(row);
     }
-
-    return await tx.insert(userPermissionGrants).values(values).returning();
+    return rows;
   });
 }
 

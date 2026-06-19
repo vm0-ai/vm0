@@ -212,6 +212,7 @@ export const applyUserPermissionGrants$ = command(
     params: {
       agentId: string;
       connectorRef: string;
+      reset: boolean;
       grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
@@ -222,6 +223,7 @@ export const applyUserPermissionGrants$ = command(
         body: {
           agentId: params.agentId,
           connectorRef: params.connectorRef,
+          reset: params.reset,
           grants: [...params.grants],
         },
         fetchOptions: { signal },

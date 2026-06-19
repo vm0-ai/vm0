@@ -119,7 +119,6 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
-import { now } from "../../lib/time.ts";
 import {
   expandFirewallMetadataDefaultPolicy,
   permissionGrantsToFirewallPolicies,
@@ -137,6 +136,7 @@ type ApplyUserPermissionGrants = (
   params: {
     agentId: string;
     connectorRef: string;
+    reset: boolean;
     grants: readonly ApplyUserPermissionGrant[];
   },
   signal: AbortSignal,
@@ -678,18 +678,6 @@ function defaultFirewallPoliciesForConnector(
   };
 }
 
-function applyGrantFromExistingGrant(
-  grant: UserPermissionGrantResponse,
-): ApplyUserPermissionGrant {
-  return grant.action === "allow"
-    ? {
-        permission: grant.permission,
-        action: "allow",
-        ...(grant.expiresAt ? { expiresAt: grant.expiresAt } : {}),
-      }
-    : { permission: grant.permission, action: "deny" };
-}
-
 function applyGrantFromChangedPolicy(
   policy: ChangedUserGrantPolicy,
 ): ApplyUserPermissionGrant {
@@ -700,25 +688,6 @@ function applyGrantFromChangedPolicy(
         ...(policy.expiresIn ? { expiresIn: policy.expiresIn } : {}),
       }
     : { permission: policy.permission, action: "deny" };
-}
-
-function isActiveUserPermissionGrant(
-  grant: UserPermissionGrantResponse,
-): boolean {
-  if (!grant.expiresAt) {
-    return true;
-  }
-  const expiresAtMs = Date.parse(grant.expiresAt);
-  return Number.isFinite(expiresAtMs) && expiresAtMs > now();
-}
-
-function isKnownConnectorPermission(
-  permissionNames: ReadonlySet<string>,
-  permission: string,
-): boolean {
-  return (
-    permission === UNKNOWN_PERMISSION_GRANT || permissionNames.has(permission)
-  );
 }
 
 function buildAppliedUserGrantPolicies({
@@ -742,41 +711,14 @@ function buildAppliedUserGrantPolicies({
     ? defaultFirewallPoliciesForConnector(metadata)
     : initialPolicies;
   const baseGrants = resetPending ? [] : initialGrants;
-  const metadataPermissionNames = new Set(
-    metadata.permissions.map((permission) => {
-      return permission.name;
-    }),
-  );
-  const grantsByPermission = new Map<string, ApplyUserPermissionGrant>();
-
-  for (const grant of baseGrants) {
-    if (
-      grant.connectorRef === connectorType &&
-      isActiveUserPermissionGrant(grant) &&
-      isKnownConnectorPermission(metadataPermissionNames, grant.permission)
-    ) {
-      grantsByPermission.set(
-        grant.permission,
-        applyGrantFromExistingGrant(grant),
-      );
-    }
-  }
-
-  for (const policy of changedUserGrantPolicies({
+  return changedUserGrantPolicies({
     connectorType,
     metadata,
     initialPolicies: basePolicies,
     initialGrants: baseGrants,
     policies,
     expiresInByPermission,
-  })) {
-    grantsByPermission.set(
-      policy.permission,
-      applyGrantFromChangedPolicy(policy),
-    );
-  }
-
-  return [...grantsByPermission.values()];
+  }).map(applyGrantFromChangedPolicy);
 }
 
 async function saveUserGrantPolicies({
@@ -806,6 +748,7 @@ async function saveUserGrantPolicies({
     {
       agentId,
       connectorRef: connectorType,
+      reset: resetPending,
       grants: buildAppliedUserGrantPolicies({
         connectorType,
         metadata,
