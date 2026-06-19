@@ -184,7 +184,10 @@ export function zeroWorkflowList(args: {
       .where(
         and(
           eq(zeroWorkflows.orgId, args.orgId),
-          eq(zeroWorkflows.type, "workflow"),
+          // Goal workflows (type = "goal") are intentionally included here so
+          // they show up in the workflow list. They remain excluded from the
+          // view/edit/delete/attach routes (which still filter type =
+          // "workflow"), since goals are managed via the `zero goal` CLI.
           visibleWorkflowCondition(args.member.userId),
         ),
       )
