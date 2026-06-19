@@ -1,12 +1,9 @@
 import { computed, type Computed } from "ccstate";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import {
-  networkLogActionSchema,
-  type AgentEventsResponse,
-  type AxiomNetworkEvent,
-  type NetworkLogEntry,
-  type NetworkLogsResponse,
-  type RunEvent,
+import type {
+  AgentEventsResponse,
+  NetworkLogsResponse,
+  RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -19,10 +16,10 @@ import {
   waitForRunEventWatermarkVisible,
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
 type ServiceDb = Pick<Db, "select">;
-type UnknownRecord = Record<string, unknown>;
 
 interface AgentComposeContent {
   agent?: { framework?: string };
@@ -74,133 +71,6 @@ type RunContextResult =
   | { readonly kind: "not-found" }
   | { readonly kind: "no-snapshot" }
   | { readonly kind: "ok"; readonly context: RunContextResponse };
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
-}
-
-function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function stringArrayValue(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const strings = value.filter((item): item is string => {
-    return typeof item === "string";
-  });
-  return strings.length === value.length ? strings : undefined;
-}
-
-function stringRecordValue(value: unknown): Record<string, string> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => {
-      return typeof entry[1] === "string";
-    },
-  );
-  if (entries.length === 0) {
-    return undefined;
-  }
-  return Object.fromEntries(entries);
-}
-
-function networkActionValue(
-  value: unknown,
-): NetworkLogEntry["action"] | undefined {
-  const parsed = networkLogActionSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function networkBodyEncodingValue(
-  value: unknown,
-): NetworkLogEntry["request_body_encoding"] | undefined {
-  if (value !== "base64" && value !== "binary") {
-    if (
-      typeof value !== "string" ||
-      value.length !== 5 ||
-      value.slice(0, 3) !== "utf" ||
-      value[3] !== "-" ||
-      value[4] !== "8"
-    ) {
-      return undefined;
-    }
-  }
-  return value as NetworkLogEntry["request_body_encoding"];
-}
-
-function omitUndefined<T extends UnknownRecord>(record: T): UnknownRecord {
-  return Object.fromEntries(
-    Object.entries(record).filter((entry) => {
-      return entry[1] !== undefined;
-    }),
-  );
-}
-
-function sanitizeNetworkEvent(event: AxiomNetworkEvent): NetworkLogEntry {
-  return omitUndefined({
-    timestamp: event._time,
-    type: stringValue(event.type),
-    action: networkActionValue(event.action),
-    host: stringValue(event.host),
-    port: numberValue(event.port),
-    method: stringValue(event.method),
-    url: stringValue(event.url),
-    status: numberValue(event.status),
-    latency_ms: numberValue(event.latency_ms),
-    request_size: numberValue(event.request_size),
-    response_size: numberValue(event.response_size),
-    browser_user_agent: booleanValue(event.browser_user_agent),
-    dns_event: stringValue(event.dns_event),
-    dns_query_type: stringValue(event.dns_query_type),
-    dns_result: stringValue(event.dns_result),
-    dns_serial: stringValue(event.dns_serial),
-    firewall_base: stringValue(event.firewall_base),
-    firewall_name: stringValue(event.firewall_name),
-    firewall_permission: stringValue(event.firewall_permission),
-    firewall_rule_match: stringValue(event.firewall_rule_match),
-    firewall_params: stringRecordValue(event.firewall_params),
-    firewall_billable: booleanValue(event.firewall_billable),
-    firewall_error: stringValue(event.firewall_error),
-    connector_diagnostic_type: stringValue(event.connector_diagnostic_type),
-    connector_diagnostic_reason: stringValue(event.connector_diagnostic_reason),
-    connector_diagnostic_env_names: stringArrayValue(
-      event.connector_diagnostic_env_names,
-    ),
-    connector_diagnostic_base: stringValue(event.connector_diagnostic_base),
-    auth_resolved_secrets: stringArrayValue(event.auth_resolved_secrets),
-    auth_refreshed_connectors: stringArrayValue(
-      event.auth_refreshed_connectors,
-    ),
-    auth_refreshed_secrets: stringArrayValue(event.auth_refreshed_secrets),
-    auth_cache_hit: booleanValue(event.auth_cache_hit),
-    auth_url_rewrite: booleanValue(event.auth_url_rewrite),
-    error: stringValue(event.error),
-    request_headers: stringRecordValue(event.request_headers),
-    request_body: stringValue(event.request_body),
-    request_body_encoding: networkBodyEncodingValue(
-      event.request_body_encoding,
-    ),
-    request_body_truncated: booleanValue(event.request_body_truncated),
-    response_headers: stringRecordValue(event.response_headers),
-    response_body: stringValue(event.response_body),
-    response_body_encoding: networkBodyEncodingValue(
-      event.response_body_encoding,
-    ),
-    response_body_truncated: booleanValue(event.response_body_truncated),
-  }) as NetworkLogEntry;
-}
 
 export function zeroRunContext(
   runId: string,
@@ -297,12 +167,10 @@ ${sinceFilter}
 | order by _time ${order}
 | limit ${limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
+    const events = (await get(queryAxiom(apl))).slice();
 
     const hasMore = events.length > limit;
-    const records = hasMore ? events.slice(0, limit) : events;
-
-    const networkLogs = records.map(sanitizeNetworkEvent);
+    const networkLogs = sanitizeAxiomNetworkEvents(events).slice(0, limit);
 
     return { networkLogs, hasMore };
   });
