@@ -471,9 +471,9 @@ function MenuItemCheck({ active }: { active: boolean }) {
 function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
   allowGrant: UserPermissionGrantResponse | undefined,
-  hasInheritedExpiration = false,
+  hasGroupExpiration = false,
 ): UserPermissionGrantExpiresIn | null {
-  if (value === "always" && !allowGrant?.expiresAt && !hasInheritedExpiration) {
+  if (value === "always" && !allowGrant?.expiresAt && !hasGroupExpiration) {
     return null;
   }
   return value;
@@ -1048,9 +1048,9 @@ function PermissionRow({
     draft,
     permissionName: permission.name,
   });
-  const hasInheritedExpiration =
-    selected !== undefined &&
-    draft.permissionExpirations[permission.name] === undefined;
+  const category = context.metadata.categories?.categories[permission.name];
+  const hasGroupExpiration =
+    category !== undefined && draft.groupExpirations[category] !== undefined;
   const hasPendingChange = hasPermissionDraftPermissionChange({
     context,
     draft,
@@ -1092,7 +1092,7 @@ function PermissionRow({
           onClearExpiration={() => {
             onGrantExpirationChange(
               permission.name,
-              hasInheritedExpiration ? "always" : null,
+              hasGroupExpiration ? "always" : null,
             );
           }}
           onAllowDurationChange={(expiresIn) => {
@@ -1101,7 +1101,7 @@ function PermissionRow({
               menuOptionExpiresIn(
                 expiresIn,
                 grant?.action === "allow" ? grant : undefined,
-                hasInheritedExpiration,
+                hasGroupExpiration,
               ),
             );
           }}

@@ -935,6 +935,24 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
     });
+    const channelsJoinRow = await permissionRowByName(
+      loadedGroupedDialog,
+      "channels:join",
+    );
+    click(
+      within(channelsJoinRow).getByLabelText("channels:join allow options"),
+    );
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
+    });
+    click(
+      within(channelsJoinRow).getByLabelText("channels:join allow options"),
+    );
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
+    });
     click(buttonByText("Deny", miscGroup));
     await waitFor(() => {
       expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
@@ -954,10 +972,6 @@ describe("team page navigation", () => {
     });
     fireEvent.scroll(permissionsScrollArea);
 
-    const channelsJoinRow = await permissionRowByName(
-      loadedGroupedDialog,
-      "channels:join",
-    );
     click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
     await waitFor(() => {
       expect(
