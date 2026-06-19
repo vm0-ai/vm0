@@ -74,8 +74,8 @@ pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 /// Sensitive values used by the guest-agent masker.
 ///
 /// The payload is a comma-separated list of base64-encoded secret values, not
-/// secret names. The runner includes the sandbox token so guest logs and event
-/// payloads can redact it.
+/// secret names. The runner includes the sandbox token so event payloads and
+/// CLI diagnostics can redact it.
 pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
 
 /// Comma-separated Claude Code tool names that should be disallowed.
