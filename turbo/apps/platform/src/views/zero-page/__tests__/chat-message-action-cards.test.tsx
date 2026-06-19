@@ -149,6 +149,90 @@ describe("chat message action cards", () => {
     });
   });
 
+  it("automatically retries permission action loading before showing an error", async () => {
+    const user = userEvent.setup({ delay: null });
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
+    let listRequests = 0;
+    let capturedBody: unknown = null;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      listRequests += 1;
+      if (listRequests === 1) {
+        throw new Error("temporary permission grant load failure");
+      }
+      return respond(200, []);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: "2026-06-09T12:00:00.000Z",
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        });
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-load-retry`,
+      threadTitle: "Permission load retry",
+      chatMessages: [
+        {
+          id: "msg-user-permission-load-retry",
+          role: "user",
+          content: "Allow Gmail modification",
+          runId: "run-permission-load-retry",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-load-retry-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-load-retry",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-load-retry`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    expect(
+      within(permissionCard).getByText("Gmail permissions"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionCard).getByText("Allow gmail.modify"),
+    ).toBeInTheDocument();
+
+    await waitForButtonByText("Confirm", permissionCard);
+    expect(listRequests).toBeGreaterThanOrEqual(2);
+    expect(
+      within(permissionCard).queryByText("Failed to load permissions"),
+    ).not.toBeInTheDocument();
+
+    await confirmPermissionAction(user, permissionCard);
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+      expect(capturedBody).toMatchObject({
+        agentId: AGENT_ID,
+        connectorRef: "gmail",
+        permission: "gmail.modify",
+        action: "allow",
+        expiresIn: "1h",
+      });
+    });
+  });
+
   it("lets users change permission duration before confirming", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
