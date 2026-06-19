@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use clap::Args;
 
+use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
@@ -472,6 +473,16 @@ impl SubmitPlan {
             return Err(RunnerError::Config(
                 "invalid --active-input value: text must not contain NUL characters".to_string(),
             ));
+        }
+        let payload_len = active_input_payload_len(text).map_err(|e| {
+            RunnerError::Internal(format!(
+                "serialize active-input payload for validation: {e}"
+            ))
+        })?;
+        if payload_len > ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES {
+            return Err(RunnerError::Config(format!(
+                "invalid --active-input value: serialized payload must be <= {ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES} bytes"
+            )));
         }
         Ok(DelayedActiveInput {
             sequence,
@@ -1265,6 +1276,15 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("non-decreasing"));
+
+        let oversized_text = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES);
+        let err = SubmitPlan::parse_active_inputs(
+            &[format!("after=1s,text={oversized_text}")],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("serialized payload"));
     }
 
     #[tokio::test]

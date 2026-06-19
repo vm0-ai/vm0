@@ -5,7 +5,7 @@ use sandbox::GuestProcessControlHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
-use crate::active_input::ActiveInputSource;
+use crate::active_input::{ActiveInputPayload, ActiveInputSource};
 use crate::ids::RunId;
 use crate::local_queue::ActiveInputEntry;
 
@@ -13,13 +13,6 @@ const ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
-
-#[derive(serde::Serialize)]
-struct ActiveInputPayload<'a> {
-    #[serde(rename = "type")]
-    payload_type: &'static str,
-    text: &'a str,
-}
 
 struct ForwardState {
     seen_message_ids: HashSet<String>,
@@ -134,11 +127,8 @@ async fn forward_entries(
             state.consume_sequence();
             continue;
         }
-        let payload = ActiveInputPayload {
-            payload_type: "active-input",
-            text: &entry.text,
-        };
-        let bytes = match serde_json::to_vec(&payload) {
+        let payload = ActiveInputPayload::new(&entry.text);
+        let bytes = match payload.to_vec() {
             Ok(bytes) => bytes,
             Err(error) => {
                 warn!(
