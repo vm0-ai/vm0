@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.359.0](https://github.com/vm0-ai/vm0/compare/core-v8.358.0...core-v8.359.0) (2026-06-19)
+
+
+### Features
+
+* drive goal continuation from a rendered prompt and provision a thread for thread-less runs ([#18337](https://github.com/vm0-ai/vm0/issues/18337)) ([80658ce](https://github.com/vm0-ai/vm0/commit/80658cec994aa96a915b54f26e443560e08934a9))
+
 ## [8.358.0](https://github.com/vm0-ai/vm0/compare/core-v8.357.1...core-v8.358.0) (2026-06-19)
 
 

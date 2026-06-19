@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.1...guest-contracts-v0.2.2) (2026-06-19)
+
+
+### Documentation
+
+* document guest environment contract ([#18331](https://github.com/vm0-ai/vm0/issues/18331)) ([816b22f](https://github.com/vm0-ai/vm0/commit/816b22fe19ce042754266633c64b6e8d30824413))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.0...guest-contracts-v0.2.1) (2026-06-17)
 
 
