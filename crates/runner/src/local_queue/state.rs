@@ -257,6 +257,12 @@ impl LocalQueue {
     }
 
     pub(crate) fn write_active_input_sync(&self, entry: &ActiveInputEntry) -> std::io::Result<()> {
+        if entry.sequence == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "local active input sequence must be greater than zero",
+            ));
+        }
         if entry.message_id.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -283,16 +289,17 @@ impl LocalQueue {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(e);
         }
-        if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
+        if let Err(e) = std::fs::hard_link(&tmp_path, &final_path) {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(std::io::Error::new(
                 e.kind(),
                 format!(
-                    "rename local active-input file {}: {e}",
+                    "publish local active-input file {}: {e}",
                     final_path.display()
                 ),
             ));
         }
+        let _ = std::fs::remove_file(&tmp_path);
         Ok(())
     }
 
@@ -867,6 +874,52 @@ mod tests {
             queue.read_active_input_entries_from_sequence_sync(run_id, 2),
             vec![entry_3]
         );
+    }
+
+    #[test]
+    fn active_input_write_rejects_duplicate_sequence_without_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let original = ActiveInputEntry {
+            run_id,
+            sequence: 1,
+            message_id: "msg-1".to_string(),
+            text: "one".to_string(),
+        };
+        let duplicate = ActiveInputEntry {
+            run_id,
+            sequence: 1,
+            message_id: "msg-duplicate".to_string(),
+            text: "duplicate".to_string(),
+        };
+
+        queue.write_active_input_sync(&original).unwrap();
+        let error = queue.write_active_input_sync(&duplicate).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            queue.read_active_input_entries_from_sequence_sync(run_id, 0),
+            vec![original]
+        );
+    }
+
+    #[test]
+    fn active_input_write_rejects_zero_sequence() {
+        let dir = tempfile::tempdir().unwrap();
+        let queue = LocalQueue::new(dir.path().to_path_buf());
+
+        let error = queue
+            .write_active_input_sync(&ActiveInputEntry {
+                run_id: RunId::new_v4(),
+                sequence: 0,
+                message_id: "msg-0".to_string(),
+                text: "zero".to_string(),
+            })
+            .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]
