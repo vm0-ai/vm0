@@ -1,18 +1,27 @@
+import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicies,
+} from "@vm0/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
 import {
   createEmptyPermissionDraftIntent,
   createPermissionDraftContext,
+  hasPermissionDraftResetPersistedEffect,
   materializePermissionDraftForLegacySave,
   resolvePermissionDraftExpiration,
   resolvePermissionDraftGroupExpiration,
+  resolvePermissionDraftUnknownPolicy,
+  restorePermissionDraftPermission,
+  restorePermissionDraftUnknown,
   setPermissionDraftExpiration,
   setPermissionDraftGroupAllowPolicy,
   setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
+  stagePermissionDraftConnectorRestore,
 } from "./permission-draft-intent.ts";
 
 const READ_PERMISSIONS = [
@@ -41,6 +50,21 @@ const METADATA = {
 } satisfies FirewallPermissionDetailMetadata;
 
 const INITIAL_POLICIES = {} satisfies FirewallPolicies;
+
+function createGrant(
+  permission: string,
+  action: UserPermissionGrantResponse["action"],
+): UserPermissionGrantResponse {
+  return {
+    agentId: "agent",
+    connectorRef: "slack",
+    permission,
+    action,
+    expiresAt: null,
+    createdAt: "2026-03-01T00:00:00.000Z",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  };
+}
 
 function createContext() {
   return createPermissionDraftContext({
@@ -215,5 +239,83 @@ describe("permission draft intent", () => {
       "channels:read": "7d",
       "channels:history": "7d",
     });
+  });
+
+  it("does not keep apply enabled when a connector restore is undone back to initial grants", () => {
+    const explicitGrants = new Map([
+      ["bookmarks:read", createGrant("bookmarks:read", "deny")],
+    ]);
+    const context = createPermissionDraftContext({
+      metadata: METADATA,
+      initialPolicies: {
+        slack: {
+          policies: {
+            "bookmarks:read": "deny",
+          },
+        },
+      },
+    });
+    let draft = stagePermissionDraftConnectorRestore({
+      draft: createEmptyPermissionDraftIntent(),
+    });
+
+    expect(
+      hasPermissionDraftResetPersistedEffect({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+        explicitGrants,
+      }),
+    ).toBe(true);
+
+    draft = restorePermissionDraftPermission({
+      draft,
+      permissionName: "bookmarks:read",
+    });
+
+    expect(
+      hasPermissionDraftResetPersistedEffect({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+        explicitGrants,
+      }),
+    ).toBe(false);
+  });
+
+  it("restores unknown policy to the initial value after a connector restore", () => {
+    const explicitGrants = new Map([
+      [UNKNOWN_PERMISSION_GRANT, createGrant(UNKNOWN_PERMISSION_GRANT, "deny")],
+    ]);
+    const context = createPermissionDraftContext({
+      metadata: METADATA,
+      initialPolicies: {
+        slack: {
+          policies: {},
+          unknownPolicy: "deny",
+        },
+      },
+    });
+    let draft = stagePermissionDraftConnectorRestore({
+      draft: createEmptyPermissionDraftIntent(),
+    });
+
+    expect(resolvePermissionDraftUnknownPolicy({ context, draft })).toBe(
+      "allow",
+    );
+
+    draft = restorePermissionDraftUnknown({ context, draft });
+
+    expect(resolvePermissionDraftUnknownPolicy({ context, draft })).toBe(
+      "deny",
+    );
+    expect(
+      hasPermissionDraftResetPersistedEffect({
+        context,
+        draft,
+        permissions: READ_PERMISSIONS,
+        explicitGrants,
+      }),
+    ).toBe(false);
   });
 });

@@ -42,6 +42,12 @@ interface PermissionLike {
   readonly name: string;
 }
 
+interface PermissionGrantFingerprint {
+  readonly permission: string;
+  readonly action: UserPermissionGrantResponse["action"];
+  readonly expiration: string;
+}
+
 interface PolicyResolutionParams {
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
@@ -115,6 +121,114 @@ function resolveInitialPermissionPolicy(
   permissionName: string,
 ): FirewallPolicyValue {
   return context.initialResolver.permission(permissionName);
+}
+
+function grantExpirationFingerprint(
+  grant: UserPermissionGrantResponse,
+): string {
+  return grant.action === "allow" && grant.expiresAt
+    ? `at:${grant.expiresAt}`
+    : "always";
+}
+
+function selectedExpirationFingerprint(
+  action: UserPermissionGrantResponse["action"],
+  selected: UserPermissionGrantExpiresIn | undefined,
+): string {
+  return action === "allow" && selected !== undefined && selected !== "always"
+    ? `duration:${selected}`
+    : "always";
+}
+
+function grantAction(
+  policy: FirewallPolicyValue,
+): UserPermissionGrantResponse["action"] | null {
+  switch (policy) {
+    case "allow":
+    case "deny": {
+      return policy;
+    }
+    case "ask": {
+      return null;
+    }
+  }
+}
+
+function comparePermissionGrantFingerprints(
+  a: PermissionGrantFingerprint,
+  b: PermissionGrantFingerprint,
+): number {
+  const permissionCompare = a.permission.localeCompare(b.permission);
+  if (permissionCompare !== 0) {
+    return permissionCompare;
+  }
+  const actionCompare = a.action.localeCompare(b.action);
+  if (actionCompare !== 0) {
+    return actionCompare;
+  }
+  return a.expiration.localeCompare(b.expiration);
+}
+
+function currentPermissionGrantFingerprint({
+  permission,
+  currentPolicy,
+  defaultPolicy,
+  selected,
+}: {
+  readonly permission: string;
+  readonly currentPolicy: FirewallPolicyValue;
+  readonly defaultPolicy: FirewallPolicyValue;
+  readonly selected: UserPermissionGrantExpiresIn | undefined;
+}): PermissionGrantFingerprint | null {
+  const currentAction = grantAction(currentPolicy);
+  const defaultAction = grantAction(defaultPolicy);
+  if (!currentAction || !defaultAction) {
+    return null;
+  }
+  const hasExpiringDefaultAllowGrant =
+    currentAction === "allow" &&
+    currentAction === defaultAction &&
+    selected !== undefined &&
+    selected !== "always";
+  if (currentAction === defaultAction && !hasExpiringDefaultAllowGrant) {
+    return null;
+  }
+  return {
+    permission,
+    action: currentAction,
+    expiration: selectedExpirationFingerprint(currentAction, selected),
+  };
+}
+
+function explicitGrantFingerprints(
+  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>,
+): readonly PermissionGrantFingerprint[] {
+  return [...explicitGrants.entries()]
+    .map(([permission, grant]) => {
+      return {
+        permission,
+        action: grant.action,
+        expiration: grantExpirationFingerprint(grant),
+      };
+    })
+    .sort(comparePermissionGrantFingerprints);
+}
+
+function permissionGrantFingerprintsEqual(
+  a: readonly PermissionGrantFingerprint[],
+  b: readonly PermissionGrantFingerprint[],
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((item, index) => {
+    const other = b[index];
+    return (
+      item.permission === other.permission &&
+      item.action === other.action &&
+      item.expiration === other.expiration
+    );
+  });
 }
 
 export function createEmptyPermissionDraftIntent(): PermissionDraftIntent {
@@ -516,13 +630,15 @@ export function setPermissionDraftUnknownPolicy({
 }
 
 export function restorePermissionDraftUnknown({
+  context,
   draft,
 }: {
+  readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
 }): PermissionDraftIntent {
   return {
     ...draft,
-    unknownPolicy: undefined,
+    unknownPolicy: context.initialResolver.unknown(),
     unknownExpiration: undefined,
   };
 }
@@ -766,6 +882,55 @@ export function hasPermissionDraftDefaultDifference({
       }) !== context.defaultResolver.permission(permission.name)
     );
   });
+}
+
+export function hasPermissionDraftResetPersistedEffect({
+  context,
+  draft,
+  permissions,
+  explicitGrants,
+}: {
+  readonly context: PermissionDraftContext;
+  readonly draft: PermissionDraftIntent;
+  readonly permissions: readonly PermissionLike[];
+  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+}): boolean {
+  if (!draft.resetPending) {
+    return false;
+  }
+  const currentFingerprints: PermissionGrantFingerprint[] = [];
+  for (const permission of permissions) {
+    const fingerprint = currentPermissionGrantFingerprint({
+      permission: permission.name,
+      currentPolicy: resolvePermissionDraftPolicy({
+        context,
+        draft,
+        permissionName: permission.name,
+      }),
+      defaultPolicy: context.defaultResolver.permission(permission.name),
+      selected: resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: permission.name,
+      }),
+    });
+    if (fingerprint) {
+      currentFingerprints.push(fingerprint);
+    }
+  }
+  const unknownFingerprint = currentPermissionGrantFingerprint({
+    permission: UNKNOWN_PERMISSION_GRANT,
+    currentPolicy: resolvePermissionDraftUnknownPolicy({ context, draft }),
+    defaultPolicy: context.defaultResolver.unknown(),
+    selected: draft.unknownExpiration,
+  });
+  if (unknownFingerprint) {
+    currentFingerprints.push(unknownFingerprint);
+  }
+  return !permissionGrantFingerprintsEqual(
+    explicitGrantFingerprints(explicitGrants),
+    currentFingerprints.sort(comparePermissionGrantFingerprints),
+  );
 }
 
 export function materializePermissionDraftForLegacySave({

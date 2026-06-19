@@ -46,6 +46,7 @@ import {
   hasPermissionDraftDefaultDifference,
   hasPermissionDraftGroupChange,
   hasPermissionDraftPermissionChange,
+  hasPermissionDraftResetPersistedEffect,
   hasPermissionDraftUnknownChange,
   isPermissionDraftPristine,
   permissionDraftMetadataKey,
@@ -1237,8 +1238,14 @@ function LoadedPermissionsDrawerContent({
     explicitGrants.size > 0 ||
     hasDefaultPolicyChanges ||
     hasExpirationDraftSelections;
+  const hasResetPersistedEffect = hasPermissionDraftResetPersistedEffect({
+    context,
+    draft,
+    permissions,
+    explicitGrants,
+  });
   const hasPermissionChanges =
-    (draft.resetPending && resetAvailable) ||
+    hasResetPersistedEffect ||
     (!draftPristine &&
       hasAnyPermissionDraftChange({
         context,
@@ -1321,7 +1328,7 @@ function LoadedPermissionsDrawerContent({
 
   const handleResetUnknownPermission = () => {
     setDraft(stateKey, (current) => {
-      return restorePermissionDraftUnknown({ draft: current });
+      return restorePermissionDraftUnknown({ context, draft: current });
     });
   };
 
