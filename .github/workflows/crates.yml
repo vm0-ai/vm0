@@ -458,146 +458,6 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  runner-local-submit-env-smoke:
-    runs-on: ubuntu-latest
-    needs: [runner-build]
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Test local submit with real Claude Code
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          HOST: ${{ needs.runner-build.outputs.host }}
-          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-            echo "::error::CI_ANTHROPIC_API_KEY is required for real Claude local submit smoke"
-            exit 1
-          fi
-
-          REMOTE="${METAL_USER}@${HOST}"
-          {
-            # Keep the CI provider key off SSH/bash argv; the runner CLI still
-            # receives it through --secret-env because that is the behavior
-            # under test.
-            printf 'ANTHROPIC_API_KEY=%q\n' "$ANTHROPIC_API_KEY"
-            cat <<'REMOTE_SCRIPT'
-          set -euo pipefail
-
-          BIN_DIR=$1
-          JOB_REF=$2
-          ROOTFS_HASH=$3
-          SNAPSHOT_HASH=$4
-          OFFICIAL_RUNNER_SECRET=$5
-
-          SVC="${JOB_REF}-local-env"
-          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
-          GROUP="vm0/local-env-${JOB_REF}"
-          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-env-${JOB_REF}"
-
-          fail() {
-            echo "FAIL: $1" >&2
-            exit 1
-          }
-
-          print_service_logs() {
-            echo "--- ${SVC} service logs ---"
-            sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 200 || true
-          }
-
-          cleanup() {
-            echo "--- Cleanup local env smoke runner ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
-            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
-          }
-          trap cleanup EXIT
-
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
-          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
-
-          echo "--- Generating local runner config ---"
-          sudo "$BIN_DIR/runner" config \
-            --profile vm0/default \
-            --rootfs-hash "$ROOTFS_HASH" \
-            --snapshot-hash "$SNAPSHOT_HASH" \
-            --name "$SVC" \
-            --group "$GROUP" \
-            --runner-dirname "$SVC" \
-            --max-concurrent 1 \
-            --api-url https://not-a-real-server.test \
-            --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
-
-          echo "--- Starting local runner ---"
-          sudo "$BIN_DIR/runner" service start \
-            --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" \
-            --local
-
-          PROMPT='Compute 123+456 and reply with exactly: RESULT=<answer>'
-
-          echo "--- Submitting real Claude Code smoke job ---"
-          if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
-            --group "$GROUP" \
-            --timeout 180 \
-            --cli-agent-type claude-code \
-            --env ANTHROPIC_MODEL=claude-haiku-4-5 \
-            --secret-env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-            --prompt "$PROMPT" 2>&1); then
-            echo "$SUBMIT_OUTPUT"
-            print_service_logs
-            fail "real Claude Code local submit smoke failed"
-          fi
-          echo "$SUBMIT_OUTPUT"
-
-          SUBMIT_JSON="$(awk '/^\{/{line=$0} END{print line}' <<<"$SUBMIT_OUTPUT")"
-          [ -n "$SUBMIT_JSON" ] || fail "local submit output did not include a JSON response"
-          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_JSON")"
-          [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
-          STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
-
-          print_failure_context() {
-            echo "--- Guest stdout stream tail ---"
-            sudo tail -200 "$STREAM_LOG" || true
-            print_service_logs
-          }
-
-          if sudo grep -q 'Using mock-claude for testing' "$STREAM_LOG"; then
-            print_failure_context
-            fail "real Claude Code smoke used mock Claude"
-          fi
-
-          echo "--- Real Claude Code result lines from guest stdout ---"
-          sudo grep -E 'RESULT=579|Claude Code Completed' "$STREAM_LOG" || true
-
-          sudo grep -q 'RESULT=579' "$STREAM_LOG" || {
-            print_failure_context
-            fail "real Claude Code did not return RESULT=579"
-          }
-
-          echo "PASS: local submit ran real Claude Code with Haiku and returned RESULT=579"
-          REMOTE_SCRIPT
-          } | ssh "$REMOTE" bash -s -- \
-            "$BIN_DIR" \
-            "$JOB_REF" \
-            "$DEFAULT_ROOTFS_HASH" \
-            "$DEFAULT_SNAPSHOT_HASH" \
-            "$OFFICIAL_RUNNER_SECRET"
-
   runner-local-active-input-smoke:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -612,10 +472,11 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Test local active input with mock Claude
+      - name: Test local active input with real Claude Code
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
@@ -624,13 +485,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::CI_ANTHROPIC_API_KEY is required for real Claude active-input smoke"
+            exit 1
+          fi
+
           REMOTE="${METAL_USER}@${HOST}"
-          ssh "$REMOTE" bash -s -- \
-            "$BIN_DIR" \
-            "$JOB_REF" \
-            "$DEFAULT_ROOTFS_HASH" \
-            "$DEFAULT_SNAPSHOT_HASH" \
-            "$OFFICIAL_RUNNER_SECRET" <<'REMOTE_SCRIPT'
+          {
+            # Keep the CI provider key off SSH/bash argv; the runner CLI still
+            # receives it through --secret-env because that is the behavior
+            # under test.
+            printf 'ANTHROPIC_API_KEY=%q\n' "$ANTHROPIC_API_KEY"
+            cat <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           BIN_DIR=$1
@@ -676,25 +542,28 @@ jobs:
             --api-url https://not-a-real-server.test \
             --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-          echo "--- Starting local runner with mock Claude ---"
+          echo "--- Starting local runner ---"
           sudo "$BIN_DIR/runner" service start \
             --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" \
-            --local \
-            --env USE_MOCK_CLAUDE=true \
-            --env USE_MOCK_CODEX=true
+            --local
+
+          PROMPT='This is a CI smoke test for Claude Code active input. The initial prompt token is ci-initial-5k2. Run Bash command `sleep 3` before your final answer. During that sleep, two follow-up user messages will arrive, each containing one token. After the sleep and after reading both follow-up messages, reply with exactly RESULT=ci-initial-5k2+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+          EXPECTED_RESULT='RESULT=ci-initial-5k2+ci-active-one-7f3+ci-active-two-9q4'
 
           echo "--- Submitting active-input smoke job ---"
           if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
             --group "$GROUP" \
             --timeout 180 \
             --cli-agent-type claude-code \
-            --prompt '@active-input-smoke:2' \
-            --active-input 'after=10ms,text=first' \
-            --active-input 'after=20ms,text=second' 2>&1); then
+            --env ANTHROPIC_MODEL=claude-haiku-4-5 \
+            --secret-env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+            --prompt "$PROMPT" \
+            --active-input 'after=1s,text=ci-active-one-7f3' \
+            --active-input 'after=2s,text=ci-active-two-9q4' 2>&1); then
             echo "$SUBMIT_OUTPUT"
             print_service_logs
-            fail "mock Claude active-input local submit smoke failed"
+            fail "real Claude Code active-input local submit smoke failed"
           fi
           echo "$SUBMIT_OUTPUT"
 
@@ -710,17 +579,27 @@ jobs:
             print_service_logs
           }
 
-          sudo grep -q 'Using mock-claude for testing' "$STREAM_LOG" || {
+          if sudo grep -q 'Using mock-claude for testing' "$STREAM_LOG"; then
             print_failure_context
-            fail "active-input smoke did not use mock Claude"
-          }
-          sudo grep -q 'RESULT=first+second' "$STREAM_LOG" || {
+            fail "real Claude Code active-input smoke used mock Claude"
+          fi
+
+          echo "--- Real Claude Code active-input result lines from guest stdout ---"
+          sudo grep -E 'RESULT=|filtered_replayed_initial_prompt|filtered_replayed_active_input|Claude Code Completed' "$STREAM_LOG" || true
+
+          sudo grep -F -q "$EXPECTED_RESULT" "$STREAM_LOG" || {
             print_failure_context
-            fail "mock Claude active-input smoke did not return RESULT=first+second"
+            fail "real Claude Code output did not include initial and active-input tokens"
           }
 
-          echo "PASS: local active input reached mock Claude and returned RESULT=first+second"
+          echo "PASS: local active input reached real Claude Code and returned ${EXPECTED_RESULT}"
           REMOTE_SCRIPT
+          } | ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$DEFAULT_ROOTFS_HASH" \
+            "$DEFAULT_SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET"
 
   runner-benchmark:
     runs-on: ubuntu-latest
@@ -1906,7 +1785,6 @@ jobs:
       - api-contracts-rust-bindings
       - mitm-addon-test
       - runner-build
-      - runner-local-submit-env-smoke
       - runner-local-active-input-smoke
       - runner-benchmark
       - runner-exec
@@ -1957,7 +1835,6 @@ jobs:
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
-          check_result "runner-local-submit-env-smoke" "${{ needs.runner-local-submit-env-smoke.result }}" "true"
           check_result "runner-local-active-input-smoke" "${{ needs.runner-local-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
