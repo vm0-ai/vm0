@@ -2412,9 +2412,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps,
-    QueueMessageDeps,
-    RecallMessageDeps {}
+  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
