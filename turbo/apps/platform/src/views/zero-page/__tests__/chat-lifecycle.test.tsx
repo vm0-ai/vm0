@@ -1517,6 +1517,82 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps interleaved run messages grouped by run turn", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-interleaved-run-turns",
+      chatMessages: [
+        {
+          id: "msg-run-a-user",
+          role: "user",
+          content: "Start run A",
+          runId: "run-a",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-run-a-first-assistant",
+          role: "assistant",
+          content: "A first update",
+          runId: "run-a",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-run-b-user",
+          role: "user",
+          content: "Start run B",
+          runId: "run-b",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-run-a-final-assistant",
+          role: "assistant",
+          content: "A final update",
+          runId: "run-a",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-run-a-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-a",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+        {
+          id: "msg-run-b-assistant",
+          role: "assistant",
+          content: "B answer",
+          runId: "run-b",
+          createdAt: "2026-06-09T10:00:06Z",
+        },
+        {
+          id: "msg-run-b-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-b",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:07Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-interleaved-run-turns",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("A final update")).toBeInTheDocument();
+      expect(screen.getByText("Start run B")).toBeInTheDocument();
+      expect(screen.getByText("B answer")).toBeInTheDocument();
+    });
+
+    expectTextBefore(document.body, "A final update", "Start run B");
+    expectTextBefore(document.body, "Start run B", "B answer");
+    expect(document.querySelectorAll('[data-role="assistant"]')).toHaveLength(
+      2,
+    );
+  });
+
   it("shows thinking when the latest message is a user message", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-latest-user",
