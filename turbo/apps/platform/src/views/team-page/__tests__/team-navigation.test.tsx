@@ -98,6 +98,19 @@ function buttonByText(
   return button;
 }
 
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitem").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -613,7 +626,32 @@ describe("team page navigation", () => {
       expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
       expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
     });
-    click(buttonByText("Apply", loadedPermissionsDialog));
+
+    click(buttonByAriaLabel("Close", loadedPermissionsDialog));
+    await waitFor(() => {
+      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Axiom permissions"));
+    const reopenedPermissionsDialog = await findLoadedPermissionsDialog();
+    const reopenedPermissionRow = await permissionRowByName(
+      reopenedPermissionsDialog,
+      "annotations|create",
+    );
+    expect(
+      within(reopenedPermissionRow).queryByText("24h"),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
+
+    click(screen.getByLabelText("annotations|create allow options"));
+    click(menuItemByText("Allow for 24h"));
+    await waitFor(() => {
+      expect(
+        within(reopenedPermissionRow).getByText("24h"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", reopenedPermissionsDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -693,6 +731,77 @@ describe("team page navigation", () => {
       );
       expect(buttonByText("Restore", loadedPermissionsDialog)).toBeDisabled();
     });
+  });
+
+  it("finds and saves permissions beyond the initial drawer page", async () => {
+    mockTeamAPIs();
+    context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedUpserts.push(body);
+        return respond(200, {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: null,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@cf-team")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Cloudflare permissions"));
+
+    const permissionsDialog = await findLoadedPermissionsDialog();
+    expect(
+      within(permissionsDialog).queryByText("memberships.read"),
+    ).not.toBeInTheDocument();
+
+    await fill(
+      within(permissionsDialog).getByLabelText("Find permissions"),
+      "memberships.read",
+    );
+
+    const permissionRow = await permissionRowByName(
+      permissionsDialog,
+      "memberships.read",
+    );
+    const loadedPermissionsDialog = dialogForElement(permissionRow);
+    click(buttonByText("Deny", permissionRow));
+    await waitFor(() => {
+      expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", loadedPermissionsDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(capturedUpserts).toStrictEqual([
+      {
+        agentId: researchAgentId,
+        connectorRef: "cloudflare",
+        permission: "memberships.read",
+        action: "deny",
+      },
+    ]);
   });
 
   it("saves permission duration changes from an agent page", async () => {
@@ -826,6 +935,24 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
     });
+    const channelsJoinRow = await permissionRowByName(
+      loadedGroupedDialog,
+      "channels:join",
+    );
+    click(
+      within(channelsJoinRow).getByLabelText("channels:join allow options"),
+    );
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
+    });
+    click(
+      within(channelsJoinRow).getByLabelText("channels:join allow options"),
+    );
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
+    });
     click(buttonByText("Deny", miscGroup));
     await waitFor(() => {
       expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
@@ -845,10 +972,6 @@ describe("team page navigation", () => {
     });
     fireEvent.scroll(permissionsScrollArea);
 
-    const channelsJoinRow = await permissionRowByName(
-      loadedGroupedDialog,
-      "channels:join",
-    );
     click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
     await waitFor(() => {
       expect(

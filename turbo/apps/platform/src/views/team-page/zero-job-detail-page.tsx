@@ -86,6 +86,11 @@ import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
+import {
+  createPermissionDraftContext,
+  materializePermissionDraftForLegacySave,
+  type PermissionDraftIntent,
+} from "../../signals/zero-page/settings/permission-draft-intent.ts";
 import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
@@ -554,6 +559,9 @@ function addExpirationOnlyChanges({
     if (!expiresIn) {
       continue;
     }
+    if (expiresIn === "always" && !grant.expiresAt) {
+      continue;
+    }
     const currentPolicy =
       grant.permission === UNKNOWN_PERMISSION_GRANT
         ? current?.unknownPolicy
@@ -746,9 +754,7 @@ async function saveDrawerPolicies({
   metadata,
   initialPolicies,
   initialGrants,
-  policies,
-  expiresInByPermission,
-  resetPending,
+  intent,
   pageSignal,
   resetGrantPolicies,
   upsertGrant,
@@ -758,13 +764,19 @@ async function saveDrawerPolicies({
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
-  policies: FirewallPolicies;
-  expiresInByPermission: GrantExpirationSelections;
-  resetPending: boolean;
+  intent: PermissionDraftIntent;
   pageSignal: AbortSignal;
   resetGrantPolicies: ResetUserPermissionGrants;
   upsertGrant: UpsertUserPermissionGrant;
 }): Promise<void> {
+  // TODO(#18218): replace this final compatibility expansion with compact
+  // user permission grant persistence once the storage/API shape supports it.
+  const { policies, expiresInByPermission } =
+    materializePermissionDraftForLegacySave({
+      context: createPermissionDraftContext({ metadata, initialPolicies }),
+      draft: intent,
+      permissions: metadata.permissions,
+    });
   await saveUserGrantPolicies({
     agentId,
     connectorType,
@@ -773,7 +785,7 @@ async function saveDrawerPolicies({
     initialGrants,
     policies,
     expiresInByPermission,
-    resetPending,
+    resetPending: intent.resetPending,
     pageSignal,
     resetGrantPolicies,
     upsertGrant,
@@ -982,10 +994,8 @@ function AgentPermissionsDrawer({
   resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
-    policies: FirewallPolicies,
-    expiresInByPermission: GrantExpirationSelections,
+    intent: PermissionDraftIntent,
     options: {
-      readonly resetConnectorGrants: boolean;
       readonly metadata: FirewallPermissionDetailMetadata;
     },
   ) => Promise<void>;
@@ -1125,11 +1135,7 @@ function JobPermissionsTab({
             initialGrants={userGrants}
             resetEnabled
             readOnly={!canManagePermissions}
-            onApply={async (
-              policies,
-              expiresInByPermission,
-              { resetConnectorGrants, metadata },
-            ) => {
+            onApply={async (intent, { metadata }) => {
               if (connectorType === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
@@ -1139,9 +1145,7 @@ function JobPermissionsTab({
                 metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: userGrants,
-                policies,
-                expiresInByPermission,
-                resetPending: resetConnectorGrants,
+                intent,
                 pageSignal,
                 resetGrantPolicies,
                 upsertGrant,
