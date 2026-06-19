@@ -222,6 +222,26 @@ function resolvedExpiresAt({
   );
 }
 
+function shouldSkipExpiredPreservedAllowGrant({
+  action,
+  expiresIn,
+  existing,
+  timestamp,
+}: {
+  readonly action: UserPermissionGrantAction;
+  readonly expiresIn: UserPermissionGrantExpiresIn | undefined;
+  readonly existing: UserPermissionGrantRow | undefined;
+  readonly timestamp: Date;
+}): boolean {
+  return (
+    action === "allow" &&
+    expiresIn === undefined &&
+    existing?.action === "allow" &&
+    existing.expiresAt !== null &&
+    existing.expiresAt.getTime() <= timestamp.getTime()
+  );
+}
+
 function formatUserPermissionGrant(
   row: Pick<
     UserPermissionGrantRow,
@@ -452,25 +472,43 @@ async function applyVisibleGrantRows(
         return [row.permission, row] as const;
       }),
     );
-    const values = args.apply.grants.map((grant: ApplyUserPermissionGrant) => {
-      const existing = existingRowsByPermission.get(grant.permission);
-      return {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.apply.agentId,
-        connectorRef: args.apply.connectorRef,
-        permission: grant.permission,
-        action: grant.action,
-        expiresAt: resolvedExpiresAt({
-          action: grant.action,
-          expiresIn: grant.expiresIn,
-          existing,
-          timestamp,
-        }),
-        createdAt: existing?.createdAt ?? timestamp,
-        updatedAt: timestamp,
-      };
-    });
+    const values = args.apply.grants.flatMap(
+      (grant: ApplyUserPermissionGrant) => {
+        const existing = existingRowsByPermission.get(grant.permission);
+        if (
+          shouldSkipExpiredPreservedAllowGrant({
+            action: grant.action,
+            expiresIn: grant.expiresIn,
+            existing,
+            timestamp,
+          })
+        ) {
+          return [];
+        }
+        return [
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId: args.apply.agentId,
+            connectorRef: args.apply.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: resolvedExpiresAt({
+              action: grant.action,
+              expiresIn: grant.expiresIn,
+              existing,
+              timestamp,
+            }),
+            createdAt: existing?.createdAt ?? timestamp,
+            updatedAt: timestamp,
+          },
+        ];
+      },
+    );
+
+    if (values.length === 0) {
+      return [];
+    }
 
     return await tx.insert(userPermissionGrants).values(values).returning();
   });

@@ -33,6 +33,7 @@ const mocks = createZeroRouteMocks(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const SLACK_CONNECTOR = "slack";
 const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_JOIN_PERMISSION = "channels:join";
 const SLACK_WRITE_PERMISSION = "chat:write";
 
 async function seedMember(args: {
@@ -582,6 +583,69 @@ describe("zero user permission grants", () => {
         agentId,
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toMatchObject({ action: "deny" });
+  });
+
+  it("does not preserve expired allow grants during connector apply", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    mockNow(new Date("2026-03-01T00:00:00.000Z"));
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_JOIN_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2026-02-28T23:59:59.000Z"),
+    });
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    const applied = await accept(
+      client.apply({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          grants: [
+            {
+              permission: SLACK_JOIN_PERMISSION,
+              action: "allow",
+            },
+            {
+              permission: SLACK_WRITE_PERMISSION,
+              action: "deny",
+            },
+          ],
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    expect(
+      applied.body.map((grant) => {
+        return [grant.permission, grant.action] as const;
+      }),
+    ).toStrictEqual([[SLACK_WRITE_PERMISSION, "deny"]]);
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_JOIN_PERMISSION,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_WRITE_PERMISSION,
       }),
     ).resolves.toMatchObject({ action: "deny" });
   });

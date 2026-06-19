@@ -119,6 +119,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import { now } from "../../lib/time.ts";
 import {
   expandFirewallMetadataDefaultPolicy,
   permissionGrantsToFirewallPolicies,
@@ -697,6 +698,16 @@ function applyGrantFromChangedPolicy(
     : { permission: policy.permission, action: "deny" };
 }
 
+function isActiveUserPermissionGrant(
+  grant: UserPermissionGrantResponse,
+): boolean {
+  if (!grant.expiresAt) {
+    return true;
+  }
+  const expiresAtMs = Date.parse(grant.expiresAt);
+  return Number.isFinite(expiresAtMs) && expiresAtMs > now();
+}
+
 function isKnownConnectorPermission(
   permissionNames: ReadonlySet<string>,
   permission: string,
@@ -737,6 +748,7 @@ function buildAppliedUserGrantPolicies({
   for (const grant of baseGrants) {
     if (
       grant.connectorRef === connectorType &&
+      isActiveUserPermissionGrant(grant) &&
       isKnownConnectorPermission(metadataPermissionNames, grant.permission)
     ) {
       grantsByPermission.set(

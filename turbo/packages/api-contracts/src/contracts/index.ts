@@ -912,11 +912,15 @@ export {
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
+  applyUserPermissionGrantSchema,
+  applyUserPermissionGrantsRequestSchema,
   type UserPermissionGrantAction,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,
+  type ApplyUserPermissionGrant,
+  type ApplyUserPermissionGrantsRequest,
   type ZeroUserPermissionGrantsContract,
 } from "./zero-user-permission-grants";
 export {
