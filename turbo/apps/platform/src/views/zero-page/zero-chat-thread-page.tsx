@@ -2093,9 +2093,7 @@ function HeaderAutomationSidebarCard({
   );
 }
 
-function workflowTriggerTypeLabel(
-  trigger: HeaderWorkflowTriggerEntry,
-): string {
+function workflowTriggerTypeLabel(trigger: HeaderWorkflowTriggerEntry): string {
   return trigger.workflowType === "goal" ? "Goal" : "Workflow";
 }
 

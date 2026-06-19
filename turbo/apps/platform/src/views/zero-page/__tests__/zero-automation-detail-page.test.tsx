@@ -424,7 +424,7 @@ describe("zero automation detail page", () => {
     context.mocks.data.team([createZeroAgent()]);
     const automation = createMultiTriggerAutomationResponse();
     context.mocks.api(automationsMainContract.list, ({ respond }) => {
-      return respond(200, { automations: [automation] });
+      return respond(200, { automations: [automation], workflowTriggers: [] });
     });
 
     detachedSetupPage({

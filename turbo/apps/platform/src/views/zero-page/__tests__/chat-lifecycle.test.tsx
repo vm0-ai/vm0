@@ -33,7 +33,11 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
+import {
+  createMockAutomationView,
+  createMockWorkflowTrigger,
+  setMockWorkflowTriggers,
+} from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -3148,6 +3152,38 @@ describe("chat lifecycle", () => {
         screen.getByRole("heading", { name: "Launch review" }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("lists thread workflow triggers with their workflow in the sidebar", async () => {
+    mockAutomationThread();
+    setMockWorkflowTriggers([
+      createMockWorkflowTrigger({ chatThreadId: AUTOMATION_THREAD_ID }),
+    ]);
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${AUTOMATION_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(buttonByLabel("Automations")).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Automations"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
+    });
+
+    const sidebar = screen.getByTestId("automation-sidebar");
+    expect(within(sidebar).getByText("Workflows & Goals")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText("Drive the release to merge"),
+    ).toBeInTheDocument();
+    expect(within(sidebar).getByText("On thread idle")).toBeInTheDocument();
   });
 
   it("shows automation run messages as automation links in chat history", async () => {
