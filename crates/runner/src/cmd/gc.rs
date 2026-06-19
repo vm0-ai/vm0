@@ -228,6 +228,15 @@ fn mark_rootfs_survives(states: &mut [RootfsState], idx: usize) {
 /// Caller must hold the exclusive rootfs lock. Returns bytes freed (0 if
 /// skipped due to age, dry-run, or deletion error).
 async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run: bool) -> u64 {
+    match gc_path_dir_status(rootfs_path).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Err(e) => {
+            warn!("images/{rootfs_hash}: stat failed ({e}), skipping");
+            return 0;
+        }
+    }
+
     let (rootfs_size, rootfs_mtime) = dir_stats(rootfs_path).await;
     let age = SystemTime::now()
         .duration_since(rootfs_mtime)
@@ -289,6 +298,15 @@ async fn gc_template_warm_dir(
             return 0;
         }
     };
+
+    match gc_path_dir_status(warm_path).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Err(e) => {
+            warn!("images/{warm_name}: stat failed ({e}), skipping");
+            return 0;
+        }
+    }
 
     let (size, mtime) = dir_stats(warm_path).await;
     let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
@@ -360,9 +378,14 @@ async fn gc_nested_images(
             continue;
         };
 
-        // Skip non-directories (e.g. stale temp files).
-        if !rootfs_path.is_dir() {
-            continue;
+        // Skip non-directories (e.g. stale temp files) and symlinks.
+        match gc_entry_is_real_dir(&rootfs_entry).await {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                warn!("images/{rootfs_hash}: cannot read file type ({e}), skipping");
+                continue;
+            }
         }
 
         if let Some(template_hash) = template_warm_hash(&rootfs_hash) {
@@ -390,13 +413,24 @@ async fn gc_nested_images(
         };
 
         let snapshots_dir = rootfs_path.join("snapshots");
-        let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
-            Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        match gc_path_dir_status(&snapshots_dir).await {
+            Ok(GcDirStatus::RealDir(_)) => {}
+            Ok(GcDirStatus::Missing) => {
                 // No snapshots/ subdirectory — orphaned rootfs, handle inline.
                 total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
                 continue;
             }
+            Ok(GcDirStatus::NotDirectory) => {
+                info!("images/{rootfs_hash}/snapshots: not a real directory, skipping");
+                continue;
+            }
+            Err(e) => {
+                warn!("images/{rootfs_hash}/snapshots: stat failed ({e}), skipping");
+                continue;
+            }
+        }
+        let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
+            Ok(rd) => rd,
             Err(e) => {
                 warn!("images/{rootfs_hash}/snapshots: read failed ({e}), skipping");
                 continue;
@@ -423,9 +457,19 @@ async fn gc_nested_images(
                 mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 continue;
             };
-            if !snap_path.is_dir() {
-                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
-                continue;
+            match gc_entry_is_real_dir(&snap_entry).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                    continue;
+                }
+                Err(e) => {
+                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                    warn!(
+                        "images/{rootfs_hash}/snapshots/{snap_hash}: cannot read file type ({e}), skipping"
+                    );
+                    continue;
+                }
             }
 
             let lock_path = home.snapshot_lock(&snap_hash);
@@ -717,6 +761,29 @@ async fn read_dir_or_missing(path: &Path) -> RunnerResult<Option<tokio::fs::Read
     }
 }
 
+enum GcDirStatus {
+    RealDir(std::fs::Metadata),
+    Missing,
+    NotDirectory,
+}
+
+async fn gc_path_dir_status(path: &Path) -> std::io::Result<GcDirStatus> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(meta) if meta.file_type().is_dir() => Ok(GcDirStatus::RealDir(meta)),
+        Ok(_) => Ok(GcDirStatus::NotDirectory),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(GcDirStatus::Missing),
+        Err(e) => Err(e),
+    }
+}
+
+async fn gc_entry_is_real_dir(entry: &tokio::fs::DirEntry) -> std::io::Result<bool> {
+    match entry.file_type().await {
+        Ok(file_type) => Ok(file_type.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 /// Remove cached debootstrap tarballs, keeping the `keep_latest` most recent.
 async fn gc_debootstrap(
     home: &HomePaths,
@@ -995,14 +1062,28 @@ async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)
 /// Last-used time comes from the root directory's own mtime, which `touch_mtime`
 /// updates on every cache hit and `runner start`.
 async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
-    let mtime = match tokio::fs::metadata(dir).await {
-        Ok(meta) => meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-        Err(_) => SystemTime::UNIX_EPOCH,
+    const BYTES_PER_BLOCK: u64 = 512;
+
+    let root_meta = match tokio::fs::symlink_metadata(dir).await {
+        Ok(meta) => meta,
+        Err(_) => return (0, SystemTime::UNIX_EPOCH),
     };
+    let mtime = root_meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    if !root_meta.file_type().is_dir() {
+        return (root_meta.blocks() * BYTES_PER_BLOCK, mtime);
+    }
 
     let mut total_bytes = 0u64;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
+        let Ok(current_meta) = tokio::fs::symlink_metadata(&current).await else {
+            tracing::debug!("dir_stats: cannot stat {}", current.display());
+            continue;
+        };
+        if !current_meta.file_type().is_dir() {
+            continue;
+        }
+
         let mut entries = match tokio::fs::read_dir(&current).await {
             Ok(rd) => rd,
             Err(e) => {
@@ -1011,14 +1092,14 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
             }
         };
         while let Some(entry) = next_entry_warn(&mut entries, "dir_stats", &current).await {
-            let Ok(meta) = entry.metadata().await else {
+            let path = entry.path();
+            let Ok(meta) = tokio::fs::symlink_metadata(&path).await else {
                 tracing::debug!("dir_stats: cannot stat {}", entry.path().display());
                 continue;
             };
-            const BYTES_PER_BLOCK: u64 = 512;
             total_bytes += meta.blocks() * BYTES_PER_BLOCK;
-            if meta.is_dir() {
-                stack.push(entry.path());
+            if meta.file_type().is_dir() {
+                stack.push(path);
             }
         }
     }
@@ -1503,10 +1584,47 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
     let mut freed: u64 = 0;
 
     for base_dir in &base_dirs {
+        match gc_path_dir_status(base_dir).await {
+            Ok(GcDirStatus::RealDir(_)) => {}
+            Ok(GcDirStatus::Missing) => continue,
+            Ok(GcDirStatus::NotDirectory) => {
+                info!(
+                    "workspace gc: {} is not a real base directory, skipping",
+                    base_dir.display()
+                );
+                continue;
+            }
+            Err(e) => {
+                warn!(
+                    "workspace gc: cannot stat base directory {}: {e}",
+                    base_dir.display()
+                );
+                continue;
+            }
+        }
+
         let workspaces_dir = base_dir.join("workspaces");
+        match gc_path_dir_status(&workspaces_dir).await {
+            Ok(GcDirStatus::RealDir(_)) => {}
+            Ok(GcDirStatus::Missing) => continue,
+            Ok(GcDirStatus::NotDirectory) => {
+                info!(
+                    "workspace gc: {} is not a real directory, skipping",
+                    workspaces_dir.display()
+                );
+                continue;
+            }
+            Err(e) => {
+                warn!(
+                    "workspace gc: cannot stat {}: {e}",
+                    workspaces_dir.display()
+                );
+                continue;
+            }
+        }
+
         let mut entries = match tokio::fs::read_dir(&workspaces_dir).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
                 warn!(
                     "workspace gc: cannot read {}: {e}",
@@ -1519,12 +1637,14 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
         while let Some(entry) = next_entry_warn(&mut entries, "workspace gc", &workspaces_dir).await
         {
             let path = entry.path();
-            let Ok(meta) = tokio::fs::metadata(&path).await else {
-                continue;
+            let meta = match gc_path_dir_status(&path).await {
+                Ok(GcDirStatus::RealDir(meta)) => meta,
+                Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => continue,
+                Err(e) => {
+                    warn!("workspace gc: cannot stat {}: {e}", path.display());
+                    continue;
+                }
             };
-            if !meta.is_dir() {
-                continue;
-            }
 
             // Skip if actively owned by a running process.
             if active.contains(&path) {
@@ -1681,8 +1801,13 @@ async fn gc_storage_cache_with_limits(
         let Some(name_str) = name_path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !name_path.is_dir() {
-            continue;
+        match gc_entry_is_real_dir(&name_entry).await {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                warn!("storages/{name_str}: cannot read file type ({e}), skipping");
+                continue;
+            }
         }
 
         let mut version_entries = match tokio::fs::read_dir(&name_path).await {
@@ -1700,8 +1825,15 @@ async fn gc_storage_cache_with_limits(
             let Some(version_str) = version_path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !version_path.is_dir() {
-                continue;
+            match gc_entry_is_real_dir(&version_entry).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    warn!(
+                        "storages/{name_str}/{version_str}: cannot read file type ({e}), skipping"
+                    );
+                    continue;
+                }
             }
             if let Some(final_version_hash) = version_str.strip_suffix(".tmp") {
                 freed = freed.saturating_add(
@@ -1828,9 +1960,9 @@ async fn evict_storage_candidate(
         }
     };
 
-    match tokio::fs::metadata(&candidate.path).await {
-        Ok(meta) if meta.is_dir() => {}
-        Ok(_) => {
+    match gc_path_dir_status(&candidate.path).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::NotDirectory) => {
             info!(
                 "storages/{}/{}: no longer a directory, skipping",
                 candidate.name, candidate.version
@@ -1842,7 +1974,7 @@ async fn evict_storage_candidate(
                 evicted: false,
             };
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        Ok(GcDirStatus::Missing) => {
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
@@ -2000,6 +2132,15 @@ async fn gc_storage_staging_dir(
         }
     };
 
+    match gc_path_dir_status(path).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Err(e) => {
+            warn!("storages/{name_hash}/{version_hash}.tmp: stat failed ({e}), skipping");
+            return 0;
+        }
+    }
+
     let (size, mtime) = dir_stats(path).await;
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
@@ -2085,6 +2226,33 @@ mod tests {
         assert_eq!(human_bytes(1024), "1.0 KiB");
         assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
         assert_eq!(human_bytes(1024 * 1024 * 1024), "1.0 GiB");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn dir_stats_does_not_recurse_through_symlinked_child_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let normal_child = root.join("normal");
+        std::fs::create_dir_all(&normal_child).unwrap();
+        std::fs::write(normal_child.join("inside.bin"), vec![1u8; 4096]).unwrap();
+
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("outside.bin"), vec![2u8; 1024 * 1024]).unwrap();
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let symlink_bytes = std::fs::symlink_metadata(&link).unwrap().blocks() * 512;
+
+        let (with_symlink, _) = dir_stats(&root).await;
+        std::fs::remove_file(&link).unwrap();
+        let (without_symlink, _) = dir_stats(&root).await;
+
+        assert_eq!(
+            with_symlink,
+            without_symlink + symlink_bytes,
+            "dir_stats should count the symlink itself but not recurse into its target"
+        );
     }
 
     #[test]
@@ -2292,6 +2460,28 @@ mod tests {
 
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
+    }
+
+    fn old_gc_time() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)
+    }
+
+    fn set_mtime(path: &Path, mtime: SystemTime) {
+        std::fs::File::open(path)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(mtime))
+            .unwrap();
+    }
+
+    #[cfg(unix)]
+    fn assert_is_symlink(path: &Path, message: &str) {
+        assert!(
+            std::fs::symlink_metadata(path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "{message}"
+        );
     }
 
     fn test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
@@ -3768,6 +3958,30 @@ mod tests {
         assert!(freed > 0);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn try_delete_orphan_rootfs_skips_symlink_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.images_dir()).unwrap();
+
+        let outside_rootfs = dir.path().join("outside-rootfs");
+        std::fs::create_dir_all(&outside_rootfs).unwrap();
+        std::fs::write(outside_rootfs.join("rootfs.ext4"), b"outside").unwrap();
+
+        let rootfs_link = home.images_dir().join("rootfs_replaced");
+        std::os::unix::fs::symlink(&outside_rootfs, &rootfs_link).unwrap();
+
+        let freed = try_delete_orphan_rootfs(&rootfs_link, "rootfs_replaced", false).await;
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&rootfs_link, "symlink replacement must remain");
+        assert!(
+            outside_rootfs.join("rootfs.ext4").exists(),
+            "orphan-rootfs recheck must not delete a symlink replacement target"
+        );
+    }
+
     /// Dry-run over an orphaned rootfs (no `snapshots/` subdir) must count the
     /// would-be-freed bytes via `try_delete_orphan_rootfs`. Regression guard
     /// for the silent-zero bug where dry-run returned 0 and `run_gc` printed
@@ -4039,6 +4253,104 @@ mod tests {
         let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
         assert!(snap.exists(), "locked snapshot must survive");
         assert_eq!(freed, 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_nested_images_skips_symlink_rootfs_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        std::fs::create_dir_all(home.images_dir()).unwrap();
+
+        let target_rootfs = dir.path().join("outside-rootfs");
+        let target_snapshot = target_rootfs.join("snapshots").join("snap_old");
+        std::fs::create_dir_all(&target_snapshot).unwrap();
+        std::fs::write(target_snapshot.join("snapshot.bin"), b"outside").unwrap();
+        set_mtime(&target_snapshot, old_gc_time());
+        set_mtime(&target_rootfs, old_gc_time());
+
+        let rootfs_link = home.images_dir().join("rootfs_link");
+        std::os::unix::fs::symlink(&target_rootfs, &rootfs_link).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&rootfs_link, "symlinked rootfs entry must remain");
+        assert!(
+            target_snapshot.exists(),
+            "GC must not delete snapshots through a symlinked rootfs"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_nested_images_skips_symlink_snapshots_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let rootfs_dir = home.images_dir().join("rootfs_with_symlink_snapshots");
+        std::fs::create_dir_all(&rootfs_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+        set_mtime(&rootfs_dir, old_gc_time());
+
+        let outside_snapshots = dir.path().join("outside-snapshots");
+        let outside_snapshot = outside_snapshots.join("snap_old");
+        std::fs::create_dir_all(&outside_snapshot).unwrap();
+        std::fs::write(outside_snapshot.join("snapshot.bin"), b"outside").unwrap();
+        set_mtime(&outside_snapshot, old_gc_time());
+        std::os::unix::fs::symlink(&outside_snapshots, rootfs_dir.join("snapshots")).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            rootfs_dir.exists(),
+            "rootfs with symlinked snapshots dir must be skipped, not orphan-deleted"
+        );
+        assert_is_symlink(
+            &rootfs_dir.join("snapshots"),
+            "symlinked snapshots dir must remain",
+        );
+        assert!(
+            outside_snapshot.exists(),
+            "GC must not delete snapshots through a symlinked snapshots dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_nested_images_symlink_snapshot_entry_preserves_rootfs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let rootfs_dir = home.images_dir().join("rootfs_with_symlink_snapshot");
+        let snapshots_dir = rootfs_dir.join("snapshots");
+        std::fs::create_dir_all(&snapshots_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+        set_mtime(&rootfs_dir, old_gc_time());
+
+        let outside_snapshot = dir.path().join("outside-snapshot");
+        std::fs::create_dir_all(&outside_snapshot).unwrap();
+        std::fs::write(outside_snapshot.join("snapshot.bin"), b"outside").unwrap();
+        set_mtime(&outside_snapshot, old_gc_time());
+        let snapshot_link = snapshots_dir.join("snap_link");
+        std::os::unix::fs::symlink(&outside_snapshot, &snapshot_link).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            rootfs_dir.exists(),
+            "symlinked snapshot entry must preserve its rootfs"
+        );
+        assert_is_symlink(&snapshot_link, "symlinked snapshot entry must remain");
+        assert!(
+            outside_snapshot.exists(),
+            "GC must not delete a symlinked snapshot target"
+        );
     }
 
     #[test]
@@ -4406,6 +4718,111 @@ mod tests {
         assert!(freed > 0 || cfg!(target_os = "macos"));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_symlink_workspaces_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let outside_workspaces = dir.path().join("outside-workspaces");
+        let outside_workspace = outside_workspaces.join("run-old");
+        std::fs::create_dir_all(&outside_workspace).unwrap();
+        std::fs::write(outside_workspace.join("cow.img"), b"outside").unwrap();
+        set_mtime(&outside_workspace, old_gc_time());
+        std::os::unix::fs::symlink(&outside_workspaces, base_dir.join("workspaces")).unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
+        assert_is_symlink(
+            &base_dir.join("workspaces"),
+            "symlinked workspaces dir must remain",
+        );
+        assert!(
+            outside_workspace.exists(),
+            "GC must not enumerate and delete through a symlinked workspaces dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_symlink_base_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let outside_base_dir = dir.path().join("outside-runner-data");
+        let outside_workspace = outside_base_dir.join("workspaces").join("run-old");
+        std::fs::create_dir_all(&outside_workspace).unwrap();
+        std::fs::write(outside_workspace.join("cow.img"), b"outside").unwrap();
+        set_mtime(&outside_workspace, old_gc_time());
+        std::os::unix::fs::symlink(&outside_base_dir, &base_dir).unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
+        assert_is_symlink(&base_dir, "symlinked base dir must remain");
+        assert!(
+            outside_workspace.exists(),
+            "GC must not enumerate workspaces through a symlinked base dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_symlink_workspace_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspaces_dir = base_dir.join("workspaces");
+        std::fs::create_dir_all(&workspaces_dir).unwrap();
+        let outside_workspace = dir.path().join("outside-workspace");
+        std::fs::create_dir_all(&outside_workspace).unwrap();
+        std::fs::write(outside_workspace.join("cow.img"), b"outside").unwrap();
+        set_mtime(&outside_workspace, old_gc_time());
+        let workspace_link = workspaces_dir.join("run-link");
+        std::os::unix::fs::symlink(&outside_workspace, &workspace_link).unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
+        assert_is_symlink(&workspace_link, "symlinked workspace entry must remain");
+        assert!(
+            outside_workspace.exists(),
+            "GC must not delete a symlinked workspace target"
+        );
+    }
+
     #[test]
     fn discover_dead_runner_base_dirs_trims_whitespace() {
         let dir = tempfile::tempdir().unwrap();
@@ -4574,6 +4991,84 @@ mod tests {
         assert!(
             version_file.exists(),
             "GC should ignore non-directory version entries"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_storage_cache_skips_symlink_name_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        std::fs::create_dir_all(home.storages_dir()).unwrap();
+
+        let outside_name = dir.path().join("outside-storage-name");
+        let outside_version = outside_name.join("v1");
+        make_storage_entry_at(outside_version.clone(), &[0u8; 128], old_gc_time());
+        let name_link = home.storages_dir().join("name-link");
+        std::os::unix::fs::symlink(&outside_name, &name_link).unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 0, 0, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&name_link, "symlinked storage name entry must remain");
+        assert!(
+            outside_version.exists(),
+            "GC must not delete storage versions through a symlinked name entry"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_storage_cache_skips_symlink_version_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let name_dir = home.storages_dir().join("name");
+        std::fs::create_dir_all(&name_dir).unwrap();
+        let outside_version = dir.path().join("outside-storage-version");
+        make_storage_entry_at(outside_version.clone(), &[0u8; 128], old_gc_time());
+        let version_link = name_dir.join("v1");
+        std::os::unix::fs::symlink(&outside_version, &version_link).unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 0, 0, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&version_link, "symlinked storage version entry must remain");
+        assert!(
+            outside_version.exists(),
+            "GC must not delete a symlinked storage version target"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_storage_cache_skips_symlink_tmp_staging_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let name_dir = home.storages_dir().join("name");
+        std::fs::create_dir_all(&name_dir).unwrap();
+        let outside_tmp = dir.path().join("outside-storage-tmp");
+        make_storage_entry_at(outside_tmp.clone(), &[0u8; 128], old_gc_time());
+        let tmp_link = name_dir.join("v1.tmp");
+        std::os::unix::fs::symlink(&outside_tmp, &tmp_link).unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 0, 0, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert_is_symlink(&tmp_link, "symlinked storage staging entry must remain");
+        assert!(
+            outside_tmp.exists(),
+            "GC must not delete a symlinked storage staging target"
         );
     }
 
@@ -5060,6 +5555,34 @@ mod tests {
         assert!(
             entry.is_file(),
             "non-directory replacement must not be treated as a live cache entry"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_treats_symlink_candidate_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old_gc_time());
+        let candidate = storage_candidate_for(entry.clone()).await;
+        std::fs::remove_dir_all(&entry).unwrap();
+
+        let outside_version = dir.path().join("outside-replacement-version");
+        make_storage_entry_at(outside_version.clone(), &[0u8; 256], old_gc_time());
+        std::os::unix::fs::symlink(&outside_version, &entry).unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(!result.remaining_entry);
+        assert!(!result.evicted);
+        assert_is_symlink(&entry, "symlink replacement must remain untouched");
+        assert!(
+            outside_version.exists(),
+            "eviction recheck must not delete a symlink replacement target"
         );
     }
 
