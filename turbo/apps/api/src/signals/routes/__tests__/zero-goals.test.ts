@@ -195,7 +195,7 @@ describe("zero goals", () => {
     });
   });
 
-  it("creates, reads, blocks, resumes, completes, and hides goal workflows from the registry", async () => {
+  it("creates, reads, blocks, resumes, completes, and lists goal workflows in the registry", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
 
     const created = await accept(
@@ -258,7 +258,7 @@ describe("zero goals", () => {
     const workflowNames = workflows.body.map((workflow) => {
       return workflow.name;
     });
-    expect(workflowNames).not.toContain(goalRows?.workflowName);
+    expect(workflowNames).toContain(goalRows?.workflowName);
 
     const blocked = await accept(
       goalsClient().block({ headers: headers(fixture) }),
