@@ -41,6 +41,7 @@
 //! | 0x00   | accepted | sink handled the request |
 //! | 0x01   | rejected | sink understood the request but declined it |
 //! | 0x02   | error    | sink failed while processing the request |
+//! | 0x03   | queue-full | sink is temporarily full; caller may retry |
 //!
 //! ## Expected sequence
 //!
