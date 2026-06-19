@@ -4,6 +4,7 @@ import {
   zeroGoalPreferenceSchema,
   type ZeroGoalResponse,
 } from "@vm0/api-contracts/contracts/zero-goals";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -15,9 +16,18 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
+import type { TriggerRow } from "./zero-workflow-trigger-run.service";
 
 export type GoalResult =
-  | { readonly kind: "ok"; readonly goal: ZeroGoalResponse }
+  | {
+      readonly kind: "ok";
+      readonly goal: ZeroGoalResponse;
+      // Set only when goal creation had to spin up a fresh chat thread (the
+      // current run was not linked to one, e.g. slack/telegram/email). The
+      // caller must kick off the first run so the goal starts progressing,
+      // since the thread-idle trigger only fires after a run terminates.
+      readonly bootstrapTrigger?: TriggerRow;
+    }
   | { readonly kind: "not-found" }
   | { readonly kind: "bad-request"; readonly message: string }
   | { readonly kind: "conflict"; readonly message: string };
@@ -27,7 +37,9 @@ type GoalRowResult =
   | Exclude<GoalResult, { readonly kind: "ok" }>;
 
 interface CurrentGoalContext {
-  readonly threadId: string;
+  // Null when the current run is not linked to a web chat thread (e.g. slack,
+  // telegram, email triggers). Goal creation then provisions a new thread.
+  readonly threadId: string | null;
   readonly agentId: string;
 }
 
@@ -67,14 +79,21 @@ async function currentGoalContext(
   db: ReadonlyDb,
   auth: GoalAuth,
 ): Promise<CurrentGoalContext | null> {
+  // Resolve the agent directly from the run's compose version so we still know
+  // which agent to bind even when the run has no chat thread. zeroAgents.id,
+  // chatThreads.agentComposeId and agentComposeVersions.composeId are all the
+  // same compose UUID.
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agentComposeVersions.composeId,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
     .where(
       and(
         eq(agentRuns.id, auth.runId),
@@ -84,7 +103,7 @@ async function currentGoalContext(
     )
     .limit(1);
 
-  if (!row?.threadId) {
+  if (!row) {
     return null;
   }
   return { threadId: row.threadId, agentId: row.agentId };
@@ -133,7 +152,7 @@ export async function createGoalForCurrentThread(
   if (!context) {
     return {
       kind: "bad-request",
-      message: "Current run is not linked to a chat thread",
+      message: "Current run is not linked to an agent",
     };
   }
 
@@ -143,15 +162,37 @@ export async function createGoalForCurrentThread(
     objective: args.objective,
     ...(args.tokenBudget ? { tokenBudget: args.tokenBudget } : {}),
   };
+  const isNewThread = context.threadId === null;
 
-  const row = await db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
+    let threadId = context.threadId;
+    if (threadId === null) {
+      // Mirror the schedule-trigger path: when the current run has no chat
+      // thread, provision one so the goal has a home to render its runs in.
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: context.agentId,
+          title: args.objective,
+          lastMessageAt: createdAt,
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .returning({ id: chatThreads.id });
+      if (!thread) {
+        throw new Error("Failed to create goal chat thread");
+      }
+      threadId = thread.id;
+    }
+
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext('goal:' || ${context.threadId}))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext('goal:' || ${threadId}))`,
     );
 
     const existing = await loadActiveGoalForThread(tx, {
       orgId: args.orgId,
-      threadId: context.threadId,
+      threadId,
     });
     if (existing) {
       return null;
@@ -197,36 +238,43 @@ export async function createGoalForCurrentThread(
         atTime: null,
         timezone: "UTC",
         enabled: true,
-        chatThreadId: context.threadId,
+        chatThreadId: threadId,
         nextRunAt: null,
         createdAt,
         updatedAt: createdAt,
       })
-      .returning({
-        id: zeroWorkflowTriggers.id,
-        enabled: zeroWorkflowTriggers.enabled,
-      });
+      .returning();
     if (!trigger) {
       throw new Error("Failed to create goal trigger");
     }
 
     return {
-      workflowId: workflow.id,
-      triggerId: trigger.id,
-      workflowActive: workflow.active,
-      triggerEnabled: trigger.enabled,
-      preference: workflow.preference,
-    } satisfies ActiveGoalRow;
+      row: {
+        workflowId: workflow.id,
+        triggerId: trigger.id,
+        workflowActive: workflow.active,
+        triggerEnabled: trigger.enabled,
+        preference: workflow.preference,
+      } satisfies ActiveGoalRow,
+      trigger,
+    };
   });
 
-  if (!row) {
+  if (!created) {
     return {
       kind: "conflict",
       message: "Complete the existing goal before creating a new one",
     };
   }
 
-  return { kind: "ok", goal: goalResponse(row) };
+  return {
+    kind: "ok",
+    goal: goalResponse(created.row),
+    // A pre-existing thread already has an in-flight run that drives the first
+    // continuation on completion; a freshly provisioned thread does not, so the
+    // caller must bootstrap its first run.
+    ...(isNewThread ? { bootstrapTrigger: created.trigger } : {}),
+  };
 }
 
 export async function getCurrentGoal(
@@ -234,7 +282,7 @@ export async function getCurrentGoal(
   args: GoalAuth,
 ): Promise<GoalResult> {
   const context = await currentGoalContext(db, args);
-  if (!context) {
+  if (!context || context.threadId === null) {
     return {
       kind: "bad-request",
       message: "Current run is not linked to a chat thread",
@@ -320,7 +368,7 @@ async function loadGoalForAuth(
   args: GoalAuth,
 ): Promise<GoalRowResult> {
   const context = await currentGoalContext(db, args);
-  if (!context) {
+  if (!context || context.threadId === null) {
     return {
       kind: "bad-request",
       message: "Current run is not linked to a chat thread",

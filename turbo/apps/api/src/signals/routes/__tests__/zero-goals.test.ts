@@ -2,6 +2,7 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import {
   zeroWorkflowTriggers,
@@ -308,6 +309,75 @@ describe("zero goals", () => {
       active: true,
       objective: "start next goal",
       status: "active",
+    });
+  });
+
+  it("provisions a chat thread when the current run has none", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    // A run from a non-chat trigger (slack/telegram/email) has no chat thread.
+    const threadlessRun = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.agentId,
+        triggerSource: "slack",
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const created = await accept(
+      goalsClient().create({
+        headers: headers({ ...fixture, runId: threadlessRun.runId }),
+        body: { objective: "merge the release PR into main" },
+      }),
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      active: true,
+      objective: "merge the release PR into main",
+      status: "active",
+    });
+
+    const db = store.set(writeDb$);
+    const triggers = await db
+      .select({
+        chatThreadId: zeroWorkflowTriggers.chatThreadId,
+        agentId: zeroWorkflowTriggers.agentId,
+        eventType: zeroWorkflowTriggers.eventType,
+      })
+      .from(zeroWorkflowTriggers)
+      .innerJoin(
+        zeroWorkflows,
+        eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      )
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
+          eq(zeroWorkflows.type, "goal"),
+          eq(zeroWorkflowTriggers.kind, "event"),
+        ),
+      );
+    expect(triggers).toHaveLength(1);
+    const trigger = triggers[0]!;
+    expect(trigger.eventType).toBe("thread-idle");
+    expect(trigger.agentId).toBe(fixture.agentId);
+    // The goal is bound to a freshly provisioned thread, not the seeded one.
+    expect(trigger.chatThreadId).not.toBeNull();
+    expect(trigger.chatThreadId).not.toBe(fixture.threadId);
+
+    const [thread] = await db
+      .select({
+        agentComposeId: chatThreads.agentComposeId,
+        title: chatThreads.title,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, trigger.chatThreadId!))
+      .limit(1);
+    expect(thread).toMatchObject({
+      agentComposeId: fixture.agentId,
+      title: "merge the release PR into main",
     });
   });
 });

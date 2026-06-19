@@ -8,7 +8,11 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
+import { settle } from "../utils";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
 import {
   blockCurrentGoal,
   completeCurrentGoal,
@@ -19,6 +23,8 @@ import {
 } from "../services/zero-goal.service";
 import type { RouteEntry } from "../route";
 import type { AuthContext } from "../../types/auth";
+
+const log = logger("ZeroGoals");
 
 const goalReadAuth = {
   requireOrganization: true,
@@ -108,6 +114,37 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
   if (result.kind === "ok") {
+    // A freshly provisioned thread has no in-flight run to drive the first
+    // goal turn, so enqueue it here. Existing threads continue from their
+    // current run's terminal callback. Best-effort: a failed first enqueue
+    // must not roll back the created goal, which can still be resumed later.
+    if (result.bootstrapTrigger) {
+      const bootstrap = await settle(
+        set(
+          bootstrapGoalRun$,
+          {
+            trigger: result.bootstrapTrigger,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        signal,
+      );
+      if (!bootstrap.ok) {
+        log.warn("Failed to bootstrap goal run for provisioned thread", {
+          triggerId: result.bootstrapTrigger.id,
+          error:
+            bootstrap.error instanceof Error
+              ? bootstrap.error.message
+              : String(bootstrap.error),
+        });
+      } else if (bootstrap.value.kind !== "ok") {
+        log.warn("Goal bootstrap run was not enqueued", {
+          triggerId: result.bootstrapTrigger.id,
+          reason: bootstrap.value.kind,
+        });
+      }
+    }
     return { status: 201 as const, body: result.goal };
   }
   return goalErrorResponse(result);
