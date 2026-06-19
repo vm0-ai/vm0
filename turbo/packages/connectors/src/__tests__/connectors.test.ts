@@ -339,7 +339,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual(["oauth"]);
     expect(
       getConnectorAuthMethodIdsForGrantKind("stripe", "manual"),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["api-token"]);
     expect(
       getConnectorAuthMethodIdsForGrantKind("stripe", "device-auth"),
     ).toStrictEqual([]);
@@ -348,7 +348,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual(["oauth"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("stripe", "static"),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["api-token"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("lark", "refresh-token"),
     ).toStrictEqual(["api-token"]);
@@ -360,7 +360,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual([]);
     expect(
       getConnectorAuthMethodIdsForRevokeKind("stripe", "none"),
-    ).toStrictEqual(["oauth"]);
+    ).toStrictEqual(["oauth", "api-token"]);
 
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "device-auth"),
@@ -2011,6 +2011,7 @@ describe("getConfiguredConnectorAuthMethodIds", () => {
   it("returns configured auth methods without feature filtering", () => {
     expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
       "oauth",
+      "api-token",
     ]);
   });
 });
@@ -2020,12 +2021,12 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([]);
   });
 
-  it("exposes only Stripe OAuth auth when the Stripe switch is enabled", () => {
+  it("exposes Stripe OAuth and API-token auth when the Stripe switch is enabled", () => {
     expect(
       getAvailableConnectorAuthMethodIds("stripe", {
         [FeatureSwitchKey.StripeConnector]: true,
       }),
-    ).toStrictEqual(["oauth"]);
+    ).toStrictEqual(["oauth", "api-token"]);
   });
 
   it("treats statically hidden auth methods as unavailable", () => {
@@ -2044,12 +2045,13 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     try {
       expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
         "oauth",
+        "api-token",
       ]);
       expect(
         getAvailableConnectorAuthMethodIds("stripe", {
           [FeatureSwitchKey.StripeConnector]: true,
         }),
-      ).toStrictEqual([]);
+      ).toStrictEqual(["api-token"]);
     } finally {
       Object.defineProperty(authMethods, "oauth", {
         value: originalOauth,

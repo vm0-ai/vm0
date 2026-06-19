@@ -48,6 +48,33 @@ export const stripe = {
         },
         revoke: { kind: "none" },
       },
+      "api-token": {
+        featureFlag: FeatureSwitchKey.StripeConnector,
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/apikeys)\n2. Go to **Developers > API keys**\n3. Reveal the **Secret key** (starts with `sk_live_` or `sk_test_`) or create a **Restricted key** (`rk_live_...`) with the scopes you need\n4. Copy the key",
+        storage: {
+          secrets: ["STRIPE_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            STRIPE_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "sk_live_...",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
     },
   },
 } as const satisfies Record<string, ConnectorConfig>;
