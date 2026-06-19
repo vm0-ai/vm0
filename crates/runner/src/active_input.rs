@@ -49,10 +49,13 @@ impl ActiveInputSource {
         Self::LocalQueue(LocalQueueActiveInputSource { group_dir, run_id })
     }
 
-    pub(crate) fn read_entries_sync(&self) -> Vec<ActiveInputEntry> {
+    pub(crate) fn read_entries_from_sequence_sync(
+        &self,
+        min_sequence: u64,
+    ) -> Vec<ActiveInputEntry> {
         match self {
             Self::LocalQueue(source) => LocalQueue::new(source.group_dir.clone())
-                .read_active_input_entries_sync(source.run_id),
+                .read_active_input_entries_from_sequence_sync(source.run_id, min_sequence),
         }
     }
 }

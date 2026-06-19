@@ -82,11 +82,12 @@ async fn run_forwarder(
 ) {
     let mut state = ForwardState::default();
     loop {
+        let next_sequence = state.next_sequence;
         tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
-            entries = read_entries(run_id, source.clone()) => {
+            entries = read_entries(run_id, source.clone(), next_sequence) => {
                 forward_entries(run_id, &control, entries, &mut state).await;
             }
         }
@@ -100,8 +101,14 @@ async fn run_forwarder(
     }
 }
 
-async fn read_entries(run_id: RunId, source: ActiveInputSource) -> Vec<ActiveInputEntry> {
-    match tokio::task::spawn_blocking(move || source.read_entries_sync()).await {
+async fn read_entries(
+    run_id: RunId,
+    source: ActiveInputSource,
+    min_sequence: u64,
+) -> Vec<ActiveInputEntry> {
+    match tokio::task::spawn_blocking(move || source.read_entries_from_sequence_sync(min_sequence))
+        .await
+    {
         Ok(entries) => entries,
         Err(error) => {
             warn!(run_id = %run_id, error = %error, "active-input reader task failed");

@@ -519,11 +519,14 @@ impl SubmitPlan {
         cli_agent_type: &str,
         active_inputs: &[String],
     ) -> RunnerResult<()> {
-        if active_inputs.is_empty() || matches!(cli_agent_type, "" | "claude-code") {
+        // Guest-agent treats unknown CLI_AGENT_TYPE values as Claude Code.
+        // Keep local submit validation aligned and only reject the known
+        // non-Claude framework.
+        if active_inputs.is_empty() || cli_agent_type != "codex" {
             return Ok(());
         }
         Err(RunnerError::Config(format!(
-            "invalid --active-input: active input is only supported with claude-code (got {cli_agent_type})"
+            "invalid --active-input: active input is not supported with {cli_agent_type}"
         )))
     }
 
@@ -1053,7 +1056,8 @@ mod tests {
                     }
                     let request: JobRequest =
                         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-                    let inputs = queue.read_active_input_entries_sync(request.job_id);
+                    let inputs =
+                        queue.read_active_input_entries_from_sequence_sync(request.job_id, 0);
                     last_seen_inputs = last_seen_inputs.max(inputs.len());
                     if inputs.len() < expected_inputs {
                         continue;
@@ -1316,7 +1320,18 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(err.to_string().contains("only supported with claude-code"));
+        assert!(err.to_string().contains("not supported with codex"));
+    }
+
+    #[test]
+    fn accepts_active_input_for_custom_agent_that_defaults_to_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let mut args = submit_args_for_test();
+        args.cli_agent_type = "custom-agent".to_string();
+        args.active_inputs = vec!["after=1ms,text=hello".to_string()];
+
+        SubmitPlan::from_args(args, home).unwrap();
     }
 
     #[tokio::test]

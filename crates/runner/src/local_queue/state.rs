@@ -296,7 +296,11 @@ impl LocalQueue {
         Ok(())
     }
 
-    pub(crate) fn read_active_input_entries_sync(&self, run_id: RunId) -> Vec<ActiveInputEntry> {
+    pub(crate) fn read_active_input_entries_from_sequence_sync(
+        &self,
+        run_id: RunId,
+        min_sequence: u64,
+    ) -> Vec<ActiveInputEntry> {
         let run_dir = super::run_inputs_dir(&self.group_dir, run_id);
         match std::fs::symlink_metadata(&run_dir) {
             Ok(_) => {
@@ -340,6 +344,9 @@ impl LocalQueue {
             else {
                 continue;
             };
+            if sequence < min_sequence {
+                continue;
+            }
             let Ok(bytes) = super::read_private_file(&path, "local active-input file") else {
                 continue;
             };
@@ -774,7 +781,7 @@ mod tests {
             0o600
         );
         assert_eq!(
-            queue.read_active_input_entries_sync(run_id),
+            queue.read_active_input_entries_from_sequence_sync(run_id, 0),
             vec![entry_2, entry_10]
         );
     }
@@ -829,7 +836,37 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(queue.read_active_input_entries_sync(run_id), vec![valid]);
+        assert_eq!(
+            queue.read_active_input_entries_from_sequence_sync(run_id, 0),
+            vec![valid]
+        );
+    }
+
+    #[test]
+    fn active_input_read_skips_entries_before_min_sequence() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let entry_1 = ActiveInputEntry {
+            run_id,
+            sequence: 1,
+            message_id: "msg-1".to_string(),
+            text: "one".to_string(),
+        };
+        let entry_3 = ActiveInputEntry {
+            run_id,
+            sequence: 3,
+            message_id: "msg-3".to_string(),
+            text: "three".to_string(),
+        };
+        queue.write_active_input_sync(&entry_1).unwrap();
+        queue.write_active_input_sync(&entry_3).unwrap();
+
+        assert_eq!(
+            queue.read_active_input_entries_from_sequence_sync(run_id, 2),
+            vec![entry_3]
+        );
     }
 
     #[test]
