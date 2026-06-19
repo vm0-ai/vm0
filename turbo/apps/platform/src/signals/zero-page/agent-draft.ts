@@ -178,7 +178,7 @@ export const queueCurrentAgentDraftSync$ = command(
 );
 
 export const clearAgentDraftById$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
+  async ({ set }, agentId: string, signal: AbortSignal) => {
     const entry = set(ensureAgentDraft$, agentId);
     set(entry.draft.clear$);
     await set(entry.flushDraftClear$, signal);
