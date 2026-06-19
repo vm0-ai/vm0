@@ -148,6 +148,8 @@ async fn forward_entries(
                 );
                 if !retry {
                     seen.insert(entry.message_id);
+                } else {
+                    break;
                 }
             }
         }

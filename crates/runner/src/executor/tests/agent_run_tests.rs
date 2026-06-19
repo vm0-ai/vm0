@@ -230,6 +230,14 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
             text: "first".to_string(),
         })
         .unwrap();
+    LocalQueue::new(group_dir.clone())
+        .write_active_input_sync(&ActiveInputEntry {
+            run_id: ctx.run_id,
+            sequence: 2,
+            message_id: "msg-2".to_string(),
+            text: "second".to_string(),
+        })
+        .unwrap();
     let source = ActiveInputSource::local_queue(group_dir, ctx.run_id);
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -252,7 +260,7 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
 
     assert!(
         overrides
-            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(3, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
     wait_gate.notify_one();
@@ -269,7 +277,7 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
             .iter()
             .map(|call| call.message_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["msg-1", "msg-1"]
+        vec!["msg-1", "msg-1", "msg-2"]
     );
 }
 
