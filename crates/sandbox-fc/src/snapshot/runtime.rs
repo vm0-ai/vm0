@@ -568,6 +568,31 @@ mod tests {
     }
 
     #[test]
+    fn prewarm_exec_result_reports_terminal_state_without_detail() {
+        let message = expect_prewarm_setup_error(validate_prewarm_exec_result(prewarm_result(
+            ExecTermination::TimedOut,
+            Vec::new(),
+            "",
+        )));
+
+        assert_eq!(message, "pre-warm failed (termination TimedOut)");
+    }
+
+    #[test]
+    fn prewarm_exec_result_reports_terminal_state_with_diagnostic_only() {
+        let message = expect_prewarm_setup_error(validate_prewarm_exec_result(prewarm_result(
+            ExecTermination::StartFailed,
+            Vec::new(),
+            "spawn failed",
+        )));
+
+        assert_eq!(
+            message,
+            "pre-warm failed (termination StartFailed): spawn failed"
+        );
+    }
+
+    #[test]
     fn prewarm_exec_result_rejects_invalid_capture_state() {
         let overflow = expect_prewarm_setup_error(validate_prewarm_exec_result(
             vsock_host::ExecOperationResult {
