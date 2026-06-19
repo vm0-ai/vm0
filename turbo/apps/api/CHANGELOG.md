@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.162.0](https://github.com/vm0-ai/vm0/compare/api-v1.161.0...api-v1.162.0) (2026-06-19)
+
+
+### Features
+
+* show goal workflows in the workflow list ([#18341](https://github.com/vm0-ai/vm0/issues/18341)) ([02c474a](https://github.com/vm0-ai/vm0/commit/02c474adf96be6b28e41317c14274baefaf32b12))
+
+
+### Bug Fixes
+
+* stop stamping http.route onto pg client spans ([#18348](https://github.com/vm0-ai/vm0/issues/18348)) ([024b990](https://github.com/vm0-ai/vm0/commit/024b990b75098f8bf74cae0aa4e5bdaa24654d22))
+
 ## [1.161.0](https://github.com/vm0-ai/vm0/compare/api-v1.160.0...api-v1.161.0) (2026-06-19)
 
 
