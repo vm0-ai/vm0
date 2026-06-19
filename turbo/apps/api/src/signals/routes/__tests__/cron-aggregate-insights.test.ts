@@ -625,6 +625,200 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
   });
 
+  it("skips malformed network insight rows without failing aggregation", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const completedAt = new Date("2999-01-02T11:55:00.000Z");
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: completedAt,
+        startedAt: completedAt,
+        completedAt,
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+      "malformed-row",
+      {
+        _time: completedAt.toISOString(),
+        runId: "not-a-uuid",
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: 123,
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-read",
+        action: "UNKNOWN",
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().aggregate({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      users: 1,
+      windows: 1,
+      networkRows: 5,
+    });
+    const data = await findInsights(fixture);
+    expect(data?.services).toStrictEqual([
+      { domain: "github", calls: 1, agentNames: [expect.any(String)] },
+    ]);
+    const repoRead = data?.permissions.find((permission) => {
+      return permission.label.includes("repo-read");
+    });
+    expect(repoRead).toMatchObject({
+      connectorType: "github",
+      allowed: 1,
+      denied: 0,
+    });
+  });
+
+  it("handles missing permissions and excludes block actions from permission insights", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const completedAt = new Date("2999-01-02T11:55:00.000Z");
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: completedAt,
+        startedAt: completedAt,
+        completedAt,
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        action: "DENY",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: null,
+        action: "DENY",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "",
+        action: "DENY",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: null,
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "",
+        action: "ALLOW",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-write",
+        action: "BLOCK",
+      },
+      {
+        _time: completedAt.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().aggregate({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      users: 1,
+      windows: 1,
+      networkRows: 8,
+    });
+    const data = await findInsights(fixture);
+    expect(data?.services).toStrictEqual([
+      { domain: "github", calls: 8, agentNames: [expect.any(String)] },
+    ]);
+    const githubDeny = data?.permissions.find((permission) => {
+      return permission.label === "github";
+    });
+    expect(githubDeny).toMatchObject({
+      connectorType: "github",
+      allowed: 0,
+      denied: 3,
+    });
+    const repoRead = data?.permissions.find((permission) => {
+      return permission.label.includes("repo-read");
+    });
+    expect(repoRead).toMatchObject({
+      connectorType: "github",
+      allowed: 1,
+      denied: 0,
+    });
+    expect(
+      data?.permissions.some((permission) => {
+        return permission.label.includes("repo-write");
+      }),
+    ).toBeFalsy();
+  });
+
   it("attributes current-day network logs for older runs by runId", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
@@ -765,6 +959,35 @@ describe("GET /api/cron/aggregate-insights", () => {
       context.signal,
     );
     context.mocks.axiom.query.mockRejectedValue(new Error("axiom down"));
+
+    const response = await accept(
+      apiClient().aggregate({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({ users: 1, networkRows: 0 });
+    const data = await findInsights(fixture);
+    expect(data?.axiomDegraded).toBeTruthy();
+  });
+
+  it("marks insights degraded when Axiom returns a non-array result", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    await seedUserName(fixture);
+    const completedAt = new Date("2999-01-02T11:55:00.000Z");
+    await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: completedAt,
+        startedAt: completedAt,
+        completedAt,
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue({ rows: [] });
 
     const response = await accept(
       apiClient().aggregate({ headers: cronHeaders() }),
