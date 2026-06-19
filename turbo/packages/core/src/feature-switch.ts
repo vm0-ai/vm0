@@ -40,97 +40,97 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
   [FeatureSwitchKey.BentomlConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
   [FeatureSwitchKey.BoxConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Box file storage connector",
     enabled: false,
   },
   [FeatureSwitchKey.CanvaConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Canva design connector",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Deel HR connector",
     enabled: false,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
   [FeatureSwitchKey.DropboxConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Dropbox file storage connector",
     enabled: false,
   },
   [FeatureSwitchKey.FigmaConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Figma design connector",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
   [FeatureSwitchKey.Microsoft365Connector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Microsoft 365 connector",
     enabled: false,
   },
   [FeatureSwitchKey.NeonConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
     enabled: false,
   },
   [FeatureSwitchKey.QuickBooksConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the QuickBooks accounting connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Reddit connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.SupabaseConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Supabase database connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.CloseConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Close CRM connector",
     enabled: false,
   },
   [FeatureSwitchKey.WebflowConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookMailConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Outlook Mail connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookCalendarConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
@@ -140,7 +140,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
   },
   [FeatureSwitchKey.TikTokAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
@@ -150,28 +150,28 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
   },
   [FeatureSwitchKey.AwsConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "liangyou@vm0.ai",
     description: "Enable the temporary AWS remote login connector",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PosthogConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",
     enabled: false,
   },
   [FeatureSwitchKey.ResendConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Resend email service connector",
     enabled: false,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
@@ -193,7 +193,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "lancy@vm0.ai",
     description: "Enable remote desktop host registration",
     enabled: false,
   },
@@ -223,17 +223,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",
     enabled: false,
   },
   [FeatureSwitchKey.StabilityAiConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description: "Enable the Stability AI image generation connector",
     enabled: false,
   },
   [FeatureSwitchKey.ZoomConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description:
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
@@ -247,7 +247,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "yuma@vm0.ai",
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
@@ -264,18 +264,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
-  },
-  [FeatureSwitchKey.AgentChatDrafts]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Persist per-user, per-org drafts for the new agent chat page. When disabled, agent chat uses the local non-persisted draft path and does not call the agent draft endpoint.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadDoubleClickRename]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Open the existing chat rename dialog when a sidebar chat thread is double-clicked.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
@@ -305,12 +293,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatRunUsage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show per-run usage chips in the Zero chat message action bar.",
-    enabled: true,
-  },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
     description: "Show a PPTX download action for presentation HTML artifacts.",
@@ -322,6 +304,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread. Individuals opt in via feature-switch overrides.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",

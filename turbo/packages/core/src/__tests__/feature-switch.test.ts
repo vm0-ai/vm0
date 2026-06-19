@@ -126,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
