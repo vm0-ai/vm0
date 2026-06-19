@@ -690,8 +690,8 @@ jobs:
             --timeout 180 \
             --cli-agent-type claude-code \
             --prompt '@active-input-smoke:2' \
-            --active-input 'after=1s,text=first' \
-            --active-input 'after=2s,text=second' 2>&1); then
+            --active-input 'after=10ms,text=first' \
+            --active-input 'after=20ms,text=second' 2>&1); then
             echo "$SUBMIT_OUTPUT"
             print_service_logs
             fail "mock Claude active-input local submit smoke failed"
