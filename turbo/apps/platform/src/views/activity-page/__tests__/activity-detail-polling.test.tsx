@@ -1690,7 +1690,8 @@ describe("activity detail polling", () => {
         expect(query.cursor).toBe(secondDownloadNetworkCursor);
         return respond(200, {
           networkLogs: codexNetworkSecondPage(),
-          hasMore: false,
+          hasMore: true,
+          nextCursor: secondDownloadNetworkCursor,
         });
       },
     );
@@ -1741,9 +1742,10 @@ describe("activity detail polling", () => {
         return log.url === "http://metadata.google.internal/latest/meta-data";
       }),
     ).toBeTruthy();
-    expect(requestedDownloadNetworkCursors).toContain(
+    expect(requestedDownloadNetworkCursors).toStrictEqual([
+      undefined,
       secondDownloadNetworkCursor,
-    );
+    ]);
     expect(downloads.revokedUrls).toContain(download.url);
   });
 
@@ -1800,7 +1802,8 @@ describe("activity detail polling", () => {
         expect(query.cursor).toBe(secondNetworkPageCursor);
         return respond(200, {
           networkLogs: codexNetworkSecondPage(),
-          hasMore: false,
+          hasMore: true,
+          nextCursor: secondNetworkPageCursor,
         });
       },
     );
@@ -1913,6 +1916,9 @@ describe("activity detail polling", () => {
       undefined,
       secondNetworkPageCursor,
     ]);
+    await waitFor(() => {
+      expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    });
   });
 
   it("shows codex fallback event rows for failed activity details", async () => {

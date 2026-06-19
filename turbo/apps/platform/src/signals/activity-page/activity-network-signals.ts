@@ -68,7 +68,7 @@ export async function fetchAllNetworkLogs(
     );
     all.push(...logs);
 
-    if (!hasMore || logs.length === 0) {
+    if (!hasMore || logs.length === 0 || nextCursor === cursor) {
       break;
     }
 
@@ -194,10 +194,12 @@ export const loadNetworkLogsNextPage$ = command(
     signal.throwIfAborted();
 
     set(pagination$, (current) => {
+      const repeatedCursor =
+        nextCursor !== null && nextCursor === current.cursor;
       return {
         ...current,
         logs: [...current.logs, ...logs],
-        hasMore,
+        hasMore: hasMore && !repeatedCursor,
         cursor: nextCursor ?? current.cursor,
         pageCount: current.pageCount + 1,
         loading: false,
