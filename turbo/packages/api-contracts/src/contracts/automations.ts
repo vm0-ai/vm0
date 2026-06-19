@@ -232,6 +232,23 @@ export const automationsMainContract = c.router({
     },
     summary: "List automations with their triggers",
   },
+  // Enable/disable a thread-bound workflow or goal trigger (the rows surfaced
+  // in `workflowTriggers`). Session-authed, returns no body.
+  toggleWorkflowTrigger: {
+    method: "POST",
+    path: "/api/automations/workflow-triggers/:id/enabled",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParamsSchema,
+    body: z.object({ enabled: z.boolean() }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Enable or disable a thread-bound workflow/goal trigger",
+  },
 });
 
 export const automationsByRefContract = c.router({

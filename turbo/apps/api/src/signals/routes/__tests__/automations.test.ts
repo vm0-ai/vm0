@@ -594,6 +594,61 @@ describe("Automations API", () => {
     });
   });
 
+  it("toggles a thread workflow/goal trigger enabled state", async () => {
+    const fixture = await seedFixture();
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        userId: fixture.userId,
+        agentComposeId: fixture.composeId,
+        title: "goal thread",
+      })
+      .returning({ id: chatThreads.id });
+    const [workflow] = await db
+      .insert(zeroWorkflows)
+      .values({
+        orgId: fixture.orgId,
+        name: `goal-${randomUUID().slice(0, 8)}`,
+        visibility: "private",
+        type: "goal",
+        active: true,
+        preference: { version: 1, objective: "ship it" },
+        ownerUserId: fixture.userId,
+        displayName: "Goal",
+        createdBy: fixture.userId,
+      })
+      .returning({ id: zeroWorkflows.id });
+    const [trigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId: workflow!.id,
+        agentId: fixture.composeId,
+        ownerUserId: fixture.userId,
+        kind: "event",
+        eventType: "thread-idle",
+        enabled: true,
+        chatThreadId: thread!.id,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+
+    await accept(
+      mainApi().toggleWorkflowTrigger({
+        headers: SESSION_HEADERS,
+        params: { id: trigger!.id },
+        body: { enabled: false },
+      }),
+      [204],
+    );
+
+    const [after] = await db
+      .select({ enabled: zeroWorkflowTriggers.enabled })
+      .from(zeroWorkflowTriggers)
+      .where(eq(zeroWorkflowTriggers.id, trigger!.id));
+    expect(after?.enabled).toBe(false);
+  });
+
   it("updates identity fields and rejects a rename onto a taken name", async () => {
     const fixture = await seedFixture();
     await enableWebhookTriggers(fixture);

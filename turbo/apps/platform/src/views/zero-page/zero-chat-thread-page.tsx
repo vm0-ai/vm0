@@ -180,6 +180,7 @@ import {
   headerAutomationMenu$,
   headerWorkflowTriggers$,
   reloadHeaderAutomationMenu$,
+  toggleWorkflowTriggerEnabled$,
   automationsForThread,
   workflowTriggersForThread,
   type HeaderAutomationEntry,
@@ -2102,21 +2103,31 @@ function HeaderAutomationSidebarCard({
   );
 }
 
-function workflowTriggerTypeLabel(trigger: HeaderWorkflowTriggerEntry): string {
-  return trigger.workflowType === "goal" ? "Goal" : "Workflow";
-}
-
 function HeaderWorkflowTriggerCard({
   trigger,
 }: {
   trigger: HeaderWorkflowTriggerEntry;
 }) {
+  const pageSignal = useGet(pageSignal$);
+  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
+    toggleWorkflowTriggerEnabled$,
+  );
+  const toggling = togglingLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
   // Goals have no description — their human text is the objective. Workflows use
   // their description.
   const description = (
     trigger.workflowObjective ?? trigger.workflowDescription
   )?.trim();
+
+  const toggleEnabled = (enabled: boolean) => {
+    detach(
+      toggleEnabledTracked({ triggerId: trigger.id, enabled }, pageSignal),
+      Reason.DomCallback,
+      "toggle workflow trigger enabled",
+    );
+  };
+
   return (
     <article
       className={cn(
@@ -2124,44 +2135,36 @@ function HeaderWorkflowTriggerCard({
         !trigger.enabled && "opacity-75",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p
-          className={cn(
-            "line-clamp-1 text-sm font-medium leading-snug",
-            trigger.enabled ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {title}
-        </p>
-        <span className="shrink-0 rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {workflowTriggerTypeLabel(trigger)}
-        </span>
-      </div>
+      <p
+        className={cn(
+          "line-clamp-1 text-sm font-medium leading-snug",
+          trigger.enabled ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {title}
+      </p>
       {description ? (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+        <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
           {description}
         </p>
       ) : null}
 
-      <dl className="mt-3 text-xs">
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">Status</dt>
-          <dd
-            className={cn(
-              "font-medium",
-              trigger.enabled ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {trigger.enabled ? "Active" : "Paused"}
-          </dd>
-        </div>
-        <div className="flex items-center justify-between gap-3 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">Trigger</dt>
-          <dd className="min-w-0 truncate text-right font-medium text-foreground">
-            {trigger.summary}
-          </dd>
-        </div>
-      </dl>
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3 text-xs">
+        <span
+          className={cn(
+            "font-medium",
+            trigger.enabled ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {trigger.enabled ? "Active" : "Inactive"}
+        </span>
+        <LoadingSwitch
+          checked={trigger.enabled}
+          loading={toggling}
+          onCheckedChange={toggleEnabled}
+          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+        />
+      </div>
     </article>
   );
 }
@@ -2236,9 +2239,6 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
             ) : null}
             {workflowTriggers.length > 0 ? (
               <div className="grid gap-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Workflows &amp; Goals
-                </div>
                 {workflowTriggers.map((trigger) => {
                   return (
                     <HeaderWorkflowTriggerCard

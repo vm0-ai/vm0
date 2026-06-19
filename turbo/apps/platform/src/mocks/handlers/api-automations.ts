@@ -13,6 +13,7 @@ import {
   getMockAutomations,
   getMockWorkflowTriggers,
   setMockAutomations,
+  setMockWorkflowTriggers,
 } from "./automations-store.ts";
 
 // The Automation resource API over the shared automation store: each store row
@@ -150,6 +151,21 @@ export const apiAutomationsHandlers = [
       }),
       workflowTriggers: getMockWorkflowTriggers(),
     }),
+  ),
+
+  // POST /api/automations/workflow-triggers/:id/enabled
+  mockApi(
+    automationsMainContract.toggleWorkflowTrigger,
+    ({ params, body, respond }) => {
+      setMockWorkflowTriggers(
+        getMockWorkflowTriggers().map((trigger) => {
+          return trigger.id === params.id
+            ? { ...trigger, enabled: body.enabled }
+            : trigger;
+        }),
+      );
+      return respond(204);
+    },
   ),
 
   // POST /api/automations

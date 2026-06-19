@@ -15,6 +15,7 @@ import {
 import { and, asc, eq, isNotNull, or } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
@@ -356,6 +357,63 @@ export async function listChatThreadWorkflowTriggers(
       },
     ];
   });
+}
+
+/**
+ * Enable or disable a chat-thread-bound workflow or goal trigger (the rows the
+ * automation sidebar lists). Owner-scoped. Schedule triggers reseed/clear their
+ * next run; event (goal) triggers just flip `enabled`. Publishes the realtime
+ * automations-changed signal so open sidebars refresh.
+ */
+export async function setChatThreadWorkflowTriggerEnabled(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly triggerId: string;
+    readonly enabled: boolean;
+  },
+): Promise<"ok" | "not-found"> {
+  const [trigger] = await db
+    .select()
+    .from(zeroWorkflowTriggers)
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.id, args.triggerId),
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (!trigger) {
+    return "not-found";
+  }
+
+  const now = nowDate();
+  const nextRunAt =
+    trigger.kind === "schedule"
+      ? args.enabled
+        ? resolveNextRunAt(rowToSchedule(trigger), true, now)
+        : null
+      : trigger.nextRunAt;
+
+  await db
+    .update(zeroWorkflowTriggers)
+    .set({
+      enabled: args.enabled,
+      nextRunAt,
+      ...(args.enabled ? { consecutiveFailures: 0 } : {}),
+      updatedAt: now,
+    })
+    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
+
+  if (trigger.chatThreadId) {
+    await publishChatThreadAutomationsChangedSafely(
+      args.userId,
+      trigger.chatThreadId,
+    );
+  }
+  return "ok";
 }
 
 /**

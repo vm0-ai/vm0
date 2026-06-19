@@ -218,6 +218,21 @@ export async function listThreadWorkflowTriggers(
   return result.body.workflowTriggers;
 }
 
+/** Enable or disable a thread-bound workflow/goal trigger. */
+export async function setWorkflowTriggerEnabled(
+  client: ZeroClientFactory,
+  params: { triggerId: string; enabled: boolean },
+): Promise<void> {
+  await accept(
+    client(automationsMainContract).toggleWorkflowTrigger({
+      params: { id: params.triggerId },
+      body: { enabled: params.enabled },
+    }),
+    [204],
+    { toast: false },
+  );
+}
+
 async function createAutomation(
   client: ZeroClientFactory,
   body: AutomationFormBody,

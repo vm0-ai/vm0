@@ -6,6 +6,7 @@ import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import {
   listAutomations,
   listThreadWorkflowTriggers,
+  setWorkflowTriggerEnabled,
 } from "../zero-page/automations-api.ts";
 import { automationToTimeString } from "../zero-page/zero-automations.ts";
 
@@ -121,6 +122,23 @@ export const headerWorkflowTriggers$ = computed(
         summary: workflowTriggerSummary(trigger),
       };
     });
+  },
+);
+
+/**
+ * Enable/disable a thread's workflow or goal trigger from the sidebar toggle,
+ * then refetch so the card reflects the new state. The backend also publishes
+ * the realtime signal so other open clients refresh.
+ */
+export const toggleWorkflowTriggerEnabled$ = command(
+  async (
+    { get, set },
+    params: { readonly triggerId: string; readonly enabled: boolean },
+    signal: AbortSignal,
+  ) => {
+    await setWorkflowTriggerEnabled(get(zeroClient$), params);
+    signal.throwIfAborted();
+    set(reloadHeaderAutomationMenu$);
   },
 );
 

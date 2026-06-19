@@ -3179,11 +3179,14 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    expect(within(sidebar).getByText("Workflows & Goals")).toBeInTheDocument();
+    // The goal card shows its title and the objective (goals have no
+    // description), plus the Active state with an enable/disable toggle.
+    expect(within(sidebar).getByText("Goal")).toBeInTheDocument();
     expect(
       within(sidebar).getByText("Drive the release to merge"),
     ).toBeInTheDocument();
-    expect(within(sidebar).getByText("On thread idle")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Active")).toBeInTheDocument();
+    expect(within(sidebar).getByLabelText("Disable Goal")).toBeInTheDocument();
   });
 
   it("shows automation run messages as automation links in chat history", async () => {
