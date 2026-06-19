@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.124.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.123.0...runner-rs-v0.124.0) (2026-06-19)
+
+
+### Features
+
+* add maskdb connector ([#18320](https://github.com/vm0-ai/vm0/issues/18320)) ([c7b5ae4](https://github.com/vm0-ai/vm0/commit/c7b5ae4f44579fb9b166022e858dbe7c920078aa))
+
+
+### Bug Fixes
+
+* **runner:** validate storage cache content range probe ([#18282](https://github.com/vm0-ai/vm0/issues/18282)) ([3d78919](https://github.com/vm0-ai/vm0/commit/3d789199dfb29d84a3522b8a3d9d28a7243e3a35))
+
+
+### Refactoring
+
+* classify runner helper exec termination ([#18287](https://github.com/vm0-ai/vm0/issues/18287)) ([e3ed049](https://github.com/vm0-ai/vm0/commit/e3ed0499d16606a74909e06e31337a9b9232285a))
+
 ## [0.123.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.122.0...runner-rs-v0.123.0) (2026-06-18)
 
 

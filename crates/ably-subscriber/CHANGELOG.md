@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.23...ably-subscriber-v1.0.0) (2026-06-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ably-subscriber:** TimingConfig no longer exposes initial_retry_interval, max_retry_interval, max_retry_attempts, or reattach_window. Use disconnected_retry_timeout, suspended_retry_timeout, channel_retry_timeout, min_reconnect_interval, and realtime_request_timeout for active retry behavior.
+
+### Refactoring
+
+* **ably-subscriber:** remove legacy timing config fields ([#18291](https://github.com/vm0-ai/vm0/issues/18291)) ([fc6c3a3](https://github.com/vm0-ai/vm0/commit/fc6c3a39002b2465f3f1551bceceb2b35c6b0eb7)), closes [#18275](https://github.com/vm0-ai/vm0/issues/18275)
+
 ## [0.7.23](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.22...ably-subscriber-v0.7.23) (2026-06-18)
 
 
