@@ -1673,11 +1673,23 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
       return respond(200, codexRunContext(runId));
     });
+    const secondDownloadNetworkCursor = "time:asc:2026-03-10T14%3A56%3A03Z";
+    const requestedDownloadNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
-      ({ respond }) => {
+      ({ query, respond }) => {
+        requestedDownloadNetworkCursors.push(query.cursor);
+        if (query.cursor === undefined) {
+          return respond(200, {
+            networkLogs: checkoutNetworkLogs(),
+            hasMore: true,
+            nextCursor: secondDownloadNetworkCursor,
+          });
+        }
+
+        expect(query.cursor).toBe(secondDownloadNetworkCursor);
         return respond(200, {
-          networkLogs: checkoutNetworkLogs(),
+          networkLogs: codexNetworkSecondPage(),
           hasMore: false,
         });
       },
@@ -1724,6 +1736,14 @@ describe("activity detail polling", () => {
     expect(downloaded.networkLogs?.[0]?.url).toBe(
       "https://payments.example.test/v1/checkout",
     );
+    expect(
+      downloaded.networkLogs?.some((log) => {
+        return log.url === "http://metadata.google.internal/latest/meta-data";
+      }),
+    ).toBeTruthy();
+    expect(requestedDownloadNetworkCursors).toContain(
+      secondDownloadNetworkCursor,
+    );
     expect(downloads.revokedUrls).toContain(download.url);
   });
 
@@ -1762,16 +1782,22 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
       return respond(200, { sandboxReuseResult: "reused" });
     });
+    const secondNetworkPageCursor = "time:asc:2026-03-10T15%3A00%3A02Z";
+    const requestedNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
       ({ query, respond }) => {
-        if (query.since === undefined) {
+        requestedNetworkCursors.push(query.cursor);
+
+        if (query.cursor === undefined) {
           return respond(200, {
             networkLogs: codexNetworkFirstPage(),
             hasMore: true,
+            nextCursor: secondNetworkPageCursor,
           });
         }
 
+        expect(query.cursor).toBe(secondNetworkPageCursor);
         return respond(200, {
           networkLogs: codexNetworkSecondPage(),
           hasMore: false,
@@ -1883,6 +1909,10 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("403")).toBeInTheDocument();
     expect(screen.getByText("1.0s")).toBeInTheDocument();
+    expect(requestedNetworkCursors).toStrictEqual([
+      undefined,
+      secondNetworkPageCursor,
+    ]);
   });
 
   it("shows codex fallback event rows for failed activity details", async () => {

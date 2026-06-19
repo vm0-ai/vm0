@@ -21,21 +21,30 @@ async function fetchPage(
   client: NetworkLogsClient,
   runId: string,
   signal?: AbortSignal,
-  since?: number,
-): Promise<{ logs: NetworkLogEntry[]; hasMore: boolean }> {
+  cursor?: string,
+): Promise<{
+  logs: NetworkLogEntry[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
   const result = await accept(
     client.getNetworkLogs({
       params: { id: runId },
       query: {
         limit: PAGE_LIMIT,
         order: "asc",
-        ...(since !== undefined && { since }),
+        ...(cursor !== undefined && { cursor }),
       },
       fetchOptions: signal ? { signal } : undefined,
     }),
     [200],
   );
-  return { logs: result.body.networkLogs, hasMore: result.body.hasMore };
+  const nextCursor = result.body.nextCursor ?? null;
+  return {
+    logs: result.body.networkLogs,
+    hasMore: result.body.hasMore && nextCursor !== null,
+    nextCursor,
+  };
 }
 
 /**
@@ -47,19 +56,23 @@ export async function fetchAllNetworkLogs(
   signal: AbortSignal,
 ): Promise<NetworkLogEntry[]> {
   const all: NetworkLogEntry[] = [];
-  let since: number | undefined;
+  let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     signal.throwIfAborted();
-    const { logs, hasMore } = await fetchPage(client, runId, signal, since);
+    const { logs, hasMore, nextCursor } = await fetchPage(
+      client,
+      runId,
+      signal,
+      cursor,
+    );
     all.push(...logs);
 
     if (!hasMore || logs.length === 0) {
       break;
     }
 
-    const lastEntry = logs[logs.length - 1];
-    since = new Date(lastEntry.timestamp).getTime();
+    cursor = nextCursor ?? undefined;
   }
 
   return all;
@@ -85,7 +98,7 @@ interface PaginationState {
   runId: string | null;
   logs: NetworkLogEntry[];
   hasMore: boolean;
-  since: number | undefined;
+  cursor: string | undefined;
   pageCount: number;
   loading: boolean;
 }
@@ -95,7 +108,7 @@ const pagination$ = state<PaginationState>({
   runId: null,
   logs: [],
   hasMore: false,
-  since: undefined,
+  cursor: undefined,
   pageCount: 0,
   loading: false,
 });
@@ -148,12 +161,11 @@ export const loadNetworkLogsNextPage$ = command(
       if (!first || !first.hasMore || first.logs.length === 0) {
         return;
       }
-      const lastEntry = first.logs[first.logs.length - 1];
       pg = {
         runId,
         logs: [],
         hasMore: first.hasMore,
-        since: new Date(lastEntry.timestamp).getTime(),
+        cursor: first.nextCursor ?? undefined,
         pageCount: 1,
         loading: false,
       };
@@ -173,23 +185,20 @@ export const loadNetworkLogsNextPage$ = command(
     };
 
     const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-    const { logs, hasMore } = await fetchPage(
+    const { logs, hasMore, nextCursor } = await fetchPage(
       client,
       runId,
       signal,
-      pg.since,
+      pg.cursor,
     ).finally(clearLoading);
     signal.throwIfAborted();
 
-    const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
     set(pagination$, (current) => {
       return {
         ...current,
         logs: [...current.logs, ...logs],
         hasMore,
-        since: lastEntry
-          ? new Date(lastEntry.timestamp).getTime()
-          : current.since,
+        cursor: nextCursor ?? current.cursor,
         pageCount: current.pageCount + 1,
         loading: false,
       };
