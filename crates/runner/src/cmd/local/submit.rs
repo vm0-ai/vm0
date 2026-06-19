@@ -731,6 +731,8 @@ mod tests {
 
     /// Serialize tests that mutate environment variables to prevent UB.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
+    const TEST_QUEUE_WATCH_TIMEOUT: Duration = Duration::from_secs(5);
+    const TEST_QUEUE_WATCH_INTERVAL: Duration = Duration::from_millis(1);
 
     fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
         SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
@@ -1012,6 +1014,8 @@ mod tests {
     ) -> (JobRequest, Vec<local_queue::ActiveInputEntry>) {
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile).unwrap();
         let queue = local_queue::LocalQueue::new(group_dir.clone());
+        let deadline = tokio::time::Instant::now() + TEST_QUEUE_WATCH_TIMEOUT;
+        let mut last_seen_inputs = 0;
         loop {
             if let Ok(entries) = std::fs::read_dir(&job_dir) {
                 for entry in entries.filter_map(Result::ok) {
@@ -1022,6 +1026,7 @@ mod tests {
                     let request: JobRequest =
                         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
                     let inputs = queue.read_active_input_entries_sync(request.job_id);
+                    last_seen_inputs = last_seen_inputs.max(inputs.len());
                     if inputs.len() < expected_inputs {
                         continue;
                     }
@@ -1037,7 +1042,13 @@ mod tests {
                 }
             }
 
-            tokio::task::yield_now().await;
+            if tokio::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {expected_inputs} local active inputs in {} (last seen: {last_seen_inputs})",
+                    job_dir.display()
+                );
+            }
+            tokio::time::sleep(TEST_QUEUE_WATCH_INTERVAL).await;
         }
     }
 
