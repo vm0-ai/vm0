@@ -29,6 +29,7 @@ export interface PermissionDraftIntent {
   readonly permissionExpirations: Readonly<
     Record<string, UserPermissionGrantExpiresIn>
   >;
+  readonly clearedPermissionExpirations: Readonly<Record<string, true>>;
   readonly unknownExpiration: UserPermissionGrantExpiresIn | undefined;
 }
 
@@ -242,6 +243,7 @@ export function createEmptyPermissionDraftIntent(): PermissionDraftIntent {
     resetPending: false,
     groupExpirations: {},
     permissionExpirations: {},
+    clearedPermissionExpirations: {},
     unknownExpiration: undefined,
   };
 }
@@ -383,6 +385,9 @@ export function resolvePermissionDraftExpiration(
   if (params.draft.restoredPermissions[params.permissionName]) {
     return undefined;
   }
+  if (params.draft.clearedPermissionExpirations[params.permissionName]) {
+    return undefined;
+  }
   const category = permissionCategory(
     params.context.metadata,
     params.permissionName,
@@ -482,6 +487,7 @@ export function setPermissionDraftConnectorPolicy({
       ? {
           groupExpirations: {},
           permissionExpirations: {},
+          clearedPermissionExpirations: {},
           unknownExpiration: undefined,
         }
       : {}),
@@ -512,6 +518,16 @@ export function setPermissionDraftGroupPolicy({
           }),
         )
       : draft.permissionExpirations;
+  const nextClearedPermissionExpirations =
+    policy === "deny"
+      ? Object.fromEntries(
+          Object.entries(draft.clearedPermissionExpirations).filter(
+            ([name]) => {
+              return !permissionNames.has(name);
+            },
+          ),
+        )
+      : draft.clearedPermissionExpirations;
 
   return {
     ...draft,
@@ -527,6 +543,7 @@ export function setPermissionDraftGroupPolicy({
         ? omitKey(draft.groupExpirations, category)
         : draft.groupExpirations,
     permissionExpirations: nextPermissionExpirations,
+    clearedPermissionExpirations: nextClearedPermissionExpirations,
   };
 }
 
@@ -593,6 +610,10 @@ export function restorePermissionDraftGroup({
       draft.permissionExpirations,
       permissionNames,
     ),
+    clearedPermissionExpirations: omitKeys(
+      draft.clearedPermissionExpirations,
+      permissionNames,
+    ),
     restoredPermissions: omitKeys(draft.restoredPermissions, permissionNames),
   };
 }
@@ -612,6 +633,10 @@ export function restorePermissionDraftPermission({
       [permissionName]: true,
     },
     permissionExpirations: omitKey(draft.permissionExpirations, permissionName),
+    clearedPermissionExpirations: {
+      ...draft.clearedPermissionExpirations,
+      [permissionName]: true,
+    },
   };
 }
 
@@ -659,6 +684,7 @@ export function stagePermissionDraftConnectorRestore({
     resetPending: true,
     groupExpirations: {},
     permissionExpirations: {},
+    clearedPermissionExpirations: {},
     unknownExpiration: undefined,
   };
 }
@@ -681,6 +707,10 @@ export function setPermissionDraftExpiration({
             ...draft.permissionExpirations,
             [permissionName]: expiresIn,
           },
+    clearedPermissionExpirations: omitKey(
+      draft.clearedPermissionExpirations,
+      permissionName,
+    ),
     restoredPermissions: omitKey(draft.restoredPermissions, permissionName),
   };
 }
@@ -713,6 +743,10 @@ export function setPermissionDraftGroupExpiration({
     restoredGroups: omitKey(draft.restoredGroups, category),
     permissionExpirations: omitKeys(
       draft.permissionExpirations,
+      permissionNames,
+    ),
+    clearedPermissionExpirations: omitKeys(
+      draft.clearedPermissionExpirations,
       permissionNames,
     ),
     restoredPermissions: omitKeys(draft.restoredPermissions, permissionNames),
@@ -786,6 +820,7 @@ export function isPermissionDraftPristine(
     Object.keys(draft.restoredPermissions).length === 0 &&
     Object.keys(draft.groupExpirations).length === 0 &&
     Object.keys(draft.permissionExpirations).length === 0 &&
+    Object.keys(draft.clearedPermissionExpirations).length === 0 &&
     draft.unknownExpiration === undefined
   );
 }

@@ -16,6 +16,7 @@ import {
   resolvePermissionDraftUnknownPolicy,
   restorePermissionDraftPermission,
   restorePermissionDraftUnknown,
+  setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
   setPermissionDraftGroupAllowExpiration,
   setPermissionDraftGroupAllowPolicy,
@@ -264,6 +265,79 @@ describe("permission draft intent", () => {
     expect(materialized.expiresInByPermission).not.toHaveProperty(
       "bookmarks:read",
     );
+  });
+
+  it("keeps a restored row detached from group duration after group allow", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = restorePermissionDraftPermission({
+      draft,
+      permissionName: "bookmarks:read",
+    });
+    draft = setPermissionDraftGroupAllowPolicy({
+      context,
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+    });
+
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "bookmarks:read",
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "channels:read",
+      }),
+    ).toBe("7d");
+  });
+
+  it("keeps a restored row detached from group duration after connector allow", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = restorePermissionDraftPermission({
+      draft,
+      permissionName: "bookmarks:read",
+    });
+    draft = setPermissionDraftConnectorPolicy({
+      draft,
+      policy: "allow",
+      includeUnknown: true,
+    });
+
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "bookmarks:read",
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePermissionDraftExpiration({
+        context,
+        draft,
+        permissionName: "channels:read",
+      }),
+    ).toBe("7d");
   });
 
   it("clears row expiration overrides when setting a group duration", () => {
