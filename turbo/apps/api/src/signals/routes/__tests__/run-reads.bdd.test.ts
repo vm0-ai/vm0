@@ -1668,6 +1668,24 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     expect(invalidSystemQuery.status).toBe(400);
 
+    // Out-of-range `since` cursors are finite numbers that survive coercion but
+    // overflow `new Date(...).toISOString()`. They must be rejected with a 400
+    // at validation time instead of throwing a 500 inside the service.
+    const outOfRangeSince = await reads.rawApiRequest(
+      actor,
+      `/api/agent/runs/${runId}/telemetry/system-log?since=8640000000000001`,
+    );
+    expect(outOfRangeSince.status).toBe(400);
+
+    // The maximum representable timestamp still pages successfully.
+    const maxSince = await reads.requestRunSystemLog(
+      actor,
+      pendingRun.runId,
+      { limit: 10, order: "desc", since: 8_640_000_000_000_000 },
+      [200],
+    );
+    expect(maxSince.body).toStrictEqual({ systemLog: "", hasMore: false });
+
     // Metric pages.
     const metricsPage = await reads.requestRunMetrics(
       actor,
@@ -1818,6 +1836,15 @@ describe("RUN-04: agent run telemetry families", () => {
       networkLogs: expectedNetworkLogs,
       hasMore: true,
     });
+
+    // The zero network read shares the same bounded `since` cursor: an
+    // out-of-range timestamp is rejected with a 400 before reaching the
+    // service, not surfaced as a 500 from `new Date(...).toISOString()`.
+    const zeroOutOfRangeSince = await reads.rawApiRequest(
+      actor,
+      `/api/zero/runs/${zeroRun.runId}/network?since=8640000000000001`,
+    );
+    expect(zeroOutOfRangeSince.status).toBe(400);
   });
 
   it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
