@@ -86,6 +86,7 @@ const L = logger("ChatThread");
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
+const GROUPED_CHAT_MESSAGES_CACHE_LIMIT = 20;
 
 export interface LoadHistoryResult {
   hasMore: boolean;
@@ -1044,6 +1045,100 @@ function groupMessagesForDisplay(
   });
 }
 
+interface GroupedChatMessagesCacheEntry {
+  messages: readonly EnrichedChatMessage[];
+  groups: GroupedChatMessageGroup[];
+}
+
+type GroupedChatMessagesCache = ReadonlyMap<
+  string,
+  GroupedChatMessagesCacheEntry
+>;
+
+function groupedChatMessagesCacheKey(
+  messages: readonly EnrichedChatMessage[],
+): string {
+  const firstMessageId = messages[0]?.id ?? "empty";
+  const lastMessageId = messages[messages.length - 1]?.id ?? "empty";
+  return `${firstMessageId}:${lastMessageId}`;
+}
+
+function cachedGroupedChatMessages(
+  cache: GroupedChatMessagesCache,
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] | undefined {
+  const entry = cache.get(groupedChatMessagesCacheKey(messages));
+  if (entry?.messages !== messages) {
+    return undefined;
+  }
+  return entry.groups;
+}
+
+function setGroupedChatMessagesCacheEntry(
+  cache: GroupedChatMessagesCache,
+  messages: readonly EnrichedChatMessage[],
+  groups: GroupedChatMessageGroup[],
+): GroupedChatMessagesCache {
+  const key = groupedChatMessagesCacheKey(messages);
+  const current = cache.get(key);
+  if (current?.messages === messages && current.groups === groups) {
+    return cache;
+  }
+
+  const next = new Map(cache);
+  next.delete(key);
+  next.set(key, { messages, groups });
+
+  while (next.size > GROUPED_CHAT_MESSAGES_CACHE_LIMIT) {
+    const oldestKey = next.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    next.delete(oldestKey);
+  }
+
+  return next;
+}
+
+function createGroupedChatMessagesCache(
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>,
+) {
+  const groupedChatMessagesCache$ = state<GroupedChatMessagesCache>(new Map());
+
+  const refreshGroupedChatMessagesCache$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const messages = await get(allMessages$);
+      signal.throwIfAborted();
+
+      const cachedGroups = cachedGroupedChatMessages(
+        get(groupedChatMessagesCache$),
+        messages,
+      );
+      if (cachedGroups !== undefined) {
+        return;
+      }
+
+      const groups = groupMessagesForDisplay(messages);
+      set(groupedChatMessagesCache$, (cache) => {
+        return setGroupedChatMessagesCacheEntry(cache, messages, groups);
+      });
+    },
+  );
+
+  const groupedChatMessages$ = computed(
+    async (get): Promise<GroupedChatMessageGroup[]> => {
+      const messages = await get(allMessages$);
+      const cachedGroups = cachedGroupedChatMessages(
+        get(groupedChatMessagesCache$),
+        messages,
+      );
+      return cachedGroups ?? groupMessagesForDisplay(messages);
+    },
+  );
+
+  return { groupedChatMessages$, refreshGroupedChatMessagesCache$ };
+}
+
 type ServerMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
@@ -1246,6 +1341,7 @@ function createFetchNextPageCommand({
   initialPage$,
   nextCursorId$,
   appendServerMessages$,
+  refreshGroupedChatMessagesCache$,
   reportedCompletedRunIds$,
   knownServerMessageIds$,
   dataSource,
@@ -1254,12 +1350,14 @@ function createFetchNextPageCommand({
   initialPage$: Computed<Promise<InitialPage>>;
   nextCursorId$: State<string | undefined>;
   appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   reportedCompletedRunIds$: State<Set<string>>;
   knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
     let sinceId: string | undefined = get(nextCursorId$);
+    let messagesMayHaveChanged = false;
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
@@ -1270,6 +1368,7 @@ function createFetchNextPageCommand({
         threadId,
         messages: initial.messages,
       });
+      messagesMayHaveChanged = true;
       set(reportedCompletedRunIds$, (prev) => {
         const ids = completedRunIdsFromMessages(initial.messages);
         if (ids.length === 0) {
@@ -1315,12 +1414,21 @@ function createFetchNextPageCommand({
       });
       if (result.messages.length > 0) {
         set(appendServerMessages$, result.messages);
+        messagesMayHaveChanged = true;
         sinceId = result.messages[result.messages.length - 1].id;
         set(nextCursorId$, sinceId);
       }
       if (result.reachedEnd) {
+        if (messagesMayHaveChanged) {
+          await set(refreshGroupedChatMessagesCache$, signal);
+          signal.throwIfAborted();
+        }
         return true;
       }
+    }
+    if (messagesMayHaveChanged) {
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
     }
     return false;
   });
@@ -1338,12 +1446,6 @@ function createPagedMessages(
   const serverMessages$ = state<PagedChatMessage[]>([]);
   const reportedCompletedRunIds$ = state(new Set<string>());
   const knownServerMessageIds$ = state<ReadonlySet<string>>(new Set());
-  const appendServerMessages$ = createAppendServerMessages(
-    threadId,
-    serverMessages$,
-    reportedCompletedRunIds$,
-    knownServerMessageIds$,
-  );
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
@@ -1361,10 +1463,14 @@ function createPagedMessages(
   const allMessages$ = createAllMessagesComputed(rawMessages$);
   const latestRunStatus$ = createLatestRunStatus(allMessages$, rawMessages$);
 
-  const groupedChatMessages$ = computed(
-    async (get): Promise<GroupedChatMessageGroup[]> => {
-      return groupMessagesForDisplay(await get(allMessages$));
-    },
+  const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
+    createGroupedChatMessagesCache(allMessages$);
+
+  const appendServerMessages$ = createAppendServerMessages(
+    threadId,
+    serverMessages$,
+    reportedCompletedRunIds$,
+    knownServerMessageIds$,
   );
 
   const earliestChatMessageId$ = computed(
@@ -1412,6 +1518,7 @@ function createPagedMessages(
     initialPage$,
     nextCursorId$,
     appendServerMessages$,
+    refreshGroupedChatMessagesCache$,
     reportedCompletedRunIds$,
     knownServerMessageIds$,
     dataSource,
@@ -1426,6 +1533,8 @@ function createPagedMessages(
       );
       signal.throwIfAborted();
       set(appendServerMessages$, result.messages);
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
     },
   );
 
@@ -1436,6 +1545,7 @@ function createPagedMessages(
     historyMessages$,
     loadedHistoryHasMore$,
     knownServerMessageIds$,
+    refreshGroupedChatMessagesCache$,
     dataSource,
   });
 
@@ -1446,6 +1556,7 @@ function createPagedMessages(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
+    refreshGroupedChatMessagesCache$,
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
@@ -1462,6 +1573,7 @@ function createLoadHistoryCommand({
   historyMessages$,
   loadedHistoryHasMore$,
   knownServerMessageIds$,
+  refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
@@ -1470,6 +1582,7 @@ function createLoadHistoryCommand({
   historyMessages$: State<PagedChatMessage[]>;
   loadedHistoryHasMore$: State<boolean | null>;
   knownServerMessageIds$: KnownServerMessageIds$;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
   return command(
@@ -1509,6 +1622,10 @@ function createLoadHistoryCommand({
         return [...result.messages, ...prev];
       });
       set(loadedHistoryHasMore$, result.hasMore);
+      if (result.messages.length > 0) {
+        await set(refreshGroupedChatMessagesCache$, signal);
+        signal.throwIfAborted();
+      }
       return {
         hasMore: result.hasMore,
       };
@@ -1946,6 +2063,7 @@ interface SendMessageDeps {
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function createSendMessage(deps: SendMessageDeps) {
@@ -1957,6 +2075,7 @@ function createSendMessage(deps: SendMessageDeps) {
     flushDraftClear$,
     scrollToBottom$,
     fetchNextPage$,
+    refreshGroupedChatMessagesCache$,
   } = deps;
   return command(
     async (
@@ -2021,6 +2140,8 @@ function createSendMessage(deps: SendMessageDeps) {
           options,
         }),
       );
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
       animationFrame(
         () => {
           set(scrollToBottom$);
@@ -2083,6 +2204,7 @@ interface QueueMessageDeps {
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }
 
@@ -2095,6 +2217,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$,
+    refreshGroupedChatMessagesCache$,
     dataSource,
   } = deps;
 
@@ -2150,6 +2273,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
           createdAt: nowIso,
         },
       });
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
       animationFrame(
         () => {
           set(scrollToBottom$);
@@ -2187,11 +2312,18 @@ interface RecallMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }
 
 function createRecallMessage(deps: RecallMessageDeps) {
-  const { threadId, threadData$, draft, dataSource } = deps;
+  const {
+    threadId,
+    threadData$,
+    draft,
+    refreshGroupedChatMessagesCache$,
+    dataSource,
+  } = deps;
 
   return command(
     async ({ get, set }, message: EnrichedChatMessage, signal: AbortSignal) => {
@@ -2220,6 +2352,8 @@ function createRecallMessage(deps: RecallMessageDeps) {
           createdAt: nowDate().toISOString(),
         },
       });
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
       set(
         draft.seed$,
         message.content ?? "",
@@ -2252,17 +2386,31 @@ function createMessageCommands(deps: MessageCommandsDeps) {
   };
 }
 
+interface ThreadMessageActionsDeps extends MessageCommandsDeps {
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+}
+
+function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
+  return {
+    ...createMessageCommands(deps),
+    cancelRun$: createCancelRunWithQueuedRecall(deps),
+  };
+}
+
 function createCancelRunWithQueuedRecall({
   threadId,
   threadData$,
   allMessages$,
   groupedChatMessages$,
+  refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }) {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -2325,6 +2473,11 @@ function createCancelRunWithQueuedRecall({
         clientMessageId,
       };
     });
+
+    if (interruptRequests.length > 0 || recallRequests.length > 0) {
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+    }
 
     await Promise.all([
       set(
@@ -2441,6 +2594,7 @@ export function createChatThreadSignals(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
+    refreshGroupedChatMessagesCache$,
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
@@ -2476,23 +2630,18 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const messageCommands = createMessageCommands({
+  const messageActions = createThreadMessageActions({
     threadId,
     threadData$,
     modelSelection$,
+    allMessages$,
+    groupedChatMessages$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
     fetchNextPage$,
-    dataSource,
-  });
-
-  const cancelRun$ = createCancelRunWithQueuedRecall({
-    threadId,
-    threadData$,
-    allMessages$,
-    groupedChatMessages$,
+    refreshGroupedChatMessagesCache$,
     dataSource,
   });
 
@@ -2508,8 +2657,7 @@ export function createChatThreadSignals(
     modelSelection$,
     setModelSelection$,
     ...computerUseHostSelection,
-    ...messageCommands,
-    cancelRun$,
+    ...messageActions,
     ...scrollSignals,
     skeletonVisible$,
     showSkeleton$,
