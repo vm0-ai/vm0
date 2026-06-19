@@ -313,14 +313,16 @@ impl ActiveInputProducer {
                             text: input.text,
                         };
                         let queue_state = local_queue::LocalQueue::new(queue.group_dir.clone());
-                        if let Err(error) = tokio::task::spawn_blocking(move || {
+                        let write_result = tokio::task::spawn_blocking(move || {
                             queue_state.write_active_input_sync(&entry)
                         })
                         .await
-                        .unwrap_or_else(|error| Err(std::io::Error::other(error.to_string())))
-                            && error.kind() != std::io::ErrorKind::NotFound
-                        {
-                            eprintln!("warn: failed to write local active input: {error}");
+                        .unwrap_or_else(|error| Err(std::io::Error::other(error.to_string())));
+                        if let Err(error) = write_result {
+                            if error.kind() != std::io::ErrorKind::NotFound {
+                                eprintln!("warn: failed to write local active input: {error}");
+                            }
+                            return;
                         }
                     }
                 }
@@ -1385,6 +1387,50 @@ mod tests {
         assert!(
             !local_queue::run_inputs_dir(&group_dir, request.job_id).exists(),
             "completed submit cleanup should remove local active-input files"
+        );
+    }
+
+    #[tokio::test]
+    async fn active_input_producer_stops_after_write_failure_to_preserve_sequence_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
+        local_queue::ensure_run_inputs_dir(group_dir, job_id).unwrap();
+        std::fs::write(
+            local_queue::active_input_path(group_dir, job_id, 1),
+            b"not-json",
+        )
+        .unwrap();
+
+        let producer = ActiveInputProducer::start(
+            queue,
+            vec![
+                DelayedActiveInput {
+                    sequence: 1,
+                    message_id: "msg-1".to_string(),
+                    after: Duration::from_millis(1),
+                    text: "first".to_string(),
+                },
+                DelayedActiveInput {
+                    sequence: 2,
+                    message_id: "msg-2".to_string(),
+                    after: Duration::from_millis(1),
+                    text: "second".to_string(),
+                },
+            ],
+        )
+        .unwrap();
+
+        tokio::time::timeout(TEST_QUEUE_WATCH_TIMEOUT, producer.task)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            !local_queue::active_input_path(group_dir, job_id, 2).exists(),
+            "producer should not create a sequence gap after an active-input write failure"
         );
     }
 
