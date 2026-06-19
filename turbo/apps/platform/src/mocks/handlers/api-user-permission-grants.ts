@@ -129,15 +129,4 @@ export const apiUserPermissionGrantsHandlers = [
 
     return respond(200, grants);
   }),
-
-  mockApi(zeroUserPermissionGrantsContract.reset, ({ query, respond }) => {
-    mockUserPermissionGrants = mockUserPermissionGrants.filter((grant) => {
-      return (
-        grant.agentId !== query.agentId ||
-        grant.connectorRef !== query.connectorRef
-      );
-    });
-
-    return respond(204);
-  }),
 ];

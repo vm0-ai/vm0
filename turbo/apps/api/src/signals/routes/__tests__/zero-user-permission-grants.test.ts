@@ -367,7 +367,7 @@ describe("zero user permission grants", () => {
     expect(askResponse.status).toBe(400);
   });
 
-  it("resets only the current user's selected connector grants", async () => {
+  it("applies an empty connector grant set as reset", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
@@ -419,13 +419,14 @@ describe("zero user permission grants", () => {
     ]);
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
-    await accept(
-      client.reset({
-        query: { agentId, connectorRef: SLACK_CONNECTOR },
+    const applied = await accept(
+      client.apply({
+        body: { agentId, connectorRef: SLACK_CONNECTOR, grants: [] },
         headers: AUTH_HEADERS,
       }),
-      [204],
+      [200],
     );
+    expect(applied.body).toStrictEqual([]);
 
     await expect(
       readStoredGrant({
@@ -591,6 +592,19 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
+    const invalidConnector = await accept(
+      client.apply({
+        body: {
+          agentId,
+          connectorRef: "not-a-real-connector",
+          grants: [],
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+    expect(invalidConnector.body.error.code).toBe("VALIDATION_ERROR");
+
     const duplicate = await accept(
       client.apply({
         body: {
@@ -645,24 +659,7 @@ describe("zero user permission grants", () => {
     expect(denyExpiration.status).toBe(400);
   });
 
-  it("validates connector refs for connector reset", async () => {
-    const fixture = await createFixture();
-    const agentId = await seedAgent(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
-
-    const response = await accept(
-      client.reset({
-        query: { agentId, connectorRef: "not-a-real-connector" },
-        headers: AUTH_HEADERS,
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("VALIDATION_ERROR");
-  });
-
-  it("rejects connector reset for invisible agents", async () => {
+  it("rejects connector-scoped apply for invisible agents", async () => {
     const owner = await createFixture();
     const sameOrgUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: owner.orgId, userId: sameOrgUserId });
@@ -675,8 +672,12 @@ describe("zero user permission grants", () => {
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
     const response = await accept(
-      client.reset({
-        query: { agentId: privateAgentId, connectorRef: SLACK_CONNECTOR },
+      client.apply({
+        body: {
+          agentId: privateAgentId,
+          connectorRef: SLACK_CONNECTOR,
+          grants: [],
+        },
         headers: AUTH_HEADERS,
       }),
       [404],

@@ -8,7 +8,6 @@ import type { RouteEntry } from "../route";
 import {
   applyUserPermissionGrants$,
   listUserPermissionGrants$,
-  resetUserPermissionGrants$,
   upsertUserPermissionGrant$,
 } from "../services/zero-user-permission-grants.service";
 
@@ -20,7 +19,6 @@ const userPermissionGrantAuthOptions = {
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const upsertBody$ = bodyResultOf(zeroUserPermissionGrantsContract.upsert);
 const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
-const resetQuery$ = queryOf(zeroUserPermissionGrantsContract.reset);
 
 const listUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -98,28 +96,6 @@ const applyUserPermissionGrantsInner$ = command(
   },
 );
 
-const resetUserPermissionGrantsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const query = get(resetQuery$);
-    const result = await set(
-      resetUserPermissionGrants$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        reset: query,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if ("kind" in result) {
-      return { status: 204 as const, body: undefined };
-    }
-    return result;
-  },
-);
-
 export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
   {
     route: zeroUserPermissionGrantsContract.list,
@@ -140,13 +116,6 @@ export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       userPermissionGrantAuthOptions,
       applyUserPermissionGrantsInner$,
-    ),
-  },
-  {
-    route: zeroUserPermissionGrantsContract.reset,
-    handler: authRoute(
-      userPermissionGrantAuthOptions,
-      resetUserPermissionGrantsInner$,
     ),
   },
 ];
