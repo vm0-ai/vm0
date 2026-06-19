@@ -1808,11 +1808,6 @@ describe("RUN-04: agent run telemetry families", () => {
         port: 443,
         firewall_error: "connector_not_configured",
       },
-      {
-        timestamp: "2026-06-10T12:02:00Z",
-        type: "dns",
-        dns_event: "reply",
-      },
     ];
 
     expect(agentNetwork.body).toStrictEqual({

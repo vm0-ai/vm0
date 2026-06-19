@@ -448,10 +448,8 @@ ${systemTelemetrySinceFilter(params.since)}
 
     const events = (await get(queryAxiom(apl))).slice();
     const hasMore = events.length > params.limit;
-    const networkLogs = sanitizeAxiomNetworkEvents(events).slice(
-      0,
-      params.limit,
-    );
+    const pageEvents = hasMore ? events.slice(0, params.limit) : events;
+    const networkLogs = sanitizeAxiomNetworkEvents(pageEvents);
 
     return {
       networkLogs,

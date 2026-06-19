@@ -170,7 +170,8 @@ ${sinceFilter}
     const events = (await get(queryAxiom(apl))).slice();
 
     const hasMore = events.length > limit;
-    const networkLogs = sanitizeAxiomNetworkEvents(events).slice(0, limit);
+    const pageEvents = hasMore ? events.slice(0, limit) : events;
+    const networkLogs = sanitizeAxiomNetworkEvents(pageEvents);
 
     return { networkLogs, hasMore };
   });
