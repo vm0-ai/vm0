@@ -416,6 +416,42 @@ export function setPermissionDraftGroupPolicy({
   };
 }
 
+export function setPermissionDraftGroupAllowPolicy({
+  context,
+  draft,
+  category,
+  permissions,
+}: {
+  readonly context: PermissionDraftContext;
+  readonly draft: PermissionDraftIntent;
+  readonly category: string;
+  readonly permissions: readonly PermissionLike[];
+}): PermissionDraftIntent {
+  const permissionsToForceAlways = permissions.filter((permission) => {
+    return (
+      resolvePermissionDraftPolicy({
+        context,
+        draft,
+        permissionName: permission.name,
+      }) !== "allow"
+    );
+  });
+  let next = setPermissionDraftGroupPolicy({
+    draft,
+    category,
+    permissions,
+    policy: "allow",
+  });
+  for (const permission of permissionsToForceAlways) {
+    next = setPermissionDraftExpiration({
+      draft: next,
+      permissionName: permission.name,
+      expiresIn: "always",
+    });
+  }
+  return next;
+}
+
 export function restorePermissionDraftGroup({
   draft,
   category,

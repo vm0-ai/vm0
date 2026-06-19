@@ -59,6 +59,7 @@ import {
   restorePermissionDraftUnknown,
   setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
+  setPermissionDraftGroupAllowPolicy,
   setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
@@ -933,17 +934,6 @@ function PermissionRows({
               showCurrentExpirationStatus={groupExpirationStatus !== undefined}
               onAllowClick={() => {
                 onSetGroupAll(group.category, group.permissions, "allow");
-                if (groupPolicy !== "allow") {
-                  onGroupGrantExpirationChange(
-                    group.category,
-                    group.permissions,
-                    groupMenuOptionExpiresIn(
-                      "always",
-                      explicitGrants,
-                      group.permissions,
-                    ),
-                  );
-                }
               }}
               onClearExpiration={() => {
                 onGroupGrantExpirationChange(
@@ -1290,6 +1280,14 @@ function LoadedPermissionsDrawerContent({
     policy: PermissionPolicy,
   ) => {
     setDraft(stateKey, (current) => {
+      if (policy === "allow") {
+        return setPermissionDraftGroupAllowPolicy({
+          context,
+          draft: current,
+          category,
+          permissions: groupPerms,
+        });
+      }
       return setPermissionDraftGroupPolicy({
         draft: current,
         category,

@@ -9,6 +9,7 @@ import {
   resolvePermissionDraftExpiration,
   resolvePermissionDraftGroupExpiration,
   setPermissionDraftExpiration,
+  setPermissionDraftGroupAllowPolicy,
   setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
@@ -179,5 +180,40 @@ describe("permission draft intent", () => {
         permissions: READ_PERMISSIONS,
       }),
     ).toBe("7d");
+  });
+
+  it("only forces always for group members that were not already allowed", () => {
+    const context = createContext();
+    let draft = createEmptyPermissionDraftIntent();
+
+    draft = setPermissionDraftGroupExpiration({
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+      expiresIn: "7d",
+    });
+    draft = setPermissionDraftPolicy({
+      draft,
+      permissionName: "bookmarks:read",
+      policy: "deny",
+    });
+    draft = setPermissionDraftGroupAllowPolicy({
+      context,
+      draft,
+      category: "Read",
+      permissions: READ_PERMISSIONS,
+    });
+
+    const materialized = materializePermissionDraftForLegacySave({
+      context,
+      draft,
+      permissions: READ_PERMISSIONS,
+    });
+
+    expect(materialized.expiresInByPermission).toMatchObject({
+      "bookmarks:read": "always",
+      "channels:read": "7d",
+      "channels:history": "7d",
+    });
   });
 });
