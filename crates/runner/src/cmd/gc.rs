@@ -1584,6 +1584,25 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
     let mut freed: u64 = 0;
 
     for base_dir in &base_dirs {
+        match gc_path_dir_status(base_dir).await {
+            Ok(GcDirStatus::RealDir(_)) => {}
+            Ok(GcDirStatus::Missing) => continue,
+            Ok(GcDirStatus::NotDirectory) => {
+                info!(
+                    "workspace gc: {} is not a real base directory, skipping",
+                    base_dir.display()
+                );
+                continue;
+            }
+            Err(e) => {
+                warn!(
+                    "workspace gc: cannot stat base directory {}: {e}",
+                    base_dir.display()
+                );
+                continue;
+            }
+        }
+
         let workspaces_dir = base_dir.join("workspaces");
         match gc_path_dir_status(&workspaces_dir).await {
             Ok(GcDirStatus::RealDir(_)) => {}
@@ -4733,6 +4752,39 @@ mod tests {
         assert!(
             outside_workspace.exists(),
             "GC must not enumerate and delete through a symlinked workspaces dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_symlink_base_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let outside_base_dir = dir.path().join("outside-runner-data");
+        let outside_workspace = outside_base_dir.join("workspaces").join("run-old");
+        std::fs::create_dir_all(&outside_workspace).unwrap();
+        std::fs::write(outside_workspace.join("cow.img"), b"outside").unwrap();
+        set_mtime(&outside_workspace, old_gc_time());
+        std::os::unix::fs::symlink(&outside_base_dir, &base_dir).unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
+        assert_is_symlink(&base_dir, "symlinked base dir must remain");
+        assert!(
+            outside_workspace.exists(),
+            "GC must not enumerate workspaces through a symlinked base dir"
         );
     }
 
