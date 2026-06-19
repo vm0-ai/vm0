@@ -4,22 +4,16 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import {
-  userPermissionGrants,
-  type UserPermissionGrantTargetType,
-} from "@vm0/db/schema/user-permission-grant";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
-  ApplyCompactUserPermissionGrant,
-  ApplyCompactUserPermissionGrantsRequest,
-  CompactUserPermissionGrantResponse,
-  CompactUserPermissionGrantsQuery,
+  ApplyUserPermissionGrant,
+  ApplyUserPermissionGrantsRequest,
   ResetUserPermissionGrantsQuery,
   UpsertUserPermissionGrantRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
-  UserPermissionGrantTarget,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
 import { notFound } from "../../lib/error";
@@ -41,27 +35,16 @@ interface UpsertUserPermissionGrantArgs {
   readonly grant: UpsertUserPermissionGrantRequest;
 }
 
-interface CompactUserPermissionGrantsArgs {
+interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly query: CompactUserPermissionGrantsQuery;
-}
-
-interface ApplyCompactUserPermissionGrantsArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly apply: ApplyCompactUserPermissionGrantsRequest;
+  readonly apply: ApplyUserPermissionGrantsRequest;
 }
 
 interface ResetUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly reset: ResetUserPermissionGrantsQuery;
-}
-
-interface GrantTargetStorage {
-  readonly targetType: UserPermissionGrantTargetType;
-  readonly permission: string;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -83,13 +66,6 @@ type ListUserPermissionGrantsResult =
     }
   | NotFoundResponse;
 
-type CompactUserPermissionGrantsResult =
-  | {
-      readonly kind: "ok";
-      readonly grants: readonly CompactUserPermissionGrantResponse[];
-    }
-  | NotFoundResponse;
-
 type UpsertUserPermissionGrantResult =
   | {
       readonly kind: "ok";
@@ -98,10 +74,10 @@ type UpsertUserPermissionGrantResult =
   | NotFoundResponse
   | ValidationErrorResponse;
 
-type ApplyCompactUserPermissionGrantsResult =
+type ApplyUserPermissionGrantsResult =
   | {
       readonly kind: "ok";
-      readonly grants: readonly CompactUserPermissionGrantResponse[];
+      readonly grants: readonly UserPermissionGrantResponse[];
     }
   | NotFoundResponse
   | ValidationErrorResponse;
@@ -115,7 +91,6 @@ type ResetUserPermissionGrantsResult =
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const NON_PERMISSION_TARGET_PLACEHOLDER = "";
 
 function validationError(message: string): ValidationErrorResponse {
   return {
@@ -166,100 +141,22 @@ function validPermissionNames(connectorRef: string): Set<string> | null {
   return names;
 }
 
-function targetLabel(target: UserPermissionGrantTarget): string {
-  switch (target.kind) {
-    case "connector-default": {
-      return "connector default";
-    }
-    case "permission": {
-      return `permission "${target.permission}"`;
-    }
-    case "unknown-endpoint": {
-      return "unknown endpoint";
-    }
-  }
-}
-
-function grantTargetStorage(
-  target: UserPermissionGrantTarget,
-): GrantTargetStorage {
-  switch (target.kind) {
-    case "connector-default": {
-      return {
-        targetType: "connector-default",
-        permission: NON_PERMISSION_TARGET_PLACEHOLDER,
-      };
-    }
-    case "permission": {
-      return {
-        targetType: "permission",
-        permission: target.permission,
-      };
-    }
-    case "unknown-endpoint": {
-      return {
-        targetType: "unknown-endpoint",
-        permission: NON_PERMISSION_TARGET_PLACEHOLDER,
-      };
-    }
-  }
-}
-
-function legacyPermissionTarget(permission: string): UserPermissionGrantTarget {
-  return permission === UNKNOWN_PERMISSION_GRANT
-    ? { kind: "unknown-endpoint" }
-    : { kind: "permission", permission };
-}
-
-export function userPermissionGrantRowTarget(
-  row: Pick<UserPermissionGrantRow, "targetType" | "permission">,
-): UserPermissionGrantTarget {
-  if (
-    row.targetType === "unknown-endpoint" ||
-    (row.targetType === "permission" &&
-      row.permission === UNKNOWN_PERMISSION_GRANT)
-  ) {
-    return { kind: "unknown-endpoint" };
-  }
-  if (row.targetType === "connector-default") {
-    return { kind: "connector-default" };
-  }
-  return { kind: "permission", permission: row.permission };
-}
-
-function legacyPermissionForRow(
-  row: Pick<UserPermissionGrantRow, "targetType" | "permission">,
-): string | null {
-  const target = userPermissionGrantRowTarget(row);
-  switch (target.kind) {
-    case "connector-default": {
-      return null;
-    }
-    case "permission": {
-      return target.permission;
-    }
-    case "unknown-endpoint": {
-      return UNKNOWN_PERMISSION_GRANT;
-    }
-  }
-}
-
 function validateGrantTarget(
   connectorRef: string,
-  target: UserPermissionGrantTarget,
+  permission: string,
 ): ValidationErrorResponse | null {
   const names = validPermissionNames(connectorRef);
   if (!names) {
     return validationError(`Unknown connector ref: ${connectorRef}`);
   }
 
-  if (target.kind !== "permission") {
+  if (permission === UNKNOWN_PERMISSION_GRANT) {
     return null;
   }
 
-  if (!names.has(target.permission)) {
+  if (!names.has(permission)) {
     return validationError(
-      `Unknown permission "${target.permission}" for connector "${connectorRef}"`,
+      `Unknown permission "${permission}" for connector "${connectorRef}"`,
     );
   }
 
@@ -275,20 +172,10 @@ function validateConnectorRef(
   return validationError(`Unknown connector ref: ${connectorRef}`);
 }
 
-function validateGrantExpiration(
-  grant: UpsertUserPermissionGrantRequest,
-): ValidationErrorResponse | null {
-  if (grant.action === "allow" || grant.expiresIn === undefined) {
-    return null;
-  }
-  return validationError(
-    "Permission grant expiration is only supported for allow grants",
-  );
-}
-
-function validateCompactGrantExpiration(
-  grant: ApplyCompactUserPermissionGrant,
-): ValidationErrorResponse | null {
+function validateGrantExpiration(grant: {
+  readonly action: UserPermissionGrantAction;
+  readonly expiresIn?: UserPermissionGrantExpiresIn;
+}): ValidationErrorResponse | null {
   if (grant.action === "allow" || grant.expiresIn === undefined) {
     return null;
   }
@@ -363,46 +250,17 @@ function formatUserPermissionGrant(
     UserPermissionGrantRow,
     | "agentId"
     | "connectorRef"
-    | "targetType"
     | "permission"
     | "action"
     | "expiresAt"
     | "createdAt"
     | "updatedAt"
   >,
-): UserPermissionGrantResponse | null {
-  const permission = legacyPermissionForRow(row);
-  if (!permission) {
-    return null;
-  }
+): UserPermissionGrantResponse {
   return {
     agentId: row.agentId,
     connectorRef: row.connectorRef,
-    permission,
-    action: row.action,
-    expiresAt: row.expiresAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function formatCompactUserPermissionGrant(
-  row: Pick<
-    UserPermissionGrantRow,
-    | "agentId"
-    | "connectorRef"
-    | "targetType"
-    | "permission"
-    | "action"
-    | "expiresAt"
-    | "createdAt"
-    | "updatedAt"
-  >,
-): CompactUserPermissionGrantResponse {
-  return {
-    agentId: row.agentId,
-    connectorRef: row.connectorRef,
-    target: userPermissionGrantRowTarget(row),
+    permission: row.permission,
     action: row.action,
     expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -428,7 +286,6 @@ export async function loadActiveUserPermissionGrants(
     )
     .orderBy(
       asc(userPermissionGrants.connectorRef),
-      asc(userPermissionGrants.targetType),
       asc(userPermissionGrants.permission),
     );
 }
@@ -461,51 +318,6 @@ async function lockVisibleAgentForUpdate(
   return agent ?? null;
 }
 
-function grantTargetKey(target: UserPermissionGrantTarget): string {
-  switch (target.kind) {
-    case "connector-default": {
-      return "connector-default";
-    }
-    case "permission": {
-      return `permission:${target.permission}`;
-    }
-    case "unknown-endpoint": {
-      return "unknown-endpoint";
-    }
-  }
-}
-
-function grantRowTargetMatches(
-  target: UserPermissionGrantTarget,
-  row: Pick<UserPermissionGrantRow, "targetType" | "permission">,
-): boolean {
-  return (
-    grantTargetKey(target) === grantTargetKey(userPermissionGrantRowTarget(row))
-  );
-}
-
-function grantTargetCondition(target: UserPermissionGrantTarget) {
-  const storage = grantTargetStorage(target);
-  const canonical = and(
-    eq(userPermissionGrants.targetType, storage.targetType),
-    eq(userPermissionGrants.permission, storage.permission),
-  );
-  if (target.kind !== "unknown-endpoint") {
-    return canonical;
-  }
-  return or(
-    canonical,
-    and(
-      eq(userPermissionGrants.targetType, "permission"),
-      eq(userPermissionGrants.permission, UNKNOWN_PERMISSION_GRANT),
-    ),
-  );
-}
-
-function targetValues(target: UserPermissionGrantTarget): GrantTargetStorage {
-  return grantTargetStorage(target);
-}
-
 async function upsertVisibleGrantRow(
   db: Db,
   args: UpsertUserPermissionGrantArgs,
@@ -520,7 +332,6 @@ async function upsertVisibleGrantRow(
       return notFound(`Agent not found: ${args.grant.agentId}`);
     }
 
-    const target = legacyPermissionTarget(args.grant.permission);
     const timestamp = nowDate();
     const [existing] = await tx
       .select()
@@ -531,12 +342,12 @@ async function upsertVisibleGrantRow(
           eq(userPermissionGrants.userId, args.userId),
           eq(userPermissionGrants.agentId, args.grant.agentId),
           eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
-          grantTargetCondition(target),
+          eq(userPermissionGrants.permission, args.grant.permission),
         ),
       )
       .for("update")
       .limit(1);
-    const targetStorage = targetValues(target);
+
     const expiresAt = resolvedExpiresAt({
       action: args.grant.action,
       expiresIn: args.grant.expiresIn,
@@ -548,13 +359,19 @@ async function upsertVisibleGrantRow(
       ? await tx
           .update(userPermissionGrants)
           .set({
-            targetType: targetStorage.targetType,
-            permission: targetStorage.permission,
             action: args.grant.action,
             expiresAt,
             updatedAt: timestamp,
           })
-          .where(eq(userPermissionGrants.id, existing.id))
+          .where(
+            and(
+              eq(userPermissionGrants.orgId, args.orgId),
+              eq(userPermissionGrants.userId, args.userId),
+              eq(userPermissionGrants.agentId, args.grant.agentId),
+              eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
+              eq(userPermissionGrants.permission, args.grant.permission),
+            ),
+          )
           .returning()
       : await tx
           .insert(userPermissionGrants)
@@ -563,8 +380,7 @@ async function upsertVisibleGrantRow(
             userId: args.userId,
             agentId: args.grant.agentId,
             connectorRef: args.grant.connectorRef,
-            targetType: targetStorage.targetType,
-            permission: targetStorage.permission,
+            permission: args.grant.permission,
             action: args.grant.action,
             expiresAt,
             createdAt: timestamp,
@@ -579,43 +395,41 @@ async function upsertVisibleGrantRow(
   });
 }
 
-function validateCompactApply(
-  apply: ApplyCompactUserPermissionGrantsRequest,
+function validateApplyUserPermissionGrants(
+  apply: ApplyUserPermissionGrantsRequest,
 ): ValidationErrorResponse | null {
-  const connectorValidation = validateConnectorRef(apply.connectorRef);
-  if (connectorValidation) {
-    return connectorValidation;
+  const names = validPermissionNames(apply.connectorRef);
+  if (!names) {
+    return validationError(`Unknown connector ref: ${apply.connectorRef}`);
   }
 
-  const seenTargets = new Set<string>();
+  const seenPermissions = new Set<string>();
   for (const grant of apply.grants) {
-    const targetValidation = validateGrantTarget(
-      apply.connectorRef,
-      grant.target,
-    );
-    if (targetValidation) {
-      return targetValidation;
+    if (seenPermissions.has(grant.permission)) {
+      return validationError(`Duplicate permission grant: ${grant.permission}`);
+    }
+    seenPermissions.add(grant.permission);
+
+    if (
+      grant.permission !== UNKNOWN_PERMISSION_GRANT &&
+      !names.has(grant.permission)
+    ) {
+      return validationError(
+        `Unknown permission "${grant.permission}" for connector "${apply.connectorRef}"`,
+      );
     }
 
-    const expirationValidation = validateCompactGrantExpiration(grant);
+    const expirationValidation = validateGrantExpiration(grant);
     if (expirationValidation) {
       return expirationValidation;
     }
-
-    const key = grantTargetKey(grant.target);
-    if (seenTargets.has(key)) {
-      return validationError(
-        `Duplicate compact permission grant target: ${targetLabel(grant.target)}`,
-      );
-    }
-    seenTargets.add(key);
   }
   return null;
 }
 
-async function applyVisibleCompactGrantRows(
+async function applyVisibleGrantRows(
   db: Db,
-  args: ApplyCompactUserPermissionGrantsArgs,
+  args: ApplyUserPermissionGrantsArgs,
 ): Promise<readonly UserPermissionGrantRow[] | NotFoundResponse> {
   return await db.transaction(async (tx) => {
     const visibleAgent = await lockVisibleAgentForUpdate(tx, {
@@ -656,18 +470,16 @@ async function applyVisibleCompactGrantRows(
       return [];
     }
 
-    const values = args.apply.grants.map((grant) => {
-      const targetStorage = targetValues(grant.target);
+    const values = args.apply.grants.map((grant: ApplyUserPermissionGrant) => {
       const existing = existingRows.find((row) => {
-        return grantRowTargetMatches(grant.target, row);
+        return row.permission === grant.permission;
       });
       return {
         orgId: args.orgId,
         userId: args.userId,
         agentId: args.apply.agentId,
         connectorRef: args.apply.connectorRef,
-        targetType: targetStorage.targetType,
-        permission: targetStorage.permission,
+        permission: grant.permission,
         action: grant.action,
         expiresAt: resolvedExpiresAt({
           action: grant.action,
@@ -730,41 +542,7 @@ export const listUserPermissionGrants$ = command(
 
     return {
       kind: "ok" as const,
-      grants: grants.flatMap((grant) => {
-        const formatted = formatUserPermissionGrant(grant);
-        return formatted ? [formatted] : [];
-      }),
-    };
-  },
-);
-
-export const listCompactUserPermissionGrants$ = command(
-  async (
-    { get },
-    args: CompactUserPermissionGrantsArgs,
-    signal: AbortSignal,
-  ): Promise<CompactUserPermissionGrantsResult> => {
-    const db = get(db$);
-    const visibleError = await visibleAgentOrNotFound(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.query.agentId,
-    });
-    signal.throwIfAborted();
-    if (visibleError) {
-      return visibleError;
-    }
-
-    const grants = await loadActiveUserPermissionGrants(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.query.agentId,
-    });
-    signal.throwIfAborted();
-
-    return {
-      kind: "ok" as const,
-      grants: grants.map(formatCompactUserPermissionGrant),
+      grants: grants.map(formatUserPermissionGrant),
     };
   },
 );
@@ -777,7 +555,7 @@ export const upsertUserPermissionGrant$ = command(
   ): Promise<UpsertUserPermissionGrantResult> => {
     const validation = validateGrantTarget(
       args.grant.connectorRef,
-      legacyPermissionTarget(args.grant.permission),
+      args.grant.permission,
     );
     if (validation) {
       return validation;
@@ -795,31 +573,26 @@ export const upsertUserPermissionGrant$ = command(
       return row;
     }
 
-    const formatted = formatUserPermissionGrant(row);
-    if (!formatted) {
-      throw new Error("Legacy user permission grant upsert returned no grant");
-    }
-
     return {
       kind: "ok" as const,
-      grant: formatted,
+      grant: formatUserPermissionGrant(row),
     };
   },
 );
 
-export const applyCompactUserPermissionGrants$ = command(
+export const applyUserPermissionGrants$ = command(
   async (
     { set },
-    args: ApplyCompactUserPermissionGrantsArgs,
+    args: ApplyUserPermissionGrantsArgs,
     signal: AbortSignal,
-  ): Promise<ApplyCompactUserPermissionGrantsResult> => {
-    const validation = validateCompactApply(args.apply);
+  ): Promise<ApplyUserPermissionGrantsResult> => {
+    const validation = validateApplyUserPermissionGrants(args.apply);
     if (validation) {
       return validation;
     }
 
     const writeDb = set(writeDb$);
-    const rows = await applyVisibleCompactGrantRows(writeDb, args);
+    const rows = await applyVisibleGrantRows(writeDb, args);
     signal.throwIfAborted();
 
     if ("status" in rows) {
@@ -828,7 +601,7 @@ export const applyCompactUserPermissionGrants$ = command(
 
     return {
       kind: "ok" as const,
-      grants: rows.map(formatCompactUserPermissionGrant),
+      grants: rows.map(formatUserPermissionGrant),
     };
   },
 );

@@ -9,7 +9,6 @@ import {
 } from "@tabler/icons-react";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { isFirewallMetadataConnectorType } from "@vm0/connectors/firewall-metadata";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -20,11 +19,11 @@ import {
   permissionAllowActionParam$,
   permissionAllowAgent$,
   permissionAllowAgentId$,
-  permissionAllowCompactUserPermissionGrants$,
   permissionAllowExpiresIn$,
   permissionAllowPermission$,
   permissionAllowRef$,
-  resolveCompactUserPermissionGrantPolicy,
+  permissionAllowUserPermissionGrants$,
+  resolveUserPermissionGrantPolicy,
   type Permission,
   upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
@@ -332,9 +331,7 @@ function PermissionAllowDoctorPage({
 }) {
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
-  const grantsLoadable = useLastLoadable(
-    permissionAllowCompactUserPermissionGrants$,
-  );
+  const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
   const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({ connectorType: ref }),
   );
@@ -373,7 +370,7 @@ function PermissionAllowDoctorPage({
   }
 
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
-  const effectivePolicy = resolveCompactUserPermissionGrantPolicy(
+  const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
     metadata,
     focusedPermission.name,
@@ -381,10 +378,7 @@ function PermissionAllowDoctorPage({
   const explicitGrant = grants.find((grant) => {
     return (
       grant.connectorRef === ref &&
-      ((focusedPermission.name === UNKNOWN_PERMISSION_GRANT &&
-        grant.target.kind === "unknown-endpoint") ||
-        (grant.target.kind === "permission" &&
-          grant.target.permission === focusedPermission.name)) &&
+      grant.permission === focusedPermission.name &&
       grant.action === action
     );
   });

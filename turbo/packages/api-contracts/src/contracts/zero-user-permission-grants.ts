@@ -26,25 +26,6 @@ export const userPermissionGrantResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const userPermissionGrantTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("connector-default") }),
-  z.object({
-    kind: z.literal("permission"),
-    permission: permissionSchema,
-  }),
-  z.object({ kind: z.literal("unknown-endpoint") }),
-]);
-
-export const compactUserPermissionGrantResponseSchema = z.object({
-  agentId: agentIdSchema,
-  connectorRef: connectorRefSchema,
-  target: userPermissionGrantTargetSchema,
-  action: userPermissionGrantActionSchema,
-  expiresAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
 export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
@@ -52,10 +33,6 @@ export const listUserPermissionGrantsQuerySchema = z.object({
 export const resetUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
-});
-
-export const compactUserPermissionGrantsQuerySchema = z.object({
-  agentId: agentIdSchema,
 });
 
 const upsertUserPermissionGrantBaseRequestSchema = z.object({
@@ -78,28 +55,25 @@ export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
   ],
 );
 
-const applyCompactUserPermissionGrantBaseSchema = z.object({
-  target: userPermissionGrantTargetSchema,
+const applyUserPermissionGrantBaseSchema = z.object({
+  permission: permissionSchema,
 });
 
-export const applyCompactUserPermissionGrantSchema = z.discriminatedUnion(
-  "action",
-  [
-    applyCompactUserPermissionGrantBaseSchema.extend({
-      action: z.literal("allow"),
-      expiresIn: userPermissionGrantExpiresInSchema.optional(),
-    }),
-    applyCompactUserPermissionGrantBaseSchema.extend({
-      action: z.literal("deny"),
-      expiresIn: z.never().optional(),
-    }),
-  ],
-);
+export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
+  applyUserPermissionGrantBaseSchema.extend({
+    action: z.literal("allow"),
+    expiresIn: userPermissionGrantExpiresInSchema.optional(),
+  }),
+  applyUserPermissionGrantBaseSchema.extend({
+    action: z.literal("deny"),
+    expiresIn: z.never().optional(),
+  }),
+]);
 
-export const applyCompactUserPermissionGrantsRequestSchema = z.object({
+export const applyUserPermissionGrantsRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
-  grants: z.array(applyCompactUserPermissionGrantSchema),
+  grants: z.array(applyUserPermissionGrantSchema),
 });
 
 export const zeroUserPermissionGrantsContract = c.router({
@@ -131,34 +105,20 @@ export const zeroUserPermissionGrantsContract = c.router({
     },
     summary: "Upsert current user's permission grant for an agent",
   },
-  compactList: {
-    method: "GET",
-    path: "/api/zero/user-permission-grants/compact",
+  apply: {
+    method: "PUT",
+    path: "/api/zero/user-permission-grants/apply",
     headers: authHeadersSchema,
-    query: compactUserPermissionGrantsQuerySchema,
+    body: applyUserPermissionGrantsRequestSchema,
     responses: {
-      200: z.array(compactUserPermissionGrantResponseSchema),
+      200: z.array(userPermissionGrantResponseSchema),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary:
-      "List current user's active compact permission grants for an agent",
-  },
-  compactApply: {
-    method: "PUT",
-    path: "/api/zero/user-permission-grants/compact",
-    headers: authHeadersSchema,
-    body: applyCompactUserPermissionGrantsRequestSchema,
-    responses: {
-      200: z.array(compactUserPermissionGrantResponseSchema),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Replace current user's compact permission grants for a connector",
+      "Replace current user's explicit permission grants for one connector",
   },
   reset: {
     method: "DELETE",
@@ -185,17 +145,8 @@ export type UserPermissionGrantExpiresIn = z.infer<
 export type UserPermissionGrantResponse = z.infer<
   typeof userPermissionGrantResponseSchema
 >;
-export type UserPermissionGrantTarget = z.infer<
-  typeof userPermissionGrantTargetSchema
->;
-export type CompactUserPermissionGrantResponse = z.infer<
-  typeof compactUserPermissionGrantResponseSchema
->;
 export type ListUserPermissionGrantsQuery = z.infer<
   typeof listUserPermissionGrantsQuerySchema
->;
-export type CompactUserPermissionGrantsQuery = z.infer<
-  typeof compactUserPermissionGrantsQuerySchema
 >;
 export type ResetUserPermissionGrantsQuery = z.infer<
   typeof resetUserPermissionGrantsQuerySchema
@@ -203,11 +154,11 @@ export type ResetUserPermissionGrantsQuery = z.infer<
 export type UpsertUserPermissionGrantRequest = z.infer<
   typeof upsertUserPermissionGrantRequestSchema
 >;
-export type ApplyCompactUserPermissionGrant = z.infer<
-  typeof applyCompactUserPermissionGrantSchema
+export type ApplyUserPermissionGrant = z.infer<
+  typeof applyUserPermissionGrantSchema
 >;
-export type ApplyCompactUserPermissionGrantsRequest = z.infer<
-  typeof applyCompactUserPermissionGrantsRequestSchema
+export type ApplyUserPermissionGrantsRequest = z.infer<
+  typeof applyUserPermissionGrantsRequestSchema
 >;
 export type ZeroUserPermissionGrantsContract =
   typeof zeroUserPermissionGrantsContract;

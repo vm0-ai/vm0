@@ -27,7 +27,6 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   groupFirewallMetadataPermissionsByCategory,
-  resolveCompactFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import {
@@ -36,7 +35,6 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import type {
-  CompactUserPermissionGrantResponse,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -113,7 +111,6 @@ interface PermissionsDrawerProps {
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
-  initialCompactGrants?: readonly CompactUserPermissionGrantResponse[];
   resetEnabled?: boolean;
   readOnly?: boolean;
   onApply: (
@@ -125,7 +122,6 @@ interface PermissionsDrawerProps {
 
 interface PermissionDrawerApplyOptions {
   readonly metadata: FirewallPermissionDetailMetadata;
-  readonly initialPolicies: FirewallPolicies;
 }
 
 interface PermissionsDrawerFooterProps {
@@ -1433,7 +1429,6 @@ function LoadedPermissionsDrawerContent({
         {
           intent: draft,
           metadata,
-          initialPolicies,
           onApply,
           onClose: handleClose,
         },
@@ -1601,18 +1596,12 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
   const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
   const loadedMetadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
-  const resolvedInitialPolicies =
-    loadedMetadata && props.initialCompactGrants
-      ? (resolveCompactFirewallMetadataPolicies(props.initialCompactGrants, [
-          loadedMetadata,
-        ]) ?? {})
-      : props.initialPolicies;
   const loadedInitialState = loadedMetadata
     ? buildInitialPermissionDrawerState({
         agentId: props.agentId,
         connectorType: props.connectorType,
         metadata: loadedMetadata,
-        initialPolicies: resolvedInitialPolicies,
+        initialPolicies: props.initialPolicies,
         initialGrants: props.initialGrants,
       })
     : null;
@@ -1643,7 +1632,6 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
           <LoadedPermissionsDrawerContent
             key={loadedInitialState.initialPolicyKey}
             {...props}
-            initialPolicies={resolvedInitialPolicies}
             metadata={loadedMetadata}
             initialState={loadedInitialState}
             onClose={handleClose}

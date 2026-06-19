@@ -3326,13 +3326,6 @@
       "when": 1781859408662,
       "tag": "0474_curved_the_twelve",
       "breakpoints": true
-    },
-    {
-      "idx": 475,
-      "version": "7",
-      "when": 1781871339665,
-      "tag": "0475_compact_user_permission_grants",
-      "breakpoints": true
     }
   ]
 }

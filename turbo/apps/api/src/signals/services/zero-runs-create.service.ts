@@ -8,10 +8,9 @@ import {
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallPolicies,
 } from "@vm0/connectors/firewalls";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -34,10 +33,7 @@ import {
   createAgentRun$,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
-import {
-  loadActiveUserPermissionGrants,
-  userPermissionGrantRowTarget,
-} from "./zero-user-permission-grants.service";
+import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 import { loadWorkflowNamesForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
@@ -444,7 +440,7 @@ async function resolveZeroRunPermissionPolicies(
     readonly checkedAt: Date;
   },
   signal: AbortSignal,
-): Promise<FirewallPolicies | null> {
+): Promise<ReturnType<typeof resolveFirewallPolicies>> {
   const grants = await loadActiveUserPermissionGrants(
     db,
     {
@@ -456,37 +452,9 @@ async function resolveZeroRunPermissionPolicies(
   );
   signal.throwIfAborted();
 
-  const policies: FirewallPolicies = {};
-  for (const connector of args.allowedConnectorTypes) {
-    if (!isFirewallConnectorType(connector)) {
-      continue;
-    }
-    const policy = getDefaultFirewallPolicies(connector);
-    for (const grant of grants) {
-      if (grant.connectorRef !== connector) {
-        continue;
-      }
-      const target = userPermissionGrantRowTarget(grant);
-      switch (target.kind) {
-        case "connector-default": {
-          for (const permission of Object.keys(policy.policies)) {
-            policy.policies[permission] = grant.action;
-          }
-          break;
-        }
-        case "permission": {
-          policy.policies[target.permission] = grant.action;
-          break;
-        }
-        case "unknown-endpoint": {
-          policy.unknownPolicy = grant.action;
-          break;
-        }
-      }
-    }
-    policies[connector] = policy;
-  }
-  return Object.keys(policies).length > 0 ? policies : null;
+  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
+    ...args.allowedConnectorTypes,
+  ]);
 }
 
 async function loadUserInfo(
@@ -545,7 +513,9 @@ function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly permissionPolicies: FirewallPolicies | null | undefined;
+  readonly permissionPolicies:
+    | ReturnType<typeof resolveFirewallPolicies>
+    | undefined;
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
@@ -588,7 +558,9 @@ function createIntegrationRunBody(args: {
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly permissionPolicies: FirewallPolicies | null | undefined;
+  readonly permissionPolicies:
+    | ReturnType<typeof resolveFirewallPolicies>
+    | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
 }) {

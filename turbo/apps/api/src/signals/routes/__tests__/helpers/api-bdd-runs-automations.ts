@@ -12,8 +12,6 @@ import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
-  type ApplyCompactUserPermissionGrantsRequest,
-  type CompactUserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
   type UpsertUserPermissionGrantRequest,
   type UserPermissionGrantResponse,
@@ -733,20 +731,6 @@ export function createRunsAutomationsApi(context: TestContext) {
         setupApp({ context })(zeroUserPermissionGrantsContract).list({
           headers: authenticate(context, actor),
           query: { agentId },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async applyCompactUserPermissionGrants(
-      actor: ApiTestUser,
-      body: ApplyCompactUserPermissionGrantsRequest,
-    ): Promise<readonly CompactUserPermissionGrantResponse[]> {
-      const response = await accept(
-        setupApp({ context })(zeroUserPermissionGrantsContract).compactApply({
-          headers: authenticate(context, actor),
-          body,
         }),
         [200],
       );

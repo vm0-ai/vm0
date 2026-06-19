@@ -1,7 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
-  type ApplyCompactUserPermissionGrant,
-  type CompactUserPermissionGrantResponse,
+  type ApplyUserPermissionGrant,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   type UserPermissionGrantResponse,
@@ -12,7 +11,8 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import {
-  resolveCompactFirewallMetadataPolicies,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import { zeroClient$ } from "../api-client.ts";
@@ -100,14 +100,15 @@ export function findPermissionInMetadata(
 
 const internalUserPermissionGrantsReload$ = state(0);
 
-export function resolveCompactUserPermissionGrantPolicy(
-  grants: readonly CompactUserPermissionGrantResponse[],
+export function resolveUserPermissionGrantPolicy(
+  grants: readonly UserPermissionGrantResponse[],
   metadata: FirewallPermissionDetailMetadata,
   permission: string,
 ): FirewallPolicyValue | undefined {
-  const policies = resolveCompactFirewallMetadataPolicies(grants, [metadata])?.[
-    metadata.type
-  ];
+  const policies = resolveFirewallMetadataPolicies(
+    permissionGrantsToFirewallPolicies(grants),
+    [metadata],
+  )?.[metadata.type];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy
     : policies?.policies[permission];
@@ -117,12 +118,12 @@ interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
 
-function createCompactUserPermissionGrantsByAgentFactory(): (
+function createUserPermissionGrantsByAgentFactory(): (
   params: UserPermissionGrantsByAgentParams,
-) => Computed<Promise<readonly CompactUserPermissionGrantResponse[]>> {
+) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
   const cache = new Map<
     string,
-    Computed<Promise<readonly CompactUserPermissionGrantResponse[]>>
+    Computed<Promise<readonly UserPermissionGrantResponse[]>>
   >();
   return (params) => {
     const key = JSON.stringify(params);
@@ -135,7 +136,7 @@ function createCompactUserPermissionGrantsByAgentFactory(): (
       const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
       const result = await retryTransientLoad(() => {
         return accept(
-          client.compactList({ query: { agentId: params.agentId } }),
+          client.list({ query: { agentId: params.agentId } }),
           [200],
           { toast: false },
         );
@@ -147,18 +148,16 @@ function createCompactUserPermissionGrantsByAgentFactory(): (
   };
 }
 
-export const compactUserPermissionGrantsByAgent =
-  createCompactUserPermissionGrantsByAgentFactory();
+export const userPermissionGrantsByAgent =
+  createUserPermissionGrantsByAgentFactory();
 
-export const permissionAllowCompactUserPermissionGrants$ = computed(
-  async (get) => {
-    const agentId = get(permissionAllowAgentId$);
-    if (!agentId) {
-      return [];
-    }
-    return await get(compactUserPermissionGrantsByAgent({ agentId }));
-  },
-);
+export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
+  const agentId = get(permissionAllowAgentId$);
+  if (!agentId) {
+    return [];
+  }
+  return await get(userPermissionGrantsByAgent({ agentId }));
+});
 
 export const upsertUserPermissionGrant$ = command(
   async (
@@ -207,19 +206,19 @@ export const upsertUserPermissionGrant$ = command(
   },
 );
 
-export const applyCompactUserPermissionGrants$ = command(
+export const applyUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
       agentId: string;
       connectorRef: string;
-      grants: readonly ApplyCompactUserPermissionGrant[];
+      grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<readonly CompactUserPermissionGrantResponse[]> => {
+  ): Promise<readonly UserPermissionGrantResponse[]> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await accept(
-      client.compactApply({
+      client.apply({
         body: {
           agentId: params.agentId,
           connectorRef: params.connectorRef,

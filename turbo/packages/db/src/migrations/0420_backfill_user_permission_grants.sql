@@ -57,24 +57,6 @@ backfilled_grants AS (
   SELECT * FROM named_grants
   UNION ALL
   SELECT * FROM unknown_grants
-),
-updated_grants AS (
-  UPDATE user_permission_grants AS existing
-  SET
-    action = backfilled.action,
-    expires_at = NULL,
-    updated_at = NOW()
-  FROM backfilled_grants AS backfilled
-  WHERE existing.org_id = backfilled.org_id
-    AND existing.user_id = backfilled.user_id
-    AND existing.agent_id = backfilled.agent_id
-    AND existing.connector_ref = backfilled.connector_ref
-    AND existing.permission = backfilled.permission
-    AND (
-      existing.action IS DISTINCT FROM backfilled.action
-      OR existing.expires_at IS NOT NULL
-    )
-  RETURNING existing.org_id
 )
 INSERT INTO user_permission_grants (
   org_id,
@@ -94,12 +76,10 @@ SELECT
   action,
   NULL
 FROM backfilled_grants
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM user_permission_grants AS existing
-  WHERE existing.org_id = backfilled_grants.org_id
-    AND existing.user_id = backfilled_grants.user_id
-    AND existing.agent_id = backfilled_grants.agent_id
-    AND existing.connector_ref = backfilled_grants.connector_ref
-    AND existing.permission = backfilled_grants.permission
-);
+ON CONFLICT (org_id, user_id, agent_id, connector_ref, permission) DO UPDATE
+SET
+  action = EXCLUDED.action,
+  expires_at = NULL,
+  updated_at = NOW()
+WHERE user_permission_grants.action IS DISTINCT FROM EXCLUDED.action
+   OR user_permission_grants.expires_at IS NOT NULL;

@@ -1449,27 +1449,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(unknownDenied.allow).toContain("channels:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
-    // Compact connector-default grants apply to runtime policies without one
-    // persisted row per permission, and permission exceptions still override.
-    await api.applyCompactUserPermissionGrants(actor, {
-      agentId,
-      connectorRef: "slack",
-      grants: [
-        {
-          target: { kind: "connector-default" },
-          action: "deny",
-        },
-        {
-          target: { kind: "permission", permission: "chat:write" },
-          action: "allow",
-        },
-      ],
-    });
-    const compactDefault = await claimSlackPolicy("compact default deny");
-    expect(compactDefault.deny).toContain("channels:read");
-    expect(compactDefault.allow).toContain("chat:write");
-    expect(compactDefault.unknownPolicy).toBe("allow");
-
     // The grant snapshot is baked into the queued run: flipping the grant
     // after creation does not change the already-created run's policy.
     await api.upsertUserPermissionGrant(actor, {

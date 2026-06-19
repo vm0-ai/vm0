@@ -1,7 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
-  type CompactUserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -155,16 +154,13 @@ describe("chat message action cards", () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let capturedBody: unknown = null;
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.compactList,
-      ({ respond }) => {
-        listRequests += 1;
-        if (listRequests === 1) {
-          throw new Error("temporary permission grant load failure");
-        }
-        return respond(200, []);
-      },
-    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      listRequests += 1;
+      if (listRequests === 1) {
+        throw new Error("temporary permission grant load failure");
+      }
+      return respond(200, []);
+    });
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -240,18 +236,15 @@ describe("chat message action cards", () => {
   it("does not retry non-transient permission action loading failures", async () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
     let listRequests = 0;
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.compactList,
-      ({ respond }) => {
-        listRequests += 1;
-        return respond(403, {
-          error: {
-            code: "FORBIDDEN",
-            message: "Forbidden",
-          },
-        });
-      },
-    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      listRequests += 1;
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden",
+        },
+      });
+    });
 
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-load-forbidden`,
@@ -292,12 +285,9 @@ describe("chat message action cards", () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.compactList,
-      ({ respond }) => {
-        return respond(200, []);
-      },
-    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -371,12 +361,9 @@ describe("chat message action cards", () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.compactList,
-      ({ respond }) => {
-        return respond(200, []);
-      },
-    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -446,23 +433,20 @@ describe("chat message action cards", () => {
   it("lets users deny a permission request from an assistant message", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
-    let grants: CompactUserPermissionGrantResponse[] = [
+    let grants: UserPermissionGrantResponse[] = [
       {
         agentId: AGENT_ID,
         connectorRef: "slack",
-        target: { kind: "permission", permission: "admin.analytics:read" },
+        permission: "admin.analytics:read",
         action: "allow",
         expiresAt: null,
         createdAt: "2026-06-09T10:30:00Z",
         updatedAt: "2026-06-09T10:30:00Z",
       },
     ];
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.compactList,
-      ({ respond }) => {
-        return respond(200, grants);
-      },
-    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -475,20 +459,7 @@ describe("chat message action cards", () => {
           createdAt: grants[0]?.createdAt ?? "2026-06-09T10:30:00Z",
           updatedAt: "2026-06-09T11:02:00Z",
         };
-        grants = [
-          {
-            agentId: grant.agentId,
-            connectorRef: grant.connectorRef,
-            target:
-              grant.permission === UNKNOWN_PERMISSION_GRANT
-                ? { kind: "unknown-endpoint" }
-                : { kind: "permission", permission: grant.permission },
-            action: grant.action,
-            expiresAt: grant.expiresAt,
-            createdAt: grant.createdAt,
-            updatedAt: grant.updatedAt,
-          },
-        ];
+        grants = [grant];
         return respond(200, grant);
       },
     );
