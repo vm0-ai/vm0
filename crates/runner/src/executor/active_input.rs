@@ -103,7 +103,7 @@ async fn forward_entries(
     seen: &mut HashSet<String>,
 ) {
     for entry in entries {
-        if !seen.insert(entry.message_id.clone()) {
+        if seen.contains(&entry.message_id) {
             continue;
         }
         let payload = ActiveInputPayload {
@@ -134,16 +134,32 @@ async fn forward_entries(
                     message_id = %entry.message_id,
                     "forwarded active input"
                 );
+                seen.insert(entry.message_id);
             }
             Err(error) => {
+                let retry = should_retry_control_error(&error);
                 warn!(
                     run_id = %run_id,
                     sequence = entry.sequence,
                     message_id = %entry.message_id,
                     error = %error,
+                    retry,
                     "failed to forward active input"
                 );
+                if !retry {
+                    seen.insert(entry.message_id);
+                }
             }
         }
     }
+}
+
+fn should_retry_control_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::WouldBlock
+    )
 }

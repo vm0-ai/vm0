@@ -208,14 +208,17 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_control_error_does_not_block_completion() {
+async fn run_in_sandbox_retries_active_input_after_control_error() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&wait_gate),
     ));
-    overrides.push_process_control_error("simulated control error");
+    overrides.push_process_control_io_error(
+        std::io::ErrorKind::TimedOut,
+        "simulated transient control error",
+    );
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let group_dir = dir.path().join("active-inputs");
@@ -249,7 +252,7 @@ async fn run_in_sandbox_control_error_does_not_block_completion() {
 
     assert!(
         overrides
-            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
     wait_gate.notify_one();
@@ -260,7 +263,14 @@ async fn run_in_sandbox_control_error_does_not_block_completion() {
         .unwrap();
 
     assert!(result.failure.is_none());
-    assert_eq!(overrides.process_control_calls().len(), 1);
+    assert_eq!(
+        overrides
+            .process_control_calls()
+            .iter()
+            .map(|call| call.message_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["msg-1", "msg-1"]
+    );
 }
 
 #[tokio::test]

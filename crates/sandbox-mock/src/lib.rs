@@ -540,7 +540,7 @@ pub struct MockSandboxOverrides {
     /// Wakes tests waiting for process-control calls to be recorded.
     process_control_notify: tokio::sync::Notify,
     /// FIFO queue of process-control errors consumed by control handles.
-    process_control_errors: Mutex<VecDeque<String>>,
+    process_control_errors: Mutex<VecDeque<(std::io::ErrorKind, String)>>,
     /// Whether a successful process cancel releases the configured
     /// `wait_process` gate. Tests can disable this to exercise bounded wait
     /// timeout paths after cancel is sent.
@@ -934,9 +934,18 @@ impl MockSandboxOverrides {
 
     /// Queue a process-control send error consumed by the next control handle.
     pub fn push_process_control_error(&self, message: impl Into<String>) {
+        self.push_process_control_io_error(std::io::ErrorKind::Other, message);
+    }
+
+    /// Queue a process-control send error with a specific I/O kind.
+    pub fn push_process_control_io_error(
+        &self,
+        kind: std::io::ErrorKind,
+        message: impl Into<String>,
+    ) {
         self.process_control_errors
             .lock_ignoring_poison()
-            .push_back(message.into());
+            .push_back((kind, message.into()));
     }
 
     /// Configure whether successful process cancellation releases a configured
@@ -1501,12 +1510,12 @@ impl Sandbox for MockSandbox {
                             },
                         );
                         overrides.process_control_notify.notify_waiters();
-                        if let Some(message) = overrides
+                        if let Some((kind, message)) = overrides
                             .process_control_errors
                             .lock_ignoring_poison()
                             .pop_front()
                         {
-                            return Err(std::io::Error::other(message));
+                            return Err(std::io::Error::new(kind, message));
                         }
                     }
                     Ok(ProcessControlAck { message_id })
