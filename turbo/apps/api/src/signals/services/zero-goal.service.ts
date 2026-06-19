@@ -310,10 +310,21 @@ export async function completeCurrentGoal(
   }
 
   const completedAt = nowDate();
-  await db
-    .update(zeroWorkflows)
-    .set({ active: false, updatedAt: completedAt })
-    .where(eq(zeroWorkflows.id, goal.row.workflowId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(zeroWorkflows)
+      .set({ active: false, updatedAt: completedAt })
+      .where(eq(zeroWorkflows.id, goal.row.workflowId));
+    await tx
+      .update(zeroWorkflowTriggers)
+      .set({
+        enabled: false,
+        chatThreadId: null,
+        nextRunAt: null,
+        updatedAt: completedAt,
+      })
+      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+  });
 
   return {
     kind: "ok",
