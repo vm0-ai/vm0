@@ -31,8 +31,10 @@ const MAX_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 /// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
-/// Local active input is only used by smoke tests, so keep producer fan-out bounded.
-const MAX_LOCAL_ACTIVE_INPUTS: usize = 16;
+/// Local active input is only used by smoke tests. Keep this at or below the
+/// guest-agent active-input queue capacity so rapid inputs cannot be rejected
+/// after the local job has already started.
+const MAX_LOCAL_ACTIVE_INPUTS: usize = 8;
 
 #[derive(Args)]
 pub struct SubmitArgs {
