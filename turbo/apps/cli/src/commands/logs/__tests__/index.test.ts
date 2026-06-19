@@ -1853,6 +1853,24 @@ describe("logs command", () => {
           "cli",
           "run-123",
           "--tail",
+          "000",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Option --tail must be a positive integer"),
+      );
+
+      mockExit.mockClear();
+      mockConsoleError.mockClear();
+
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--tail",
           "1e2",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -2257,7 +2275,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "20"]);
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "020"]);
 
       // Small finite requests only fetch the remaining target count.
       expect(capturedQuery?.limit).toBe("20");
@@ -2281,7 +2299,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "10"]);
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "010"]);
 
       // Small finite requests only fetch the remaining target count.
       expect(capturedQuery?.limit).toBe("10");

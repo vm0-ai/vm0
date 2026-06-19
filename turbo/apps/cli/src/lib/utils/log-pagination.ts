@@ -28,7 +28,7 @@ export function parsePositiveLogCount(
   optionName: string,
 ): number {
   const trimmed = value.trim();
-  if (!/^[1-9]\d*$/.test(trimmed)) {
+  if (!/^0*[1-9]\d*$/.test(trimmed)) {
     throw new Error(`Option ${optionName} must be a positive integer`);
   }
 

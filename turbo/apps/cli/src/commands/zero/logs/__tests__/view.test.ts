@@ -178,7 +178,7 @@ describe("zero logs view command", () => {
       ),
     );
 
-    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "2"]);
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "02"]);
 
     expect(capturedUrl?.searchParams.get("limit")).toBe("2");
     expect(capturedUrl?.searchParams.get("order")).toBe("desc");
@@ -205,7 +205,7 @@ describe("zero logs view command", () => {
       ),
     );
 
-    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "2"]);
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "002"]);
 
     expect(capturedUrl?.searchParams.get("limit")).toBe("2");
     expect(capturedUrl?.searchParams.get("order")).toBe("asc");
