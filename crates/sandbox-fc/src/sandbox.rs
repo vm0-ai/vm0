@@ -33,6 +33,11 @@ use crate::api::ApiClient;
 use crate::balloon;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
+#[cfg(test)]
+use crate::exec_result_compat::EXEC_TIMEOUT_EXIT_CODE;
+use crate::exec_result_compat::{
+    captured_exec_output_bytes, legacy_exit_code_for_exec_termination, reject_stream_overflow,
+};
 use crate::factory::InvariantConfig;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
@@ -48,9 +53,6 @@ use crate::process::{ChildExitNotifier, kill_process_group};
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Timeout for receiving a process start acknowledgement from the guest.
 const PROCESS_START_ACK_TIMEOUT: Duration = Duration::from_secs(30);
-/// Exit code returned by guest exec timeout handling.
-const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
-
 /// Timeout for graceful shutdown via vsock.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -1613,29 +1615,6 @@ fn captured_output_bytes(output: ExecOwnedCapturedOutput) -> (Vec<u8>, bool) {
     }
 }
 
-fn captured_exec_output_bytes(
-    name: &str,
-    output: ExecOwnedCapturedOutput,
-) -> io::Result<(Vec<u8>, bool)> {
-    match output {
-        ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
-        ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("exec result discarded {name} for capture request"),
-        )),
-    }
-}
-
-fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
-    if diagnostic.is_empty() {
-        return;
-    }
-    if !stderr.is_empty() && !stderr.ends_with(b"\n") {
-        stderr.push(b'\n');
-    }
-    stderr.extend_from_slice(diagnostic.as_bytes());
-}
-
 fn process_termination_kind(termination: ExecTermination) -> ProcessTerminationKind {
     match termination {
         ExecTermination::Exited { .. } => ProcessTerminationKind::Exited,
@@ -1646,42 +1625,10 @@ fn process_termination_kind(termination: ExecTermination) -> ProcessTerminationK
     }
 }
 
-fn legacy_exit_code_for_exec_termination(
-    termination: ExecTermination,
-    stderr: &mut Vec<u8>,
-    diagnostic: &str,
-) -> i32 {
-    match termination {
-        ExecTermination::Exited { exit_code } => exit_code,
-        ExecTermination::TimedOut => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Timeout");
-            }
-            EXEC_TIMEOUT_EXIT_CODE
-        }
-        ExecTermination::Cancelled => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Cancelled");
-            }
-            append_diagnostic(stderr, diagnostic);
-            1
-        }
-        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
-            append_diagnostic(stderr, diagnostic);
-            1
-        }
-    }
-}
-
 fn bounded_exec_result_to_exec_result(
     result: vsock_host::ExecOperationResult,
 ) -> io::Result<ExecResult> {
-    if result.stream_overflowed {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "exec capture unexpectedly overflowed a stream queue",
-        ));
-    }
+    reject_stream_overflow(&result)?;
 
     let termination = process_termination_kind(result.termination);
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", result.stdout)?;

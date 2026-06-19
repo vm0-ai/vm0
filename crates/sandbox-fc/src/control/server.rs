@@ -18,6 +18,9 @@ use super::protocol::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus, read_frame, write_frame,
 };
+use crate::exec_result_compat::{
+    captured_exec_output_bytes, legacy_exit_code_for_exec_termination, reject_stream_overflow,
+};
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::park_coordinator::ParkCoordinator;
 
@@ -432,7 +435,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
     let env: &[(&str, &str)] = &[];
 
     let result = vsock
-        .exec_capture(vsock_host::ExecCaptureRequest {
+        .exec_operation_capture(vsock_host::ExecCaptureRequest {
             command: &request.command,
             timeout_ms,
             env,
@@ -444,20 +447,41 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
             stdin_bytes: None,
             wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
         })
-        .await;
+        .await
+        .and_then(exec_response_from_operation_result);
 
     match result {
-        Ok(result) => ExecResponse::Success {
-            exit_code: result.exit_code,
-            stdout: BASE64.encode(&result.stdout),
-            stderr: BASE64.encode(&result.stderr),
-            stdout_truncated: result.stdout_truncated,
-            stderr_truncated: result.stderr_truncated,
-        },
+        Ok(response) => response,
         Err(e) => ExecResponse::Error {
             error: format!("exec failed: {e}"),
         },
     }
+}
+
+fn exec_response_from_operation_result(
+    result: vsock_host::ExecOperationResult,
+) -> io::Result<ExecResponse> {
+    reject_stream_overflow(&result)?;
+
+    let vsock_host::ExecOperationResult {
+        termination,
+        stdout,
+        stderr,
+        diagnostic,
+        ..
+    } = result;
+
+    let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", stdout)?;
+    let (mut stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
+    let exit_code = legacy_exit_code_for_exec_termination(termination, &mut stderr, &diagnostic);
+
+    Ok(ExecResponse::Success {
+        exit_code,
+        stdout: BASE64.encode(stdout),
+        stderr: BASE64.encode(stderr),
+        stdout_truncated,
+        stderr_truncated,
+    })
 }
 
 fn control_start_error(error: GuestOperationStartError) -> String {

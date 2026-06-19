@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -8,9 +9,11 @@ use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tokio::task::JoinHandle;
 use tracing::info;
+use vsock_proto::ExecTermination;
 
 use crate::api::ApiClient;
 use crate::config::SnapshotConfig;
+use crate::exec_result_compat::{captured_exec_output_bytes, reject_stream_overflow};
 use crate::factory::InvariantConfig;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
@@ -323,7 +326,7 @@ async fn run_with_firecracker(
     //      are fast. The snapshot captures memory + disk state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
-        .exec_capture(vsock_host::ExecCaptureRequest {
+        .exec_operation_capture(vsock_host::ExecCaptureRequest {
             command: inv.prewarm_script,
             timeout_ms: 30_000,
             env: &[],
@@ -337,14 +340,7 @@ async fn run_with_firecracker(
         })
         .await
         .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
-    if prewarm_result.exit_code != 0 {
-        let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
-        return Err(SnapshotError::Setup(format!(
-            "pre-warm failed (exit code {}): {}",
-            prewarm_result.exit_code,
-            stderr.trim(),
-        )));
-    }
+    validate_prewarm_exec_result(prewarm_result)?;
     info!("pre-warm complete");
 
     // 10. Pause VM.
@@ -373,6 +369,62 @@ async fn run_with_firecracker(
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 
     Ok(output.snapshot_config(&config.id))
+}
+
+fn validate_prewarm_exec_result(
+    result: vsock_host::ExecOperationResult,
+) -> Result<(), SnapshotError> {
+    let (termination, stderr, diagnostic) = prewarm_exec_result_parts(result)
+        .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
+    let stderr = String::from_utf8_lossy(&stderr);
+    let stderr = stderr.trim();
+
+    match termination {
+        ExecTermination::Exited { exit_code: 0 } => Ok(()),
+        ExecTermination::Exited { exit_code } => Err(SnapshotError::Setup(format!(
+            "pre-warm failed (exit code {exit_code}): {stderr}",
+        ))),
+        termination => {
+            let detail = prewarm_failure_detail(stderr, &diagnostic);
+            if detail.is_empty() {
+                Err(SnapshotError::Setup(format!(
+                    "pre-warm failed (termination {termination:?})"
+                )))
+            } else {
+                Err(SnapshotError::Setup(format!(
+                    "pre-warm failed (termination {termination:?}): {detail}"
+                )))
+            }
+        }
+    }
+}
+
+fn prewarm_exec_result_parts(
+    result: vsock_host::ExecOperationResult,
+) -> io::Result<(ExecTermination, Vec<u8>, String)> {
+    reject_stream_overflow(&result)?;
+
+    let vsock_host::ExecOperationResult {
+        termination,
+        stdout,
+        stderr,
+        diagnostic,
+        ..
+    } = result;
+
+    let _ = captured_exec_output_bytes("stdout", stdout)?;
+    let (stderr, _) = captured_exec_output_bytes("stderr", stderr)?;
+    Ok((termination, stderr, diagnostic))
+}
+
+fn prewarm_failure_detail(stderr: &str, diagnostic: &str) -> String {
+    let diagnostic = diagnostic.trim();
+    match (stderr.is_empty(), diagnostic.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => stderr.to_string(),
+        (true, false) => diagnostic.to_string(),
+        (false, false) => format!("{stderr}; diagnostic: {diagnostic}"),
+    }
 }
 
 async fn configure_snapshot_vm(
@@ -441,6 +493,115 @@ mod tests {
             memory_mb: 512,
             workspace_disk_mb: 1024,
         }
+    }
+
+    fn prewarm_result(
+        termination: ExecTermination,
+        stderr: Vec<u8>,
+        diagnostic: &str,
+    ) -> vsock_host::ExecOperationResult {
+        vsock_host::ExecOperationResult {
+            termination,
+            duration_ms: 10,
+            stdout: vsock_host::ExecOwnedCapturedOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            },
+            stderr: vsock_host::ExecOwnedCapturedOutput::Captured {
+                bytes: stderr,
+                truncated: false,
+            },
+            diagnostic: diagnostic.to_string(),
+            stream_overflowed: false,
+        }
+    }
+
+    fn expect_prewarm_setup_error(result: Result<(), SnapshotError>) -> String {
+        match result {
+            Ok(()) => panic!("expected prewarm setup error"),
+            Err(SnapshotError::Setup(message)) => message,
+            Err(other) => panic!("expected prewarm setup error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prewarm_exec_result_accepts_exited_zero() {
+        validate_prewarm_exec_result(prewarm_result(
+            ExecTermination::Exited { exit_code: 0 },
+            Vec::new(),
+            "",
+        ))
+        .expect("zero exit should succeed");
+    }
+
+    #[test]
+    fn prewarm_exec_result_preserves_nonzero_exit_wording() {
+        let message = expect_prewarm_setup_error(validate_prewarm_exec_result(prewarm_result(
+            ExecTermination::Exited { exit_code: 7 },
+            b"prewarm failed\n".to_vec(),
+            "ignored",
+        )));
+
+        assert_eq!(message, "pre-warm failed (exit code 7): prewarm failed");
+    }
+
+    #[test]
+    fn prewarm_exec_result_reports_structured_terminal_states() {
+        for (termination, diagnostic, expected) in [
+            (ExecTermination::TimedOut, "", "TimedOut"),
+            (ExecTermination::Cancelled, "cancelled by host", "Cancelled"),
+            (ExecTermination::StartFailed, "spawn failed", "StartFailed"),
+            (ExecTermination::WaitFailed, "wait failed", "WaitFailed"),
+        ] {
+            let message = expect_prewarm_setup_error(validate_prewarm_exec_result(prewarm_result(
+                termination,
+                b"stderr clue".to_vec(),
+                diagnostic,
+            )));
+
+            assert!(message.contains(expected), "got: {message}");
+            assert!(message.contains("stderr clue"), "got: {message}");
+            if !diagnostic.is_empty() {
+                assert!(message.contains(diagnostic), "got: {message}");
+            }
+        }
+    }
+
+    #[test]
+    fn prewarm_exec_result_rejects_invalid_capture_state() {
+        let overflow = expect_prewarm_setup_error(validate_prewarm_exec_result(
+            vsock_host::ExecOperationResult {
+                stream_overflowed: true,
+                ..prewarm_result(ExecTermination::Exited { exit_code: 0 }, Vec::new(), "")
+            },
+        ));
+        assert!(overflow.contains("pre-warm exec"), "got: {overflow}");
+        assert!(
+            overflow.contains("overflowed a stream queue"),
+            "got: {overflow}"
+        );
+
+        let stdout_discarded = expect_prewarm_setup_error(validate_prewarm_exec_result(
+            vsock_host::ExecOperationResult {
+                stdout: vsock_host::ExecOwnedCapturedOutput::Discarded,
+                ..prewarm_result(ExecTermination::Exited { exit_code: 0 }, Vec::new(), "")
+            },
+        ));
+        assert!(
+            stdout_discarded.contains("discarded stdout"),
+            "got: {stdout_discarded}"
+        );
+
+        let stderr_discarded = expect_prewarm_setup_error(validate_prewarm_exec_result(
+            vsock_host::ExecOperationResult {
+                stderr: vsock_host::ExecOwnedCapturedOutput::Discarded,
+                ..prewarm_result(ExecTermination::Exited { exit_code: 0 }, Vec::new(), "")
+            },
+        ));
+        assert!(
+            stderr_discarded.contains("discarded stderr"),
+            "got: {stderr_discarded}"
+        );
     }
 
     #[tokio::test]

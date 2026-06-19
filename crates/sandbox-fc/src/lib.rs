@@ -30,6 +30,7 @@ mod config;
 pub mod control;
 mod cow_cleanup;
 mod cow_pool;
+mod exec_result_compat;
 mod factory;
 mod guest_operations;
 mod leaked_resources;
