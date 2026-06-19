@@ -34,8 +34,10 @@ pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
 /// Sandbox identifier assigned by the runner.
 pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 
-/// Wire value describing whether the sandbox was fresh, reused, or resumed
-/// from another runner-side reuse state.
+/// Wire value for the runner's sandbox-reuse decision.
+///
+/// `reused` means an idle VM was unparked. Other values name the branch that
+/// caused the runner to create a fresh sandbox instead.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
 /// User prompt payload sent to the guest-agent.
