@@ -188,6 +188,7 @@ import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
 import { mapboxFirewall } from "./mapbox.generated";
 import { massiveFirewall } from "./massive.generated";
+import { maskdbFirewall } from "./maskdb.generated";
 import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -600,6 +601,7 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   "google-maps": googleMapsFirewall,
   hunter: hunterFirewall,
   mapbox: mapboxFirewall,
+  maskdb: maskdbFirewall,
   mathpix: mathpixFirewall,
   nyne: nyneFirewall,
   openrouter: openrouterFirewall,

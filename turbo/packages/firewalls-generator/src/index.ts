@@ -135,6 +135,7 @@ import { generate as generateMailsac } from "./mailsac";
 import { generate as generateManus } from "./manus";
 import { generate as generateMapbox } from "./mapbox";
 import { generate as generateMassive } from "./massive";
+import { generate as generateMaskdb } from "./maskdb";
 import { generate as generateMathpix } from "./mathpix";
 import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
@@ -517,6 +518,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "google-maps": generateGoogleMaps,
   hunter: generateHunter,
   mapbox: generateMapbox,
+  maskdb: generateMaskdb,
   mathpix: generateMathpix,
   nyne: generateNyne,
   openrouter: generateOpenrouter,

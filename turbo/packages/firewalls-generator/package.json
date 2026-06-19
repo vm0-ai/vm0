@@ -263,6 +263,7 @@
     "generate:google-maps": "tsx src/index.ts google-maps",
     "generate:hunter": "tsx src/index.ts hunter",
     "generate:mapbox": "tsx src/index.ts mapbox",
+    "generate:maskdb": "tsx src/index.ts maskdb",
     "generate:mathpix": "tsx src/index.ts mathpix",
     "generate:nyne": "tsx src/index.ts nyne",
     "generate:openrouter": "tsx src/index.ts openrouter",
