@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.50](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.49...sandbox-fc-v0.37.50) (2026-06-19)
+
+
+### Refactoring
+
+* migrate sandbox-fc exec capture to structured results ([#18334](https://github.com/vm0-ai/vm0/issues/18334)) ([3a1c368](https://github.com/vm0-ai/vm0/commit/3a1c368156f7c2fa0b43d43bb0aeb68156d0a9cf))
+
 ## [0.37.49](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.48...sandbox-fc-v0.37.49) (2026-06-19)
 
 ## [0.37.48](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.47...sandbox-fc-v0.37.48) (2026-06-19)
