@@ -1,6 +1,7 @@
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
+  type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -26,6 +27,8 @@ const OTHER_USAGE_AGENT_NAME = "Other usage";
 const NETWORK_RUN_ATTRIBUTION_BATCH_SIZE = 10_000;
 const AGGREGATION_REPROCESS_OVERLAP_MS = 5 * 60_000;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface AgentInfo {
   readonly agentId: string | null;
@@ -34,13 +37,25 @@ interface AgentInfo {
   credits: number;
 }
 
-interface AxiomNetworkRow {
-  readonly _time: string;
+type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
+
+interface NetworkInsightRow {
   readonly runId: string;
-  readonly host: string;
-  readonly firewall_name: string;
-  readonly firewall_permission: string;
-  readonly action: string;
+  readonly firewallName: FirewallConnectorType;
+  readonly firewallPermission: string;
+  readonly action: NetworkInsightAction;
+}
+
+interface NetworkInsightRowNormalizationStats {
+  readonly invalidRows: number;
+  readonly invalidRunIds: number;
+  readonly invalidFirewallNames: number;
+  readonly invalidActions: number;
+}
+
+interface NormalizedNetworkInsightRows {
+  readonly rows: NetworkInsightRow[];
+  readonly stats: NetworkInsightRowNormalizationStats;
 }
 
 interface UserNetworkData {
@@ -254,6 +269,102 @@ function getPermissionLabel(
   return key;
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function networkInsightAction(value: unknown): NetworkInsightAction | null {
+  if (value === "ALLOW" || value === "DENY" || value === "BLOCK") {
+    return value;
+  }
+  return null;
+}
+
+function networkInsightRunId(value: unknown): string | null {
+  if (typeof value === "string" && UUID_SHAPE.test(value)) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeNetworkInsightRows(
+  values: readonly unknown[],
+): NormalizedNetworkInsightRows {
+  const rows: NetworkInsightRow[] = [];
+  let invalidRows = 0;
+  let invalidRunIds = 0;
+  let invalidFirewallNames = 0;
+  let invalidActions = 0;
+
+  for (const value of values) {
+    if (!isRecord(value)) {
+      invalidRows++;
+      continue;
+    }
+
+    const runId = networkInsightRunId(value.runId);
+    if (!runId) {
+      invalidRunIds++;
+      continue;
+    }
+
+    const firewallNameValue = value.firewall_name;
+    if (
+      typeof firewallNameValue !== "string" ||
+      !isFirewallConnectorType(firewallNameValue)
+    ) {
+      invalidFirewallNames++;
+      continue;
+    }
+
+    const action = networkInsightAction(value.action);
+    if (!action) {
+      invalidActions++;
+      continue;
+    }
+
+    rows.push({
+      runId,
+      firewallName: firewallNameValue,
+      firewallPermission:
+        typeof value.firewall_permission === "string"
+          ? value.firewall_permission
+          : "",
+      action,
+    });
+  }
+
+  return {
+    rows,
+    stats: {
+      invalidRows,
+      invalidRunIds,
+      invalidFirewallNames,
+      invalidActions,
+    },
+  };
+}
+
+function logSkippedNetworkInsightRows(
+  stats: NetworkInsightRowNormalizationStats,
+): void {
+  const skipped =
+    stats.invalidRows +
+    stats.invalidRunIds +
+    stats.invalidFirewallNames +
+    stats.invalidActions;
+  if (skipped === 0) {
+    return;
+  }
+
+  L.warn("Skipped malformed Axiom network rows while aggregating insights", {
+    invalidRows: stats.invalidRows,
+    invalidRunIds: stats.invalidRunIds,
+    invalidFirewallNames: stats.invalidFirewallNames,
+    invalidActions: stats.invalidActions,
+  });
+}
+
 async function resolveUserNames(
   db: Db,
   clerk: ClerkLike,
@@ -317,7 +428,7 @@ async function resolveUserNames(
 }
 
 function aggregateNetworkDataPerUser(
-  networkRows: AxiomNetworkRow[],
+  networkRows: NetworkInsightRow[],
   runIdToInfo: Map<
     string,
     {
@@ -330,10 +441,6 @@ function aggregateNetworkDataPerUser(
   const userNetworkMap = new Map<string, UserNetworkData>();
 
   for (const row of networkRows) {
-    if (!isFirewallConnectorType(row.firewall_name)) {
-      continue;
-    }
-
     const info = runIdToInfo.get(row.runId);
     if (!info) {
       continue;
@@ -355,37 +462,43 @@ function aggregateNetworkDataPerUser(
     };
     userNetworkMap.set(key, userData);
 
-    const service = userData.serviceMap.get(row.firewall_name) ?? {
+    const service = userData.serviceMap.get(row.firewallName) ?? {
       calls: 0,
       agentNames: new Set<string>(),
     };
     service.calls++;
     service.agentNames.add(info.agentName);
-    userData.serviceMap.set(row.firewall_name, service);
+    userData.serviceMap.set(row.firewallName, service);
 
-    if (row.firewall_permission || row.action === "DENY") {
-      const hasPermission = row.firewall_permission.length > 0;
-      const permKey = hasPermission
-        ? `${row.firewall_name}:${row.firewall_permission}`
-        : row.firewall_name;
-      const label = hasPermission
-        ? getPermissionLabel(row.firewall_name, row.firewall_permission)
-        : row.firewall_name;
-      const permission = userData.permMap.get(permKey) ?? {
-        label,
-        connectorType: row.firewall_name,
-        allowed: 0,
-        denied: 0,
-        agentNames: new Set<string>(),
-      };
-      if (row.action === "ALLOW") {
-        permission.allowed++;
-      } else if (row.action === "DENY") {
-        permission.denied++;
-      }
-      permission.agentNames.add(info.agentName);
-      userData.permMap.set(permKey, permission);
+    if (row.action === "BLOCK") {
+      continue;
     }
+
+    if (row.action === "ALLOW" && row.firewallPermission.length === 0) {
+      continue;
+    }
+
+    const hasPermission = row.firewallPermission.length > 0;
+    const permKey = hasPermission
+      ? `${row.firewallName}:${row.firewallPermission}`
+      : row.firewallName;
+    const label = hasPermission
+      ? getPermissionLabel(row.firewallName, row.firewallPermission)
+      : row.firewallName;
+    const permission = userData.permMap.get(permKey) ?? {
+      label,
+      connectorType: row.firewallName,
+      allowed: 0,
+      denied: 0,
+      agentNames: new Set<string>(),
+    };
+    if (row.action === "ALLOW") {
+      permission.allowed++;
+    } else {
+      permission.denied++;
+    }
+    permission.agentNames.add(info.agentName);
+    userData.permMap.set(permKey, permission);
   }
 
   return userNetworkMap;
@@ -1004,15 +1117,15 @@ function queryWindowNetworkData(
 | limit 100000`;
 
     const axiomResult = await settle(
-      (async (): Promise<AxiomNetworkRow[]> => {
-        return [
-          ...((await get(
-            queryAxiom(apl),
-          )) as unknown as readonly AxiomNetworkRow[]),
-        ];
+      (async (): Promise<readonly unknown[]> => {
+        const rows = (await get(queryAxiom(apl))) as unknown;
+        if (!Array.isArray(rows)) {
+          throw new Error("Axiom network query returned non-array result");
+        }
+        return rows;
       })(),
     );
-    const networkRows = axiomResult.ok ? axiomResult.value : [];
+    const rawNetworkRows = axiomResult.ok ? axiomResult.value : [];
     const axiomDegraded = !axiomResult.ok;
     if (!axiomResult.ok) {
       L.error("Failed to query Axiom for network logs", {
@@ -1024,13 +1137,14 @@ function queryWindowNetworkData(
     }
     signal.throwIfAborted();
 
+    const normalizedNetworkRows = normalizeNetworkInsightRows(rawNetworkRows);
+    logSkippedNetworkInsightRows(normalizedNetworkRows.stats);
+
     const networkRunIds = [
       ...new Set(
-        networkRows
-          .map((row) => {
-            return row.runId;
-          })
-          .filter(Boolean),
+        normalizedNetworkRows.rows.map((row) => {
+          return row.runId;
+        }),
       ),
     ];
     const runAgentRows =
@@ -1061,8 +1175,11 @@ function queryWindowNetworkData(
     }
 
     return {
-      userNetworkMap: aggregateNetworkDataPerUser(networkRows, runIdToInfo),
-      networkRows: networkRows.length,
+      userNetworkMap: aggregateNetworkDataPerUser(
+        normalizedNetworkRows.rows,
+        runIdToInfo,
+      ),
+      networkRows: rawNetworkRows.length,
       axiomDegraded,
     };
   });
