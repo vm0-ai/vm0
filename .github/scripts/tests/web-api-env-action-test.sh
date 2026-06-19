@@ -103,6 +103,9 @@ build_doppler_secrets_json() {
     fi
     json="$(jq -c --arg key "$key" --arg value "doppler-${key}" '. + {($key): $value}' <<< "$json")"
   done <<< "$(oauth_client_config_keys)"
+  if [[ "$omit_key" != "STRIPE_OAUTH_CLIENT_ID" ]]; then
+    json="$(jq -c --arg value "doppler-STRIPE_OAUTH_CLIENT_ID" '. + {STRIPE_OAUTH_CLIENT_ID: $value}' <<< "$json")"
+  fi
   printf '%s' "$json"
 }
 
@@ -134,8 +137,8 @@ run_action() {
     bash "$action_script"
 }
 
-if grep -En 'add_(var|secret) [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)' "$ACTION" | grep -Ev 'add_var STRIPE_OAUTH_CLIENT_ID STRIPE_OAUTH_CLIENT_ID'; then
-  fail "OAuth client id/secret entries must come from Doppler, not GitHub vars or secrets, except Stripe OAuth client id"
+if grep -En 'add_(var|secret) [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)' "$ACTION"; then
+  fail "OAuth client id/secret entries must come from Doppler, not GitHub vars or secrets"
 fi
 
 if ! oauth_client_config_prefixes | grep -qx SLACK; then
@@ -163,7 +166,7 @@ assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
 assert_env_value "$success_env_file" ZERO_PRICE_CUSTOM_CREDITS "price_test_custom_credits"
 assert_env_value "$success_env_file" ZERO_PRICE_CONCURRENCY "price_test_concurrency"
-assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_ID "ca_test_connect_client"
+assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_ID "doppler-STRIPE_OAUTH_CLIENT_ID"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
 assert_env_absent_value "$success_env_file" "github-slack-client-id"
@@ -196,5 +199,14 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Doppler OAuth client config to fail"
 fi
 assert_contains "$missing_output" "::error::GH_OAUTH_CLIENT_SECRET is missing from Doppler OAuth config"
+
+missing_stripe_dir="$(mktemp -d)"
+TEMP_DIRS+=("$missing_stripe_dir")
+status=0
+missing_stripe_output="$(run_action "$(build_doppler_secrets_json STRIPE_OAUTH_CLIENT_ID)" "$missing_stripe_dir" 2>&1)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing Stripe Doppler OAuth client id to fail"
+fi
+assert_contains "$missing_stripe_output" "::error::STRIPE_OAUTH_CLIENT_ID is missing from Doppler OAuth config"
 
 echo "web-api-env-action-test: ok"
