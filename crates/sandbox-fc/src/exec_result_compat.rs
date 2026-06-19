@@ -6,6 +6,17 @@ use vsock_proto::ExecTermination;
 /// Exit code historically used for timed-out guest exec operations.
 pub(crate) const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
 
+pub(crate) fn validate_legacy_exec_capture_timeout(timeout_ms: u32) -> io::Result<()> {
+    if timeout_ms == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exec requires a positive timeout; use supervised exec for unbounded commands",
+        ));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn reject_stream_overflow(result: &ExecOperationResult) -> io::Result<()> {
     if result.stream_overflowed {
         return Err(io::Error::new(

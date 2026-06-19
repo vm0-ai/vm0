@@ -713,6 +713,41 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
 }
 
 #[tokio::test]
+async fn control_exec_rejects_zero_timeout_without_guest_exec() {
+    let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
+    let fixture =
+        VsockExecFixture::connect(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
+            .await;
+    let mut handle = fixture.spawn_server();
+    let request = ExecRequest {
+        command: "echo should-not-run".into(),
+        timeout_secs: 0,
+        sudo: false,
+    };
+    let response = send_exec(&fixture.sock_path, &request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    match response {
+        ExecResponse::Error { error } => {
+            assert_eq!(
+                error,
+                "exec failed: exec requires a positive timeout; use supervised exec for unbounded commands"
+            );
+        }
+        ExecResponse::Success { .. } => panic!("expected zero-timeout validation error"),
+    }
+    assert!(
+        exec_seen_rx.try_recv().is_err(),
+        "control exec should not send a guest command with zero timeout"
+    );
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
 async fn control_exec_terminal_guest_error_completes_vsock_operation() {
     let fixture = VsockExecFixture::connect(|vsock_base| {
         mock_guest_errors_exec(vsock_base, "guest refused exec")

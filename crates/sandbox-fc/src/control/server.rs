@@ -20,6 +20,7 @@ use super::protocol::{
 };
 use crate::exec_result_compat::{
     captured_exec_output_bytes, legacy_exit_code_for_exec_termination, reject_stream_overflow,
+    validate_legacy_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::park_coordinator::ParkCoordinator;
@@ -433,6 +434,12 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
 
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
+
+    if let Err(e) = validate_legacy_exec_capture_timeout(timeout_ms) {
+        return ExecResponse::Error {
+            error: format!("exec failed: {e}"),
+        };
+    }
 
     let result = vsock
         .exec_operation_capture(vsock_host::ExecCaptureRequest {

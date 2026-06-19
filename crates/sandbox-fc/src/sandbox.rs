@@ -37,6 +37,7 @@ use crate::control;
 use crate::exec_result_compat::EXEC_TIMEOUT_EXIT_CODE;
 use crate::exec_result_compat::{
     captured_exec_output_bytes, legacy_exit_code_for_exec_termination, reject_stream_overflow,
+    validate_legacy_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
@@ -2089,12 +2090,7 @@ impl Sandbox for FirecrackerSandbox {
             operation,
             || Self::validate_exec_env_keys(operation, request.env),
             |guest| async move {
-                if timeout_ms == 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "exec requires a positive timeout; use supervised exec for unbounded commands",
-                    ));
-                }
+                validate_legacy_exec_capture_timeout(timeout_ms)?;
                 guest
                     .exec_operation_capture(vsock_host::ExecCaptureRequest {
                         command: request.cmd,
