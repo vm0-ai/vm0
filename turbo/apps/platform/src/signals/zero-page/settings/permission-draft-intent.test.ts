@@ -1,4 +1,7 @@
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  CompactUserPermissionGrantResponse,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -7,6 +10,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCompactPermissionDraftGrantsForSave,
   clearPermissionDraftInheritedExpiration,
   createEmptyPermissionDraftIntent,
   createPermissionDraftContext,
@@ -25,6 +29,7 @@ import {
   setPermissionDraftGroupExpiration,
   setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
+  setPermissionDraftUnknownExpiration,
   stagePermissionDraftConnectorRestore,
 } from "./permission-draft-intent.ts";
 
@@ -64,6 +69,22 @@ function createGrant(
     agentId: "agent",
     connectorRef: "slack",
     permission,
+    action,
+    expiresAt,
+    createdAt: "2026-03-01T00:00:00.000Z",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  };
+}
+
+function createCompactGrant(
+  target: CompactUserPermissionGrantResponse["target"],
+  action: CompactUserPermissionGrantResponse["action"],
+  expiresAt: string | null = null,
+): CompactUserPermissionGrantResponse {
+  return {
+    agentId: "agent",
+    connectorRef: "slack",
+    target,
     action,
     expiresAt,
     createdAt: "2026-03-01T00:00:00.000Z",
@@ -654,5 +675,102 @@ describe("permission draft intent reset persistence", () => {
         explicitGrants,
       }),
     ).toBe(false);
+  });
+});
+
+describe("compact permission draft save", () => {
+  it("stores connector-wide policy as a connector-default target", () => {
+    const draft = setPermissionDraftConnectorPolicy({
+      draft: createEmptyPermissionDraftIntent(),
+      policy: "deny",
+      includeUnknown: true,
+    });
+
+    expect(
+      buildCompactPermissionDraftGrantsForSave({
+        context: createContext(),
+        draft,
+        permissions: READ_PERMISSIONS,
+        initialCompactGrants: [],
+      }),
+    ).toStrictEqual([
+      {
+        target: { kind: "connector-default" },
+        action: "deny",
+      },
+      {
+        target: { kind: "unknown-endpoint" },
+        action: "deny",
+      },
+    ]);
+  });
+
+  it("preserves an existing connector default and stores permission exceptions", () => {
+    const draft = setPermissionDraftExpiration({
+      draft: setPermissionDraftPolicy({
+        draft: createEmptyPermissionDraftIntent(),
+        permissionName: "channels:history",
+        policy: "allow",
+      }),
+      permissionName: "channels:history",
+      expiresIn: "24h",
+    });
+
+    expect(
+      buildCompactPermissionDraftGrantsForSave({
+        context: createPermissionDraftContext({
+          metadata: METADATA,
+          initialPolicies: {
+            slack: {
+              policies: {
+                "bookmarks:read": "deny",
+                "channels:read": "deny",
+                "channels:history": "deny",
+              },
+              unknownPolicy: "allow",
+            },
+          },
+        }),
+        draft,
+        permissions: READ_PERMISSIONS,
+        initialCompactGrants: [
+          createCompactGrant({ kind: "connector-default" }, "deny"),
+        ],
+      }),
+    ).toStrictEqual([
+      {
+        target: { kind: "connector-default" },
+        action: "deny",
+      },
+      {
+        target: { kind: "permission", permission: "channels:history" },
+        action: "allow",
+        expiresIn: "24h",
+      },
+    ]);
+  });
+
+  it("keeps explicit unknown endpoint grants separate from permissions", () => {
+    const draft = setPermissionDraftUnknownExpiration({
+      draft: createEmptyPermissionDraftIntent(),
+      expiresIn: "1h",
+    });
+
+    expect(
+      buildCompactPermissionDraftGrantsForSave({
+        context: createContext(),
+        draft,
+        permissions: READ_PERMISSIONS,
+        initialCompactGrants: [
+          createCompactGrant({ kind: "unknown-endpoint" }, "allow"),
+        ],
+      }),
+    ).toStrictEqual([
+      {
+        target: { kind: "unknown-endpoint" },
+        action: "allow",
+        expiresIn: "1h",
+      },
+    ]);
   });
 });

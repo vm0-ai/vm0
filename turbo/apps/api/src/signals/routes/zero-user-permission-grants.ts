@@ -6,6 +6,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import {
+  applyCompactUserPermissionGrants$,
+  listCompactUserPermissionGrants$,
   listUserPermissionGrants$,
   resetUserPermissionGrants$,
   upsertUserPermissionGrant$,
@@ -18,6 +20,10 @@ const userPermissionGrantAuthOptions = {
 
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const upsertBody$ = bodyResultOf(zeroUserPermissionGrantsContract.upsert);
+const compactListQuery$ = queryOf(zeroUserPermissionGrantsContract.compactList);
+const compactApplyBody$ = bodyResultOf(
+  zeroUserPermissionGrantsContract.compactApply,
+);
 const resetQuery$ = queryOf(zeroUserPermissionGrantsContract.reset);
 
 const listUserPermissionGrantsInner$ = command(
@@ -69,6 +75,55 @@ const upsertUserPermissionGrantInner$ = command(
   },
 );
 
+const listCompactUserPermissionGrantsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(compactListQuery$);
+    const result = await set(
+      listCompactUserPermissionGrants$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        query,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if ("kind" in result) {
+      return { status: 200 as const, body: [...result.grants] };
+    }
+    return result;
+  },
+);
+
+const applyCompactUserPermissionGrantsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(compactApplyBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      applyCompactUserPermissionGrants$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        apply: bodyResult.data,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if ("kind" in result) {
+      return { status: 200 as const, body: [...result.grants] };
+    }
+    return result;
+  },
+);
+
 const resetUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -104,6 +159,20 @@ export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       userPermissionGrantAuthOptions,
       upsertUserPermissionGrantInner$,
+    ),
+  },
+  {
+    route: zeroUserPermissionGrantsContract.compactList,
+    handler: authRoute(
+      userPermissionGrantAuthOptions,
+      listCompactUserPermissionGrantsInner$,
+    ),
+  },
+  {
+    route: zeroUserPermissionGrantsContract.compactApply,
+    handler: authRoute(
+      userPermissionGrantAuthOptions,
+      applyCompactUserPermissionGrantsInner$,
     ),
   },
   {

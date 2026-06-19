@@ -4,7 +4,10 @@ import {
   type FirewallPolicy,
   type FirewallPolicyValue,
 } from "../firewall-types";
-import { createFirewallMetadataPolicyResolver } from "./policy-resolver";
+import {
+  createFirewallMetadataPolicyResolver,
+  type FirewallMetadataPolicyOverlay,
+} from "./policy-resolver";
 import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./summary.generated";
 import type {
   FirewallPermissionDetailMetadata,
@@ -43,6 +46,17 @@ export type FirewallPermissionGrantAction = Extract<
 export interface FirewallPermissionGrant {
   readonly connectorRef: string;
   readonly permission: string;
+  readonly action: FirewallPermissionGrantAction;
+}
+
+export type CompactFirewallPermissionGrantTarget =
+  | { readonly kind: "connector-default" }
+  | { readonly kind: "permission"; readonly permission: string }
+  | { readonly kind: "unknown-endpoint" };
+
+export interface CompactFirewallPermissionGrant {
+  readonly connectorRef: string;
+  readonly target: CompactFirewallPermissionGrantTarget;
   readonly action: FirewallPermissionGrantAction;
 }
 
@@ -176,4 +190,77 @@ export function permissionGrantsToFirewallPolicies(
     policies[grant.connectorRef] = current;
   }
   return Object.keys(policies).length > 0 ? policies : null;
+}
+
+export function compactPermissionGrantsToFirewallMetadataOverlay(
+  grants: readonly CompactFirewallPermissionGrant[],
+  connectorRef: string,
+): FirewallMetadataPolicyOverlay | undefined {
+  let permissionDefault: FirewallPolicyValue | undefined;
+  let unknownPolicy: FirewallPolicyValue | undefined;
+  const permissionOverrides: Record<string, FirewallPolicyValue> = {};
+
+  for (const grant of grants) {
+    if (grant.connectorRef !== connectorRef) {
+      continue;
+    }
+    switch (grant.target.kind) {
+      case "connector-default": {
+        permissionDefault = grant.action;
+        break;
+      }
+      case "permission": {
+        permissionOverrides[grant.target.permission] = grant.action;
+        break;
+      }
+      case "unknown-endpoint": {
+        unknownPolicy = grant.action;
+        break;
+      }
+    }
+  }
+
+  const hasPermissionOverrides = Object.keys(permissionOverrides).length > 0;
+  if (
+    permissionDefault === undefined &&
+    unknownPolicy === undefined &&
+    !hasPermissionOverrides
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(permissionDefault !== undefined ? { permissionDefault } : {}),
+    ...(hasPermissionOverrides ? { permissionOverrides } : {}),
+    ...(unknownPolicy !== undefined ? { unknownPolicy } : {}),
+  };
+}
+
+export function resolveCompactFirewallMetadataPolicies(
+  grants: readonly CompactFirewallPermissionGrant[],
+  metadata: readonly FirewallPermissionDetailMetadata[],
+): FirewallPolicies | null {
+  let resolved: FirewallPolicies | null = null;
+  for (const detail of metadata) {
+    const overlay = compactPermissionGrantsToFirewallMetadataOverlay(
+      grants,
+      detail.type,
+    );
+    if (!overlay) {
+      continue;
+    }
+    const resolver = createFirewallMetadataPolicyResolver(detail, overlay);
+    const policies: Record<string, FirewallPolicyValue> = {};
+    for (const permission of detail.permissions) {
+      policies[permission.name] = resolver.permission(permission.name);
+    }
+    resolved = {
+      ...(resolved ?? {}),
+      [detail.type]: {
+        policies,
+        unknownPolicy: resolver.unknown(),
+      },
+    };
+  }
+  return resolved;
 }

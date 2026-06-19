@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import {
+  type CompactUserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -92,11 +93,11 @@ describe("permission allow page", () => {
 
   it("lets a user deny a connector permission without an expiry choice", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000002";
-    let grants: UserPermissionGrantResponse[] = [
+    let grants: CompactUserPermissionGrantResponse[] = [
       {
         agentId,
         connectorRef: "slack",
-        permission: "admin.analytics:read",
+        target: { kind: "permission", permission: "admin.analytics:read" },
         action: "allow",
         expiresAt: null,
         createdAt: "2026-03-10T00:00:00Z",
@@ -117,9 +118,12 @@ describe("permission allow page", () => {
         preferPersonalProvider: false,
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(200, grants);
-    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.compactList,
+      ({ respond }) => {
+        return respond(200, grants);
+      },
+    );
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -132,7 +136,20 @@ describe("permission allow page", () => {
           createdAt: grants[0]?.createdAt ?? "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
         };
-        grants = [grant];
+        grants = [
+          {
+            agentId: grant.agentId,
+            connectorRef: grant.connectorRef,
+            target:
+              grant.permission === UNKNOWN_PERMISSION_GRANT
+                ? { kind: "unknown-endpoint" }
+                : { kind: "permission", permission: grant.permission },
+            action: grant.action,
+            expiresAt: grant.expiresAt,
+            createdAt: grant.createdAt,
+            updatedAt: grant.updatedAt,
+          },
+        ];
         return respond(200, grant);
       },
     );
@@ -187,19 +204,25 @@ describe("permission allow page", () => {
         preferPersonalProvider: false,
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          agentId,
-          connectorRef: "slack",
-          permission: "admin.analytics:read",
-          action: "allow",
-          expiresAt: null,
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:01:00Z",
-        },
-      ]);
-    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.compactList,
+      ({ respond }) => {
+        return respond(200, [
+          {
+            agentId,
+            connectorRef: "slack",
+            target: {
+              kind: "permission",
+              permission: "admin.analytics:read",
+            },
+            action: "allow",
+            expiresAt: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:01:00Z",
+          },
+        ]);
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -223,7 +246,7 @@ describe("permission allow page", () => {
 
   it("lets a user grant unknown endpoints to an agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000004";
-    let grants: UserPermissionGrantResponse[] = [];
+    let grants: CompactUserPermissionGrantResponse[] = [];
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -238,9 +261,12 @@ describe("permission allow page", () => {
         preferPersonalProvider: false,
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(200, grants);
-    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.compactList,
+      ({ respond }) => {
+        return respond(200, grants);
+      },
+    );
     context.mocks.api(
       zeroUserPermissionGrantsContract.upsert,
       ({ body, respond }) => {
@@ -253,7 +279,20 @@ describe("permission allow page", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
         };
-        grants = [grant];
+        grants = [
+          {
+            agentId: grant.agentId,
+            connectorRef: grant.connectorRef,
+            target:
+              grant.permission === UNKNOWN_PERMISSION_GRANT
+                ? { kind: "unknown-endpoint" }
+                : { kind: "permission", permission: grant.permission },
+            action: grant.action,
+            expiresAt: grant.expiresAt,
+            createdAt: grant.createdAt,
+            updatedAt: grant.updatedAt,
+          },
+        ];
         return respond(200, grant);
       },
     );
@@ -288,7 +327,7 @@ describe("permission allow page", () => {
       {
         agentId,
         connectorRef: "cloudflare",
-        permission: UNKNOWN_PERMISSION_GRANT,
+        target: { kind: "unknown-endpoint" },
         action: "allow",
       },
     ]);
@@ -310,19 +349,22 @@ describe("permission allow page", () => {
         preferPersonalProvider: false,
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          agentId,
-          connectorRef: "cloudflare",
-          permission: UNKNOWN_PERMISSION_GRANT,
-          action: "allow",
-          expiresAt: null,
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:01:00Z",
-        },
-      ]);
-    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.compactList,
+      ({ respond }) => {
+        return respond(200, [
+          {
+            agentId,
+            connectorRef: "cloudflare",
+            target: { kind: "unknown-endpoint" },
+            action: "allow",
+            expiresAt: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:01:00Z",
+          },
+        ]);
+      },
+    );
 
     detachedSetupPage({
       context,

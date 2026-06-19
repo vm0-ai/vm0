@@ -81,13 +81,17 @@ import {
 } from "@vm0/core";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type {
+  CompactUserPermissionGrantResponse,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
@@ -245,10 +249,10 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
+  compactUserPermissionGrantsByAgent,
   findPermissionInMetadata,
-  resolveUserPermissionGrantPolicy,
+  resolveCompactUserPermissionGrantPolicy,
   upsertUserPermissionGrant$,
-  userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -4312,7 +4316,7 @@ interface PermissionActionButtonState {
 
 type PermissionAction = "allow" | "deny";
 
-type PermissionActionUserGrant = UserPermissionGrantResponse;
+type PermissionActionUserGrant = CompactUserPermissionGrantResponse;
 
 interface LoadableLike<T> {
   state: string;
@@ -4482,7 +4486,11 @@ function permissionActionUserGrantPolicy(
   if (!grants || !metadata) {
     return undefined;
   }
-  return resolveUserPermissionGrantPolicy(grants, metadata, block.permission);
+  return resolveCompactUserPermissionGrantPolicy(
+    grants,
+    metadata,
+    block.permission,
+  );
 }
 
 function permissionActionUserGrant(
@@ -4496,7 +4504,10 @@ function permissionActionUserGrant(
   return grants.find((grant) => {
     return (
       grant.connectorRef === block.connectorRef &&
-      grant.permission === block.permission &&
+      ((block.permission === UNKNOWN_PERMISSION_GRANT &&
+        grant.target.kind === "unknown-endpoint") ||
+        (grant.target.kind === "permission" &&
+          grant.target.permission === block.permission)) &&
       grant.action === block.action
     );
   });
@@ -4760,7 +4771,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     upsertUserPermissionGrant$,
   );
   const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
+    compactUserPermissionGrantsByAgent({
       agentId: block.agentId,
     }),
   );

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 
 import {
   createEmptyPermissionDraftIntent,
@@ -17,6 +18,7 @@ interface PermissionDrawerUiState {
 
 interface PermissionDrawerApplyOptions {
   readonly metadata: FirewallPermissionDetailMetadata;
+  readonly initialPolicies: FirewallPolicies;
 }
 
 type PermissionDrawerApply = (
@@ -27,6 +29,7 @@ type PermissionDrawerApply = (
 interface ApplyPermissionDrawerParams {
   readonly intent: PermissionDraftIntent;
   readonly metadata: FirewallPermissionDetailMetadata;
+  readonly initialPolicies: FirewallPolicies;
   readonly onApply: PermissionDrawerApply;
   readonly onClose: () => void;
 }
@@ -143,7 +146,10 @@ export const applyPermissionDrawer$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
-    await params.onApply(params.intent, { metadata: params.metadata });
+    await params.onApply(params.intent, {
+      metadata: params.metadata,
+      initialPolicies: params.initialPolicies,
+    });
     signal.throwIfAborted();
     params.onClose();
   },

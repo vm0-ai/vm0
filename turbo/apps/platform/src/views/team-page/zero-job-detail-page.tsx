@@ -87,17 +87,17 @@ import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-pe
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
 import {
+  buildCompactPermissionDraftGrantsForSave,
   createPermissionDraftContext,
-  materializePermissionDraftForLegacySave,
+  legacyPermissionGrantsFromCompactGrants,
   type PermissionDraftIntent,
 } from "../../signals/zero-page/settings/permission-draft-intent.ts";
 import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
 import {
-  resetUserPermissionGrants$,
-  upsertUserPermissionGrant$,
-  userPermissionGrantsByAgent,
+  applyCompactUserPermissionGrants$,
+  compactUserPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   allConnectorTypes$,
@@ -115,41 +115,22 @@ import {
   permSavingType$,
   setPermSavingType$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
-import {
-  UNKNOWN_PERMISSION_GRANT,
-  type FirewallPolicies,
-  type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
-import {
-  expandFirewallMetadataDefaultPolicy,
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallMetadataPolicies,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import type {
-  UserPermissionGrantAction,
-  UserPermissionGrantExpiresIn,
+  ApplyCompactUserPermissionGrant,
+  CompactUserPermissionGrantResponse,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
-type UpsertUserPermissionGrant = (
+type ApplyCompactUserPermissionGrants = (
   params: {
     agentId: string;
     connectorRef: string;
-    permission: string;
-    action: UserPermissionGrantAction;
-    expiresIn?: UserPermissionGrantExpiresIn;
+    grants: readonly ApplyCompactUserPermissionGrant[];
   },
   signal: AbortSignal,
-) => Promise<UserPermissionGrantResponse>;
-
-type ResetUserPermissionGrants = (
-  params: {
-    agentId: string;
-    connectorRef: string;
-  },
-  signal: AbortSignal,
-) => Promise<void>;
+) => Promise<readonly CompactUserPermissionGrantResponse[]>;
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -443,353 +424,39 @@ function PermissionRow({
   );
 }
 
-function userGrantAction(
-  policy: FirewallPolicyValue,
-): UserPermissionGrantAction {
-  if (policy === "ask") {
-    throw new Error("User permission grants do not support ask");
-  }
-  return policy;
-}
-
-type GrantExpirationSelections = Readonly<
-  Record<string, UserPermissionGrantExpiresIn>
->;
-
-interface ChangedUserGrantPolicy {
-  readonly permission: string;
-  readonly action: UserPermissionGrantAction;
-  readonly expiresIn?: UserPermissionGrantExpiresIn;
-}
-
-function selectedGrantExpiresIn(
-  expiresInByPermission: GrantExpirationSelections,
-  permission: string,
-  action: UserPermissionGrantAction,
-): UserPermissionGrantExpiresIn | undefined {
-  if (action !== "allow") {
-    return undefined;
-  }
-  return expiresInByPermission[permission];
-}
-
-function setChangedGrantPolicy(
-  changes: Map<string, ChangedUserGrantPolicy>,
-  permission: string,
-  action: UserPermissionGrantAction,
-  expiresIn: UserPermissionGrantExpiresIn | undefined,
-): void {
-  changes.set(permission, {
-    permission,
-    action,
-    ...(action === "allow" && expiresIn ? { expiresIn } : {}),
-  });
-}
-
-function addNamedPolicyChanges({
-  changes,
-  initial,
-  current,
-  expiresInByPermission,
-}: {
-  changes: Map<string, ChangedUserGrantPolicy>;
-  initial: FirewallPolicies[ConnectorType] | undefined;
-  current: FirewallPolicies[ConnectorType] | undefined;
-  expiresInByPermission: GrantExpirationSelections;
-}): void {
-  for (const [permission, action] of Object.entries(current?.policies ?? {})) {
-    if (initial?.policies[permission] !== action) {
-      const grantAction = userGrantAction(action);
-      setChangedGrantPolicy(
-        changes,
-        permission,
-        grantAction,
-        selectedGrantExpiresIn(expiresInByPermission, permission, grantAction),
-      );
-    }
-  }
-}
-
-function addUnknownPolicyChange({
-  changes,
-  initial,
-  current,
-  expiresInByPermission,
-}: {
-  changes: Map<string, ChangedUserGrantPolicy>;
-  initial: FirewallPolicies[ConnectorType] | undefined;
-  current: FirewallPolicies[ConnectorType] | undefined;
-  expiresInByPermission: GrantExpirationSelections;
-}): void {
-  const unknownPolicy = current?.unknownPolicy;
-  if (unknownPolicy === undefined || initial?.unknownPolicy === unknownPolicy) {
-    return;
-  }
-  const grantAction = userGrantAction(unknownPolicy);
-  setChangedGrantPolicy(
-    changes,
-    UNKNOWN_PERMISSION_GRANT,
-    grantAction,
-    selectedGrantExpiresIn(
-      expiresInByPermission,
-      UNKNOWN_PERMISSION_GRANT,
-      grantAction,
-    ),
-  );
-}
-
-function addExpirationOnlyChanges({
-  changes,
-  connectorType,
-  initialGrants,
-  current,
-  expiresInByPermission,
-}: {
-  changes: Map<string, ChangedUserGrantPolicy>;
-  connectorType: ConnectorType;
-  initialGrants: readonly UserPermissionGrantResponse[];
-  current: FirewallPolicies[ConnectorType] | undefined;
-  expiresInByPermission: GrantExpirationSelections;
-}): void {
-  for (const grant of initialGrants) {
-    if (grant.connectorRef !== connectorType || changes.has(grant.permission)) {
-      continue;
-    }
-    const expiresIn = expiresInByPermission[grant.permission];
-    if (!expiresIn) {
-      continue;
-    }
-    if (expiresIn === "always" && !grant.expiresAt) {
-      continue;
-    }
-    const currentPolicy =
-      grant.permission === UNKNOWN_PERMISSION_GRANT
-        ? current?.unknownPolicy
-        : current?.policies[grant.permission];
-    const action = userGrantAction(currentPolicy ?? grant.action);
-    if (grant.action !== "allow" || action !== "allow") {
-      continue;
-    }
-    changes.set(grant.permission, {
-      permission: grant.permission,
-      action,
-      expiresIn,
-    });
-  }
-}
-
-function addDefaultAllowExpirationChanges({
-  changes,
-  connectorType,
-  initialGrants,
-  current,
-  expiresInByPermission,
-}: {
-  changes: Map<string, ChangedUserGrantPolicy>;
-  connectorType: ConnectorType;
-  initialGrants: readonly UserPermissionGrantResponse[];
-  current: FirewallPolicies[ConnectorType] | undefined;
-  expiresInByPermission: GrantExpirationSelections;
-}): void {
-  const initialGrantPermissions = new Set(
-    initialGrants
-      .filter((grant) => {
-        return grant.connectorRef === connectorType;
-      })
-      .map((grant) => {
-        return grant.permission;
-      }),
-  );
-  for (const [permission, expiresIn] of Object.entries(expiresInByPermission)) {
-    if (
-      expiresIn === "always" ||
-      changes.has(permission) ||
-      initialGrantPermissions.has(permission)
-    ) {
-      continue;
-    }
-    const currentPolicy =
-      permission === UNKNOWN_PERMISSION_GRANT
-        ? current?.unknownPolicy
-        : current?.policies[permission];
-    if (currentPolicy === "ask") {
-      continue;
-    }
-    const action = userGrantAction(currentPolicy ?? "allow");
-    if (action !== "allow") {
-      continue;
-    }
-    changes.set(permission, {
-      permission,
-      action,
-      expiresIn,
-    });
-  }
-}
-
-function changedUserGrantPolicies({
-  connectorType,
-  metadata,
-  initialPolicies,
-  initialGrants,
-  policies,
-  expiresInByPermission,
-}: {
-  connectorType: ConnectorType;
-  metadata: FirewallPermissionDetailMetadata;
-  initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
-  policies: FirewallPolicies;
-  expiresInByPermission: GrantExpirationSelections;
-}): ChangedUserGrantPolicy[] {
-  const initial = resolveFirewallMetadataPolicies(initialPolicies, [
-    metadata,
-  ])?.[connectorType];
-  const current = policies[connectorType];
-  const changes = new Map<string, ChangedUserGrantPolicy>();
-
-  addNamedPolicyChanges({
-    changes,
-    initial,
-    current,
-    expiresInByPermission,
-  });
-  addUnknownPolicyChange({
-    changes,
-    initial,
-    current,
-    expiresInByPermission,
-  });
-
-  addExpirationOnlyChanges({
-    changes,
-    connectorType,
-    initialGrants,
-    current,
-    expiresInByPermission,
-  });
-  addDefaultAllowExpirationChanges({
-    changes,
-    connectorType,
-    initialGrants,
-    current,
-    expiresInByPermission,
-  });
-
-  return [...changes.values()];
-}
-
-function defaultFirewallPoliciesForConnector(
-  metadata: FirewallPermissionDetailMetadata,
-): FirewallPolicies {
-  return {
-    [metadata.type]: expandFirewallMetadataDefaultPolicy(metadata),
-  };
-}
-
-async function saveUserGrantPolicies({
-  agentId,
-  connectorType,
-  metadata,
-  initialPolicies,
-  initialGrants,
-  policies,
-  expiresInByPermission,
-  resetPending,
-  pageSignal,
-  resetGrantPolicies,
-  upsertGrant,
-}: {
-  agentId: string;
-  connectorType: ConnectorType;
-  metadata: FirewallPermissionDetailMetadata;
-  initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
-  policies: FirewallPolicies;
-  expiresInByPermission: GrantExpirationSelections;
-  resetPending: boolean;
-  pageSignal: AbortSignal;
-  resetGrantPolicies: ResetUserPermissionGrants;
-  upsertGrant: UpsertUserPermissionGrant;
-}): Promise<void> {
-  if (resetPending) {
-    await resetGrantPolicies(
-      {
-        agentId,
-        connectorRef: connectorType,
-      },
-      pageSignal,
-    );
-  }
-
-  const basePolicies = resetPending
-    ? defaultFirewallPoliciesForConnector(metadata)
-    : initialPolicies;
-  const baseGrants = resetPending ? [] : initialGrants;
-
-  for (const { permission, action, expiresIn } of changedUserGrantPolicies({
-    connectorType,
-    metadata,
-    initialPolicies: basePolicies,
-    initialGrants: baseGrants,
-    policies,
-    expiresInByPermission,
-  })) {
-    await upsertGrant(
-      {
-        agentId,
-        connectorRef: connectorType,
-        permission,
-        action,
-        ...(action === "allow" && expiresIn ? { expiresIn } : {}),
-      },
-      pageSignal,
-    );
-  }
-}
-
 async function saveDrawerPolicies({
   agentId,
   connectorType,
   metadata,
   initialPolicies,
-  initialGrants,
+  initialCompactGrants,
   intent,
   pageSignal,
-  resetGrantPolicies,
-  upsertGrant,
+  applyCompactGrants,
 }: {
   agentId: string;
   connectorType: ConnectorType;
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
+  initialCompactGrants: readonly CompactUserPermissionGrantResponse[];
   intent: PermissionDraftIntent;
   pageSignal: AbortSignal;
-  resetGrantPolicies: ResetUserPermissionGrants;
-  upsertGrant: UpsertUserPermissionGrant;
+  applyCompactGrants: ApplyCompactUserPermissionGrants;
 }): Promise<void> {
-  // TODO(#18218): replace this final compatibility expansion with compact
-  // user permission grant persistence once the storage/API shape supports it.
-  const { policies, expiresInByPermission } =
-    materializePermissionDraftForLegacySave({
-      context: createPermissionDraftContext({ metadata, initialPolicies }),
-      draft: intent,
-      permissions: metadata.permissions,
-    });
-  await saveUserGrantPolicies({
-    agentId,
-    connectorType,
-    metadata,
-    initialPolicies,
-    initialGrants,
-    policies,
-    expiresInByPermission,
-    resetPending: intent.resetPending,
-    pageSignal,
-    resetGrantPolicies,
-    upsertGrant,
+  const grants = buildCompactPermissionDraftGrantsForSave({
+    context: createPermissionDraftContext({ metadata, initialPolicies }),
+    draft: intent,
+    permissions: metadata.permissions,
+    initialCompactGrants,
   });
+  await applyCompactGrants(
+    {
+      agentId,
+      connectorRef: connectorType,
+      grants,
+    },
+    pageSignal,
+  );
 }
 
 function PermissionListSkeleton() {
@@ -981,6 +648,7 @@ function AgentPermissionsDrawer({
   displayName,
   initialPolicies,
   initialGrants,
+  initialCompactGrants,
   resetEnabled,
   readOnly,
   onApply,
@@ -991,12 +659,14 @@ function AgentPermissionsDrawer({
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
+  initialCompactGrants: readonly CompactUserPermissionGrantResponse[];
   resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
     intent: PermissionDraftIntent,
     options: {
       readonly metadata: FirewallPermissionDetailMetadata;
+      readonly initialPolicies: FirewallPolicies;
     },
   ) => Promise<void>;
   onClose: () => void;
@@ -1011,6 +681,7 @@ function AgentPermissionsDrawer({
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
+      initialCompactGrants={initialCompactGrants}
       resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
@@ -1042,19 +713,17 @@ function JobPermissionsTab({
   const saveConnectors = useSet(saveAgentConnectors$);
   const pageSignal = useGet(pageSignal$);
   const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
+    compactUserPermissionGrantsByAgent({
       agentId,
     }),
   );
-  const userGrants =
+  const compactUserGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  const userGrantPolicies =
-    userGrantsLoadable.state === "hasData"
-      ? permissionGrantsToFirewallPolicies(userGrants)
-      : null;
-  const drawerInitialPolicies = userGrantPolicies ?? {};
-  const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
-  const [, resetGrantPolicies] = useLoadableSet(resetUserPermissionGrants$);
+  const userGrants = legacyPermissionGrantsFromCompactGrants(compactUserGrants);
+  const drawerInitialPolicies = {};
+  const [, applyCompactGrants] = useLoadableSet(
+    applyCompactUserPermissionGrants$,
+  );
   const connectorType = useGet(permConnectorType$);
   const setConnectorType = useSet(setPermConnectorType$);
   const search = useGet(permSearch$);
@@ -1133,9 +802,10 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={userGrants}
+            initialCompactGrants={compactUserGrants}
             resetEnabled
             readOnly={!canManagePermissions}
-            onApply={async (intent, { metadata }) => {
+            onApply={async (intent, { metadata, initialPolicies }) => {
               if (connectorType === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
@@ -1143,12 +813,11 @@ function JobPermissionsTab({
                 agentId,
                 connectorType,
                 metadata,
-                initialPolicies: drawerInitialPolicies,
-                initialGrants: userGrants,
+                initialPolicies,
+                initialCompactGrants: compactUserGrants,
                 intent,
                 pageSignal,
-                resetGrantPolicies,
-                upsertGrant,
+                applyCompactGrants,
               });
               toast.success("Permissions updated");
             }}

@@ -52,6 +52,7 @@ describe("userPermissionGrants schema", () => {
     expect(userPermissionGrants.userId.name).toBe("user_id");
     expect(userPermissionGrants.agentId.name).toBe("agent_id");
     expect(userPermissionGrants.connectorRef.name).toBe("connector_ref");
+    expect(userPermissionGrants.targetType.name).toBe("target_type");
     expect(userPermissionGrants.permission.name).toBe("permission");
     expect(userPermissionGrants.action.name).toBe("action");
     expect(userPermissionGrants.expiresAt.name).toBe("expires_at");
@@ -63,10 +64,13 @@ describe("userPermissionGrants schema", () => {
     expect(getExtraConfigNames(userPermissionGrants)).toEqual(
       expect.arrayContaining([
         "uq_user_permission_grants_grant",
+        "uq_user_permission_grants_target",
         "idx_user_permission_grants_lookup",
         "idx_user_permission_grants_user_id",
         "idx_user_permission_grants_agent_id",
         "chk_user_permission_grants_action",
+        "chk_user_permission_grants_target_type",
+        "chk_user_permission_grants_target_permission",
       ]),
     );
   });

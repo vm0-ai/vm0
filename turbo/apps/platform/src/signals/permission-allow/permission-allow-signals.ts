@@ -1,5 +1,7 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
+  type ApplyCompactUserPermissionGrant,
+  type CompactUserPermissionGrantResponse,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   type UserPermissionGrantResponse,
@@ -10,8 +12,7 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import {
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallMetadataPolicies,
+  resolveCompactFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import { zeroClient$ } from "../api-client.ts";
@@ -99,15 +100,14 @@ export function findPermissionInMetadata(
 
 const internalUserPermissionGrantsReload$ = state(0);
 
-export function resolveUserPermissionGrantPolicy(
-  grants: readonly UserPermissionGrantResponse[],
+export function resolveCompactUserPermissionGrantPolicy(
+  grants: readonly CompactUserPermissionGrantResponse[],
   metadata: FirewallPermissionDetailMetadata,
   permission: string,
 ): FirewallPolicyValue | undefined {
-  const policies = resolveFirewallMetadataPolicies(
-    permissionGrantsToFirewallPolicies(grants),
-    [metadata],
-  )?.[metadata.type];
+  const policies = resolveCompactFirewallMetadataPolicies(grants, [metadata])?.[
+    metadata.type
+  ];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy
     : policies?.policies[permission];
@@ -117,12 +117,12 @@ interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
 
-function createUserPermissionGrantsByAgentFactory(): (
+function createCompactUserPermissionGrantsByAgentFactory(): (
   params: UserPermissionGrantsByAgentParams,
-) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
+) => Computed<Promise<readonly CompactUserPermissionGrantResponse[]>> {
   const cache = new Map<
     string,
-    Computed<Promise<readonly UserPermissionGrantResponse[]>>
+    Computed<Promise<readonly CompactUserPermissionGrantResponse[]>>
   >();
   return (params) => {
     const key = JSON.stringify(params);
@@ -135,7 +135,7 @@ function createUserPermissionGrantsByAgentFactory(): (
       const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
       const result = await retryTransientLoad(() => {
         return accept(
-          client.list({ query: { agentId: params.agentId } }),
+          client.compactList({ query: { agentId: params.agentId } }),
           [200],
           { toast: false },
         );
@@ -147,16 +147,18 @@ function createUserPermissionGrantsByAgentFactory(): (
   };
 }
 
-export const userPermissionGrantsByAgent =
-  createUserPermissionGrantsByAgentFactory();
+export const compactUserPermissionGrantsByAgent =
+  createCompactUserPermissionGrantsByAgentFactory();
 
-export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
-  const agentId = get(permissionAllowAgentId$);
-  if (!agentId) {
-    return [];
-  }
-  return await get(userPermissionGrantsByAgent({ agentId }));
-});
+export const permissionAllowCompactUserPermissionGrants$ = computed(
+  async (get) => {
+    const agentId = get(permissionAllowAgentId$);
+    if (!agentId) {
+      return [];
+    }
+    return await get(compactUserPermissionGrantsByAgent({ agentId }));
+  },
+);
 
 export const upsertUserPermissionGrant$ = command(
   async (
@@ -205,25 +207,27 @@ export const upsertUserPermissionGrant$ = command(
   },
 );
 
-export const resetUserPermissionGrants$ = command(
+export const applyCompactUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
       agentId: string;
       connectorRef: string;
+      grants: readonly ApplyCompactUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<readonly CompactUserPermissionGrantResponse[]> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    await accept(
-      client.reset({
-        query: {
+    const result = await accept(
+      client.compactApply({
+        body: {
           agentId: params.agentId,
           connectorRef: params.connectorRef,
+          grants: [...params.grants],
         },
         fetchOptions: { signal },
       }),
-      [204],
+      [200],
     );
     signal.throwIfAborted();
     set(internalUserPermissionGrantsReload$, (prev) => {
@@ -233,5 +237,6 @@ export const resetUserPermissionGrants$ = command(
       return prev + 1;
     });
     set(reloadAgentById$);
+    return result.body;
   },
 );
