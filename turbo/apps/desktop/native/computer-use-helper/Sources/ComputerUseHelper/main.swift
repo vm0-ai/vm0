@@ -1118,7 +1118,7 @@ enum BackgroundWindowScreenshot {
         return unsafeBitCast(symbol, to: CreateImageFn.self)
     }()
 
-    static func capture(windowNumber: Int) throws -> WindowScreenshot {
+    static func capture(target: WindowTarget, appName: String) throws -> WindowScreenshot {
         guard let createImage else {
             throw HelperFailure(
                 code: "screen_recording_unavailable",
@@ -1129,12 +1129,12 @@ enum BackgroundWindowScreenshot {
         guard let image = createImage(
             .null,
             CGWindowListOption.optionIncludingWindow.rawValue,
-            CGWindowID(windowNumber),
+            CGWindowID(target.windowNumber),
             imageOptions.rawValue
         )?.takeRetainedValue() else {
             throw HelperFailure(
                 code: "screen_recording_unavailable",
-                message: "Unable to capture target window screenshot"
+                message: targetWindowScreenshotFailureMessage(appName: appName, target: target)
             )
         }
         let scaledImage = scaledForTransport(image)
@@ -2101,6 +2101,60 @@ func cgWindowAlpha(_ value: Any?) -> Double {
         return value
     }
     return 1
+}
+
+func cgWindowRecord(windowNumber: Int) -> [String: Any]? {
+    guard let rawList = CGWindowListCopyWindowInfo(
+        .optionIncludingWindow,
+        CGWindowID(windowNumber)
+    ) as? [[String: Any]] else {
+        return nil
+    }
+    return rawList.first
+}
+
+func currentConsoleSessionUnavailable() -> Bool {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
+        return false
+    }
+    if boolValue(session["CGSSessionScreenIsLocked"]) == true {
+        return true
+    }
+    let onConsole =
+        boolValue(session["kCGSSessionOnConsoleKey"]) ??
+        boolValue(session["CGSSessionOnConsoleKey"])
+    return onConsole == false
+}
+
+func targetWindowScreenshotFailureMessage(appName: String, target: WindowTarget) -> String {
+    let isConsoleSessionUnavailable = currentConsoleSessionUnavailable()
+    let record: TargetWindowScreenshotFailureRecord?
+    if isConsoleSessionUnavailable {
+        record = nil
+    } else {
+        record = cgWindowRecord(windowNumber: target.windowNumber).map { record in
+            TargetWindowScreenshotFailureRecord(
+                ownerPID: (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                frame: cgWindowBounds(record[kCGWindowBounds as String]),
+                alpha: cgWindowAlpha(record[kCGWindowAlpha as String]),
+                isOnScreen: cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
+                layer: (record[kCGWindowLayer as String] as? NSNumber)?.intValue
+            )
+        }
+    }
+    return ComputerUseHelperCore.targetWindowScreenshotFailureMessage(
+        appName: appName,
+        target: TargetWindowScreenshotFailureTarget(
+            pid: target.pid,
+            windowNumber: target.windowNumber,
+            title: target.title,
+            onCurrentSpace: target.onCurrentSpace,
+            currentSpaceId: target.currentSpaceId,
+            spaceIds: target.spaceIds
+        ),
+        record: record,
+        currentConsoleSessionUnavailable: isConsoleSessionUnavailable
+    )
 }
 
 func visualPointerWindowStack() -> [VisualPointerStackWindow] {
@@ -3719,7 +3773,10 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     if response["windowTitle"] == nil, let windowTitle = target.title {
         response["windowTitle"] = windowTitle
     }
-    let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
+    let screenshot = try BackgroundWindowScreenshot.capture(
+        target: target,
+        appName: runningApp.localizedName ?? appName
+    )
     let sourceName = target.title ??
         (elements.first?["name"] as? String) ??
         runningApp.localizedName ??
