@@ -43,7 +43,7 @@ async fn temp_dir_cleanup_preserves_original_error() {
 /// Staging contract: the in-progress `rootfs.ext4.staging` must not
 /// cause `is_rootfs_present` to report the rootfs as built. If it did,
 /// a crashed build partway through customization would still fast-path
-/// on the next run — reintroducing #11007.
+/// on the next run, reintroducing #11007.
 #[tokio::test]
 async fn is_rootfs_present_ignores_staging_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -51,13 +51,13 @@ async fn is_rootfs_present_ignores_staging_file() {
     let rootfs = RootfsPaths::new(&home, "staging-hash");
     tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
 
-    // Staging alone → not present.
+    // Staging alone means not present.
     tokio::fs::write(rootfs.rootfs_staging(), b"partial")
         .await
         .unwrap();
     assert!(!is_rootfs_present(&rootfs).await.unwrap());
 
-    // Committed file → present, even with lingering staging.
+    // Committed file means present, even with lingering staging.
     tokio::fs::write(rootfs.rootfs(), b"committed")
         .await
         .unwrap();
@@ -80,7 +80,7 @@ async fn staging_contract_happy_path() {
         .await
         .unwrap();
 
-    // Customize staging → commit.
+    // Customize staging, then commit.
     tokio::fs::write(rootfs.rootfs_staging(), b"customized")
         .await
         .unwrap();
