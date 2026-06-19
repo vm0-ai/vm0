@@ -49,6 +49,7 @@ import {
   hasPermissionDraftResetPersistedEffect,
   hasPermissionDraftUnknownChange,
   isPermissionDraftPristine,
+  permissionDraftInitialPolicyKey,
   permissionDraftMetadataKey,
   resolvePermissionDraftExpiration,
   resolvePermissionDraftGroupExpiration,
@@ -163,10 +164,11 @@ function buildInitialPermissionDrawerState({
   const explicitGrants = buildExplicitGrantMap(connectorType, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
   const context = createPermissionDraftContext({ metadata, initialPolicies });
+  const initialPolicyStateKey = permissionDraftInitialPolicyKey(context);
   return {
     ref: connectorType,
     explicitGrants,
-    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${context.initialResolver.unknown()}\u0000${permissionDraftMetadataKey(metadata)}\u0000${grantStateKey}`,
+    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${permissionDraftMetadataKey(metadata)}\u0000${initialPolicyStateKey}\u0000${grantStateKey}`,
   };
 }
 

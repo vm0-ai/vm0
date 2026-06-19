@@ -11,6 +11,7 @@ import {
   createPermissionDraftContext,
   hasPermissionDraftResetPersistedEffect,
   materializePermissionDraftForLegacySave,
+  permissionDraftInitialPolicyKey,
   resolvePermissionDraftExpiration,
   resolvePermissionDraftGroupExpiration,
   resolvePermissionDraftUnknownPolicy,
@@ -77,6 +78,28 @@ function createContext() {
 }
 
 describe("permission draft intent", () => {
+  it("fingerprints resolved initial permission policies", () => {
+    const initialAllowContext = createPermissionDraftContext({
+      metadata: METADATA,
+      initialPolicies: INITIAL_POLICIES,
+    });
+    const initialDenyContext = createPermissionDraftContext({
+      metadata: METADATA,
+      initialPolicies: {
+        slack: {
+          policies: {
+            "bookmarks:read": "deny",
+          },
+          unknownPolicy: "allow",
+        },
+      },
+    });
+
+    expect(permissionDraftInitialPolicyKey(initialAllowContext)).not.toBe(
+      permissionDraftInitialPolicyKey(initialDenyContext),
+    );
+  });
+
   it("does not materialize inherited expiration for denied permissions", () => {
     const context = createContext();
     let draft = createEmptyPermissionDraftIntent();

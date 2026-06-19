@@ -279,6 +279,20 @@ export function permissionDraftMetadataKey(
   });
 }
 
+export function permissionDraftInitialPolicyKey(
+  context: PermissionDraftContext,
+): string {
+  return JSON.stringify({
+    unknownPolicy: context.initialResolver.unknown(),
+    permissions: context.metadata.permissions.map((permission) => {
+      return [
+        permission.name,
+        context.initialResolver.permission(permission.name),
+      ] as const;
+    }),
+  });
+}
+
 export function explicitGrantStateKey(
   grants: Map<string, UserPermissionGrantResponse>,
 ): string {
