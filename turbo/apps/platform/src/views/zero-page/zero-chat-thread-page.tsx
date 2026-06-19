@@ -6080,12 +6080,10 @@ function PagedGroupActions({
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
 
-  const features = useLastResolved(featureSwitch$);
-  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
-  const usage = usageEnabled ? group.usage : undefined;
+  const usage = group.usage;
   const hasContent = content.length > 0;
 
   if (group.role === "user") {

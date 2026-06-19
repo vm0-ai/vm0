@@ -463,14 +463,9 @@ function useNewThreadComputerUse() {
 
 function useAgentChatDraftSync(pageSignal: AbortSignal) {
   const queueDraftSync = useSet(queueCurrentAgentDraftSync$);
-  const features = useLastResolved(featureSwitch$);
-  const agentDraftsEnabled =
-    features?.[FeatureSwitchKey.AgentChatDrafts] ?? false;
 
   return () => {
-    if (agentDraftsEnabled) {
-      detach(queueDraftSync(pageSignal), Reason.DomCallback);
-    }
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 }
 

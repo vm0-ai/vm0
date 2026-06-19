@@ -1373,7 +1373,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-usage-only",
-      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: true },
     });
 
     await waitFor(() => {
@@ -1506,7 +1505,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-stale-lifecycle-thinking",
-      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
     });
 
     await waitFor(() => {
@@ -1585,60 +1583,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides run credit usage when the usage feature switch is disabled", async () => {
-    mockChatLifecycle(context, {
-      threadId: "thread-usage-switch-disabled",
-      chatMessages: [
-        {
-          id: "msg-usage-disabled-user",
-          role: "user",
-          content: "Summarize usage without usage UI",
-          runId: "run-usage-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-usage-disabled-assistant",
-          role: "assistant",
-          content: "Usage summary is ready.",
-          runId: "run-usage-disabled",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-usage-disabled-usage",
-          role: "assistant",
-          content: null,
-          runId: "run-usage-disabled",
-          usage: {
-            version: 1,
-            totalCredits: 123,
-            settledAt: "2026-06-09T10:00:02Z",
-            breakdown: [
-              {
-                kind: "model/kimi-k2.5/tokens.input",
-                credits: 123,
-                providers: [{ provider: "moonshot", credits: 123 }],
-              },
-            ],
-          },
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-usage-switch-disabled",
-      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Usage summary is ready.")).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Credit usage 123"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip",
@@ -1692,9 +1636,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-usage-chip",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunUsage]: true,
-      },
     });
 
     const credit = await waitFor(() => {
@@ -1796,9 +1737,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-generation-usage-model-names",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunUsage]: true,
-      },
     });
 
     const credit = await screen.findByLabelText("Credit usage 1,976");
@@ -1888,9 +1826,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-usage-chip-settlements",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunUsage]: true,
-      },
     });
 
     await expect(
@@ -1957,9 +1892,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-usage-chip-folded-connector",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunUsage]: true,
-      },
     });
 
     await expect(
@@ -2063,9 +1995,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-usage-chip-consecutive-runs",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunUsage]: true,
-      },
     });
 
     await expect(

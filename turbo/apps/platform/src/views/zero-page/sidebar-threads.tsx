@@ -16,7 +16,6 @@ import {
   IconPinnedOff,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -86,7 +85,6 @@ import {
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -446,7 +444,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
   const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
-  const features = useLastResolved(featureSwitch$);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -480,8 +477,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     setSidebarExpanded,
     unloadRightThread,
     indicatorState,
-    doubleClickRenameEnabled:
-      features?.[FeatureSwitchKey.ChatThreadDoubleClickRename] ?? false,
   } as const;
 }
 
@@ -516,17 +511,13 @@ function ChatThreadItemLink({
           unloadRightThread: state.unloadRightThread,
         });
       }}
-      onDoubleClick={
-        state.doubleClickRenameEnabled
-          ? (e) => {
-              e.preventDefault();
-              openRenameChatThreadDialog({
-                threadId: session.id,
-                title: session.title,
-              });
-            }
-          : undefined
-      }
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        openRenameChatThreadDialog({
+          threadId: session.id,
+          title: session.title,
+        });
+      }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
         state.isHighlighted
           ? "bg-gray-200 text-gray-900 font-medium"
