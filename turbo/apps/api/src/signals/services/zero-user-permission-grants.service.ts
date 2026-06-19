@@ -470,10 +470,13 @@ async function applyVisibleGrantRows(
       return [];
     }
 
+    const existingRowsByPermission = new Map(
+      existingRows.map((row) => {
+        return [row.permission, row] as const;
+      }),
+    );
     const values = args.apply.grants.map((grant: ApplyUserPermissionGrant) => {
-      const existing = existingRows.find((row) => {
-        return row.permission === grant.permission;
-      });
+      const existing = existingRowsByPermission.get(grant.permission);
       return {
         orgId: args.orgId,
         userId: args.userId,

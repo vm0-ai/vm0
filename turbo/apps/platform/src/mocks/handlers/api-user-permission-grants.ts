@@ -94,10 +94,13 @@ export const apiUserPermissionGrantsHandlers = [
         grant.connectorRef === body.connectorRef
       );
     });
+    const existingGrantsByPermission = new Map(
+      existingGrants.map((grant) => {
+        return [grant.permission, grant] as const;
+      }),
+    );
     const grants = body.grants.map((appliedGrant) => {
-      const existing = existingGrants.find((grant) => {
-        return grant.permission === appliedGrant.permission;
-      });
+      const existing = existingGrantsByPermission.get(appliedGrant.permission);
       return {
         agentId: body.agentId,
         connectorRef: body.connectorRef,

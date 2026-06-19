@@ -827,6 +827,15 @@ describe("team page navigation", () => {
         createdAt: "2026-03-01T00:00:00.000Z",
         updatedAt: "2026-03-01T00:00:00.000Z",
       },
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        permission: "legacy|removed",
+        action: "deny",
+        expiresAt: null,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
     ];
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);

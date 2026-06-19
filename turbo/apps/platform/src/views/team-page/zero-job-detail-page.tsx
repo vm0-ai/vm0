@@ -697,6 +697,15 @@ function applyGrantFromChangedPolicy(
     : { permission: policy.permission, action: "deny" };
 }
 
+function isKnownConnectorPermission(
+  permissionNames: ReadonlySet<string>,
+  permission: string,
+): boolean {
+  return (
+    permission === UNKNOWN_PERMISSION_GRANT || permissionNames.has(permission)
+  );
+}
+
 function buildAppliedUserGrantPolicies({
   connectorType,
   metadata,
@@ -718,10 +727,18 @@ function buildAppliedUserGrantPolicies({
     ? defaultFirewallPoliciesForConnector(metadata)
     : initialPolicies;
   const baseGrants = resetPending ? [] : initialGrants;
+  const metadataPermissionNames = new Set(
+    metadata.permissions.map((permission) => {
+      return permission.name;
+    }),
+  );
   const grantsByPermission = new Map<string, ApplyUserPermissionGrant>();
 
   for (const grant of baseGrants) {
-    if (grant.connectorRef === connectorType) {
+    if (
+      grant.connectorRef === connectorType &&
+      isKnownConnectorPermission(metadataPermissionNames, grant.permission)
+    ) {
       grantsByPermission.set(
         grant.permission,
         applyGrantFromExistingGrant(grant),
