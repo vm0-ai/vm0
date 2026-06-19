@@ -7,7 +7,8 @@
 //! Defense-in-depth:
 //! - Layer 1: iptables REDIRECT → dnsmasq port (working path, preserves source IP)
 //! - Layer 2: iptables DROP external UDP 53 / TCP 853 (bypass prevention)
-//! - Layer 3: dnsmasq binds only VM-facing veth interfaces (listener restriction)
+//! - Layer 3: dnsmasq binds to VM-facing veth interfaces instead of external
+//!   host interfaces (listener restriction)
 //!
 //! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
 //! target. The REDIRECT rule in PREROUTING intercepts all UDP 53 from the VM
@@ -1030,7 +1031,7 @@ mod tests {
     }
 
     #[test]
-    fn dnsmasq_args_restrict_listener_to_vm_interfaces() {
+    fn dnsmasq_args_restrict_listener_to_vm_interface_pattern() {
         let args = dnsmasq_args(5353, "vm0-ve-0a-*");
 
         assert!(args.contains(&"--interface=vm0-ve-0a-*".to_string()));
