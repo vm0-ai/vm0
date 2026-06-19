@@ -250,6 +250,7 @@ describe("GET /api/zero/connectors/search", () => {
 
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;
     const originalOauth = authMethods.oauth;
+    const originalApiToken = authMethods["api-token"];
 
     restoreConnectorRegistry.push(() => {
       Object.defineProperty(authMethods, "oauth", {
@@ -257,10 +258,23 @@ describe("GET /api/zero/connectors/search", () => {
         configurable: true,
         enumerable: true,
       });
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
     });
     Object.defineProperty(authMethods, "oauth", {
       value: {
         ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(authMethods, "api-token", {
+      value: {
+        ...originalApiToken,
         visible: false,
       } satisfies ConnectorAuthMethodConfig,
       configurable: true,

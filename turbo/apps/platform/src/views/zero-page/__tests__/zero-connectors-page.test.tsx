@@ -509,7 +509,7 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect Stripe")).not.toBeInTheDocument();
   });
 
-  it("starts Stripe OAuth directly from the connector card", async () => {
+  it("starts Stripe OAuth from the connect dialog", async () => {
     mockConnectors([]);
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
@@ -534,20 +534,21 @@ describe("connectors page", () => {
     await fill(searchInput, "stripe");
     click(await screen.findByLabelText("Connect Stripe"));
 
+    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
+    click(buttonByText("Connect", dialog));
+
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
       );
     });
-    expect(
-      screen.queryByRole("dialog", { name: "Stripe" }),
-    ).not.toBeInTheDocument();
   });
 
-  it("hides Stripe when its only auth method is statically hidden", async () => {
+  it("hides Stripe when all its auth methods are statically hidden", async () => {
     mockConnectors([]);
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;
     const originalOauth = authMethods.oauth;
+    const originalApiToken = authMethods["api-token"];
 
     restoreConnectorRegistry.push(() => {
       Object.defineProperty(authMethods, "oauth", {
@@ -555,10 +556,23 @@ describe("connectors page", () => {
         configurable: true,
         enumerable: true,
       });
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
     });
     Object.defineProperty(authMethods, "oauth", {
       value: {
         ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(authMethods, "api-token", {
+      value: {
+        ...originalApiToken,
         visible: false,
       } satisfies ConnectorAuthMethodConfig,
       configurable: true,
