@@ -491,7 +491,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows Stripe CLI when the connector switch is disabled", async () => {
+  it("shows Stripe CLI and API token auth when the connector switch is disabled", async () => {
     mockConnectors([]);
 
     detachedSetupPage({
@@ -509,6 +509,15 @@ describe("connectors page", () => {
     expect(
       screen.queryByText(/No connectors matching/),
     ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Connect Stripe"));
+    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
+    expect(
+      within(dialog).getByRole("heading", { name: "Sign in with Stripe" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("heading", { name: "API Key" }),
+    ).toBeInTheDocument();
   });
 
   it("starts Stripe OAuth from the connect dialog", async () => {

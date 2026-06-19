@@ -434,9 +434,6 @@ describe("CONN-02: OAuth device authorization", () => {
 
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.StripeConnector]: true,
-    });
 
     const session = await connectorsApi.startDeviceAuth(
       actor,

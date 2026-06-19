@@ -2113,9 +2113,10 @@ describe("getConfiguredConnectorAuthMethodIds", () => {
 });
 
 describe("getAvailableConnectorAuthMethodIds", () => {
-  it("only exposes ungated Stripe auth without the Stripe switch", () => {
+  it("exposes Stripe CLI and API token auth without the Stripe switch", () => {
     expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
       "cli",
+      "api-token",
     ]);
   });
 
