@@ -72,6 +72,20 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.policies["compute.instances.create"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
+
+  it("should default maskdb read-only permissions to allow and everything else to deny", () => {
+    const policy = getDefaultFirewallPolicies("maskdb");
+
+    expect(policy.policies["db:metadata"]).toBe("allow");
+    expect(policy.policies["db:query"]).toBe("allow");
+    expect(policy.policies["policy:read"]).toBe("allow");
+    expect(policy.policies["db:manage"]).toBe("deny");
+    expect(policy.policies["policy:write"]).toBe("deny");
+    expect(policy.policies["token:mint"]).toBe("deny");
+    expect(policy.policies["token:read"]).toBe("deny");
+    expect(policy.policies["token:revoke"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
 });
 
 describe("resolveFirewallPolicies", () => {

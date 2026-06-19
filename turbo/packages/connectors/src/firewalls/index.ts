@@ -188,7 +188,11 @@ import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
 import { mapboxFirewall } from "./mapbox.generated";
 import { massiveFirewall } from "./massive.generated";
-import { maskdbFirewall } from "./maskdb.generated";
+import {
+  maskdbDefaultAllowed,
+  maskdbDefaultUnknownPolicy,
+  maskdbFirewall,
+} from "./maskdb.generated";
 import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -872,6 +876,7 @@ const DEFAULT_ALLOWED: Partial<
   cloudflare: cloudflareDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
   gmail: gmailDefaultAllowed,
+  maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,
 };
@@ -881,6 +886,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
+  maskdb: maskdbDefaultUnknownPolicy,
 };
 
 /**
