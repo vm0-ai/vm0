@@ -127,6 +127,14 @@ impl AppServerState {
     ) -> io::Result<ServerAction> {
         match method {
             "initialize" => {
+                if self.initialized {
+                    write_error(output, id, INVALID_REQUEST, "Already initialized")?;
+                    return Ok(ServerAction::Continue);
+                }
+                if let Err(message) = validate_initialize_params(params) {
+                    write_error(output, id, INVALID_REQUEST, message)?;
+                    return Ok(ServerAction::Continue);
+                }
                 self.initialized = true;
                 write_success(output, id, initialize_response())?;
                 if self.scenario == Scenario::DisconnectAfterInitialize {
@@ -300,6 +308,22 @@ fn initialize_response() -> Value {
         "platformFamily": std::env::consts::FAMILY,
         "platformOs": std::env::consts::OS,
     })
+}
+
+fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {
+    let Some(client_info) = params.get("clientInfo") else {
+        return Err("missing clientInfo");
+    };
+    let Some(name) = client_info.get("name").and_then(Value::as_str) else {
+        return Err("missing clientInfo.name");
+    };
+    if name.contains(['\r', '\n']) {
+        return Err("invalid clientInfo.name");
+    }
+    if client_info.get("version").and_then(Value::as_str).is_none() {
+        return Err("missing clientInfo.version");
+    }
+    Ok(())
 }
 
 fn thread_response(thread_id: &str, resume: bool) -> Value {

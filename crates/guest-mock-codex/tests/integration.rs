@@ -307,6 +307,35 @@ fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Re
 }
 
 #[test]
+fn app_server_rejects_invalid_or_duplicate_initialize() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    let invalid = server.request(1, "initialize", json!({}))?;
+    assert_eq!(invalid["id"], 1);
+    assert_eq!(invalid["error"]["code"], -32600);
+    assert!(
+        invalid["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("clientInfo")
+    );
+
+    let initialized = server.request(2, "initialize", initialize_params())?;
+    assert_eq!(
+        initialized["result"]["platformFamily"],
+        std::env::consts::FAMILY
+    );
+
+    let duplicate = server.request(3, "initialize", initialize_params())?;
+    assert_eq!(duplicate["error"]["code"], -32600);
+    assert_eq!(duplicate["error"]["message"], "Already initialized");
+
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let supplied_thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
