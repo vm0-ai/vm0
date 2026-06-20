@@ -1336,6 +1336,19 @@ function axiomCallAt(index: number): readonly unknown[] {
   return call;
 }
 
+function expectTimeCursorAxiomResume(
+  call: readonly unknown[],
+  expected: { readonly cursor: string; readonly order: "asc" | "desc" },
+): void {
+  const apl = call[0];
+  expect(call[1]).toStrictEqual({ cursor: expected.cursor });
+  expect(apl).toContain(`| order by _time ${expected.order}`);
+  expect(apl).not.toContain("_time >");
+  expect(apl).not.toContain("_time <");
+  expect(apl).not.toContain("_vm0Cursor >");
+  expect(apl).not.toContain("_vm0Cursor <");
+}
+
 function agentEvent(
   runId: string,
   sequenceNumber: number,
@@ -1412,6 +1425,22 @@ function timeLogCursor(
   return `time:${order}:${encodeURIComponent(timestamp)}:${encodeURIComponent(
     tieBreaker,
   )}`;
+}
+
+function timeLogQueryPath(
+  path: string,
+  query: {
+    readonly cursor: string;
+    readonly limit: number;
+    readonly order: "asc" | "desc";
+  },
+): string {
+  const params = new URLSearchParams({
+    cursor: query.cursor,
+    limit: String(query.limit),
+    order: query.order,
+  });
+  return `${path}?${params.toString()}`;
 }
 
 describe("RUN-04: agent run telemetry families", () => {
@@ -2017,29 +2046,100 @@ describe("RUN-04: agent run telemetry families", () => {
     const compose = await createClaudeCompose(actor, "bdd-time-cursor-ties");
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
-      prompt: "emit tied system logs",
+      prompt: "emit tied telemetry",
     });
     const runId = run.runId;
     const timestamp = "2026-06-10T12:30:00Z";
-    const rows = [
-      { _time: timestamp, _vm0Cursor: "row-a", runId, log: "first\n" },
-      { _time: timestamp, _vm0Cursor: "row-b", runId, log: "second\n" },
+    const laterTimestamp = "2026-06-10T12:30:01Z";
+    const olderTimestamp = "2026-06-10T12:29:59Z";
+    const systemRows = [
+      { _time: timestamp, _vm0Cursor: "system-a", runId, log: "first\n" },
+      { _time: timestamp, _vm0Cursor: "system-b", runId, log: "second\n" },
       {
-        _time: "2026-06-10T12:30:01Z",
-        _vm0Cursor: "row-c",
+        _time: laterTimestamp,
+        _vm0Cursor: "system-c",
         runId,
         log: "third\n",
+      },
+    ];
+    const metricsRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-a",
+        runId,
+        userId: actor.userId,
+        cpu: 0.1,
+        mem_used: 10,
+        mem_total: 100,
+        disk_used: 20,
+        disk_total: 200,
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-b",
+        runId,
+        userId: actor.userId,
+        cpu: 0.2,
+        mem_used: 11,
+        mem_total: 100,
+        disk_used: 21,
+        disk_total: 200,
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "metrics-c",
+        runId,
+        userId: actor.userId,
+        cpu: 0.3,
+        mem_used: 12,
+        mem_total: 100,
+        disk_used: 22,
+        disk_total: 200,
+      },
+    ];
+    const networkRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-a",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "first.example.com",
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-b",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "second.example.com",
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "network-c",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "third.example.com",
       },
     ];
 
     context.mocks.axiom.query.mockImplementation(
       (apl: unknown, options: unknown) => {
-        if (
-          typeof apl !== "string" ||
-          !apl.includes("['sandbox-telemetry-system']")
-        ) {
+        if (typeof apl !== "string") {
           return Promise.resolve([]);
         }
+
+        const rows = apl.includes("['sandbox-telemetry-system']")
+          ? systemRows
+          : apl.includes("['sandbox-telemetry-metrics']")
+            ? metricsRows
+            : apl.includes("['sandbox-telemetry-network']")
+              ? networkRows
+              : [];
 
         const limitMatch = /\| limit (\d+)/.exec(apl);
         const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
@@ -2070,7 +2170,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(firstPage.body).toStrictEqual({
       systemLog: "first\n",
       hasMore: true,
-      nextCursor: timeLogCursor("asc", timestamp, "row-a"),
+      nextCursor: timeLogCursor("asc", timestamp, "system-a"),
     });
 
     const cursor = firstPage.body.nextCursor;
@@ -2087,17 +2187,242 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(secondPage.body).toStrictEqual({
       systemLog: "second\n",
       hasMore: true,
-      nextCursor: timeLogCursor("asc", timestamp, "row-b"),
+      nextCursor: timeLogCursor("asc", timestamp, "system-b"),
     });
 
     const secondPageCall = axiomCallAt(axiomCallCount() - 1);
-    const secondPageApl = secondPageCall[0];
-    expect(secondPageCall[1]).toStrictEqual({ cursor: "row-a" });
-    expect(secondPageApl).toContain(`| order by _time asc`);
-    expect(secondPageApl).not.toContain("_vm0Cursor >");
+    expectTimeCursorAxiomResume(secondPageCall, {
+      cursor: "system-a",
+      order: "asc",
+    });
+
+    const metricsFirst = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsFirst.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.1,
+          mem_used: 10,
+          mem_total: 100,
+          disk_used: 20,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-a"),
+    });
+
+    const metricsCursor = metricsFirst.body.nextCursor;
+    if (!metricsCursor) {
+      throw new Error(
+        "Expected the first tied metrics page to return a cursor",
+      );
+    }
+
+    const metricsSecond = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { cursor: metricsCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsSecond.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.2,
+          mem_used: 11,
+          mem_total: 100,
+          disk_used: 21,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-b"),
+    });
+    const metricsSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(metricsSecondCall, {
+      cursor: "metrics-a",
+      order: "asc",
+    });
+
+    const directNetworkFirst = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(directNetworkFirst.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "first.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
+    });
+
+    const directNetworkCursor = directNetworkFirst.body.nextCursor;
+    if (!directNetworkCursor) {
+      throw new Error(
+        "Expected the first tied direct network page to return a cursor",
+      );
+    }
+
+    const directNetworkSecond = await reads.requestRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: directNetworkCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(directNetworkSecond.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "second.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
+    });
+    const directNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(directNetworkSecondCall, {
+      cursor: "network-a",
+      order: "asc",
+    });
+
+    const zeroNetworkFirst = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkFirst.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "first.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
+    });
+
+    const zeroNetworkCursor = zeroNetworkFirst.body.nextCursor;
+    if (!zeroNetworkCursor) {
+      throw new Error(
+        "Expected the first tied zero network page to return a cursor",
+      );
+    }
+
+    const zeroNetworkSecond = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: zeroNetworkCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkSecond.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "second.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
+    });
+    const zeroNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(zeroNetworkSecondCall, {
+      cursor: "network-a",
+      order: "asc",
+    });
+
+    const descRows = [
+      { _time: timestamp, _vm0Cursor: "desc-a", runId, log: "desc first\n" },
+      { _time: timestamp, _vm0Cursor: "desc-b", runId, log: "desc second\n" },
+      {
+        _time: olderTimestamp,
+        _vm0Cursor: "desc-c",
+        runId,
+        log: "desc third\n",
+      },
+    ];
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
+        if (
+          typeof apl !== "string" ||
+          !apl.includes("['sandbox-telemetry-system']")
+        ) {
+          return Promise.resolve([]);
+        }
+
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : descRows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : descRows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? descRows.length
+              : cursorIndex + 1;
+
+        return Promise.resolve(descRows.slice(startIndex, startIndex + limit));
+      },
+    );
+
+    const descFirst = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descFirst.body).toStrictEqual({
+      systemLog: "desc first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-a"),
+    });
+    const descCursor = descFirst.body.nextCursor;
+    if (!descCursor) {
+      throw new Error("Expected the first desc tied page to return a cursor");
+    }
+    const descSecond = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: descCursor, limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descSecond.body).toStrictEqual({
+      systemLog: "desc second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-b"),
+    });
+    const descSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(descSecondCall, {
+      cursor: "desc-a",
+      order: "desc",
+    });
   });
 
-  it("does not advertise another telemetry page when the cursor cannot advance", async () => {
+  it("fails visibly when a telemetry page cannot advance its cursor", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-unpageable");
     const run = await api.createDirectRun(actor, {
@@ -2173,65 +2498,44 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(agentEvents.body.hasMore).toBeFalsy();
     expect(agentEvents.body.nextCursor).toBeUndefined();
 
-    const systemLog = await reads.requestRunSystemLog(
+    const telemetryCursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
+    const systemLog = await reads.rawApiRequest(
       actor,
-      runId,
-      {
-        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/system-log`, {
+        cursor: telemetryCursor,
         limit: 1,
         order: "asc",
-      },
-      [200],
+      }),
     );
-    expect(systemLog.body).toStrictEqual({
-      systemLog: "already returned\n",
-      hasMore: false,
+    expect(systemLog).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
     });
 
-    const metrics = await reads.requestRunMetrics(
+    const metrics = await reads.rawApiRequest(
       actor,
-      runId,
-      {
-        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/metrics`, {
+        cursor: telemetryCursor,
         limit: 1,
         order: "asc",
-      },
-      [200],
+      }),
     );
-    expect(metrics.body).toStrictEqual({
-      metrics: [
-        {
-          ts: boundaryTime,
-          cpu: 0.4,
-          mem_used: 40,
-          mem_total: 100,
-          disk_used: 50,
-          disk_total: 200,
-        },
-      ],
-      hasMore: false,
+    expect(metrics).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
     });
 
-    const networkLogs = await reads.requestRunNetworkLogs(
+    const networkLogs = await reads.rawApiRequest(
       actor,
-      runId,
-      {
-        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/network`, {
+        cursor: telemetryCursor,
         limit: 1,
         order: "asc",
-      },
-      [200],
+      }),
     );
-    expect(networkLogs.body).toStrictEqual({
-      networkLogs: [
-        {
-          timestamp: boundaryTime,
-          type: "http",
-          action: "ALLOW",
-          host: "api.example.com",
-        },
-      ],
-      hasMore: false,
+    expect(networkLogs).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
     });
 
     const zeroEvents = await reads.requestZeroRunAgentEvents(
@@ -2247,26 +2551,17 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(zeroEvents.body.hasMore).toBeFalsy();
     expect(zeroEvents.body.nextCursor).toBeUndefined();
 
-    const zeroNetworkLogs = await reads.requestZeroRunNetworkLogs(
+    const zeroNetworkLogs = await reads.rawApiRequest(
       actor,
-      runId,
-      {
-        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+      timeLogQueryPath(`/api/zero/runs/${runId}/network`, {
+        cursor: telemetryCursor,
         limit: 1,
         order: "asc",
-      },
-      [200],
+      }),
     );
-    expect(zeroNetworkLogs.body).toStrictEqual({
-      networkLogs: [
-        {
-          timestamp: boundaryTime,
-          type: "http",
-          action: "ALLOW",
-          host: "api.example.com",
-        },
-      ],
-      hasMore: false,
+    expect(zeroNetworkLogs).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
     });
   });
 

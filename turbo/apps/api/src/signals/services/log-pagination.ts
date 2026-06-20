@@ -173,6 +173,10 @@ function encodeTimeCursor(
   )}:${encodeURIComponent(exactTieBreaker)}`;
 }
 
+function timeCursorInvariantFailure(reason: string): never {
+  throw new Error(`Time pagination cursor invariant failed: ${reason}`);
+}
+
 function decodeSequenceCursor(
   cursor: string | undefined,
   expectedOrder: LogOrder,
@@ -318,30 +322,42 @@ export function nextTimeCursor<T extends TimedAxiomRecord>(
   order: LogOrder,
   previousCursorBoundary: DecodedTimeCursor | undefined,
 ): string | null {
-  if (!hasMore || records.length === 0) {
+  if (!hasMore) {
     return null;
+  }
+
+  if (records.length === 0) {
+    timeCursorInvariantFailure("page has more rows but no visible records");
   }
 
   const lastRecord = records[records.length - 1];
   if (!lastRecord) {
-    return null;
+    timeCursorInvariantFailure("page has more rows but no boundary record");
   }
 
   const timestamp = exactUtcTimestamp(lastRecord._time);
   const tieBreaker =
     typeof lastRecord._vm0Cursor === "string" ? lastRecord._vm0Cursor : null;
-  if (timestamp === null || tieBreaker === null) {
-    return null;
+  if (timestamp === null) {
+    timeCursorInvariantFailure("boundary record has invalid _time");
+  }
+  if (tieBreaker === null) {
+    timeCursorInvariantFailure("boundary record has no Axiom cursor");
   }
 
   if (
     timestamp === previousCursorBoundary?.timestamp &&
     tieBreaker === previousCursorBoundary.tieBreaker
   ) {
-    return null;
+    timeCursorInvariantFailure("boundary cursor did not advance");
   }
 
-  return encodeTimeCursor(order, timestamp, tieBreaker);
+  const nextCursor = encodeTimeCursor(order, timestamp, tieBreaker);
+  if (nextCursor === null) {
+    timeCursorInvariantFailure("boundary cursor could not be encoded");
+  }
+
+  return nextCursor;
 }
 
 export function filterTimedAxiomRecords<T extends Record<string, unknown>>(
