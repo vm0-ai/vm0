@@ -7,6 +7,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconCode,
+  IconDots,
   IconExternalLink,
   IconHistory,
   IconLogout,
@@ -778,31 +779,6 @@ function PermissionAutoRefresh() {
   return null;
 }
 
-function AccountIdentity({
-  actions,
-  authState,
-}: {
-  readonly actions?: ReactNode;
-  readonly authState: DesktopAuthState | null;
-}) {
-  const signedIn = authState?.status === "signed_in" ? authState : null;
-  const email = signedIn?.user.email ?? "Signed in";
-  const organization = signedIn?.organization?.name ?? null;
-  const initial = email.trim().charAt(0).toUpperCase() || "Z";
-  return (
-    <div className="account-identity">
-      <span className="account-avatar" aria-hidden="true">
-        {initial}
-      </span>
-      <span className="account-meta">
-        <strong>{email}</strong>
-        {organization && <span>{organization}</span>}
-      </span>
-      {actions && <div className="account-actions">{actions}</div>}
-    </div>
-  );
-}
-
 function Radar() {
   return (
     <div className="radar" aria-hidden="true">
@@ -811,6 +787,117 @@ function Radar() {
       <span className="radar-wave radar-wave-2" />
       <span className="radar-wave radar-wave-1" />
       <ZeroFace className="zero-face-hero" size={104} />
+    </div>
+  );
+}
+
+interface FooterMenuItem {
+  readonly disabled?: boolean;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly tone?: "default" | "danger";
+}
+
+function FooterMenu({ items }: { readonly items: readonly FooterMenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="footer-menu" ref={containerRef}>
+      <button
+        type="button"
+        className="footer-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account actions"
+        onClick={() => {
+          setOpen((value) => !value);
+        }}
+      >
+        <IconDots size={17} />
+      </button>
+      {open && (
+        <div className="footer-menu-popover" role="menu">
+          {items.map((item) => {
+            return (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className={`footer-menu-item${
+                  item.tone === "danger" ? " is-danger" : ""
+                }`}
+                disabled={item.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick();
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HeroFooter({
+  authState,
+  menuItems,
+  permissionGranted,
+}: {
+  readonly authState: DesktopAuthState | null;
+  readonly menuItems: readonly FooterMenuItem[];
+  readonly permissionGranted?: boolean;
+}) {
+  const signedIn = authState?.status === "signed_in" ? authState : null;
+  const email = signedIn?.user.email ?? "Signed in";
+  const organization = signedIn?.organization?.name ?? null;
+  const identity = organization ? `${email} · ${organization}` : email;
+  return (
+    <div className="hero-footer">
+      <span className="hero-footer-id">
+        {permissionGranted !== undefined && (
+          <span
+            className={`status-dot${
+              permissionGranted ? " is-online" : " is-pending"
+            }`}
+            title={
+              permissionGranted
+                ? "Accessibility and screen recording granted"
+                : "Accessibility and screen recording needed"
+            }
+          />
+        )}
+        <span>{identity}</span>
+      </span>
+      <FooterMenu items={menuItems} />
     </div>
   );
 }
@@ -824,49 +911,41 @@ function OnlineHero({
 }) {
   const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
   const deviceName = state.deviceName?.trim() ? state.deviceName.trim() : null;
+  const statusLabel = STATUS_LABELS[state.host.status];
   const stopDisabled =
     (state.host.status !== "online" && state.host.status !== "recovering") ||
     stopLoadable.state === "loading";
   return (
     <section className="hero hero-online">
-      <AccountIdentity authState={authState} />
       <div className="hero-stage">
         <Radar />
-        <p className="hero-status">{STATUS_LABELS[state.host.status]}</p>
-        {deviceName && <p className="hero-device">{deviceName}</p>}
+        <p className="hero-name">{deviceName ?? statusLabel}</p>
+        {deviceName && (
+          <p className="hero-substatus">
+            <span
+              className={`status-dot${
+                state.host.status === "online" ? " is-online" : " is-pending"
+              }`}
+            />
+            {statusLabel}
+          </p>
+        )}
       </div>
-      <button
-        type="button"
-        className="hero-ghost-action"
-        onClick={() => {
-          void stop();
-        }}
-        disabled={stopDisabled}
-      >
-        Stop
-      </button>
+      <HeroFooter
+        authState={authState}
+        menuItems={[
+          {
+            icon: <IconPlayerStop size={15} />,
+            label: "Stop",
+            tone: "danger",
+            disabled: stopDisabled,
+            onClick: () => {
+              void stop();
+            },
+          },
+        ]}
+      />
     </section>
-  );
-}
-
-function PermissionFooter({
-  state,
-}: {
-  readonly state: DesktopComputerUseState;
-}) {
-  const granted = hasRequiredComputerUsePermissions(state.permissions);
-  return (
-    <div className="permission-footer">
-      <span className={`permission-dot${granted ? " is-granted" : ""}`}>
-        {granted ? <IconCheck size={11} /> : <IconAlertCircle size={11} />}
-      </span>
-      <span className="permission-footer-text">
-        {granted
-          ? "Accessibility and screen recording granted"
-          : "Accessibility and screen recording needed"}
-      </span>
-      <span className="permission-footer-auto">Auto-checked</span>
-    </div>
   );
 }
 
@@ -884,37 +963,12 @@ function OfflineHero({
   const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
   const startDisabled =
     state.host.status === "disabled" || startLoadable.state === "loading";
+  const permissionGranted = hasRequiredComputerUsePermissions(state.permissions);
   return (
     <section className="hero hero-offline">
-      <AccountIdentity
-        authState={authState}
-        actions={
-          <>
-            <IconButton
-              icon={<IconBuilding size={15} />}
-              onClick={() => {
-                void selectOrg();
-              }}
-              disabled={orgSelectionLoadable.state === "loading"}
-            >
-              Switch workspace
-            </IconButton>
-            <IconButton
-              tone="danger"
-              icon={<IconLogout size={15} />}
-              onClick={() => {
-                void signOut();
-              }}
-              disabled={signOutLoadable.state === "loading"}
-            >
-              Sign out
-            </IconButton>
-          </>
-        }
-      />
       <div className="hero-stage">
-        <ZeroFace className="zero-face-offline" size={104} />
-        <p className="hero-status hero-status-muted">Offline</p>
+        <ZeroFace className="zero-face-offline" size={108} />
+        <p className="hero-name hero-name-muted">Offline</p>
         <button
           type="button"
           className="go-online-button"
@@ -927,7 +981,29 @@ function OfflineHero({
           <span>Go online</span>
         </button>
       </div>
-      <PermissionFooter state={state} />
+      <HeroFooter
+        authState={authState}
+        permissionGranted={permissionGranted}
+        menuItems={[
+          {
+            icon: <IconBuilding size={15} />,
+            label: "Switch workspace",
+            disabled: orgSelectionLoadable.state === "loading",
+            onClick: () => {
+              void selectOrg();
+            },
+          },
+          {
+            icon: <IconLogout size={15} />,
+            label: "Sign out",
+            tone: "danger",
+            disabled: signOutLoadable.state === "loading",
+            onClick: () => {
+              void signOut();
+            },
+          },
+        ]}
+      />
     </section>
   );
 }

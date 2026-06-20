@@ -345,10 +345,12 @@ describe("Desktop renderer bridge integration", () => {
     const { auth, computerUse } = installDesktopBridges();
     renderDesktopApp();
 
-    expect(await screen.findByText("desktop@example.com")).toBeTruthy();
-    expect(screen.getByText("Desktop Team")).toBeTruthy();
     expect(
-      await screen.findByText("Accessibility and screen recording granted"),
+      await screen.findByText("desktop@example.com · Desktop Team"),
+    ).toBeTruthy();
+    // Permission status is a quiet dot in the footer (auto-checked, no button).
+    expect(
+      screen.getByTitle("Accessibility and screen recording granted"),
     ).toBeTruthy();
     expect(await screen.findByText("Offline")).toBeTruthy();
     // The permission status updates automatically; there is no manual refresh.
@@ -366,6 +368,24 @@ describe("Desktop renderer bridge integration", () => {
     expect(await screen.findByText("lisa")).toBeTruthy();
     expect(auth.getState).toHaveBeenCalled();
     expect(computerUse.getState).toHaveBeenCalled();
+  });
+
+  it("keeps offline account actions in the overflow menu until it is opened", async () => {
+    const { auth } = installDesktopBridges();
+    renderDesktopApp();
+
+    expect(await screen.findByText("Offline")).toBeTruthy();
+    // Switch workspace / sign out are collapsed into the footer menu.
+    expect(screen.queryByText("Sign out")).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Account actions"));
+
+    expect(await screen.findByText("Switch workspace")).toBeTruthy();
+    fireEvent.click(buttonForText("Sign out"));
+
+    await waitFor(() => {
+      expect(auth.api.signOut).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("refreshes the runtime panel when the bridge subscription emits", async () => {
