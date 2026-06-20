@@ -96,6 +96,7 @@ describe("getAllFeatureStates", () => {
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     expect(states[FeatureSwitchKey.StripeConnector]).toBe(true);
+    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -126,7 +127,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -136,7 +136,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -148,16 +147,16 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
   });
 
-  it("should let individuals opt in to chat PR tracking and inline feedback", () => {
+  it("should let individuals opt in to chat PR tracking and opt out of inline feedback", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       overrides: {
         [FeatureSwitchKey.ChatGithubPrTracking]: true,
-        [FeatureSwitchKey.ChatInlineFeedback]: true,
+        [FeatureSwitchKey.ChatInlineFeedback]: false,
       },
     });
     expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
-    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
+    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
