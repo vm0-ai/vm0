@@ -51,10 +51,12 @@ const defaultDeveloperToolsState: DesktopDeveloperToolsState = {
 };
 
 function createComputerUseState({
+  deviceName = "lisa",
   keepAwake = { active: false, enabled: false },
   permissions = { accessibility: true, screenRecording: true },
   status = "offline",
 }: {
+  readonly deviceName?: string | null;
   readonly keepAwake?: DesktopKeepAwakeState;
   readonly permissions?: ComputerUsePermissionState;
   readonly status?: ComputerUseHostRuntimeStatus;
@@ -63,6 +65,7 @@ function createComputerUseState({
     featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: "darwin",
     supported: true,
+    deviceName,
     permissions,
     host: {
       status,
@@ -342,12 +345,16 @@ describe("Desktop renderer bridge integration", () => {
     const { auth, computerUse } = installDesktopBridges();
     renderDesktopApp();
 
-    expect(await screen.findByText("Signed in")).toBeTruthy();
-    expect(screen.getByText("desktop@example.com - Desktop Team")).toBeTruthy();
-    expect(await screen.findByText("Permissions ready")).toBeTruthy();
+    expect(await screen.findByText("desktop@example.com")).toBeTruthy();
+    expect(screen.getByText("Desktop Team")).toBeTruthy();
+    expect(
+      await screen.findByText("Accessibility and screen recording granted"),
+    ).toBeTruthy();
     expect(await screen.findByText("Offline")).toBeTruthy();
+    // The permission status updates automatically; there is no manual refresh.
+    expect(screen.queryByText("Refresh")).toBeNull();
 
-    fireEvent.click(buttonForText("Start"));
+    fireEvent.click(buttonForText("Go online"));
 
     await waitFor(() => {
       expect(computerUse.start).toHaveBeenCalledWith({
@@ -355,6 +362,8 @@ describe("Desktop renderer bridge integration", () => {
       });
     });
     expect(await screen.findByText("Online")).toBeTruthy();
+    // The online hero labels this Mac by its friendly device name.
+    expect(await screen.findByText("lisa")).toBeTruthy();
     expect(auth.getState).toHaveBeenCalled();
     expect(computerUse.getState).toHaveBeenCalled();
   });
