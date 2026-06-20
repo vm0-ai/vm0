@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.435.3](https://github.com/vm0-ai/vm0/compare/web-v12.435.2...web-v12.435.3) (2026-06-20)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.361.0
+
 ## [12.435.2](https://github.com/vm0-ai/vm0/compare/web-v12.435.1...web-v12.435.2) (2026-06-20)
 
 

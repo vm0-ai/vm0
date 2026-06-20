@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.166.0](https://github.com/vm0-ai/vm0/compare/api-v1.165.1...api-v1.166.0) (2026-06-20)
+
+
+### Features
+
+* gate goal seed skill on GoalWorkflows and disable built-in goal ([#18394](https://github.com/vm0-ai/vm0/issues/18394)) ([4340dc7](https://github.com/vm0-ai/vm0/commit/4340dc7842f1a3505c116053dd7be6829199aca8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.361.0
+
 ## [1.165.1](https://github.com/vm0-ai/vm0/compare/api-v1.165.0...api-v1.165.1) (2026-06-20)
 
 
