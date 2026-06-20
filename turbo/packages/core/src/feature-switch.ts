@@ -328,6 +328,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
+  [FeatureSwitchKey.MobileSingleLineComposer]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Default the chat composer to a single-line resting height on mobile (below the md breakpoint) instead of the three-line desktop height.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

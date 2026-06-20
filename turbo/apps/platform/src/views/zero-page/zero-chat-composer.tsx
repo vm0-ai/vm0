@@ -4995,6 +4995,7 @@ function ComposerTextarea({
   onPaste,
   onAfterInputChange,
   onPointerSelectionChange,
+  singleLineOnMobile,
 }: {
   readonly input: string;
   readonly onInputChange: (value: string) => void;
@@ -5005,6 +5006,7 @@ function ComposerTextarea({
   readonly onPaste: (e: ComposerPasteEvent) => void;
   readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
   readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
+  readonly singleLineOnMobile: boolean;
 }) {
   return (
     <textarea
@@ -5015,9 +5017,13 @@ function ComposerTextarea({
         setInputRef?.(el);
       }}
       className={cn(
-        "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px] selection:bg-primary/20",
+        "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 selection:bg-primary/20",
+        // The resting height is floored by min-height; rows is kept at 1 so the
+        // floor governs. Mobile rests at a single line and grows back to the
+        // three-line desktop height from the md breakpoint up.
+        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
       )}
-      rows={3}
+      rows={singleLineOnMobile ? 1 : 3}
       placeholder={
         sending
           ? "Type your next message\u2026"
@@ -5066,6 +5072,8 @@ function ComposerInputSlot({
   const features = useLastResolved(featureSwitch$);
   const slashWorkflowCommandsEnabled =
     features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
+  const singleLineOnMobile =
+    features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false;
 
   if (slashWorkflowCommandsEnabled) {
     return (
@@ -5083,7 +5091,12 @@ function ComposerInputSlot({
   }
 
   return (
-    <div className="relative min-h-[96px]">
+    <div
+      className={cn(
+        "relative",
+        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
+      )}
+    >
       <ComposerTextarea
         input={input}
         onInputChange={onInputChange}
@@ -5092,6 +5105,7 @@ function ComposerInputSlot({
         setInputRef={setInputRef}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
+        singleLineOnMobile={singleLineOnMobile}
       />
     </div>
   );
