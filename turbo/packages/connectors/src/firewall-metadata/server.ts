@@ -60,7 +60,7 @@ export function getFirewallServerMetadataSummary(
 export function getBuiltinConnectorHostOwner(
   host: string,
 ): BuiltinConnectorHostOwner | null {
-  const type = builtinFirewallFixedHostOwnerLookup[host];
+  const type = builtinFirewallFixedHostOwnerLookup[host.toLowerCase()];
   if (!type || !isFirewallServerMetadataConnectorType(type)) {
     return null;
   }

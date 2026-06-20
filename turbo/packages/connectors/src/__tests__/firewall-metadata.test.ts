@@ -29,6 +29,7 @@ import {
   loadFirewallPermissionIndex,
 } from "../firewall-metadata/server";
 import {
+  getAllBuiltinConnectorHosts,
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
@@ -325,8 +326,19 @@ describe("firewall metadata", () => {
     }
   });
 
-  it("looks up fixed builtin host owners from server metadata", () => {
+  it("keeps fixed builtin host owners synchronized with runtime hosts", () => {
+    for (const [host, type] of getAllBuiltinConnectorHosts()) {
+      expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
+        type,
+        label: connectorLabel(type),
+      });
+    }
+
     expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
       type: "github",
       label: "GitHub",
     });
