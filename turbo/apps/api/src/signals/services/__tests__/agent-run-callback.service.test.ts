@@ -18,8 +18,15 @@ import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session"
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  zeroWorkflows,
+  zeroWorkflowTriggers,
+} from "@vm0/db/schema/zero-workflow";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -1642,6 +1649,250 @@ describe("dispatchRunCallbacks$ chat internal dispatch", () => {
       status: "pending",
       attempts: 0,
       lastError: null,
+    });
+  });
+});
+
+async function enablePushDelivery(userId: string): Promise<void> {
+  mockOptionalEnv("VAPID_PUBLIC_KEY", "test-vapid-public-key");
+  mockOptionalEnv("VAPID_PRIVATE_KEY", "test-vapid-private-key");
+  await store
+    .set(writeDb$)
+    .insert(pushSubscriptions)
+    .values({
+      userId,
+      endpoint: `https://push.example.test/send/${randomUUID()}`,
+      p256dh: "test-p256dh",
+      auth: "test-auth",
+    });
+}
+
+async function seedGoalForThread(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly objective: string;
+  readonly workflowActive: boolean;
+  readonly triggerEnabled: boolean;
+  readonly consecutiveFailures?: number;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  const [workflow] = await db
+    .insert(zeroWorkflows)
+    .values({
+      orgId: args.orgId,
+      name: `goal-${randomUUID().slice(0, 8)}`,
+      type: "goal",
+      active: args.workflowActive,
+      preference: { version: 1, objective: args.objective },
+      ownerUserId: args.userId,
+      createdBy: args.userId,
+    })
+    .returning({ id: zeroWorkflows.id });
+  await db.insert(zeroWorkflowTriggers).values({
+    orgId: args.orgId,
+    workflowId: workflow!.id,
+    agentId: args.agentId,
+    ownerUserId: args.userId,
+    kind: "event",
+    eventType: "thread-idle",
+    enabled: args.triggerEnabled,
+    chatThreadId: args.threadId,
+    consecutiveFailures: args.consecutiveFailures ?? 0,
+  });
+  // Goal continuation only runs when the GoalWorkflows feature is enabled.
+  await db.insert(userFeatureSwitches).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    switches: { [FeatureSwitchKey.GoalWorkflows]: true },
+  });
+}
+
+function pushPayload(call: readonly unknown[] | undefined): unknown {
+  const raw = call?.[1];
+  return JSON.parse(typeof raw === "string" ? raw : "{}");
+}
+
+describe("dispatchRunCallbacks$ goal push notification gating", () => {
+  it("suppresses the push while an active goal keeps looping", async () => {
+    const fixture = await seedChatCallbackRun({ status: "completed" });
+    await enablePushDelivery(fixture.userId);
+    await seedGoalForThread({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+      agentId: fixture.agentId,
+      objective: "Keep the changelog up to date",
+      workflowActive: true,
+      triggerEnabled: true,
+    });
+    mockChatOutput("Made progress this turn.");
+    mockChatOpenRouterCompletions();
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: {
+          threadId: fixture.threadId,
+          agentId: fixture.agentId,
+          isGoalRun: true,
+        },
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("sends the push once the goal reaches a terminal state", async () => {
+    const fixture = await seedChatCallbackRun({ status: "completed" });
+    await enablePushDelivery(fixture.userId);
+    // completeCurrentGoal runs during the run and deactivates the workflow, so
+    // by the callback the goal is already terminal.
+    await seedGoalForThread({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+      agentId: fixture.agentId,
+      objective: "Ship the onboarding revamp",
+      workflowActive: false,
+      triggerEnabled: false,
+    });
+    mockChatOutput("Goal objective achieved.");
+    mockChatOpenRouterCompletions();
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: {
+          threadId: fixture.threadId,
+          agentId: fixture.agentId,
+          isGoalRun: true,
+        },
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(1);
+    expect(
+      pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
+    ).toMatchObject({ url: `/chats/${fixture.threadId}` });
+  });
+
+  it("stays silent on a transient goal failure that will retry", async () => {
+    const fixture = await seedChatCallbackRun({
+      status: "failed",
+      error: "Run failed",
+    });
+    await enablePushDelivery(fixture.userId);
+    await seedGoalForThread({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+      agentId: fixture.agentId,
+      objective: "Triage the inbox",
+      workflowActive: true,
+      triggerEnabled: true,
+      consecutiveFailures: 0,
+    });
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: {
+          threadId: fixture.threadId,
+          agentId: fixture.agentId,
+          isGoalRun: true,
+        },
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "failed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("sends an auto-stop push when repeated failures stop the goal", async () => {
+    const fixture = await seedChatCallbackRun({
+      status: "failed",
+      error: "Run failed",
+    });
+    await enablePushDelivery(fixture.userId);
+    // Two prior failures: this terminal failure crosses the auto-stop threshold.
+    await seedGoalForThread({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+      agentId: fixture.agentId,
+      objective: "Reconcile the ledger",
+      workflowActive: true,
+      triggerEnabled: true,
+      consecutiveFailures: 2,
+    });
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "chat",
+        payload: {
+          threadId: fixture.threadId,
+          agentId: fixture.agentId,
+          isGoalRun: true,
+        },
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+
+    await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "failed" },
+      context.signal,
+    );
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(1);
+    expect(
+      pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
+    ).toMatchObject({
+      title: "Reconcile the ledger",
+      body: "Goal stopped automatically after repeated failures",
+      url: `/chats/${fixture.threadId}`,
     });
   });
 });

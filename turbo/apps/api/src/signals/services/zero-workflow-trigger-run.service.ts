@@ -114,6 +114,7 @@ function buildAppendSystemPrompt(workflowName: string): string {
 
 export function buildChatOnlyWorkflowTriggerCallbacks(
   trigger: TriggerRow,
+  options?: { readonly isGoalRun?: boolean },
 ): InternalRunCallbackInput[] {
   if (!trigger.chatThreadId || !trigger.agentId) {
     return [];
@@ -122,7 +123,13 @@ export function buildChatOnlyWorkflowTriggerCallbacks(
     {
       internalKind: "chat",
       secret: generateCallbackSecret(),
-      payload: { threadId: trigger.chatThreadId, agentId: trigger.agentId },
+      payload: {
+        threadId: trigger.chatThreadId,
+        agentId: trigger.agentId,
+        // Goal runs self-continue on idle; the flag lets the chat callback
+        // gate terminal push notifications to terminal goal states only.
+        ...(options?.isGoalRun ? { isGoalRun: true } : {}),
+      },
     },
   ];
 }

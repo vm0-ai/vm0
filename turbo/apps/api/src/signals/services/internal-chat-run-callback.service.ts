@@ -57,6 +57,7 @@ import {
   generateChatNotificationSummary,
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { loadActiveGoalForThread } from "./zero-goal.service";
 import { settle, tapError } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 
@@ -70,6 +71,10 @@ const chatCallbackPayloadSchema = z
   .object({
     threadId: z.string(),
     agentId: z.string(),
+    // Set for goal-triggered runs so terminal push notifications can be gated:
+    // an active goal loops on every idle, so interim per-iteration pushes are
+    // suppressed and only terminal states (complete/blocked/auto-stopped) notify.
+    isGoalRun: z.boolean().optional(),
   })
   .passthrough();
 
@@ -459,6 +464,7 @@ async function insertAssistantErrorMessage(args: {
   readonly userId: string;
   readonly publishRunFinished: boolean;
   readonly lifecycleEvent: "failed" | "cancelled";
+  readonly isGoalRun: boolean;
   readonly getFormattedError: () => Promise<string>;
 }): Promise<boolean> {
   const displayErrorMessage = await args.getFormattedError();
@@ -499,15 +505,21 @@ async function insertAssistantErrorMessage(args: {
       threadId: args.threadId,
     });
   }
-  await sendUserPushNotifications({
-    db: args.db,
-    userId: args.userId,
-    notification: {
-      title: args.prompt.slice(0, 60),
-      body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
-      url: `/chats/${args.threadId}`,
-    },
-  });
+  // Goal-triggered failures are gated by goal continuation: a transient failure
+  // that will retry stays silent, and only a terminal auto-stop notifies. The
+  // auto-stop decision happens in continueGoalIfIdle$ after this callback, so
+  // the failure push is owned there rather than here.
+  if (!args.isGoalRun) {
+    await sendUserPushNotifications({
+      db: args.db,
+      userId: args.userId,
+      notification: {
+        title: args.prompt.slice(0, 60),
+        body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
+        url: `/chats/${args.threadId}`,
+      },
+    });
+  }
   return true;
 }
 
@@ -595,6 +607,7 @@ async function handleCompletedChatCallback(args: {
   readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
+  readonly isGoalRun: boolean;
   readonly signal: AbortSignal;
   readonly insertAssistantItems: (
     items: readonly AssistantEventItem[],
@@ -677,6 +690,21 @@ async function handleCompletedChatCallback(args: {
   })();
 
   const pushStep = (async () => {
+    // A goal-triggered run that completes while the goal is still active and
+    // enabled is just one iteration of a self-continuing loop, so suppress its
+    // push. completeCurrentGoal / blockCurrentGoal run during the run (before
+    // this callback), so a goal that reached a terminal state already has its
+    // trigger disabled here and will fall through to notify.
+    if (args.isGoalRun) {
+      const goal = await loadActiveGoalForThread(args.db, {
+        orgId: args.chatThread.orgId,
+        threadId: args.chatThread.chatThreadId,
+      });
+      if (goal !== null && goal.triggerEnabled) {
+        return;
+      }
+    }
+
     let summary: string | null = null;
     if (lastResultText) {
       const generated = await settle(
@@ -717,6 +745,7 @@ async function handleFailedChatCallback(args: {
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
+  readonly isGoalRun: boolean;
   readonly getFormattedError: () => Promise<string>;
 }): Promise<void> {
   const lifecycleEvent =
@@ -731,6 +760,7 @@ async function handleFailedChatCallback(args: {
     userId: args.chatThread.userId,
     publishRunFinished: args.chatThread.triggerSource === "web",
     lifecycleEvent,
+    isGoalRun: args.isGoalRun,
     getFormattedError: args.getFormattedError,
   });
 }
@@ -1594,6 +1624,7 @@ async function processTerminalChatCallback(args: {
     return;
   }
   const { run, chatThread } = loaded;
+  const isGoalRun = args.payload.isGoalRun ?? false;
 
   if (callbackStatus === "completed") {
     await handleCompletedChatCallback({
@@ -1601,6 +1632,7 @@ async function processTerminalChatCallback(args: {
       runId,
       run,
       chatThread,
+      isGoalRun,
       signal: args.signal,
       insertAssistantItems: async (items) => {
         await args.dependencies.insertAssistantItems(
@@ -1630,6 +1662,7 @@ async function processTerminalChatCallback(args: {
       run,
       chatThread,
       errorMessage,
+      isGoalRun,
       getFormattedError: () => {
         return args.dependencies.formatRunError(
           {
