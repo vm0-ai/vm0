@@ -57,4 +57,5 @@ export enum FeatureSwitchKey {
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
   GoalWorkflows = "goalWorkflows",
+  MobileSingleLineComposer = "mobileSingleLineComposer",
 }
