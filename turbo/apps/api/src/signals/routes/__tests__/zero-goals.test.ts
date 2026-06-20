@@ -194,18 +194,32 @@ async function loadGoalMarkers(fixture: GoalApiFixture) {
 }
 
 /**
- * Order-independent multiset of `${runEventId}|${content}` keys. Markers written
- * in the same transaction (e.g. create's workflow+trigger pair) share a
- * timestamp, so the test compares the set rather than a brittle row order.
+ * Order-independent multiset of marker event ids. Markers written in the same
+ * transaction (e.g. create's workflow+trigger pair) share a timestamp, so the
+ * test compares the set rather than a brittle row order.
  */
-function markerKeys(
-  rows: readonly { runEventId: string | null; content: string | null }[],
-): string[] {
+function eventIds(
+  rows: readonly { runEventId: string | null }[],
+): (string | null)[] {
   return rows
     .map((row) => {
-      return `${row.runEventId ?? ""}|${row.content ?? ""}`;
+      return row.runEventId;
     })
     .sort();
+}
+
+/** The `content` payloads of every marker carrying the given event id. */
+function markerContent(
+  rows: readonly { runEventId: string | null; content: string | null }[],
+  eventId: string,
+): (string | null)[] {
+  return rows
+    .filter((row) => {
+      return row.runEventId === eventId;
+    })
+    .map((row) => {
+      return row.content;
+    });
 }
 
 describe("zero goals", () => {
@@ -491,6 +505,7 @@ describe("zero goals", () => {
       [201],
     );
 
+    const goalRows = await loadGoalRows(fixture);
     const afterCreate = await loadGoalMarkers(fixture);
     // Every marker is an assistant control row that belongs to no run.
     for (const marker of afterCreate) {
@@ -498,10 +513,17 @@ describe("zero goals", () => {
       expect(marker.runId).toBeNull();
     }
     // Creating a goal publishes both dimensions active; the workflow marker
-    // carries the objective so the client fold can render it.
-    expect(markerKeys(afterCreate)).toStrictEqual([
-      "goal-trigger:active|",
-      "goal-workflow:active|ship goal workflows",
+    // carries the objective and the trigger marker carries the trigger id (for
+    // the client fold + cancel control).
+    expect(eventIds(afterCreate)).toStrictEqual([
+      "goal-trigger:active",
+      "goal-workflow:active",
+    ]);
+    expect(markerContent(afterCreate, "goal-workflow:active")).toStrictEqual([
+      "ship goal workflows",
+    ]);
+    expect(markerContent(afterCreate, "goal-trigger:active")).toStrictEqual([
+      goalRows!.triggerId,
     ]);
 
     await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
@@ -510,13 +532,13 @@ describe("zero goals", () => {
 
     // block → trigger inactive, resume → trigger active, complete → workflow +
     // trigger inactive. The full history lets the client fold the final state.
-    expect(markerKeys(await loadGoalMarkers(fixture))).toStrictEqual([
-      "goal-trigger:active|",
-      "goal-trigger:active|",
-      "goal-trigger:inactive|",
-      "goal-trigger:inactive|",
-      "goal-workflow:active|ship goal workflows",
-      "goal-workflow:inactive|",
+    expect(eventIds(await loadGoalMarkers(fixture))).toStrictEqual([
+      "goal-trigger:active",
+      "goal-trigger:active",
+      "goal-trigger:inactive",
+      "goal-trigger:inactive",
+      "goal-workflow:active",
+      "goal-workflow:inactive",
     ]);
   });
 

@@ -3532,6 +3532,29 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
+// The thread's active goal (folded from goal-state markers, no /api/automations
+// poll) plus its cancel handler. Cancelling disables the goal's trigger; the
+// backend then emits a goal-trigger:inactive marker, so the row folds away.
+function useChatComposerActiveGoal(
+  thread: ChatThreadSignals,
+  pageSignal: AbortSignal,
+) {
+  const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
+  const toggleWorkflowTrigger = useSet(toggleWorkflowTriggerEnabled$);
+  const onCancelActiveGoal = activeGoal
+    ? () => {
+        detach(
+          toggleWorkflowTrigger(
+            { triggerId: activeGoal.triggerId, enabled: false },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }
+    : undefined;
+  return { activeGoal, onCancelActiveGoal };
+}
+
 function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
@@ -3836,10 +3859,12 @@ function ChatThreadComposer({
     thread,
     groups,
   );
-  // The active goal is folded from the thread's message stream (goal-state
-  // markers) — no /api/automations poll. Shown as a low-priority row beneath
-  // the queued messages above the composer.
-  const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
+  // The active goal row above the composer, with its cancel (disable-trigger)
+  // handler — folded from the thread's message stream, no /api/automations poll.
+  const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
+    thread,
+    pageSignal,
+  );
   const {
     modelPicker,
     modelPickerLoading,
@@ -3923,6 +3948,7 @@ function ChatThreadComposer({
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
             activeGoal={activeGoal}
+            onCancelActiveGoal={onCancelActiveGoal}
             feedback={feedback}
           />
           <PersonalClaudeCodeDeviceAuthDialog />

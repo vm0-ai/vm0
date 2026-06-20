@@ -319,6 +319,8 @@ interface ZeroChatComposerProps {
    * Absent when the thread has no in-progress goal.
    */
   activeGoal?: ActiveGoalComposerItem;
+  /** Cancels the active goal (disables its trigger via the caller). */
+  onCancelActiveGoal?: () => void;
   /**
    * Inline feedback drafted from selected assistant text. When at least one
    * quoted fragment is present the composer swaps its textarea for the stacked
@@ -493,10 +495,12 @@ function QueuedMessagesStrip({
   items,
   onRemove,
   activeGoal,
+  onCancelGoal,
 }: {
   items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
   activeGoal?: ActiveGoalComposerItem;
+  onCancelGoal?: () => void;
 }) {
   const queued = items ?? [];
   if (queued.length === 0 && !activeGoal) {
@@ -550,13 +554,13 @@ function QueuedMessagesStrip({
         })}
         {/* The active goal sits last — below every queued message — because a
             goal only runs once the queue drains, so it reads as lower priority
-            than the queue. It is informational here (managed from the automation
-            sidebar), so unlike a queued message it carries no remove control. */}
+            than the queue. Like a queued message it can be cancelled; cancelling
+            disables the goal's trigger so it no longer runs behind the queue. */}
         {activeGoal ? (
           <div
             role="listitem"
             aria-label="Active goal"
-            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground"
+            className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
           >
             <IconTarget
               size={16}
@@ -570,6 +574,16 @@ function QueuedMessagesStrip({
             <span className="shrink-0 rounded-full bg-emerald-800/10 px-2 py-0.5 text-xs font-medium text-emerald-800">
               Goal
             </span>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                onCancelGoal?.();
+              }}
+              aria-label="Cancel goal"
+            >
+              <IconX size={16} stroke={1.5} />
+            </button>
           </div>
         ) : null}
       </div>
@@ -5276,6 +5290,7 @@ export function ZeroChatComposer({
   queuedItems,
   onRemoveQueuedItem,
   activeGoal,
+  onCancelActiveGoal,
   feedback,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
@@ -5648,6 +5663,7 @@ export function ZeroChatComposer({
           items={queuedItems}
           onRemove={onRemoveQueuedItem}
           activeGoal={activeGoal}
+          onCancelGoal={onCancelActiveGoal}
         />
         <Card
           className={cn(

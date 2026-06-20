@@ -196,7 +196,7 @@ async function recordPreRunFailure(
         await appendGoalStateMarker(db, {
           chatThreadId: trigger.chatThreadId,
           eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-          objective: null,
+          content: null,
         });
         await publishChatThreadMessageCreatedSafely(
           trigger.ownerUserId,

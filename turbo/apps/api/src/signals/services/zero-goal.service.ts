@@ -265,7 +265,7 @@ export async function createGoalForCurrentThread(
 
     // Publish the new goal's state so the composer can fold it from the message
     // stream (active workflow carrying the objective + enabled trigger).
-    await appendGoalCreatedMarkers(tx, threadId, args.objective);
+    await appendGoalCreatedMarkers(tx, threadId, args.objective, trigger.id);
 
     return {
       row: {
@@ -357,12 +357,12 @@ export async function completeCurrentGoal(
     await appendGoalStateMarker(tx, {
       chatThreadId: goal.threadId,
       eventId: GOAL_WORKFLOW_INACTIVE_EVENT_ID,
-      objective: null,
+      content: null,
     });
     await appendGoalStateMarker(tx, {
       chatThreadId: goal.threadId,
       eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-      objective: null,
+      content: null,
     });
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
@@ -392,7 +392,7 @@ export async function blockCurrentGoal(
   await appendGoalStateMarker(db, {
     chatThreadId: goal.threadId,
     eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-    objective: null,
+    content: null,
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
   await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
@@ -421,7 +421,7 @@ export async function resumeCurrentGoal(
   await appendGoalStateMarker(db, {
     chatThreadId: goal.threadId,
     eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
-    objective: null,
+    content: goal.row.triggerId,
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
   await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);

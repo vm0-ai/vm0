@@ -430,7 +430,7 @@ export async function setChatThreadWorkflowTriggerEnabled(
         eventId: args.enabled
           ? GOAL_TRIGGER_ACTIVE_EVENT_ID
           : GOAL_TRIGGER_INACTIVE_EVENT_ID,
-        objective: null,
+        content: args.enabled ? args.triggerId : null,
       });
       await publishChatThreadMessageCreatedSafely(
         args.userId,

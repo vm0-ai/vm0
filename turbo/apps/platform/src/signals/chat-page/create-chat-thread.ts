@@ -130,6 +130,8 @@ function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
 /** The thread's current active goal, folded from its message stream. */
 export interface ActiveGoalState {
   readonly objective: string;
+  /** The goal trigger's id — the cancel control disables this trigger. */
+  readonly triggerId: string;
 }
 
 /**
@@ -147,6 +149,7 @@ function foldActiveGoal(
   let workflowActive = false;
   let triggerEnabled = false;
   let objective: string | null = null;
+  let triggerId: string | null = null;
   for (const message of messages) {
     if (message.role !== "assistant" || message.runEventId === undefined) {
       continue;
@@ -158,13 +161,14 @@ function foldActiveGoal(
       workflowActive = false;
     } else if (message.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID) {
       triggerEnabled = true;
+      triggerId = message.content;
     } else if (message.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID) {
       triggerEnabled = false;
     }
   }
   const trimmed = objective?.trim();
-  if (workflowActive && triggerEnabled && trimmed) {
-    return { objective: trimmed };
+  if (workflowActive && triggerEnabled && trimmed && triggerId) {
+    return { objective: trimmed, triggerId };
   }
   return null;
 }

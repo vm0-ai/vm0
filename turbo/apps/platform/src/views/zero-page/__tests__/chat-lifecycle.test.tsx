@@ -33,6 +33,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 import {
   createMockAutomationView,
   createMockWorkflowTrigger,
@@ -3320,13 +3321,23 @@ describe("chat lifecycle", () => {
           id: "msg-goal-trigger-active",
           runId: undefined,
           role: "assistant",
-          content: null,
+          // The trigger-active marker carries the trigger id for the cancel
+          // control to disable.
+          content: "trigger-goal-fold-1",
           runEventId: "goal-trigger:active",
           createdAt: "2026-06-09T10:00:03Z",
         },
       ],
       activeRunIds: ["run-active"],
     });
+    let canceledTrigger: { id: string; enabled: boolean } | null = null;
+    context.mocks.api(
+      automationsMainContract.toggleWorkflowTrigger,
+      ({ params, body, respond }) => {
+        canceledTrigger = { id: params.id, enabled: body.enabled };
+        return respond(204);
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
@@ -3356,6 +3367,15 @@ describe("chat lifecycle", () => {
     });
     expect(queuedIndex).toBeGreaterThanOrEqual(0);
     expect(goalIndex).toBeGreaterThan(queuedIndex);
+
+    // Cancelling the goal row disables its trigger (by the folded trigger id).
+    await user.click(within(goalRow).getByLabelText("Cancel goal"));
+    await waitFor(() => {
+      expect(canceledTrigger).toStrictEqual({
+        id: "trigger-goal-fold-1",
+        enabled: false,
+      });
+    });
   });
 
   it("hides the goal row once a completion marker folds in", async () => {
@@ -3375,7 +3395,7 @@ describe("chat lifecycle", () => {
           id: "msg-goalc-trigger-active",
           runId: undefined,
           role: "assistant",
-          content: null,
+          content: "trigger-goal-complete-1",
           runEventId: "goal-trigger:active",
           createdAt: "2026-06-09T10:00:01Z",
         },
