@@ -362,11 +362,6 @@ function deriveRunIndicatorState(
     if (isUsageMessage(message)) {
       continue;
     }
-    // Goal markers are control rows, not run output — they must not perturb the
-    // queued/running computation.
-    if (isGoalMarkerMessage(message)) {
-      continue;
-    }
     if (message.role === "assistant") {
       if (isQueueMarkerMessage(message)) {
         hasQueued = true;
@@ -1572,16 +1567,14 @@ function createPagedMessages(
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
   // because the markers are filtered out of allMessages$.
-  const activeGoal$ = computed(
-    async (get): Promise<ActiveGoalState | null> => {
-      const raw = await get(rawMessages$);
-      return foldActiveGoal(
-        raw.map((entry) => {
-          return entry.message;
-        }),
-      );
-    },
-  );
+  const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
+    const raw = await get(rawMessages$);
+    return foldActiveGoal(
+      raw.map((entry) => {
+        return entry.message;
+      }),
+    );
+  });
 
   const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
     createGroupedChatMessagesCache(allMessages$);

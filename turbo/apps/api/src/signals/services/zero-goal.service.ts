@@ -23,8 +23,8 @@ import {
 import {
   GOAL_TRIGGER_ACTIVE_EVENT_ID,
   GOAL_TRIGGER_INACTIVE_EVENT_ID,
-  GOAL_WORKFLOW_ACTIVE_EVENT_ID,
   GOAL_WORKFLOW_INACTIVE_EVENT_ID,
+  appendGoalCreatedMarkers,
   appendGoalStateMarker,
 } from "./zero-chat-goal-marker.service";
 import type { TriggerRow } from "./zero-workflow-trigger-run.service";
@@ -263,19 +263,9 @@ export async function createGoalForCurrentThread(
       throw new Error("Failed to create goal trigger");
     }
 
-    // Publish the new goal's state into the thread so the composer can fold it
-    // from the message stream: the workflow is active (carries the objective)
-    // and its trigger is enabled.
-    await appendGoalStateMarker(tx, {
-      chatThreadId: threadId,
-      eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
-      objective: args.objective,
-    });
-    await appendGoalStateMarker(tx, {
-      chatThreadId: threadId,
-      eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
-      objective: null,
-    });
+    // Publish the new goal's state so the composer can fold it from the message
+    // stream (active workflow carrying the objective + enabled trigger).
+    await appendGoalCreatedMarkers(tx, threadId, args.objective);
 
     return {
       row: {

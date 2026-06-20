@@ -3341,9 +3341,7 @@ describe("chat lifecycle", () => {
       );
     });
     // The marker is a control row — it must not also render as a chat bubble.
-    expect(
-      screen.getAllByText("Drive the release to merge"),
-    ).toHaveLength(1);
+    expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
 
     // The goal is the lowest-priority row: it sits after every queued message.
     await sendQueuedMessage(user, "First queued follow-up");

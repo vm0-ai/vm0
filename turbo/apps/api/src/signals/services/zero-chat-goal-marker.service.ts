@@ -55,14 +55,40 @@ export async function appendGoalStateMarker(
 }
 
 /**
+ * Publish a newly created goal's initial state: the workflow is active (the
+ * marker carries the objective so the client fold can render it) and its
+ * trigger is enabled.
+ */
+export async function appendGoalCreatedMarkers(
+  tx: Pick<Db, "insert">,
+  chatThreadId: string,
+  objective: string,
+): Promise<void> {
+  await appendGoalStateMarker(tx, {
+    chatThreadId,
+    eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
+    objective,
+  });
+  await appendGoalStateMarker(tx, {
+    chatThreadId,
+    eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
+    objective: null,
+  });
+}
+
+/**
  * Exclude goal marker rows from a query. Goal markers are assistant control
  * rows that must never count toward a thread's unread state or appear in chat
  * search. The message-list endpoint does NOT apply this — the client needs the
  * markers to fold the goal state.
  */
 export function excludeGoalMarkerCondition() {
+  // `run_event_id` is NULL for almost every row, and `NULL IN (...)` is NULL —
+  // `NOT NULL` would then drop those rows. The explicit IS NOT NULL guard keeps
+  // every non-goal-marker row.
   return sql<boolean>`NOT (
       ${chatMessages.role} = 'assistant'
+      AND ${chatMessages.runEventId} IS NOT NULL
       AND ${chatMessages.runEventId} IN (
         ${GOAL_WORKFLOW_ACTIVE_EVENT_ID},
         ${GOAL_WORKFLOW_INACTIVE_EVENT_ID},
