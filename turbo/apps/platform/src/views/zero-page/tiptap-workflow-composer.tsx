@@ -38,12 +38,23 @@ import {
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
-// element itself scrolls (single layer), so there is no overlay to sync.
+// element itself scrolls (single layer), so there is no overlay to sync. The
+// resting min-height is applied separately (see editorContentClass) so the
+// mobileSingleLineComposer switch can rest the editor at a single line on mobile.
 const EDITOR_CONTENT_CLASS =
-  "w-full min-h-[96px] max-h-[200px] overflow-y-auto whitespace-pre-wrap " +
+  "w-full max-h-[200px] overflow-y-auto whitespace-pre-wrap " +
   "break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground " +
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
+
+// Resting height: a single line on mobile (below the md breakpoint) when the
+// switch is on, otherwise the three-line desktop height on every viewport. This
+// mirrors the textarea composer in zero-chat-composer.tsx.
+function editorContentClass(singleLineOnMobile: boolean): string {
+  return singleLineOnMobile
+    ? `${EDITOR_CONTENT_CLASS} min-h-[44px] md:min-h-[96px]`
+    : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
+}
 
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
 
@@ -380,6 +391,7 @@ interface EditorOptionsParams {
   readonly input: string;
   readonly workflowNames: readonly string[];
   readonly autoFocus: boolean | undefined;
+  readonly singleLineOnMobile: boolean;
   readonly onInputChange: (value: string) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
@@ -402,7 +414,7 @@ function buildEditorOptions(
     autofocus: params.autoFocus && !isIOS() ? "end" : false,
     shouldRerenderOnTransaction: false,
     editorProps: {
-      attributes: { class: EDITOR_CONTENT_CLASS },
+      attributes: { class: editorContentClass(params.singleLineOnMobile) },
       handleKeyDown: (_view, event) => {
         return params.onEditorKeyDown(event);
       },
@@ -488,6 +500,8 @@ export function TiptapWorkflowComposer({
   const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
   const currentAgentId = useLastResolved(currentChatAgentRecordId$);
   const features = useLastResolved(featureSwitch$);
+  const singleLineOnMobile =
+    features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false;
   const orgWorkflowsLoadable = useLastLoadable(orgWorkflows$);
   const orgWorkflowsData =
     orgWorkflowsLoadable.state === "hasData" ? orgWorkflowsLoadable.data : [];
@@ -519,6 +533,7 @@ export function TiptapWorkflowComposer({
       input,
       workflowNames,
       autoFocus,
+      singleLineOnMobile,
       onInputChange,
       onPaste,
       setInputRef,
@@ -583,7 +598,9 @@ export function TiptapWorkflowComposer({
     // is fully controlled by composer state, so Escape/typing close it.
     <Popover open={showSlashWorkflowMenu}>
       <SlashCaretAnchor editor={editor} slashRange={slashRange} />
-      <div className="relative min-h-[96px]">
+      <div
+        className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}
+      >
         {input === "" && (
           <div
             className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
