@@ -1082,52 +1082,54 @@ button {
 
 .radar-aura {
   position: absolute;
-  width: 230px;
-  height: 230px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
   background: radial-gradient(
     circle at 50% 46%,
-    rgba(237, 78, 1, 0.2),
-    rgba(255, 153, 10, 0.1) 42%,
+    rgba(237, 78, 1, 0.18),
+    rgba(255, 153, 10, 0.09) 42%,
     transparent 70%
   );
   filter: blur(14px);
-  animation: radar-aura 2.4s ease-in-out infinite;
+  animation: radar-aura 2.8s ease-in-out infinite;
 }
 
+/* Three concentric rings, always visible at rest (the radar look), with a
+   gentle synchronized breathe so the circle feels alive. */
 .radar-wave {
   position: absolute;
-  width: 226px;
-  height: 226px;
   border-radius: 50%;
-  border: 1.5px solid var(--brand);
-  opacity: 0;
-  animation: radar-ripple 2.4s ease-out infinite;
+  border: 1.5px solid rgba(237, 78, 1, 0.42);
+  animation: radar-breathe 2.8s ease-in-out infinite;
 }
 
 .radar-wave-1 {
-  animation-delay: 0s;
+  width: 118px;
+  height: 118px;
 }
 
 .radar-wave-2 {
-  animation-delay: 0.8s;
+  width: 166px;
+  height: 166px;
+  border-color: rgba(237, 78, 1, 0.2);
+  animation-delay: 0.25s;
 }
 
 .radar-wave-3 {
-  animation-delay: 1.6s;
+  width: 214px;
+  height: 214px;
+  border-color: rgba(237, 78, 1, 0.09);
+  animation-delay: 0.5s;
 }
 
-@keyframes radar-ripple {
-  0% {
-    transform: scale(0.42);
-    opacity: 0.5;
-  }
-  70% {
-    opacity: 0.12;
-  }
+@keyframes radar-breathe {
+  0%,
   100% {
     transform: scale(1);
-    opacity: 0;
+  }
+  50% {
+    transform: scale(1.035);
   }
 }
 
@@ -1135,11 +1137,11 @@ button {
   0%,
   100% {
     opacity: 0.7;
-    transform: scale(0.96);
+    transform: scale(0.97);
   }
   50% {
     opacity: 1;
-    transform: scale(1.04);
+    transform: scale(1.05);
   }
 }
 
@@ -1356,15 +1358,6 @@ button {
   .radar-wave,
   .loading-dots span {
     animation: none;
-  }
-  .radar-wave-1 {
-    opacity: 0.4;
-  }
-  .radar-wave-2 {
-    opacity: 0.22;
-  }
-  .radar-wave-3 {
-    opacity: 0.1;
   }
   .arrival-overlay,
   .arrival-label {
