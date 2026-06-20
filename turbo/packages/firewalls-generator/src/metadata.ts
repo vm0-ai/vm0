@@ -491,7 +491,7 @@ function sortedRecord(
   );
 }
 
-export function fixedFirewallApiBaseHost(base: string): string | null {
+function fixedFirewallApiBaseHost(base: string): string | null {
   if (base.includes("${{")) {
     return null;
   }
