@@ -18,6 +18,7 @@ use crate::config::SnapshotConfig;
 use crate::network::NetnsPool;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
+use crate::workspace_drive_image::prepare_workspace_drive_image;
 
 use super::SnapshotError;
 use super::cow::destroy_snapshot_cow_and_cleanup_attempt_dir;
@@ -250,7 +251,7 @@ impl SnapshotAttempt {
                     return Err(err);
                 }
             };
-        if let Err(e) = crate::factory::prepare_workspace_drive_image(
+        if let Err(e) = prepare_workspace_drive_image(
             &workspace_image_path,
             &sandbox::WorkspaceDriveConfig {
                 size_mb: config.workspace_disk_mb,

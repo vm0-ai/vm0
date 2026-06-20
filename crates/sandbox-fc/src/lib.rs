@@ -42,6 +42,7 @@ mod process;
 mod runtime;
 mod sandbox;
 mod snapshot;
+mod workspace_drive_image;
 
 pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{
