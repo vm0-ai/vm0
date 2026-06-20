@@ -963,7 +963,9 @@ function OfflineHero({
   const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
   const startDisabled =
     state.host.status === "disabled" || startLoadable.state === "loading";
-  const permissionGranted = hasRequiredComputerUsePermissions(state.permissions);
+  const permissionGranted = hasRequiredComputerUsePermissions(
+    state.permissions,
+  );
   return (
     <section className="hero hero-offline">
       <div className="hero-stage">
