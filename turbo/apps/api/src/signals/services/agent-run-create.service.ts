@@ -67,15 +67,17 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { SEED_SKILLS, GOAL_SKILL_NAME } from "@vm0/core/zero-seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -500,11 +502,36 @@ function skillMountPath(
 // declared in the compose — a run can execute on a provider whose framework
 // differs from the compose, and skills mounted at the wrong path are invisible
 // to the agent.
+// The harness ships a built-in `/goal` (Claude Code & Codex). When the vm0
+// `goal` seed skill is injected it must take over, so these built-in goal tool
+// identifiers are added to the run's disallowed-tools list to suppress the
+// native command. Disallowing a name the active harness does not expose is a
+// harmless no-op, so both harnesses' identifiers are listed.
+const BUILTIN_GOAL_DISALLOWED_TOOLS = ["goal", "update_goal"] as const;
+
+function withBuiltinGoalDisabled(
+  disallowedTools: readonly string[] | undefined,
+  goalSeedEnabled: boolean,
+): readonly string[] | undefined {
+  if (!goalSeedEnabled) {
+    return disallowedTools;
+  }
+  return [
+    ...new Set([...(disallowedTools ?? []), ...BUILTIN_GOAL_DISALLOWED_TOOLS]),
+  ];
+}
+
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
+  goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] {
-  const allSkillNames = [...new Set([...SEED_SKILLS, ...connectorTypes])];
+  // The `goal` skill is mounted only when the GoalWorkflows switch is on, so it
+  // is appended here rather than living in the always-on SEED_SKILLS list.
+  const seedNames = goalSeedEnabled
+    ? [...SEED_SKILLS, GOAL_SKILL_NAME]
+    : SEED_SKILLS;
+  const allSkillNames = [...new Set([...seedNames, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
@@ -540,12 +567,17 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: CreateAgentRunArgs,
   framework: SupportedFramework,
+  goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
-    ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
+    ...buildSystemSkillVolumes(
+      args.allowedConnectorTypes ?? [],
+      framework,
+      goalSeedEnabled,
+    ),
     ...buildWorkflowSkillVolumes(
       args.injectSkillVolumes.workflowNames,
       framework,
@@ -1402,7 +1434,8 @@ interface ModelProviderEnvironmentRow {
   readonly encryptedValue: string | null;
 }
 
-interface ResolvableModelProviderEnvironmentRow extends ModelProviderEnvironmentRow {
+interface ResolvableModelProviderEnvironmentRow
+  extends ModelProviderEnvironmentRow {
   readonly type: ModelProviderType;
 }
 
@@ -3249,7 +3282,13 @@ async function buildStoredExecutionContext(args: {
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
-      disallowedTools: args.body.disallowedTools,
+      disallowedTools: withBuiltinGoalDisabled(
+        args.body.disallowedTools,
+        isFeatureEnabled(
+          FeatureSwitchKey.GoalWorkflows,
+          args.featureSwitchContext,
+        ),
+      ),
       tools: args.body.tools,
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
@@ -4100,7 +4139,14 @@ function prepareRunContext(
         bodyArtifacts: body.artifacts,
       });
       const additionalVolumes = mergeAdditionalVolumes({
-        prepend: buildInjectedSkillVolumes(args, framework),
+        prepend: buildInjectedSkillVolumes(
+          args,
+          framework,
+          isFeatureEnabled(
+            FeatureSwitchKey.GoalWorkflows,
+            featureSwitchContext,
+          ),
+        ),
         base: body.additionalVolumes ?? resolved.additionalVolumes,
       });
 
