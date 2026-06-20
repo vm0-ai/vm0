@@ -165,17 +165,20 @@ fn remote_exec_exit_code(termination: SandboxExecTermination) -> ExitCode {
 }
 
 fn write_remote_exec_terminal_diagnostic(stderr: &mut impl Write, result: &RemoteExecResult) {
-    let message = if matches!(result.termination, SandboxExecTermination::Exited { .. }) {
-        None
-    } else if !result.diagnostic.is_empty() {
-        Some(result.diagnostic.as_str())
-    } else {
-        match result.termination {
-            SandboxExecTermination::TimedOut => Some("Timeout"),
-            SandboxExecTermination::Cancelled => Some("Cancelled"),
-            SandboxExecTermination::Exited { .. }
-            | SandboxExecTermination::StartFailed
-            | SandboxExecTermination::WaitFailed => None,
+    let message = match result.termination {
+        SandboxExecTermination::Exited { .. } => None,
+        SandboxExecTermination::TimedOut if !result.diagnostic.is_empty() => {
+            Some(result.diagnostic.as_str())
+        }
+        SandboxExecTermination::TimedOut if result.stderr.is_empty() => Some("Timeout"),
+        SandboxExecTermination::TimedOut => None,
+        SandboxExecTermination::Cancelled if !result.diagnostic.is_empty() => {
+            Some(result.diagnostic.as_str())
+        }
+        SandboxExecTermination::Cancelled if result.stderr.is_empty() => Some("Cancelled"),
+        SandboxExecTermination::Cancelled => None,
+        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => {
+            (!result.diagnostic.is_empty()).then_some(result.diagnostic.as_str())
         }
     };
 
@@ -347,6 +350,40 @@ mod tests {
         write_remote_exec_terminal_diagnostic(&mut stderr, &result);
 
         assert_eq!(stderr, b"stderr clue\nwait failed\n");
+    }
+
+    #[test]
+    fn terminal_fallback_is_not_added_when_stderr_has_content() {
+        let result = RemoteExecResult {
+            termination: SandboxExecTermination::TimedOut,
+            stdout: Vec::new(),
+            stderr: b"stderr clue".to_vec(),
+            diagnostic: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut stderr = result.stderr.clone();
+
+        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+
+        assert_eq!(stderr, b"stderr clue");
+    }
+
+    #[test]
+    fn terminal_fallback_is_added_when_stderr_is_empty() {
+        let result = RemoteExecResult {
+            termination: SandboxExecTermination::Cancelled,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut stderr = result.stderr.clone();
+
+        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+
+        assert_eq!(stderr, b"Cancelled\n");
     }
 
     // ---- argument quoting -------------------------------------------------

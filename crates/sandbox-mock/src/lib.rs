@@ -1832,7 +1832,7 @@ impl SnapshotProvider for MockSnapshotProvider {
 ///
 /// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result)
 /// or [`push_kill_remote_result`](Self::push_kill_remote_result).
-/// When queues are empty, exec returns exit code 0 and kill returns accepted.
+/// When queues are empty, exec returns ordinary exit code 0 and kill returns accepted.
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
@@ -1845,8 +1845,8 @@ impl MockSandboxControl {
     /// Create a control mock that records remote exec commands and kill ids.
     ///
     /// The `base_dir` is used as the remote exec working directory. Result
-    /// queues start empty, so remote exec succeeds with exit code 0 and remote
-    /// kill returns accepted by default.
+    /// queues start empty, so remote exec succeeds with ordinary exit code 0
+    /// and remote kill returns accepted by default.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
