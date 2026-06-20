@@ -1029,6 +1029,12 @@ button {
   align-content: stretch;
 }
 
+/* The hero footer is its own fixed-height bar, so let it sit flush against the
+   window bottom instead of leaving the content's bottom padding beneath it. */
+.content:has(> .hero:only-child) {
+  padding-bottom: 0;
+}
+
 .hero-stage {
   flex: 1;
   display: flex;
@@ -1185,11 +1191,11 @@ button {
 /* ---- Quiet footer: identity + permission dot + overflow menu ---- */
 .hero-footer {
   -webkit-app-region: no-drag;
-  min-height: 44px;
+  min-height: 52px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-top: 12px;
   border-top: 1px solid rgba(20, 23, 29, 0.08);
 }
 
