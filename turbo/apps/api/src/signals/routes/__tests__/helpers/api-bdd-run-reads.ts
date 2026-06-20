@@ -270,7 +270,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunAgentEvents<TStatus extends 200 | 401 | 404>(
+    async requestRunAgentEvents<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
@@ -286,7 +286,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunSystemLog<TStatus extends 200 | 401 | 404>(
+    async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
@@ -302,7 +302,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunMetrics<TStatus extends 200 | 401 | 404>(
+    async requestRunMetrics<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
@@ -318,7 +318,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunNetworkLogs<TStatus extends 200 | 401 | 404>(
+    async requestRunNetworkLogs<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
@@ -384,7 +384,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestListLogs<TStatus extends 200 | 401>(
+    async requestListLogs<TStatus extends 200 | 400 | 401>(
       actor: ApiTestUser | null,
       query: LogsListQuery,
       statuses: readonly TStatus[],

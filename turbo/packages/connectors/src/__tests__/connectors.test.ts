@@ -2113,19 +2113,12 @@ describe("getConfiguredConnectorAuthMethodIds", () => {
 });
 
 describe("getAvailableConnectorAuthMethodIds", () => {
-  it("exposes Stripe CLI and API token auth without the Stripe switch", () => {
+  it("exposes all Stripe auth methods without a feature flag", () => {
     expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
+      "oauth",
       "cli",
       "api-token",
     ]);
-  });
-
-  it("exposes Stripe auth methods when the Stripe switch is enabled", () => {
-    expect(
-      getAvailableConnectorAuthMethodIds("stripe", {
-        [FeatureSwitchKey.StripeConnector]: true,
-      }),
-    ).toStrictEqual(["oauth", "cli", "api-token"]);
   });
 
   it("treats statically hidden auth methods as unavailable", () => {
@@ -2147,11 +2140,10 @@ describe("getAvailableConnectorAuthMethodIds", () => {
         "cli",
         "api-token",
       ]);
-      expect(
-        getAvailableConnectorAuthMethodIds("stripe", {
-          [FeatureSwitchKey.StripeConnector]: true,
-        }),
-      ).toStrictEqual(["cli", "api-token"]);
+      expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
+        "cli",
+        "api-token",
+      ]);
     } finally {
       Object.defineProperty(authMethods, "oauth", {
         value: originalOauth,

@@ -3903,7 +3903,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -3968,7 +3968,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -4031,7 +4031,6 @@ describe("chat lifecycle", () => {
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatInlineFeedback]: true,
         [FeatureSwitchKey.ChatTemplatePicker]: true,
       },
     });
@@ -4151,7 +4150,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -4232,7 +4231,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);

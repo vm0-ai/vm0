@@ -24,6 +24,17 @@ import {
   waitForRunEventWatermarkVisible,
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import {
+  buildAgentEventPaginationFilters,
+  buildTimeCursorProjection,
+  buildTimePaginationFilters,
+  buildTimePaginationOrder,
+  filterTimedAxiomRecords,
+  nextSequenceCursor,
+  nextTimeCursor,
+  sequenceCursorValue,
+  timeCursorBoundary,
+} from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 
 interface AgentComposeContent {
@@ -76,6 +87,8 @@ interface EventsParams extends OwnedRunParams {
 
 interface PagedTelemetryParams extends OwnedRunParams {
   readonly since?: number;
+  readonly sinceTime?: number;
+  readonly cursor?: string;
   readonly limit: number;
   readonly order: "asc" | "desc";
 }
@@ -149,12 +162,6 @@ function buildRunState(run: RunWithCompose): RunState {
   }
 
   return state;
-}
-
-function systemTelemetrySinceFilter(since: number | undefined): string {
-  return since
-    ? `| where _time > datetime("${new Date(since).toISOString()}")`
-    : "";
 }
 
 function verifyRunOwnership(
@@ -313,30 +320,35 @@ export function agentRunAgentEvents(
       return null;
     }
 
-    const watermarkTarget =
-      params.order === "asc"
+    const previousCursorValue = sequenceCursorValue(
+      params.cursor,
+      params.order,
+    );
+    const sequenceSince = previousCursorValue ?? params.since;
+    const requiresFullWatermark =
+      params.sinceTime !== undefined && sequenceSince === undefined;
+    const watermarkTarget = requiresFullWatermark
+      ? runWithCompose.lastEventSequence
+      : params.order === "asc"
         ? getAgentEventPageWatermarkTarget(
             runWithCompose.lastEventSequence,
-            params.since,
+            sequenceSince,
             params.limit + 1,
           )
-        : params.since !== undefined &&
+        : sequenceSince !== undefined &&
             runWithCompose.lastEventSequence !== null &&
-            params.since >= runWithCompose.lastEventSequence
+            sequenceSince >= runWithCompose.lastEventSequence
           ? null
           : runWithCompose.lastEventSequence;
     if (watermarkTarget !== null) {
       await waitForRunEventWatermarkVisible(params.runId, watermarkTarget);
     }
 
-    const sinceFilter =
-      params.since !== undefined
-        ? `| where sequenceNumber > ${params.since}`
-        : "";
+    const paginationFilter = buildAgentEventPaginationFilters(params);
     const dataset = getDatasetName("agent-run-events");
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${sinceFilter}
+${paginationFilter}
 | order by sequenceNumber ${params.order}
 | limit ${params.limit + 1}`;
 
@@ -348,12 +360,20 @@ ${sinceFilter}
         ),
       )
     ).slice() as unknown as AxiomAgentEvent[];
-    const hasMore = events.length > params.limit;
-    const resultEvents = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const resultEvents = pageHasMore ? events.slice(0, params.limit) : events;
+    const nextCursor = nextSequenceCursor(
+      resultEvents,
+      pageHasMore,
+      params.order,
+      previousCursorValue,
+    );
+    const hasMore = nextCursor !== null;
 
     return {
       events: resultEvents.map(toRunEvent),
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
       framework: extractFramework(runWithCompose.composeContent),
     };
   });
@@ -369,17 +389,36 @@ export function agentRunSystemLog(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-system");
+    const previousCursorBoundary = timeCursorBoundary(
+      params.cursor,
+      params.order,
+    );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${systemTelemetrySinceFilter(params.since)}
-| order by _time ${params.order}
+${buildTimePaginationFilters(params)}
+${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
     const events = (
-      await get(queryAxiom(apl))
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
     ).slice() as unknown as AxiomSystemLogEvent[];
-    const hasMore = events.length > params.limit;
-    const records = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const records = pageHasMore ? events.slice(0, params.limit) : events;
+    const nextCursor = nextTimeCursor(
+      records,
+      pageHasMore,
+      params.order,
+      previousCursorBoundary,
+    );
+    const hasMore = nextCursor !== null;
 
     return {
       systemLog: records
@@ -388,6 +427,7 @@ ${systemTelemetrySinceFilter(params.since)}
         })
         .join(""),
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   });
 }
@@ -402,17 +442,36 @@ export function agentRunMetrics(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-metrics");
+    const previousCursorBoundary = timeCursorBoundary(
+      params.cursor,
+      params.order,
+    );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${systemTelemetrySinceFilter(params.since)}
-| order by _time ${params.order}
+${buildTimePaginationFilters(params)}
+${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
     const events = (
-      await get(queryAxiom(apl))
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
     ).slice() as unknown as AxiomMetricEvent[];
-    const hasMore = events.length > params.limit;
-    const records = hasMore ? events.slice(0, params.limit) : events;
+    const pageHasMore = events.length > params.limit;
+    const records = pageHasMore ? events.slice(0, params.limit) : events;
+    const nextCursor = nextTimeCursor(
+      records,
+      pageHasMore,
+      params.order,
+      previousCursorBoundary,
+    );
+    const hasMore = nextCursor !== null;
 
     return {
       metrics: records.map((event) => {
@@ -426,6 +485,7 @@ ${systemTelemetrySinceFilter(params.since)}
         };
       }),
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   });
 }
@@ -440,20 +500,43 @@ export function agentRunNetworkLogs(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-network");
+    const previousCursorBoundary = timeCursorBoundary(
+      params.cursor,
+      params.order,
+    );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${systemTelemetrySinceFilter(params.since)}
-| order by _time ${params.order}
+${buildTimePaginationFilters(params)}
+${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))).slice();
-    const hasMore = events.length > params.limit;
-    const pageEvents = hasMore ? events.slice(0, params.limit) : events;
-    const networkLogs = sanitizeAxiomNetworkEvents(pageEvents);
+    const events = (
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
+    ).slice();
+    const pageHasMore = events.length > params.limit;
+    const records = pageHasMore ? events.slice(0, params.limit) : events;
+    const networkLogs = sanitizeAxiomNetworkEvents(records);
+    const timedRecords = filterTimedAxiomRecords(records);
+    const nextCursor = nextTimeCursor(
+      timedRecords,
+      pageHasMore,
+      params.order,
+      previousCursorBoundary,
+    );
+    const hasMore = nextCursor !== null;
 
     return {
       networkLogs,
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   });
 }

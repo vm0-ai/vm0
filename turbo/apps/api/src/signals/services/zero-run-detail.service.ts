@@ -16,6 +16,17 @@ import {
   waitForRunEventWatermarkVisible,
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import {
+  buildAgentEventPaginationFilters,
+  buildTimeCursorProjection,
+  buildTimePaginationFilters,
+  buildTimePaginationOrder,
+  filterTimedAxiomRecords,
+  nextSequenceCursor,
+  nextTimeCursor,
+  sequenceCursorValue,
+  timeCursorBoundary,
+} from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
@@ -63,6 +74,8 @@ interface NetworkLogsParams {
   userId: string;
   orgId: string;
   since?: number;
+  sinceTime?: number;
+  cursor?: string;
   limit: number;
   order: "asc" | "desc";
 }
@@ -155,25 +168,45 @@ export function zeroRunNetworkLogs(
       return null;
     }
 
-    const { since, limit, order } = params;
+    const { limit, order } = params;
+    const previousCursorBoundary = timeCursorBoundary(params.cursor, order);
 
     const dataset = getDatasetName("sandbox-telemetry-network");
-    const sinceFilter = since
-      ? `| where _time > datetime("${new Date(since).toISOString()}")`
-      : "";
     const apl = `['${dataset}']
-| where runId == "${params.runId}"
-${sinceFilter}
-| order by _time ${order}
+| where runId == "${escapeAplString(params.runId)}"
+${buildTimePaginationFilters(params)}
+${buildTimePaginationOrder(order)}
+${buildTimeCursorProjection()}
 | limit ${limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))).slice();
+    const events = (
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
+    ).slice();
 
-    const hasMore = events.length > limit;
-    const pageEvents = hasMore ? events.slice(0, limit) : events;
-    const networkLogs = sanitizeAxiomNetworkEvents(pageEvents);
+    const pageHasMore = events.length > limit;
+    const records = pageHasMore ? events.slice(0, limit) : events;
+    const networkLogs = sanitizeAxiomNetworkEvents(records);
+    const timedRecords = filterTimedAxiomRecords(records);
+    const nextCursor = nextTimeCursor(
+      timedRecords,
+      pageHasMore,
+      order,
+      previousCursorBoundary,
+    );
+    const hasMore = nextCursor !== null;
 
-    return { networkLogs, hasMore };
+    return {
+      networkLogs,
+      hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
+    };
   });
 }
 
@@ -182,6 +215,8 @@ interface AgentEventsParams {
   userId: string;
   orgId: string;
   since?: number;
+  sinceTime?: number;
+  cursor?: string;
   limit: number;
   order: "asc" | "desc";
 }
@@ -200,11 +235,16 @@ interface AxiomAgentEvent {
 function getAgentEventsVisibilityTarget(
   lastEventSequence: number | null,
   since: number | undefined,
+  sinceTime: number | undefined,
   limit: number,
   order: "asc" | "desc",
 ): number | null {
   if (lastEventSequence === null) {
     return null;
+  }
+
+  if (sinceTime !== undefined && since === undefined) {
+    return lastEventSequence;
   }
 
   if (order === "asc") {
@@ -259,10 +299,13 @@ export function zeroRunAgentEvents(
     const framework = extractFramework(runWithCompose.composeContent);
 
     const { since, limit, order } = params;
+    const previousCursorValue = sequenceCursorValue(params.cursor, order);
+    const sequenceSince = previousCursorValue ?? since;
 
     const watermarkTarget = getAgentEventsVisibilityTarget(
       runWithCompose.lastEventSequence,
-      since,
+      sequenceSince,
+      params.sinceTime,
       limit,
       order,
     );
@@ -274,11 +317,10 @@ export function zeroRunAgentEvents(
     // `since` is an exclusive sequenceNumber cursor (integer). The watermark
     // wait above ensures Axiom can serve the contiguous prefix; the noCache
     // hint below ensures we don't read a stale cached response.
-    const sinceFilter =
-      since !== undefined ? `| where sequenceNumber > ${since}` : "";
+    const paginationFilter = buildAgentEventPaginationFilters(params);
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${sinceFilter}
+${paginationFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
 
@@ -291,8 +333,15 @@ ${sinceFilter}
       )
     ).slice() as unknown as AxiomAgentEvent[];
 
-    const hasMore = events.length > limit;
-    const resultEvents = hasMore ? events.slice(0, limit) : events;
+    const pageHasMore = events.length > limit;
+    const resultEvents = pageHasMore ? events.slice(0, limit) : events;
+    const nextCursor = nextSequenceCursor(
+      resultEvents,
+      pageHasMore,
+      order,
+      previousCursorValue,
+    );
+    const hasMore = nextCursor !== null;
 
     return {
       events: resultEvents.map((e) => {
@@ -304,6 +353,7 @@ ${sinceFilter}
         } satisfies RunEvent;
       }),
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
       framework,
     };
   });

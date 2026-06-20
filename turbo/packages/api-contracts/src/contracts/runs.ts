@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import {
+  authHeadersSchema,
+  initContract,
+  timestampQueryNumberSchema,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 import {
@@ -417,12 +421,269 @@ const telemetryMetricSchema = z.object({
   disk_total: z.number(),
 });
 
+type LogPaginationCursorKind = "sequence" | "time";
+type LogPaginationOrder = "asc" | "desc";
+
+interface LogPaginationQueryOptions {
+  readonly cursorKind: LogPaginationCursorKind;
+  readonly maxLimit?: number;
+  readonly defaultLimit?: number;
+  readonly defaultOrder?: LogPaginationOrder;
+}
+
+const ISO_UTC_TIMESTAMP_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/;
+
+function rejectBlankQueryNumber(value: unknown): unknown {
+  if (typeof value === "string" && value.trim().length === 0) {
+    return Number.NaN;
+  }
+
+  return value;
+}
+
+const safeIntegerQueryNumberSchema = z.preprocess(
+  rejectBlankQueryNumber,
+  z.coerce.number().refine(Number.isSafeInteger, {
+    message: "Value must be a safe integer",
+  }),
+);
+
+const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
+  .refine(
+    (value) => {
+      return value >= -1;
+    },
+    { message: "Sequence cursor must be at least -1" },
+  )
+  .refine(
+    (value) => {
+      return value <= MAX_EVENT_SEQUENCE_NUMBER;
+    },
+    { message: "Sequence cursor is out of range" },
+  );
+
+function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
+  return cursorKind === "time"
+    ? timestampQueryNumberSchema
+    : sequenceQueryNumberSchema;
+}
+
+function exactUtcTimestamp(value: string): string | null {
+  const match = ISO_UTC_TIMESTAMP_PATTERN.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const [, yearPart, monthPart, dayPart, hourPart, minutePart, secondPart] =
+    match;
+  if (
+    yearPart === undefined ||
+    monthPart === undefined ||
+    dayPart === undefined ||
+    hourPart === undefined ||
+    minutePart === undefined ||
+    secondPart === undefined
+  ) {
+    return null;
+  }
+
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+  const hour = Number(hourPart);
+  const minute = Number(minutePart);
+  const second = Number(secondPart);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
+
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    date.getUTCHours() === hour &&
+    date.getUTCMinutes() === minute &&
+    date.getUTCSeconds() === second
+    ? value
+    : null;
+}
+
+function timeCursorTimestampValue(rawValue: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+  return exactUtcTimestamp(decoded);
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function timeCursorTieBreakerValue(rawValue: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+
+  if (decoded.length === 0 || decoded.length > 2048) {
+    return null;
+  }
+
+  return hasControlCharacter(decoded) ? null : decoded;
+}
+
+type ParsedLogCursor =
+  | {
+      readonly kind: "sequence";
+      readonly order: LogPaginationOrder;
+      readonly value: number;
+    }
+  | {
+      readonly kind: "time";
+      readonly order: LogPaginationOrder;
+      readonly timestamp: string;
+      readonly tieBreaker: string;
+    };
+
+function parseLogCursor(cursor: string): ParsedLogCursor | null {
+  const timeMatch = /^time:(asc|desc):([^:]+):(.+)$/.exec(cursor);
+  if (timeMatch) {
+    const order = timeMatch[1];
+    const rawTimestamp = timeMatch[2];
+    const rawTieBreaker = timeMatch[3];
+    if (
+      (order !== "asc" && order !== "desc") ||
+      rawTimestamp === undefined ||
+      rawTieBreaker === undefined
+    ) {
+      return null;
+    }
+
+    const timestamp = timeCursorTimestampValue(rawTimestamp);
+    const tieBreaker = timeCursorTieBreakerValue(rawTieBreaker);
+    return timestamp === null || tieBreaker === null
+      ? null
+      : { kind: "time", order, timestamp, tieBreaker };
+  }
+
+  const sequenceMatch = /^sequence:(asc|desc):(-?\d+)$/.exec(cursor);
+  if (!sequenceMatch) {
+    return null;
+  }
+
+  const order = sequenceMatch[1];
+  const rawValue = sequenceMatch[2];
+  if ((order !== "asc" && order !== "desc") || rawValue === undefined) {
+    return null;
+  }
+
+  if (!/^-?\d+$/.test(rawValue)) {
+    return null;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value)) {
+    return null;
+  }
+
+  return { kind: "sequence", order, value };
+}
+
+function sequenceCursorOutOfRange(cursor: ParsedLogCursor): boolean {
+  return (
+    cursor.kind === "sequence" &&
+    (cursor.value < -1 || cursor.value > MAX_EVENT_SEQUENCE_NUMBER)
+  );
+}
+
+export function createLogPaginationQuerySchema(
+  options: LogPaginationQueryOptions,
+) {
+  return z
+    .object({
+      since: logSinceQuerySchema(options.cursorKind).optional(),
+      sinceTime: timestampQueryNumberSchema.optional(),
+      cursor: z.string().min(1).optional(),
+      limit: z
+        .preprocess(
+          rejectBlankQueryNumber,
+          z.coerce
+            .number()
+            .int()
+            .min(1)
+            .max(options.maxLimit ?? 100),
+        )
+        .default(options.defaultLimit ?? 5),
+      order: z.enum(["asc", "desc"]).default(options.defaultOrder ?? "desc"),
+    })
+    .superRefine((query, ctx) => {
+      if (!query.cursor) {
+        return;
+      }
+
+      const cursor = parseLogCursor(query.cursor);
+      if (!cursor) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: "Cursor is malformed",
+        });
+        return;
+      }
+
+      if (cursor.kind !== options.cursorKind) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: `Cursor must be a ${options.cursorKind} cursor`,
+        });
+      }
+
+      if (cursor.order !== query.order) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: "Cursor order must match query order",
+        });
+      }
+
+      if (sequenceCursorOutOfRange(cursor)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: "Sequence cursor is out of range",
+        });
+      }
+    });
+}
+
+const sequenceLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "sequence",
+});
+
+const timeLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "time",
+});
+
 /**
  * System log response schema
  */
 const systemLogResponseSchema = z.object({
   systemLog: z.string(),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable().optional(),
 });
 
 /**
@@ -431,6 +692,7 @@ const systemLogResponseSchema = z.object({
 const metricsResponseSchema = z.object({
   metrics: z.array(telemetryMetricSchema),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable().optional(),
 });
 
 /**
@@ -439,6 +701,7 @@ const metricsResponseSchema = z.object({
 const agentEventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable().optional(),
   framework: z.string(),
 });
 
@@ -505,6 +768,7 @@ const networkLogEntrySchema = z.object({
 const networkLogsResponseSchema = z.object({
   networkLogs: z.array(networkLogEntrySchema),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable().optional(),
 });
 
 /**
@@ -555,13 +819,10 @@ export const runSystemLogContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: timeLogPaginationQuerySchema,
     responses: {
       200: systemLogResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -584,13 +845,10 @@ export const runMetricsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: timeLogPaginationQuerySchema,
     responses: {
       200: metricsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -613,13 +871,10 @@ export const runAgentEventsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: sequenceLogPaginationQuerySchema,
     responses: {
       200: agentEventsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -642,13 +897,10 @@ export const runNetworkLogsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: timeLogPaginationQuerySchema,
     responses: {
       200: networkLogsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -702,13 +954,14 @@ export const logsSearchContract = c.router({
       keyword: z.string().min(1),
       agentId: z.string().uuid().optional(),
       runId: z.string().optional(),
-      since: z.coerce.number().optional(),
+      since: timestampQueryNumberSchema.optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),
       after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: logsSearchResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
     },
     summary: "Search agent events across runs",

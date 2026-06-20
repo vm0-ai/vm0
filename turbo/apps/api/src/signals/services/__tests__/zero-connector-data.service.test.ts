@@ -639,12 +639,4 @@ describe("zeroConnectorSearch", () => {
 
     expect(authMethods).toStrictEqual(["oauth", "cli", "api-token"]);
   });
-
-  it("returns Stripe search auth methods when the Stripe switch is enabled", async () => {
-    const authMethods = await stripeSearchAuthMethods({
-      [FeatureSwitchKey.StripeConnector]: true,
-    });
-
-    expect(authMethods).toStrictEqual(["oauth", "cli", "api-token"]);
-  });
 });

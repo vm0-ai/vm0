@@ -3152,9 +3152,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const features = useLastResolved(featureSwitch$);
-  const inlineFeedbackEnabled =
-    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const githubPrTrackingOpen = useGithubPrTrackingOpen(
     thread,
     threadDataLoadable,
@@ -3202,7 +3199,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
+      <ChatFeedbackSelection />
     </>
   );
 }
@@ -3758,14 +3755,12 @@ function useChatThreadComputerUse(
 }
 
 // Bridges the global inline-feedback signals to the composer's `feedback` prop.
-// Returns undefined when the feature is off, so the composer keeps its textarea.
+// Returns undefined when no feedback is drafted in this thread, so the composer
+// keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
   modelSelection: ModelProviderSelection | null,
 ): ComposerFeedback | undefined {
-  const features = useLastResolved(featureSwitch$);
-  const inlineFeedbackEnabled =
-    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
@@ -3786,7 +3781,7 @@ function useChatThreadComposerFeedback(
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
-  if (!inlineFeedbackEnabled || feedbackThreadId !== thread.threadId) {
+  if (feedbackThreadId !== thread.threadId) {
     return undefined;
   }
   return {

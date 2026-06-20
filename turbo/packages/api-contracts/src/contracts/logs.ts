@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { initContract, authHeadersSchema } from "./base";
+import {
+  initContract,
+  authHeadersSchema,
+  timestampQueryNumberSchema,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 
 /**
@@ -142,7 +146,7 @@ export const logsListContract = c.router({
       search: z.string().optional(),
       agentId: z.string().uuid().optional(),
       name: z.string().optional(),
-      since: z.coerce.number().optional(),
+      since: timestampQueryNumberSchema.optional(),
 
       status: logStatusSchema.optional(),
       triggerSource: triggerSourceSchema.optional(),
@@ -150,6 +154,7 @@ export const logsListContract = c.router({
     }),
     responses: {
       200: logsListResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },

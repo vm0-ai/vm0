@@ -491,35 +491,6 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows Stripe CLI and API token auth when the connector switch is disabled", async () => {
-    mockConnectors([]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.StripeConnector]: false },
-    });
-
-    const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "stripe");
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Connect Stripe")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByText(/No connectors matching/),
-    ).not.toBeInTheDocument();
-
-    click(screen.getByLabelText("Connect Stripe"));
-    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
-    expect(
-      within(dialog).getByRole("heading", { name: "Sign in with Stripe" }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("heading", { name: "API Key" }),
-    ).toBeInTheDocument();
-  });
-
   it("starts Stripe OAuth from the connect dialog", async () => {
     mockConnectors([]);
     const authWindow = createMockAuthWindow();
@@ -538,7 +509,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+      featureSwitches: {},
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
@@ -607,7 +578,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+      featureSwitches: {},
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");

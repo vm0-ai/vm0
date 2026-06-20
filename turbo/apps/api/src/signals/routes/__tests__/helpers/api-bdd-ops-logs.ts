@@ -64,7 +64,7 @@ function authenticate(
 
 export function createOpsLogsApi(context: TestContext) {
   return {
-    async requestSearchLogs<TStatus extends 200 | 401>(
+    async requestSearchLogs<TStatus extends 200 | 400 | 401>(
       actor: ApiTestUser | null,
       query: LogsSearchQuery,
       statuses: readonly TStatus[],
