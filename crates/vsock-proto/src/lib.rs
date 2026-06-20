@@ -13,6 +13,11 @@
 //!   unsolicited frames.
 //! - **payload**: type-specific binary data
 //!
+//! Unless noted otherwise, multi-byte integer fields are big-endian. `*_len`
+//! fields count bytes, not characters. Length-prefixed string fields are UTF-8
+//! byte sequences; fields named bytes, chunk, content, payload, or stdin_bytes
+//! are raw bytes.
+//!
 //! ## Message Types
 //!
 //! Non-error message types are continuous and grouped by protocol domain:
@@ -32,10 +37,10 @@
 //! | 0x08 | G→H       | operations_resumed | (empty) |
 //! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x0A | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy][stdin_policy]` |
+//! | 0x0B | H→G       | exec_start     | see payload schema below |
 //! | 0x0C | G→H       | exec_started | `[4B pid]` |
 //! | 0x0D | G→H       | exec_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
-//! | 0x0E | G→H       | exec_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
+//! | 0x0E | G→H       | exec_result    | see payload schema below |
 //! | 0x0F | H→G       | exec_cancel    | (empty) |
 //! | 0x10 | H→G       | exec_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
 //! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
@@ -46,22 +51,98 @@
 //! exec lifecycle frames reuse the original non-zero request sequence.
 //! `exec_output.output_seq` is per exec operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
-//! `exec_start.lifecycle` uses 0=one_shot and 1=supervised.
-//! `exec_start.timeout_policy` uses 0=`[4B positive timeout_ms]` and
-//! 1=no timeout.
-//! `exec_start.flags` currently uses `SUDO=0x01`.
-//! `exec_start.expected_exit_count` may be zero, but the count field is
-//! always present.
-//! `exec_start.control_policy` uses 0=disabled, or 1 followed by
-//! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
-//! `exec_start.stdin_policy` uses 0=no explicit stdin, or 1 followed by
-//! `[4B stdin_len][stdin_bytes]` with a bounded payload.
 //! `write_file_result.success` uses 0=false and 1=true.
 //! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
 //! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response
 //! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
 //! saturate values that do not fit in `u32`.
+//!
+//! ## Payload Schemas
+//!
+//! ### `exec_start`
+//!
+//! ```text
+//! [1B lifecycle]
+//! [timeout_policy]
+//! [1B flags]
+//! [4B cmd_len][command]
+//! [4B env_count][env_entry]...
+//! [2B label_len][label]
+//! [stdout_policy]
+//! [stderr_policy]
+//! [2B expected_exit_count][4B expected_exit_code]...
+//! [control_policy]
+//! [stdin_policy]
+//! ```
+//!
+//! `lifecycle` values:
+//!
+//! - `0x00`: one-shot.
+//! - `0x01`: supervised.
+//!
+//! `timeout_policy` values:
+//!
+//! - `0x00`: `[4B positive timeout_ms]`.
+//! - `0x01`: no timeout.
+//!
+//! `flags` currently uses `SUDO=0x01`.
+//!
+//! Each `env_entry` is `[4B key_len][key][4B value_len][value]`.
+//!
+//! `stdout_policy` and `stderr_policy` use the same tagged output-policy
+//! payload:
+//!
+//! - `0x00`: discard, no payload.
+//! - `0x01`: capture, followed by `[4B limit_bytes]`.
+//! - `0x02`: stream, followed by `[4B limit_bytes][4B chunk_limit_bytes]`.
+//! - `0x03`: capture-and-stream, followed by
+//!   `[4B capture_limit_bytes][4B stream_limit_bytes][4B chunk_limit_bytes]`.
+//!
+//! `chunk_limit_bytes` must be non-zero for stream and capture-and-stream
+//! policies.
+//!
+//! `expected_exit_count` may be zero, but the count field is always present.
+//! Each `expected_exit_code` is a signed `i32`.
+//!
+//! `control_policy` values:
+//!
+//! - `0x00`: disabled.
+//! - `0x01`: enabled, followed by `[1B control_flags][16B nonce]`.
+//!
+//! `control_flags` currently uses `SINK=0x01`.
+//!
+//! `stdin_policy` values:
+//!
+//! - `0x00`: no explicit stdin.
+//! - `0x01`: stdin bytes, followed by `[4B stdin_len][stdin_bytes]`.
+//!
+//! Present stdin is bounded by `MAX_EXEC_STDIN_BYTES`.
+//!
+//! ### `exec_result`
+//!
+//! ```text
+//! [termination]
+//! [4B duration_ms]
+//! [stdout]
+//! [stderr]
+//! [2B diagnostic_len][diagnostic]
+//! ```
+//!
+//! `termination` values:
+//!
+//! - `0x00`: exited, followed by signed `[4B exit_code]`.
+//! - `0x01`: timed out.
+//! - `0x02`: cancelled.
+//! - `0x03`: start failed.
+//! - `0x04`: wait failed.
+//!
+//! `stdout` and `stderr` use the same tagged captured-output payload:
+//!
+//! - `0x00`: discarded, no payload.
+//! - `0x01`: captured, followed by `[1B flags][4B bytes_len][bytes]`.
+//!
+//! Captured-output `flags` currently uses `TRUNCATED=0x01`.
 
 #![deny(missing_docs)]
 
