@@ -39,13 +39,21 @@ const builtinFirewallFixedHostOwnerLookup: Readonly<
   Record<string, FirewallPermissionSummaryMetadata["type"]>
 > = BUILTIN_FIREWALL_FIXED_HOST_OWNERS;
 
+function trimTrailingDots(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 46) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function stripHostnameTrailingDot(host: string): string {
   const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
   if (portStart === -1) {
-    return host.replace(/\.+$/, "");
+    return trimTrailingDots(host);
   }
 
-  const hostname = host.slice(0, portStart).replace(/\.+$/, "");
+  const hostname = trimTrailingDots(host.slice(0, portStart));
   return `${hostname}${host.slice(portStart)}`;
 }
 

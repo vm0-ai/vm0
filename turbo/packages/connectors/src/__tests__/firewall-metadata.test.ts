@@ -354,6 +354,10 @@ describe("firewall metadata", () => {
       type: "github",
       label: "GitHub",
     });
+    expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
     expect(
       getBuiltinConnectorHostOwner("https://api.github.com/repos"),
     ).toStrictEqual({
