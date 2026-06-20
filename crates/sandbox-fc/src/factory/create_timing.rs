@@ -3,6 +3,10 @@ use std::time::{Duration, Instant};
 
 use tracing::{info, warn};
 
+use crate::workspace_drive_image::{
+    WorkspaceDriveImagePrepareObserver, WorkspaceDriveImagePrepareStage,
+};
+
 pub(super) const SLOW_SANDBOX_CREATE_THRESHOLD: Duration = Duration::from_secs(3);
 
 macro_rules! emit_success_summary_event {
@@ -195,6 +199,33 @@ impl SandboxCreateTiming {
             return;
         }
         emit_success_summary_event!(warn, self, total_elapsed, "slow sandbox create");
+    }
+}
+
+impl WorkspaceDriveImagePrepareObserver for SandboxCreateTiming {
+    fn mark_workspace_drive_present(&mut self) {
+        SandboxCreateTiming::mark_workspace_drive_present(self);
+    }
+
+    fn mark_workspace_seed_image_used(&mut self) {
+        SandboxCreateTiming::mark_workspace_seed_image_used(self);
+    }
+
+    fn record_stage_result(
+        &mut self,
+        stage: WorkspaceDriveImagePrepareStage,
+        started_at: Instant,
+        result: sandbox::Result<()>,
+    ) -> sandbox::Result<()> {
+        let sandbox_stage = match stage {
+            WorkspaceDriveImagePrepareStage::SeedSparseCopy => {
+                SandboxCreateStage::WorkspaceSeedSparseCopy
+            }
+            WorkspaceDriveImagePrepareStage::FreshFormat => {
+                SandboxCreateStage::WorkspaceFreshFormat
+            }
+        };
+        self.record_stage_result(sandbox_stage, started_at, result)
     }
 }
 
@@ -428,6 +459,41 @@ mod tests {
         assert_field(&event, "sock_dir_prepare_ms", "50");
         assert_field(&event, "netns_acquire_ms", "60");
         assert_field(&event, "nbd_cow_create_ms", "70");
+    }
+
+    #[test]
+    fn workspace_drive_image_observer_maps_to_sandbox_create_timing() {
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+
+        WorkspaceDriveImagePrepareObserver::mark_workspace_drive_present(&mut timing);
+        WorkspaceDriveImagePrepareObserver::mark_workspace_seed_image_used(&mut timing);
+        WorkspaceDriveImagePrepareObserver::record_stage_result(
+            &mut timing,
+            WorkspaceDriveImagePrepareStage::SeedSparseCopy,
+            Instant::now(),
+            Ok(()),
+        )
+        .unwrap();
+        WorkspaceDriveImagePrepareObserver::record_stage_result(
+            &mut timing,
+            WorkspaceDriveImagePrepareStage::FreshFormat,
+            Instant::now(),
+            Ok(()),
+        )
+        .unwrap();
+
+        assert!(timing.workspace_drive_present);
+        assert!(timing.workspace_seed_image_used);
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceSeedSparseCopy)
+                .is_some()
+        );
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceFreshFormat)
+                .is_some()
+        );
     }
 
     #[test]
