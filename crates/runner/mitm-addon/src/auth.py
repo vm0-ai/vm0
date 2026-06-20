@@ -28,6 +28,7 @@ from firewall_auth_cache import InvalidBillableAuthExpiryError, get_firewall_hea
 from firewall_auth_client import (
     ConnectorNotConfiguredError,
     FirewallAuthApiError,
+    FirewallAuthRequest,
     InsufficientCreditsError,
 )
 from firewall_auth_config import auth_config_injects_credentials
@@ -57,16 +58,7 @@ class _FirewallAuthContext:
     api_id: str
     run_id: str
     proxy_log_path: str
-    sandbox_token: str
-    encrypted_secrets: str
-    auth_headers: dict
-    auth_base: str | None
-    auth_query: dict | None
-    auth_aws_sigv4: dict | None
-    secret_connector_map: dict | None
-    secret_connector_metadata_map: dict | None
-    vars_map: dict | None
-    firewall_billable: bool
+    auth_request: FirewallAuthRequest
 
 
 def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
@@ -120,26 +112,28 @@ def _build_firewall_auth_context(
         api_id=flow.metadata[metadata_keys.FIREWALL_API_ID],
         run_id=flow.metadata.get(metadata_keys.VM_RUN_ID, ""),
         proxy_log_path=flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
-        sandbox_token=vm_info.get("sandboxToken", ""),
-        encrypted_secrets=vm_info.get("encryptedSecrets") or "",
-        auth_headers=auth_config.get("headers", {}),
-        auth_base=auth_config.get("base"),
-        auth_query=auth_config.get("query"),
-        auth_aws_sigv4=auth_config.get("awsSigv4"),
-        secret_connector_map=vm_info.get("secretConnectorMap"),
-        secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
-        vars_map=vm_info.get("vars"),
-        firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        auth_request=FirewallAuthRequest(
+            sandbox_token=vm_info.get("sandboxToken", ""),
+            encrypted_secrets=vm_info.get("encryptedSecrets") or "",
+            auth_headers=auth_config.get("headers", {}),
+            auth_base=auth_config.get("base"),
+            auth_query=auth_config.get("query"),
+            auth_aws_sigv4=auth_config.get("awsSigv4"),
+            secret_connector_map=vm_info.get("secretConnectorMap"),
+            secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
+            vars_map=vm_info.get("vars"),
+            firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        ),
     )
 
 
 def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) -> bool:
     return auth_config_injects_credentials(
         {
-            "headers": context.auth_headers,
-            "query": context.auth_query,
-            "awsSigv4": context.auth_aws_sigv4,
-            "base": context.auth_base,
+            "headers": context.auth_request.auth_headers,
+            "query": context.auth_request.auth_query,
+            "awsSigv4": context.auth_request.auth_aws_sigv4,
+            "base": context.auth_request.auth_base,
         }
     )
 
@@ -424,7 +418,7 @@ def _preflight_firewall_auth(
     context: _FirewallAuthContext,
 ) -> FirewallAuthHandlingResult | None:
     """Handle local firewall auth failures that must happen before auth resolution."""
-    if context.auth_base and _request_body_exceeds_auth_base_limit(flow):
+    if context.auth_request.auth_base and _request_body_exceeds_auth_base_limit(flow):
         _set_auth_base_request_too_large(
             flow,
             allow=context.allow,
@@ -453,7 +447,7 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    if not context.encrypted_secrets:
+    if not context.auth_request.encrypted_secrets:
         log_proxy_entry(
             context.proxy_log_path,
             "error",
@@ -797,16 +791,7 @@ async def handle_firewall_request(
         token_meta = await get_firewall_headers(
             context.run_id,
             context.api_id,
-            context.encrypted_secrets,
-            context.auth_headers,
-            context.sandbox_token,
-            secret_connector_map=context.secret_connector_map,
-            secret_connector_metadata_map=context.secret_connector_metadata_map,
-            vars_map=context.vars_map,
-            auth_base=context.auth_base,
-            auth_query=context.auth_query,
-            auth_aws_sigv4=context.auth_aws_sigv4,
-            firewall_billable=context.firewall_billable,
+            context.auth_request,
         )
     except Exception as exc:
         return _set_firewall_auth_resolution_failure(flow, context, exc)
