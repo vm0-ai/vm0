@@ -5819,6 +5819,13 @@ function PagedAssistantGroup({
     onToggle: () => void;
   };
 }) {
+  const hasRenderableMessage = group.messages.some((message) => {
+    return isRenderableAssistantMessage(message);
+  });
+  if (!hasRenderableMessage && !completedWorkFold) {
+    return null;
+  }
+
   const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
     .map((m) => {

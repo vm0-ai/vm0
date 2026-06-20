@@ -34,6 +34,7 @@ import {
   mockGithubAppInstallProvider,
   mockSlackConnectorOAuth,
   mockSlockOAuthProvider,
+  mockStripeCliDashboardAuth,
   mockTestOAuthAuthCodeProvider,
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
@@ -428,6 +429,77 @@ describe("CONN-02: OAuth device authorization", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
+  it("starts and completes the Stripe CLI device authorization method", async () => {
+    const stripeProvider = mockStripeCliDashboardAuth();
+
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+
+    const session = await connectorsApi.startDeviceAuth(
+      actor,
+      "stripe",
+      "cli",
+      { mode: "live" },
+    );
+    expect(session).toMatchObject({
+      type: "stripe",
+      status: "pending",
+      userCode: "STRIPE-CLI",
+      verificationUri:
+        "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI",
+      verificationUriComplete:
+        "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI",
+      expiresIn: 600,
+      interval: 1,
+    });
+    expect(stripeProvider.startBodies[0]?.get("client_version")).toBe("1.42.1");
+    expect(stripeProvider.startBodies[0]?.get("device_name")).toBe(
+      "vm0-stripe-connector",
+    );
+
+    mockNow(now() + 2000);
+    const poll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "stripe",
+      session.sessionId,
+      session.sessionToken,
+    );
+    expect(poll.status).toBe("complete");
+    if (poll.status !== "complete") {
+      throw new Error(
+        `Expected complete Stripe device auth, got ${poll.status}`,
+      );
+    }
+    expect(poll.connector).toMatchObject({
+      type: "stripe",
+      authMethod: "cli",
+      externalId: "acct_bdd",
+      externalUsername: "BDD Stripe",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected",
+    });
+    expect(JSON.stringify(poll)).not.toContain("rk_live_api456");
+    expect(stripeProvider.pollCount()).toBe(1);
+    clearMockNow();
+
+    const listed = await connectorsApi.listConnectors(actor);
+    expect(connectorByType(listed.connectors, "stripe")?.id).toBe(
+      poll.connector.id,
+    );
+    expect(listed.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "stripe",
+        authMethod: "cli",
+        namespace: "secrets",
+        name: "STRIPE_TOKEN",
+      }),
+    );
+
+    await connectorsApi.deleteConnectorByType(actor, "stripe");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
   it("rejects device-auth starts through visible validation, grant, and availability boundaries", async () => {
     const testOauthProvider = mockTestOAuthDeviceConnectorProvider();
     const bdd = createBddApi(context);
@@ -540,7 +612,7 @@ describe("CONN-02: OAuth device authorization", () => {
     );
     expectApiError(stripeDeviceAuth.body);
     expect(stripeDeviceAuth.body.error.message).toBe(
-      "stripe connector does not support a device-auth grant",
+      "stripe cli device-auth start option mode must be one of: test, live",
     );
 
     const disabled = await connectorsApi.requestDeviceAuthStart(

@@ -297,6 +297,20 @@ describe("zero goals", () => {
       objective: "ship goal workflows",
       status: "complete",
     });
+    const [completedTrigger] = await db
+      .select({
+        enabled: zeroWorkflowTriggers.enabled,
+        chatThreadId: zeroWorkflowTriggers.chatThreadId,
+        nextRunAt: zeroWorkflowTriggers.nextRunAt,
+      })
+      .from(zeroWorkflowTriggers)
+      .where(eq(zeroWorkflowTriggers.id, goalRows!.triggerId))
+      .limit(1);
+    expect(completedTrigger).toStrictEqual({
+      enabled: false,
+      chatThreadId: null,
+      nextRunAt: null,
+    });
 
     const nextGoal = await accept(
       goalsClient().create({
@@ -309,6 +323,58 @@ describe("zero goals", () => {
       active: true,
       objective: "start next goal",
       status: "active",
+    });
+  });
+
+  it("enforces one thread-idle goal trigger per chat thread at the database layer", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [workflow] = await db
+      .insert(zeroWorkflows)
+      .values({
+        orgId: fixture.orgId,
+        name: "goal-db-unique",
+        visibility: "private",
+        type: "goal",
+        active: true,
+        preference: { version: 1, objective: "second active goal" },
+        ownerUserId: fixture.userId,
+        displayName: "Goal",
+        description: null,
+        createdBy: fixture.userId,
+      })
+      .returning({ id: zeroWorkflows.id });
+
+    await expect(
+      db.insert(zeroWorkflowTriggers).values({
+        orgId: fixture.orgId,
+        workflowId: workflow!.id,
+        agentId: fixture.agentId,
+        ownerUserId: fixture.userId,
+        kind: "event",
+        eventType: "thread-idle",
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: true,
+        chatThreadId: fixture.threadId,
+        nextRunAt: null,
+      }),
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        code: "23505",
+        constraint: "idx_zero_workflow_triggers_thread_idle_thread_unique",
+      }),
     });
   });
 

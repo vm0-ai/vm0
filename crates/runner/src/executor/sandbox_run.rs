@@ -5,10 +5,9 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
-use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{AgentExecutionResult, RunStart, run_in_sandbox};
+use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
 use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
     read_guest_cli_agent_session_id,
@@ -40,7 +39,7 @@ pub(super) async fn execute_new_sandbox(
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
-    cancel: CancellationToken,
+    cancel: tokio_util::sync::CancellationToken,
 ) -> RunnerResult<ExecuteOutcome> {
     execute_new_sandbox_with_prepared_notifier(
         factory,
@@ -50,7 +49,7 @@ pub(super) async fn execute_new_sandbox(
         params,
         telemetry,
         NewSandboxHooks {
-            cancel,
+            controls: RunControls::new(cancel, None),
             sandbox_prepared: None,
         },
     )
@@ -71,7 +70,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         reuse_result,
     } = dispatch;
     let NewSandboxHooks {
-        cancel,
+        controls,
         sandbox_prepared,
     } = hooks;
     let mut workspace_image = prepare_workspace_image(
@@ -148,7 +147,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 .and_then(WorkspaceImageLease::previous_storage),
         },
         telemetry,
-        cancel,
+        controls,
     )
     .await;
     outcome.workspace_promotable = workspace_image_promotable(
@@ -172,7 +171,7 @@ pub(super) struct SandboxPrepareError {
 }
 
 pub(super) struct NewSandboxHooks<'a> {
-    pub(super) cancel: CancellationToken,
+    pub(super) controls: RunControls,
     pub(super) sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
 }
 
@@ -396,7 +395,7 @@ pub(super) async fn execute_reused_sandbox(
     config: &ExecutorConfig,
     prev_storage: &crate::storage_fingerprints::StorageFingerprints,
     telemetry: &mut JobTelemetry,
-    cancel: CancellationToken,
+    controls: RunControls,
 ) -> ExecuteOutcome {
     info!(
         run_id = %context.run_id,
@@ -461,7 +460,7 @@ pub(super) async fn execute_reused_sandbox(
             prev_storage: Some(prev_storage),
         },
         telemetry,
-        cancel,
+        controls,
     )
     .await
 }
@@ -472,7 +471,7 @@ pub(super) async fn execute_prepared_sandbox_run(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    cancel: CancellationToken,
+    controls: RunControls,
 ) -> ExecuteOutcome {
     let PreparedSandboxRun {
         sandbox,
@@ -486,7 +485,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         config,
         start,
         telemetry,
-        cancel.clone(),
+        RunControls::new(controls.cancel.clone(), controls.active_input_source),
     )
     .await;
 
@@ -500,7 +499,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         config,
         context,
         &source_ip,
-        cancel.is_cancelled(),
+        controls.cancel.is_cancelled(),
         stdout_stream_diagnostics,
     )
     .await;

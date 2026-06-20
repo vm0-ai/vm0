@@ -83,6 +83,11 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
+const STRIPE_CLI_BROWSER_URL =
+  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
+const STRIPE_CLI_POLL_URL =
+  "https://dashboard.stripe.com/stripecli/auth/poll-session";
 const TEST_OAUTH_USERINFO_URL =
   "http://localhost:3000/api/test/oauth-provider/userinfo";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -824,6 +829,46 @@ export function mockSlockOAuthProvider(
   );
 
   return { accessToken };
+}
+
+interface StripeCliDashboardAuthMock {
+  readonly startBodies: URLSearchParams[];
+  readonly pollCount: () => number;
+}
+
+export function mockStripeCliDashboardAuth(): StripeCliDashboardAuthMock {
+  const startBodies: URLSearchParams[] = [];
+  let pollCount = 0;
+
+  server.use(
+    http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
+      startBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        browser_url: STRIPE_CLI_BROWSER_URL,
+        poll_url: STRIPE_CLI_POLL_URL,
+        verification_code: "STRIPE-CLI",
+      });
+    }),
+    http.get(STRIPE_CLI_POLL_URL, () => {
+      pollCount += 1;
+      return HttpResponse.json({
+        redeemed: true,
+        account_id: "acct_bdd",
+        account_display_name: "BDD Stripe",
+        livemode_key_secret: "rk_live_api456",
+        livemode_key_publishable: "pk_live_api456",
+        testmode_key_secret: "rk_test_api123",
+        testmode_key_publishable: "pk_test_api123",
+      });
+    }),
+  );
+
+  return {
+    startBodies,
+    pollCount: () => {
+      return pollCount;
+    },
+  };
 }
 
 const AWS_SIGNIN_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";

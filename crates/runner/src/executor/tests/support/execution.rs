@@ -5,7 +5,7 @@ use sandbox_mock::MockSandboxFactory;
 use tokio_util::sync::CancellationToken;
 
 use super::super::super::agent_run::{
-    AgentExecutionResult, ProcessCancelTimeouts, RunStart,
+    AgentExecutionResult, ProcessCancelTimeouts, RunControls, RunStart,
     run_in_sandbox_with_process_cancel_timeouts,
 };
 use super::super::super::sandbox_run::execute_new_sandbox;
@@ -68,7 +68,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_timeouts(
                 prev_storage: None,
             },
             &mut telemetry,
-            cancel,
+            RunControls::new(cancel, None),
             process_cancel_timeouts,
         )
         .await

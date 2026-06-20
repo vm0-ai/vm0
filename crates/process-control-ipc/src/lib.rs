@@ -41,6 +41,7 @@
 //! | 0x00   | accepted | sink handled the request |
 //! | 0x01   | rejected | sink understood the request but declined it |
 //! | 0x02   | error    | sink failed while processing the request |
+//! | 0x03   | queue-full | sink is temporarily full; caller may retry |
 //!
 //! ## Expected sequence
 //!
@@ -138,6 +139,12 @@ pub enum ControlResponseStatus {
     /// `vsock-guest` maps this to the outer rejected status without treating
     /// the sink connection as broken.
     Rejected,
+
+    /// The control sink is temporarily full and the caller may retry later.
+    ///
+    /// `vsock-guest` maps this to the outer queue-full status without treating
+    /// the sink connection as broken.
+    QueueFull,
 
     /// The control sink failed while processing the request.
     ///

@@ -156,6 +156,10 @@ fn control_response_from_active_input(
             process_control_ipc::ControlResponseStatus::Rejected,
             diagnostic.to_owned(),
         ),
+        ActiveInputControlOutcome::QueueFull { diagnostic } => (
+            process_control_ipc::ControlResponseStatus::QueueFull,
+            diagnostic.to_owned(),
+        ),
         ActiveInputControlOutcome::Error { diagnostic } => (
             process_control_ipc::ControlResponseStatus::Error,
             diagnostic.to_owned(),
@@ -255,6 +259,73 @@ mod tests {
         shutdown.cancel();
         drop(stream);
         worker.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn control_task_reports_queue_full_when_active_input_backlog_is_full() {
+        let nonce = *b"1122334455667788";
+        let endpoint = process_control_ipc::endpoint_name(47, &nonce);
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let shutdown = CancellationToken::new();
+        let worker_shutdown = shutdown.clone();
+        let stream_slot = Arc::new(Mutex::new(None));
+        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
+            "control-test",
+            true,
+            "initial",
+        );
+        let active_input = active_runtime.controller();
+        let worker = thread::spawn({
+            let endpoint = endpoint.clone();
+            move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
+        });
+
+        let mut stream =
+            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
+                .expect("control task should connect");
+        process_control_ipc::read_hello(&mut stream).unwrap();
+
+        let mut accepted_count = 0;
+        let mut queue_full_response = None;
+        let mut unexpected_status = None;
+        for index in 0..32 {
+            let message_id = format!("msg-{index}");
+            process_control_ipc::write_request(
+                &mut stream,
+                &process_control_ipc::ControlRequest {
+                    message_id: message_id.clone(),
+                    payload: br#"{"type":"active-input","text":"hello"}"#.to_vec(),
+                },
+            )
+            .unwrap();
+
+            let response = process_control_ipc::read_response(&mut stream).unwrap();
+            assert_eq!(response.message_id, message_id);
+            match response.status {
+                process_control_ipc::ControlResponseStatus::Accepted => {
+                    accepted_count += 1;
+                }
+                process_control_ipc::ControlResponseStatus::QueueFull => {
+                    queue_full_response = Some(response);
+                    break;
+                }
+                status => {
+                    unexpected_status = Some(status);
+                    break;
+                }
+            }
+        }
+
+        shutdown.cancel();
+        drop(stream);
+        worker.join().unwrap().unwrap();
+
+        if let Some(status) = unexpected_status {
+            panic!("unexpected control response status: {status:?}");
+        }
+        let response = queue_full_response.expect("active input backlog should become full");
+        assert!(accepted_count > 0);
+        assert_eq!(response.diagnostic, "active input queue is full");
     }
 
     #[test]

@@ -1008,6 +1008,42 @@ function shouldMergeIntoGroup(
   return groupRunId === msg.runId;
 }
 
+function orderMessagesByRunTurn(
+  messages: readonly EnrichedChatMessage[],
+): EnrichedChatMessage[] {
+  const items: {
+    order: number;
+    messages: EnrichedChatMessage[];
+  }[] = [];
+  const itemByRunId = new Map<string, (typeof items)[number]>();
+
+  for (const message of messages) {
+    const runId = message.runId;
+    if (runId === undefined) {
+      items.push({ order: items.length, messages: [message] });
+      continue;
+    }
+
+    const existing = itemByRunId.get(runId);
+    if (existing) {
+      existing.messages.push(message);
+      continue;
+    }
+
+    const item = { order: items.length, messages: [message] };
+    itemByRunId.set(runId, item);
+    items.push(item);
+  }
+
+  return items
+    .sort((a, b) => {
+      return a.order - b.order;
+    })
+    .flatMap((item) => {
+      return item.messages;
+    });
+}
+
 function groupMessagesForDisplay(
   messages: EnrichedChatMessage[],
 ): GroupedChatMessageGroup[] {
@@ -1032,7 +1068,7 @@ function groupMessagesForDisplay(
   }
 
   const groups = [
-    ...mergeIntoGroups([], activeMessages),
+    ...mergeIntoGroups([], orderMessagesByRunTurn(activeMessages)),
     ...mergeIntoGroups([], queuedMessages),
   ];
   return groups.map((group) => {

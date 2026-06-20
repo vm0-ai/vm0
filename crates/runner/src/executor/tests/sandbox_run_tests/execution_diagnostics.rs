@@ -177,7 +177,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
             prev_storage: None,
         },
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     )
     .await;
 
@@ -219,7 +219,7 @@ async fn execute_prepared_sandbox_run_logs_guest_session_fingerprint_without_raw
             prev_storage: None,
         },
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     ))
     .await;
 
@@ -271,7 +271,7 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
             prev_storage: None,
         },
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     ))
     .await;
 
@@ -317,7 +317,7 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
             prev_storage: None,
         },
         &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     ))
     .await;
 

@@ -23,6 +23,7 @@ pub struct ActiveInputFrame {
 pub enum ActiveInputControlOutcome {
     Accepted,
     Rejected { diagnostic: &'static str },
+    QueueFull { diagnostic: &'static str },
     Error { diagnostic: &'static str },
 }
 
@@ -421,7 +422,7 @@ impl ActiveInputController {
             };
         }
         if state.pending_by_uuid.len() >= ACTIVE_INPUT_QUEUE_CAPACITY {
-            return ActiveInputControlOutcome::Rejected {
+            return ActiveInputControlOutcome::QueueFull {
                 diagnostic: "active input queue is full",
             };
         }
@@ -446,7 +447,7 @@ impl ActiveInputController {
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 state.forget_message_id(&frame.message_id);
                 state.remove_pending_by_uuid(&frame.uuid);
-                ActiveInputControlOutcome::Rejected {
+                ActiveInputControlOutcome::QueueFull {
                     diagnostic: "active input queue is full",
                 }
             }
@@ -689,7 +690,7 @@ mod tests {
 
         assert!(matches!(
             controller.handle_control_payload("overflow", br#"{"type":"active-input","text":"hello"}"#),
-            ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input queue is full"
+            ActiveInputControlOutcome::QueueFull { diagnostic } if diagnostic == "active input queue is full"
         ));
     }
 

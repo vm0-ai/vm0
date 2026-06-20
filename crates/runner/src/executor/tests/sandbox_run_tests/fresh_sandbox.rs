@@ -47,7 +47,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
-            cancel: tokio_util::sync::CancellationToken::new(),
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -89,7 +89,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
-            cancel: tokio_util::sync::CancellationToken::new(),
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -134,7 +134,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
-            cancel: tokio_util::sync::CancellationToken::new(),
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             sandbox_prepared: Some(&notifier),
         },
     )
