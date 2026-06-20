@@ -123,11 +123,10 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         .await
     {
         Ok(result) => {
-            let out = std::io::stdout();
+            let _ = std::io::stdout().lock().write_all(&result.stdout);
+
             let err = std::io::stderr();
-            let mut out = out.lock();
             let mut err = err.lock();
-            let _ = out.write_all(&result.stdout);
             let _ = err.write_all(&result.stderr);
             write_remote_exec_terminal_diagnostic(&mut err, &result);
             if result.stdout_truncated {
