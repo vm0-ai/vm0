@@ -58,6 +58,46 @@ class _ResponseBodyReader(Protocol):
 
 
 @dataclass(frozen=True)
+class FirewallAuthRequest:
+    """Inputs sent to the runner firewall auth webhook."""
+
+    encrypted_secrets: str = field(repr=False)
+    auth_headers: dict
+    sandbox_token: str = field(repr=False)
+    auth_base: str | None = None
+    auth_query: dict | None = None
+    auth_aws_sigv4: dict | None = None
+    secret_connector_map: dict | None = None
+    secret_connector_metadata_map: dict | None = None
+    vars_map: dict | None = None
+    firewall_billable: bool = False
+
+    def to_body(self, *, force_refresh: bool = False) -> dict:
+        """Build the webhook JSON body while preserving omission semantics."""
+        body: dict = {
+            "encryptedSecrets": self.encrypted_secrets,
+            "authHeaders": self.auth_headers,
+        }
+        if self.auth_base:
+            body["authBase"] = self.auth_base
+        if self.auth_query:
+            body["authQuery"] = self.auth_query
+        if self.auth_aws_sigv4:
+            body["authAwsSigv4"] = self.auth_aws_sigv4
+        if self.secret_connector_map:
+            body["secretConnectorMap"] = self.secret_connector_map
+        if self.secret_connector_metadata_map:
+            body["secretConnectorMetadataMap"] = self.secret_connector_metadata_map
+        if self.vars_map:
+            body["vars"] = self.vars_map
+        if self.firewall_billable:
+            body["firewallBillable"] = True
+        if force_refresh:
+            body["forceRefresh"] = True
+        return body
+
+
+@dataclass(frozen=True)
 class FirewallAuthPayload:
     """Cacheable /firewall/auth data applied to outbound requests."""
 
@@ -222,18 +262,9 @@ def _parse_firewall_auth_success(decoded: object) -> FirewallAuthSuccess:
 
 
 def _fetch_firewall_headers_sync(
-    encrypted_secrets: str,
-    auth_headers: dict,
-    sandbox_token: str,
+    request: FirewallAuthRequest,
     api_url: str,
     *,
-    secret_connector_map: dict | None = None,
-    secret_connector_metadata_map: dict | None = None,
-    vars_map: dict | None = None,
-    auth_base: str | None = None,
-    auth_query: dict | None = None,
-    auth_aws_sigv4: dict | None = None,
-    firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> FirewallAuthSuccess:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
@@ -242,25 +273,8 @@ def _fetch_firewall_headers_sync(
     still on the event loop, so this function never touches ctx.options.
     """
     url = f"{api_url}/api/webhooks/agent/firewall/auth"
-    body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
-    if auth_base:
-        body["authBase"] = auth_base
-    if auth_query:
-        body["authQuery"] = auth_query
-    if auth_aws_sigv4:
-        body["authAwsSigv4"] = auth_aws_sigv4
-    if secret_connector_map:
-        body["secretConnectorMap"] = secret_connector_map
-    if secret_connector_metadata_map:
-        body["secretConnectorMetadataMap"] = secret_connector_metadata_map
-    if vars_map:
-        body["vars"] = vars_map
-    if firewall_billable:
-        body["firewallBillable"] = True
-    if force_refresh:
-        body["forceRefresh"] = True
-    data = json.dumps(body).encode()
-    req = platform_api.make_api_request(url, data, sandbox_token)
+    data = json.dumps(request.to_body(force_refresh=force_refresh)).encode()
+    req = platform_api.make_api_request(url, data, request.sandbox_token)
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
@@ -295,32 +309,23 @@ def _fetch_firewall_headers_sync(
 
 
 async def fetch_firewall_headers(
-    encrypted_secrets: str,
-    auth_headers: dict,
-    sandbox_token: str,
+    request: FirewallAuthRequest,
     *,
-    secret_connector_map: dict | None = None,
-    secret_connector_metadata_map: dict | None = None,
-    vars_map: dict | None = None,
-    auth_base: str | None = None,
-    auth_query: dict | None = None,
-    auth_aws_sigv4: dict | None = None,
-    firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> FirewallAuthSuccess:
     """Resolve auth headers via server-side decryption.
 
-    encrypted_secrets is the encrypted runtime secret namespace. After API-side
+    request.encrypted_secrets is the encrypted runtime secret namespace. After API-side
     decryption, keys are the `NAME` in `${{ secrets.NAME }}` and values are the
     real secret values.
 
-    secret_connector_map maps firewall auth secret env aliases (the `NAME` in
-    `${{ secrets.NAME }}`) to the connector or provider owner that can
-    refresh/resolve access. secret_connector_metadata_map uses the same keys to
-    add source details when the owner alone is not enough to locate access
-    storage.
+    request.secret_connector_map maps firewall auth secret env aliases (the
+    `NAME` in `${{ secrets.NAME }}`) to the connector or provider owner that
+    can refresh/resolve access. request.secret_connector_metadata_map uses the
+    same keys to add source details when the owner alone is not enough to
+    locate access storage.
 
-    When secret_connector_map is provided, the auth endpoint can refresh
+    When request.secret_connector_map is provided, the auth endpoint can refresh
     expired access tokens and returns an expiresAt timestamp for TTL caching.
     For billable firewall auth, expiresAt is also bounded by the server-side
     credit authorization lease.
@@ -333,16 +338,7 @@ async def fetch_firewall_headers(
     api_url = platform_api.get_api_url()
     return await asyncio.to_thread(
         _fetch_firewall_headers_sync,
-        encrypted_secrets,
-        auth_headers,
-        sandbox_token,
+        request,
         api_url,
-        secret_connector_map=secret_connector_map,
-        secret_connector_metadata_map=secret_connector_metadata_map,
-        vars_map=vars_map,
-        auth_base=auth_base,
-        auth_query=auth_query,
-        auth_aws_sigv4=auth_aws_sigv4,
-        firewall_billable=firewall_billable,
         force_refresh=force_refresh,
     )

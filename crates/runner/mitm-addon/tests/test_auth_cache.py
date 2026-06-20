@@ -9,6 +9,7 @@ import urllib.error
 import pytest
 
 import firewall_auth_cache as auth_cache
+import firewall_auth_client as auth_client
 import registry as registry_cache
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
@@ -17,6 +18,20 @@ from tests.auth_state_helpers import (
     require_cached_headers,
     set_cached_headers,
 )
+
+
+def _firewall_auth_request(
+    encrypted_secrets: str = "enc",
+    auth_headers: dict[str, str] | None = None,
+    sandbox_auth: str = "tok",
+    **kwargs,
+) -> auth_client.FirewallAuthRequest:
+    return auth_client.FirewallAuthRequest(
+        encrypted_secrets=encrypted_secrets,
+        auth_headers=auth_headers or {},
+        sandbox_token=sandbox_auth,
+        **kwargs,
+    )
 
 
 class TestFirewallHeaderCache:
@@ -39,7 +54,9 @@ class TestFirewallHeaderCache:
 
             async def fetch_headers(started_event: asyncio.Event) -> dict:
                 started_event.set()
-                return await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+                return await auth_cache.get_firewall_headers(
+                    "run-1", "api-1", _firewall_auth_request()
+                )
 
             tasks = [asyncio.create_task(fetch_headers(started_event)) for started_event in started]
             try:
@@ -86,8 +103,8 @@ class TestFirewallHeaderCache:
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             first, second = await asyncio.gather(
-                auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                auth_cache.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
+                auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request()),
+                auth_cache.get_firewall_headers("run-1", "api-2", _firewall_auth_request()),
             )
 
         assert endpoint.request_count == 2
@@ -112,12 +129,14 @@ class TestFirewallHeaderCache:
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             with pytest.raises(urllib.error.HTTPError):
-                await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+                await auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
 
             assert endpoint.request_count == 1
             assert cached_headers(("run-1", "api-1")) is None
 
-            retry = await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            retry = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", _firewall_auth_request()
+            )
             assert retry["headers"] == {"Authorization": "Bearer retry"}
             assert retry["cache_hit"] is False
             assert endpoint.request_count == 2
@@ -125,7 +144,9 @@ class TestFirewallHeaderCache:
                 "Authorization": "Bearer retry"
             }
 
-            cached = await auth_cache.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            cached = await auth_cache.get_firewall_headers(
+                "run-1", "api-1", _firewall_auth_request()
+            )
             assert cached["headers"] == {"Authorization": "Bearer retry"}
             assert cached["cache_hit"] is True
             assert endpoint.request_count == 2
