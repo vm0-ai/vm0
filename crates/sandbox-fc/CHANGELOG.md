@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.51](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.50...sandbox-fc-v0.37.51) (2026-06-20)
+
+
+### Refactoring
+
+* move workspace drive image preparation ([#18388](https://github.com/vm0-ai/vm0/issues/18388)) ([322b837](https://github.com/vm0-ai/vm0/commit/322b8373be5f60d45d400cd2489d71bba8f51c52))
+
 ## [0.37.50](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.49...sandbox-fc-v0.37.50) (2026-06-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.0...vsock-guest-v0.19.1) (2026-06-20)
+
+
+### Refactoring
+
+* **vsock-guest:** reorganize connection integration tests ([#18391](https://github.com/vm0-ai/vm0/issues/18391)) ([40203f1](https://github.com/vm0-ai/vm0/commit/40203f13f8fa8c0d5416aabf1e7187d667145bf0))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.39...vsock-guest-v0.19.0) (2026-06-19)
 
 
