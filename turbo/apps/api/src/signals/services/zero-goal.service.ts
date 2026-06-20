@@ -124,7 +124,7 @@ async function currentGoalContext(
   return { threadId: row.threadId, agentId: row.agentId };
 }
 
-async function loadActiveGoalForThread(
+export async function loadActiveGoalForThread(
   db: ReadonlyDb,
   args: { readonly orgId: string; readonly threadId: string },
 ): Promise<ActiveGoalRow | null> {

@@ -18,6 +18,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -285,6 +286,32 @@ async function latestSessionIdForThread(
   return undefined;
 }
 
+/**
+ * Notify the user that a goal stopped on its own after repeated failures.
+ *
+ * Goal-triggered runs suppress their per-iteration push in the chat callback;
+ * the only failure worth surfacing is the terminal auto-stop, which is decided
+ * here (after the chat callback), so this is where that push is sent.
+ */
+async function notifyGoalAutoStopped(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly objective: string;
+  },
+): Promise<void> {
+  await sendUserPushNotifications({
+    db,
+    userId: args.userId,
+    notification: {
+      title: args.objective.slice(0, 60),
+      body: "Goal stopped automatically after repeated failures",
+      url: `/chats/${args.chatThreadId}`,
+    },
+  });
+}
+
 async function disableGoalTrigger(db: Db, triggerId: string): Promise<void> {
   const currentTime = nowDate();
   await db
@@ -387,6 +414,12 @@ export const continueGoalIfIdle$ = command(
           runId: run.runId,
           consecutiveFailures: failureUpdate.consecutiveFailures,
         });
+        await notifyGoalAutoStopped(db, {
+          userId: run.userId,
+          chatThreadId: run.chatThreadId,
+          objective: goal.preference.objective,
+        });
+        signal.throwIfAborted();
         return {
           kind: "auto-stopped",
           triggerId: trigger.id,
@@ -414,7 +447,9 @@ export const continueGoalIfIdle$ = command(
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
         appendSystemPrompt: buildGoalContinuationSystemPrompt(),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(trigger),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(trigger, {
+          isGoalRun: true,
+        }),
         recordLastRunAt: true,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
@@ -439,6 +474,12 @@ export const continueGoalIfIdle$ = command(
         consecutiveFailures: failureUpdate.consecutiveFailures,
         error,
       });
+      await notifyGoalAutoStopped(db, {
+        userId: run.userId,
+        chatThreadId: run.chatThreadId,
+        objective: goal.preference.objective,
+      });
+      signal.throwIfAborted();
       return {
         kind: "auto-stopped",
         triggerId: trigger.id,
@@ -502,7 +543,9 @@ export const bootstrapGoalRun$ = command(
         prompt: buildGoalContinuationPrompt(preference),
         triggerSource: "workflow-event",
         appendSystemPrompt: buildGoalContinuationSystemPrompt(),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(args.trigger),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(args.trigger, {
+          isGoalRun: true,
+        }),
         recordLastRunAt: true,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
