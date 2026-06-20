@@ -410,6 +410,70 @@ fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
 }
 
 #[test]
+fn app_server_reuses_artifact_for_repeated_non_uuid_resume() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "thread-1";
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", json!({}))?;
+    server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("first prompt")]
+        }),
+    )?;
+
+    server.request(
+        4,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    server.request(
+        5,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("second prompt")]
+        }),
+    )?;
+
+    let artifacts = session_artifacts(dir.path())?
+        .into_iter()
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        artifacts.len(),
+        1,
+        "repeated resume for the same non-UUID app-server thread should append to one artifact: {artifacts:?}"
+    );
+    let session_path = artifacts.into_iter().next().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "app-server session artifact not found",
+        )
+    })?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["thread_id"], supplied_thread_id);
+    assert_eq!(events[0]["text"], "first prompt");
+    assert_eq!(events[1]["thread_id"], supplied_thread_id);
+    assert_eq!(events[1]["text"], "second prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_rejects_empty_resume_thread_id() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;

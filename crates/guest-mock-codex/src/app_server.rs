@@ -1,6 +1,7 @@
 use crate::session;
 use chrono::Utc;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use uuid::Uuid;
 
@@ -58,6 +59,7 @@ struct AppServerState {
     initialized: bool,
     thread_id: Option<String>,
     session_artifact_thread_id: Option<String>,
+    session_artifact_thread_ids: BTreeMap<String, String>,
     active_turn_id: Option<String>,
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
@@ -70,6 +72,7 @@ impl AppServerState {
             initialized: false,
             thread_id: None,
             session_artifact_thread_id: None,
+            session_artifact_thread_ids: BTreeMap::new(),
             active_turn_id: None,
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
@@ -256,7 +259,12 @@ impl AppServerState {
     }
 
     fn set_current_thread(&mut self, thread_id: String) {
-        self.session_artifact_thread_id = Some(session_artifact_thread_id(&thread_id));
+        let artifact_thread_id = self
+            .session_artifact_thread_ids
+            .entry(thread_id.clone())
+            .or_insert_with(|| session_artifact_thread_id(&thread_id))
+            .clone();
+        self.session_artifact_thread_id = Some(artifact_thread_id);
         self.thread_id = Some(thread_id);
         self.active_turn_id = None;
     }
