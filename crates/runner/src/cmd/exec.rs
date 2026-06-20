@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{SandboxControl, SandboxControlError};
+use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError, SandboxExecTermination};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -124,22 +124,25 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         Ok(result) => {
             let out = std::io::stdout();
             let err = std::io::stderr();
-            let _ = out.lock().write_all(&result.stdout);
-            let _ = err.lock().write_all(&result.stderr);
+            let mut out = out.lock();
+            let mut err = err.lock();
+            let _ = out.write_all(&result.stdout);
+            let _ = err.write_all(&result.stderr);
+            write_remote_exec_terminal_diagnostic(&mut err, &result);
             if result.stdout_truncated {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "warning: remote stdout was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest"
                 );
             }
             if result.stderr_truncated {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "warning: remote stderr was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest"
                 );
             }
 
-            // Propagate the actual exit code for debugging utility.
-            // Truncate to u8 like shells do (e.g. 256 → 0, -1 → 255).
-            Ok(ExitCode::from(result.exit_code as u8))
+            Ok(remote_exec_exit_code(result.termination))
         }
         Err(SandboxControlError::Remote(msg)) => {
             eprintln!("error: {msg}");
@@ -149,9 +152,44 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     }
 }
 
+const REMOTE_EXEC_TIMEOUT_EXIT_CODE: u8 = 124;
+
+fn remote_exec_exit_code(termination: SandboxExecTermination) -> ExitCode {
+    match termination {
+        SandboxExecTermination::Exited { exit_code } => ExitCode::from(exit_code as u8),
+        SandboxExecTermination::TimedOut => ExitCode::from(REMOTE_EXEC_TIMEOUT_EXIT_CODE),
+        SandboxExecTermination::Cancelled
+        | SandboxExecTermination::StartFailed
+        | SandboxExecTermination::WaitFailed => ExitCode::FAILURE,
+    }
+}
+
+fn write_remote_exec_terminal_diagnostic(stderr: &mut impl Write, result: &RemoteExecResult) {
+    let message = if matches!(result.termination, SandboxExecTermination::Exited { .. }) {
+        None
+    } else if !result.diagnostic.is_empty() {
+        Some(result.diagnostic.as_str())
+    } else {
+        match result.termination {
+            SandboxExecTermination::TimedOut => Some("Timeout"),
+            SandboxExecTermination::Cancelled => Some("Cancelled"),
+            SandboxExecTermination::Exited { .. }
+            | SandboxExecTermination::StartFailed
+            | SandboxExecTermination::WaitFailed => None,
+        }
+    };
+
+    if let Some(message) = message {
+        if !result.stderr.is_empty() && !result.stderr.ends_with(b"\n") {
+            let _ = writeln!(stderr);
+        }
+        let _ = writeln!(stderr, "{message}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use sandbox::{RemoteExecResult, SandboxControlError};
+    use sandbox::SandboxControlError;
     use sandbox_mock::MockSandboxControl;
 
     use super::*;
@@ -180,9 +218,10 @@ mod tests {
     async fn success_propagates_exit_code() {
         let control = MockSandboxControl::new("/tmp");
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: 42,
+            termination: SandboxExecTermination::Exited { exit_code: 42 },
             stdout: b"hello\n".to_vec(),
             stderr: Vec::new(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
@@ -237,17 +276,19 @@ mod tests {
         let control = MockSandboxControl::new("/tmp");
         // 256 truncates to 0 via `as u8`
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: 256,
+            termination: SandboxExecTermination::Exited { exit_code: 256 },
             stdout: Vec::new(),
             stderr: Vec::new(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
         // -1 (0xFFFFFFFF) truncates to 255 via `as u8`
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            exit_code: -1,
+            termination: SandboxExecTermination::Exited { exit_code: -1 },
             stdout: Vec::new(),
             stderr: Vec::new(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
@@ -257,6 +298,55 @@ mod tests {
 
         let r2 = run_exec(make_args("id", "test"), &control).await.unwrap();
         assert_eq!(r2, ExitCode::from(255));
+    }
+
+    #[tokio::test]
+    async fn non_exited_terminations_map_to_cli_exit_codes() {
+        let control = MockSandboxControl::new("/tmp");
+        for termination in [
+            SandboxExecTermination::TimedOut,
+            SandboxExecTermination::Cancelled,
+            SandboxExecTermination::StartFailed,
+            SandboxExecTermination::WaitFailed,
+        ] {
+            control.push_exec_remote_result(Ok(RemoteExecResult {
+                termination,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+                diagnostic: String::new(),
+                stdout_truncated: false,
+                stderr_truncated: false,
+            }));
+        }
+
+        let timed_out = run_exec(make_args("id", "test"), &control).await.unwrap();
+        assert_eq!(timed_out, ExitCode::from(REMOTE_EXEC_TIMEOUT_EXIT_CODE));
+
+        for _ in [
+            SandboxExecTermination::Cancelled,
+            SandboxExecTermination::StartFailed,
+            SandboxExecTermination::WaitFailed,
+        ] {
+            let result = run_exec(make_args("id", "test"), &control).await.unwrap();
+            assert_eq!(result, ExitCode::FAILURE);
+        }
+    }
+
+    #[test]
+    fn terminal_diagnostic_starts_on_new_line_after_stderr() {
+        let result = RemoteExecResult {
+            termination: SandboxExecTermination::WaitFailed,
+            stdout: Vec::new(),
+            stderr: b"stderr clue".to_vec(),
+            diagnostic: "wait failed".into(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut stderr = result.stderr.clone();
+
+        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+
+        assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
 
     // ---- argument quoting -------------------------------------------------

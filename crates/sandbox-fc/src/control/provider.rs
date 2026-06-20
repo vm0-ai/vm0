@@ -56,30 +56,7 @@ impl SandboxControl for FirecrackerControl {
                 }
             })?;
 
-        match response {
-            ExecResponse::Success {
-                exit_code,
-                stdout,
-                stderr,
-                stdout_truncated,
-                stderr_truncated,
-            } => {
-                let stdout_bytes = BASE64
-                    .decode(&stdout)
-                    .map_err(|e| SandboxControlError::Connection(format!("decode stdout: {e}")))?;
-                let stderr_bytes = BASE64
-                    .decode(&stderr)
-                    .map_err(|e| SandboxControlError::Connection(format!("decode stderr: {e}")))?;
-                Ok(RemoteExecResult {
-                    exit_code,
-                    stdout: stdout_bytes,
-                    stderr: stderr_bytes,
-                    stdout_truncated,
-                    stderr_truncated,
-                })
-            }
-            ExecResponse::Error { error } => Err(SandboxControlError::Remote(error)),
-        }
+        remote_exec_result_from_response(response)
     }
 
     async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError> {
@@ -123,6 +100,37 @@ impl SandboxControl for FirecrackerControl {
     }
 }
 
+fn remote_exec_result_from_response(
+    response: ExecResponse,
+) -> Result<RemoteExecResult, SandboxControlError> {
+    match response {
+        ExecResponse::Success {
+            termination,
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
+            diagnostic,
+        } => {
+            let stdout_bytes = BASE64
+                .decode(&stdout)
+                .map_err(|e| SandboxControlError::Connection(format!("decode stdout: {e}")))?;
+            let stderr_bytes = BASE64
+                .decode(&stderr)
+                .map_err(|e| SandboxControlError::Connection(format!("decode stderr: {e}")))?;
+            Ok(RemoteExecResult {
+                termination,
+                stdout: stdout_bytes,
+                stderr: stderr_bytes,
+                diagnostic,
+                stdout_truncated,
+                stderr_truncated,
+            })
+        }
+        ExecResponse::Error { error } => Err(SandboxControlError::Remote(error)),
+    }
+}
+
 fn request_timeout_secs(timeout: Duration) -> u32 {
     u32::try_from(timeout.as_secs()).unwrap_or(u32::MAX)
 }
@@ -135,7 +143,61 @@ fn control_timeout(timeout_secs: u32) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use sandbox::SandboxExecTermination;
+
     use super::*;
+
+    #[test]
+    fn remote_exec_response_success_decodes_structured_result() {
+        let result = remote_exec_result_from_response(ExecResponse::Success {
+            termination: SandboxExecTermination::Exited { exit_code: 7 },
+            stdout: BASE64.encode(b"out"),
+            stderr: BASE64.encode(b"err"),
+            stdout_truncated: true,
+            stderr_truncated: false,
+            diagnostic: "diagnostic".into(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 7 }
+        );
+        assert_eq!(result.stdout, b"out");
+        assert_eq!(result.stderr, b"err");
+        assert!(result.stdout_truncated);
+        assert!(!result.stderr_truncated);
+        assert_eq!(result.diagnostic, "diagnostic");
+    }
+
+    #[test]
+    fn remote_exec_response_invalid_base64_is_connection_error() {
+        let result = remote_exec_result_from_response(ExecResponse::Success {
+            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            stdout: "not base64".into(),
+            stderr: BASE64.encode(b""),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: String::new(),
+        });
+
+        let Err(SandboxControlError::Connection(message)) = result else {
+            panic!("expected connection error");
+        };
+        assert!(message.contains("decode stdout"));
+    }
+
+    #[test]
+    fn remote_exec_response_error_maps_to_remote_error() {
+        let result = remote_exec_result_from_response(ExecResponse::Error {
+            error: "sandbox not running".into(),
+        });
+
+        let Err(SandboxControlError::Remote(message)) = result else {
+            panic!("expected remote error");
+        };
+        assert_eq!(message, "sandbox not running");
+    }
 
     #[tokio::test]
     async fn exec_remote_empty_id() {

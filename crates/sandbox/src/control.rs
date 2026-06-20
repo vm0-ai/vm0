@@ -2,16 +2,38 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+/// Terminal state for a sandbox exec command.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SandboxExecTermination {
+    /// The process exited with an ordinary exit code.
+    Exited {
+        /// Signed process exit code reported by the sandbox provider.
+        exit_code: i32,
+    },
+    /// The provider timed the process out.
+    TimedOut,
+    /// The provider cancelled the process.
+    Cancelled,
+    /// The provider failed to start the process.
+    StartFailed,
+    /// The provider failed while waiting for the process.
+    WaitFailed,
+}
 
 /// Result of executing a command inside a running sandbox.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemoteExecResult {
-    /// Process exit code.
-    pub exit_code: i32,
+    /// Structured terminal state reported by the provider.
+    pub termination: SandboxExecTermination,
     /// Raw stdout bytes.
     pub stdout: Vec<u8>,
     /// Raw stderr bytes.
     pub stderr: Vec<u8>,
+    /// Provider diagnostic text for non-stream output terminal states.
+    pub diagnostic: String,
     /// True when stdout exceeded the remote capture budget.
     pub stdout_truncated: bool,
     /// True when stderr exceeded the remote capture budget.

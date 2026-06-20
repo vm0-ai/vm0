@@ -1,5 +1,6 @@
 use std::io;
 
+use sandbox::SandboxExecTermination;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
@@ -37,12 +38,9 @@ fn default_timeout() -> u32 {
 #[serde(untagged)]
 pub enum ExecResponse {
     /// Command execution produced a captured result.
-    ///
-    /// This variant does not imply a zero exit code; inspect `exit_code` for the
-    /// command's status.
     Success {
-        /// Process exit code returned by the guest command runner.
-        exit_code: i32,
+        /// Structured terminal state returned by the guest command runner.
+        termination: SandboxExecTermination,
         /// Base64-encoded captured stdout bytes.
         ///
         /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
@@ -61,6 +59,8 @@ pub enum ExecResponse {
         ///
         /// Truncation is independent of the command exit code.
         stderr_truncated: bool,
+        /// Guest-provided terminal diagnostic text.
+        diagnostic: String,
     },
     /// Request failed before a command result could be returned.
     Error {
@@ -227,27 +227,30 @@ mod tests {
 
         // Verify success response round-trips.
         let response = ExecResponse::Success {
-            exit_code: 0,
+            termination: SandboxExecTermination::Exited { exit_code: 0 },
             stdout: BASE64.encode(b"hello\n"),
             stderr: BASE64.encode(b""),
             stdout_truncated: false,
             stderr_truncated: false,
+            diagnostic: "terminal diagnostic".into(),
         };
         let response_json = serde_json::to_vec(&response).unwrap();
         let decoded: ExecResponse = serde_json::from_slice(&response_json).unwrap();
         match decoded {
             ExecResponse::Success {
-                exit_code,
+                termination,
                 stdout,
                 stderr,
                 stdout_truncated,
                 stderr_truncated,
+                diagnostic,
             } => {
-                assert_eq!(exit_code, 0);
+                assert_eq!(termination, SandboxExecTermination::Exited { exit_code: 0 });
                 assert_eq!(BASE64.decode(stdout).unwrap(), b"hello\n");
                 assert_eq!(BASE64.decode(stderr).unwrap(), b"");
                 assert!(!stdout_truncated);
                 assert!(!stderr_truncated);
+                assert_eq!(diagnostic, "terminal diagnostic");
             }
             ExecResponse::Error { .. } => panic!("expected success"),
         }
@@ -288,18 +291,66 @@ mod tests {
     #[test]
     fn exec_response_success_serialization() {
         let resp = ExecResponse::Success {
-            exit_code: 0,
+            termination: SandboxExecTermination::Exited { exit_code: 0 },
             stdout: BASE64.encode(b"output\n"),
             stderr: BASE64.encode(b""),
             stdout_truncated: false,
             stderr_truncated: false,
+            diagnostic: "diagnostic".into(),
         };
         let json = serde_json::to_value(&resp).unwrap();
         // Untagged enum: no "type" field, just the fields directly
-        assert_eq!(json["exit_code"], 0);
+        assert_eq!(json["termination"]["kind"], "exited");
+        assert_eq!(json["termination"]["exit_code"], 0);
+        assert!(json.get("exit_code").is_none());
         assert!(json.get("stdout").is_some());
         assert!(json.get("stderr").is_some());
+        assert_eq!(json["diagnostic"], "diagnostic");
         assert!(json.get("error").is_none());
+    }
+
+    #[test]
+    fn exec_response_success_serializes_non_exited_termination() {
+        for (termination, expected_kind) in [
+            (SandboxExecTermination::TimedOut, "timed_out"),
+            (SandboxExecTermination::Cancelled, "cancelled"),
+            (SandboxExecTermination::StartFailed, "start_failed"),
+            (SandboxExecTermination::WaitFailed, "wait_failed"),
+        ] {
+            let resp = ExecResponse::Success {
+                termination,
+                stdout: BASE64.encode(b""),
+                stderr: BASE64.encode(b""),
+                stdout_truncated: false,
+                stderr_truncated: false,
+                diagnostic: String::new(),
+            };
+            let json = serde_json::to_value(&resp).unwrap();
+            assert_eq!(json["termination"]["kind"], expected_kind);
+            assert!(json["termination"].get("exit_code").is_none());
+            let decoded: ExecResponse = serde_json::from_value(json).unwrap();
+            match decoded {
+                ExecResponse::Success {
+                    termination: decoded,
+                    ..
+                } => assert_eq!(decoded, termination),
+                ExecResponse::Error { .. } => panic!("expected success"),
+            }
+        }
+    }
+
+    #[test]
+    fn exec_response_rejects_legacy_exit_code_success_shape() {
+        let legacy = serde_json::json!({
+            "exit_code": 0,
+            "stdout": BASE64.encode(b""),
+            "stderr": BASE64.encode(b""),
+            "stdout_truncated": false,
+            "stderr_truncated": false
+        });
+
+        let err = serde_json::from_value::<ExecResponse>(legacy).unwrap_err();
+        assert!(err.to_string().contains("data did not match any variant"));
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use sandbox::SandboxExecTermination;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -19,8 +20,7 @@ use super::protocol::{
     TerminateStatus, read_frame, write_frame,
 };
 use crate::exec_result_compat::{
-    captured_exec_output_bytes, legacy_exit_code_for_exec_termination, reject_stream_overflow,
-    validate_legacy_exec_capture_timeout,
+    captured_exec_output_bytes, reject_stream_overflow, validate_legacy_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::park_coordinator::ParkCoordinator;
@@ -479,16 +479,28 @@ fn exec_response_from_operation_result(
     } = result;
 
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", stdout)?;
-    let (mut stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
-    let exit_code = legacy_exit_code_for_exec_termination(termination, &mut stderr, &diagnostic);
+    let (stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
 
     Ok(ExecResponse::Success {
-        exit_code,
+        termination: sandbox_exec_termination(termination),
         stdout: BASE64.encode(stdout),
         stderr: BASE64.encode(stderr),
         stdout_truncated,
         stderr_truncated,
+        diagnostic,
     })
+}
+
+fn sandbox_exec_termination(termination: vsock_proto::ExecTermination) -> SandboxExecTermination {
+    match termination {
+        vsock_proto::ExecTermination::Exited { exit_code } => {
+            SandboxExecTermination::Exited { exit_code }
+        }
+        vsock_proto::ExecTermination::TimedOut => SandboxExecTermination::TimedOut,
+        vsock_proto::ExecTermination::Cancelled => SandboxExecTermination::Cancelled,
+        vsock_proto::ExecTermination::StartFailed => SandboxExecTermination::StartFailed,
+        vsock_proto::ExecTermination::WaitFailed => SandboxExecTermination::WaitFailed,
+    }
 }
 
 fn control_start_error(error: GuestOperationStartError) -> String {
