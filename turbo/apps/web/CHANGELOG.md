@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.435.0](https://github.com/vm0-ai/vm0/compare/web-v12.434.2...web-v12.435.0) (2026-06-20)
+
+
+### Features
+
+* add connector-scoped permission grant apply ([#18347](https://github.com/vm0-ai/vm0/issues/18347)) ([14018d1](https://github.com/vm0-ai/vm0/commit/14018d16fe4265e659b87c82e2d3584942a0ce34))
+* chat-thread workflow triggers in the automations list and sidebar ([#18346](https://github.com/vm0-ai/vm0/issues/18346)) ([c096ad4](https://github.com/vm0-ai/vm0/commit/c096ad4c70536b617321de0fe6ef56ef6443c059))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.106.0
+    * @vm0/core bumped to 8.359.2
+
 ## [12.434.2](https://github.com/vm0-ai/vm0/compare/web-v12.434.1...web-v12.434.2) (2026-06-19)
 
 
