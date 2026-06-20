@@ -533,7 +533,9 @@ function ComposerStripRow({
           <button
             type="button"
             className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={isGoal ? "About this goal" : "About this queued message"}
+            aria-label={
+              isGoal ? "About this goal" : "About this queued message"
+            }
           >
             {isGoal ? (
               <IconTarget size={16} stroke={1.5} aria-hidden="true" />
