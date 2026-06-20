@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.199.4](https://github.com/vm0-ai/vm0/compare/cli-v9.199.3...cli-v9.199.4) (2026-06-20)
+
+
+### Bug Fixes
+
+* correct cli logs pagination cursors ([#18340](https://github.com/vm0-ai/vm0/issues/18340)) ([8c49dc6](https://github.com/vm0-ai/vm0/commit/8c49dc6e6fb5303a71443bfc02309a49abfbc20a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.106.1
+    * @vm0/connectors bumped to 1.96.0
+    * @vm0/core bumped to 8.360.0
+
 ## [9.199.3](https://github.com/vm0-ai/vm0/compare/cli-v9.199.2...cli-v9.199.3) (2026-06-20)
 
 
