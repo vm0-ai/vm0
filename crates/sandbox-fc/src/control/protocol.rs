@@ -375,6 +375,70 @@ mod tests {
     }
 
     #[test]
+    fn exec_response_rejects_non_exited_termination_with_exit_code() {
+        for exit_code in [serde_json::json!(124), serde_json::Value::Null] {
+            let malformed = serde_json::json!({
+                "termination": {
+                    "kind": "timed_out",
+                    "exit_code": exit_code,
+                },
+                "stdout": BASE64.encode(b""),
+                "stderr": BASE64.encode(b""),
+                "stdout_truncated": false,
+                "stderr_truncated": false,
+                "diagnostic": "",
+            });
+
+            let result = serde_json::from_value::<ExecResponse>(malformed);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn exec_response_rejects_exited_termination_without_exit_code() {
+        for termination in [
+            serde_json::json!({
+                "kind": "exited",
+            }),
+            serde_json::json!({
+                "kind": "exited",
+                "exit_code": null,
+            }),
+        ] {
+            let malformed = serde_json::json!({
+                "termination": termination,
+                "stdout": BASE64.encode(b""),
+                "stderr": BASE64.encode(b""),
+                "stdout_truncated": false,
+                "stderr_truncated": false,
+                "diagnostic": "",
+            });
+
+            let result = serde_json::from_value::<ExecResponse>(malformed);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn exec_response_rejects_termination_unknown_field() {
+        let malformed = serde_json::json!({
+            "termination": {
+                "kind": "exited",
+                "exit_code": 0,
+                "signal": 9,
+            },
+            "stdout": BASE64.encode(b""),
+            "stderr": BASE64.encode(b""),
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "diagnostic": "",
+        });
+
+        let result = serde_json::from_value::<ExecResponse>(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn exec_response_error_serialization() {
         let resp = ExecResponse::Error {
             error: "sandbox not running".into(),
