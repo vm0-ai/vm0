@@ -98,6 +98,83 @@ describe("zero logs view command", () => {
     expect(logCalls).toContain("No agent events found");
   });
 
+  it("should pass server cursor to subsequent pages", async () => {
+    const capturedCursors: (string | null)[] = [];
+    const capturedSinceValues: (string | null)[] = [];
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+          capturedCursors.push(cursor);
+          capturedSinceValues.push(url.searchParams.get("since"));
+
+          if (!cursor) {
+            return HttpResponse.json({
+              events: [makeEvent(1, "Page 1", "2024-01-15T10:30:00Z")],
+              framework: "claude-code",
+              hasMore: true,
+              nextCursor: "sequence:desc:1",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [makeEvent(2, "Page 2", "2024-01-15T10:31:00Z")],
+            framework: "claude-code",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
+
+    expect(capturedCursors).toStrictEqual([null, "sequence:desc:1"]);
+    expect(capturedSinceValues).toStrictEqual([null, null]);
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Page 1");
+    expect(logCalls).toContain("Page 2");
+  });
+
+  it("should pass --since option to API as sinceTime", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({
+            events: [],
+            framework: "claude-code",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--since", "5m"]);
+
+    expect(capturedUrl?.searchParams.get("sinceTime")).not.toBeNull();
+    expect(capturedUrl?.searchParams.get("since")).toBeNull();
+  });
+
+  it("should reject invalid calendar dates for --since", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync([
+        "node",
+        "cli",
+        RUN_ID,
+        "--since",
+        "2024-02-30T00:00:00Z",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid time format");
+  });
+
   it("should respect --tail option", async () => {
     let capturedUrl: URL | undefined;
     server.use(
@@ -117,8 +194,9 @@ describe("zero logs view command", () => {
       ),
     );
 
-    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "2"]);
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "02"]);
 
+    expect(capturedUrl?.searchParams.get("limit")).toBe("2");
     expect(capturedUrl?.searchParams.get("order")).toBe("desc");
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     // Should show events (tail 2 from 3 events)
@@ -143,8 +221,9 @@ describe("zero logs view command", () => {
       ),
     );
 
-    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "2"]);
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "002"]);
 
+    expect(capturedUrl?.searchParams.get("limit")).toBe("2");
     expect(capturedUrl?.searchParams.get("order")).toBe("asc");
   });
 
@@ -163,6 +242,33 @@ describe("zero logs view command", () => {
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("mutually exclusive");
+  });
+
+  it("should reject invalid --tail count", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "1.5"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Option --tail must be a positive integer");
+  });
+
+  it("should reject invalid --head count", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "-1"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Option --head must be a positive integer");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "0x10"]),
+    ).rejects.toThrow("process.exit called");
+
+    const hexErrorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(hexErrorCalls).toContain("Option --head must be a positive integer");
   });
 
   it("should reject non-UUID run ID", async () => {

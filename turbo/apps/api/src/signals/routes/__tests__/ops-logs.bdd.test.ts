@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -381,6 +385,13 @@ describe("OPS-01: run log search via /api/logs/search", () => {
       [200],
     );
     expect(empty.body).toStrictEqual({ results: [], hasMore: false });
+
+    const invalidSince = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", since: 8_640_000_000_000_001 },
+      [400],
+    );
+    expectApiError(invalidSince.body);
 
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 3, "Error: OOM killed"),

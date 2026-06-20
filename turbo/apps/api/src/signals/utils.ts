@@ -52,6 +52,13 @@ export function safeUrlParse(input: string): URL | undefined {
   }
 }
 
+export function safeUriComponentDecode(input: string): string | undefined {
+  const result = safeSync(() => {
+    return decodeURIComponent(input);
+  });
+  return "ok" in result ? result.ok : undefined;
+}
+
 export function safeSync<T>(
   fn: () => T,
 ): { readonly ok: T } | { readonly error: unknown } {

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import {
+  authHeadersSchema,
+  initContract,
+  timestampQueryNumberSchema,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
@@ -14,6 +18,7 @@ import {
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
   logsSearchResponseSchema,
+  createLogPaginationQuerySchema,
 } from "./runs";
 import { sandboxReuseResultSchema } from "./webhooks";
 
@@ -43,6 +48,17 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
   });
 
 const c = initContract();
+
+const zeroLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "sequence",
+});
+
+const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "time",
+  maxLimit: 500,
+  defaultLimit: 500,
+  defaultOrder: "asc",
+});
 
 /**
  * Zero runs main contract (POST /api/zero/runs)
@@ -145,13 +161,10 @@ export const zeroRunAgentEventsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(100).default(5),
-      order: z.enum(["asc", "desc"]).default("desc"),
-    }),
+    query: zeroLogPaginationQuerySchema,
     responses: {
       200: agentEventsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -251,11 +264,7 @@ export const zeroRunNetworkLogsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: z.object({
-      since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(500).default(500),
-      order: z.enum(["asc", "desc"]).default("asc"),
-    }),
+    query: zeroNetworkLogPaginationQuerySchema,
     responses: {
       200: networkLogsResponseSchema,
       400: apiErrorSchema,
@@ -310,13 +319,14 @@ export const zeroLogsSearchContract = c.router({
       keyword: z.string().min(1),
       agentId: z.string().uuid().optional(),
       runId: z.string().optional(),
-      since: z.coerce.number().optional(),
+      since: timestampQueryNumberSchema.optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),
       after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: logsSearchResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },

@@ -23,6 +23,12 @@ import type {
   AgentEventsResponse,
   LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
+import {
+  loadNetworkLogsNextPage$,
+  zeroActivityNetworkLogs$,
+} from "../../../signals/activity-page/activity-network-signals.ts";
+import { pushPathSilently$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 
@@ -1673,12 +1679,26 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
       return respond(200, codexRunContext(runId));
     });
+    const secondDownloadNetworkCursor =
+      "time:asc:2026-03-10T14%3A56%3A03Z:cursor-download-2";
+    const requestedDownloadNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
-      ({ respond }) => {
+      ({ query, respond }) => {
+        requestedDownloadNetworkCursors.push(query.cursor);
+        if (query.cursor === undefined) {
+          return respond(200, {
+            networkLogs: checkoutNetworkLogs(),
+            hasMore: true,
+            nextCursor: secondDownloadNetworkCursor,
+          });
+        }
+
+        expect(query.cursor).toBe(secondDownloadNetworkCursor);
         return respond(200, {
-          networkLogs: checkoutNetworkLogs(),
-          hasMore: false,
+          networkLogs: codexNetworkSecondPage(),
+          hasMore: true,
+          nextCursor: secondDownloadNetworkCursor,
         });
       },
     );
@@ -1724,6 +1744,15 @@ describe("activity detail polling", () => {
     expect(downloaded.networkLogs?.[0]?.url).toBe(
       "https://payments.example.test/v1/checkout",
     );
+    expect(
+      downloaded.networkLogs?.some((log) => {
+        return log.url === "http://metadata.google.internal/latest/meta-data";
+      }),
+    ).toBeTruthy();
+    expect(requestedDownloadNetworkCursors).toStrictEqual([
+      undefined,
+      secondDownloadNetworkCursor,
+    ]);
     expect(downloads.revokedUrls).toContain(download.url);
   });
 
@@ -1762,19 +1791,27 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
       return respond(200, { sandboxReuseResult: "reused" });
     });
+    const secondNetworkPageCursor =
+      "time:asc:2026-03-10T15%3A00%3A02Z:cursor-network-2";
+    const requestedNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
       ({ query, respond }) => {
-        if (query.since === undefined) {
+        requestedNetworkCursors.push(query.cursor);
+
+        if (query.cursor === undefined) {
           return respond(200, {
             networkLogs: codexNetworkFirstPage(),
             hasMore: true,
+            nextCursor: secondNetworkPageCursor,
           });
         }
 
+        expect(query.cursor).toBe(secondNetworkPageCursor);
         return respond(200, {
           networkLogs: codexNetworkSecondPage(),
-          hasMore: false,
+          hasMore: true,
+          nextCursor: secondNetworkPageCursor,
         });
       },
     );
@@ -1883,6 +1920,175 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("403")).toBeInTheDocument();
     expect(screen.getByText("1.0s")).toBeInTheDocument();
+    expect(requestedNetworkCursors).toStrictEqual([
+      undefined,
+      secondNetworkPageCursor,
+    ]);
+    await waitFor(() => {
+      expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    });
+  });
+
+  it("ignores stale network page responses after changing activity", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000501";
+    const secondRunId = "a0000000-0000-4000-a000-000000000502";
+    const firstCursor = "time:asc:2026-03-10T17%3A00%3A01Z:cursor-first-2";
+    const secondCursor = "time:asc:2026-03-10T18%3A00%3A01Z:cursor-second-2";
+    const stalePage = Promise.withResolvers<void>();
+    let firstSecondPageRequested = false;
+
+    const logEntry = (timestamp: string, url: string): NetworkLogEntry => {
+      return {
+        timestamp,
+        type: "http",
+        action: "ALLOW",
+        method: "GET",
+        url,
+        status: 200,
+        latency_ms: 10,
+      };
+    };
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      const id = String(params.id);
+      return respond(
+        200,
+        makeLogDetail({
+          id,
+          displayName: id === firstRunId ? "First Activity" : "Second Activity",
+          status: "completed",
+          prompt: "Inspect network pagination",
+          startedAt: "2026-03-10T17:00:00Z",
+          completedAt: "2026-03-10T17:00:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      async ({ params, query, respond }) => {
+        const id = String(params.id);
+
+        if (id === firstRunId && query.cursor === undefined) {
+          return respond(200, {
+            networkLogs: [
+              logEntry(
+                "2026-03-10T17:00:01.000Z",
+                "https://first.example.test/start",
+              ),
+            ],
+            hasMore: true,
+            nextCursor: firstCursor,
+          });
+        }
+
+        if (id === firstRunId) {
+          expect(query.cursor).toBe(firstCursor);
+          firstSecondPageRequested = true;
+          await stalePage.promise;
+          return respond(200, {
+            networkLogs: [
+              logEntry(
+                "2026-03-10T17:00:02.000Z",
+                "https://stale.example.test/old-run",
+              ),
+            ],
+            hasMore: false,
+          });
+        }
+
+        if (query.cursor === undefined) {
+          return respond(200, {
+            networkLogs: [
+              logEntry(
+                "2026-03-10T18:00:01.000Z",
+                "https://second.example.test/start",
+              ),
+            ],
+            hasMore: true,
+            nextCursor: secondCursor,
+          });
+        }
+
+        expect(query.cursor).toBe(secondCursor);
+        return respond(200, {
+          networkLogs: [
+            logEntry(
+              "2026-03-10T18:00:02.000Z",
+              "https://second.example.test/next",
+            ),
+          ],
+          hasMore: false,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${firstRunId}?tab=network`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "First Activity" }),
+      ).toBeInTheDocument();
+    });
+
+    const firstLoad = context.store.set(
+      loadNetworkLogsNextPage$,
+      context.signal,
+    );
+
+    await waitFor(async () => {
+      const data = await context.store.get(zeroActivityNetworkLogs$);
+      expect(
+        data.networkLogs.some((entry) => {
+          return entry.url === "https://first.example.test/start";
+        }),
+      ).toBeTruthy();
+      expect(firstSecondPageRequested).toBeTruthy();
+    });
+
+    context.store.set(pushPathSilently$, ROUTES.activityDetail, {
+      activityRunId: secondRunId,
+    });
+
+    await waitFor(async () => {
+      const data = await context.store.get(zeroActivityNetworkLogs$);
+      expect(
+        data.networkLogs.some((entry) => {
+          return entry.url === "https://second.example.test/start";
+        }),
+      ).toBeTruthy();
+      expect(data.loading).toBeFalsy();
+    });
+
+    const secondLoad = context.store.set(
+      loadNetworkLogsNextPage$,
+      context.signal,
+    );
+    await secondLoad;
+    stalePage.resolve();
+    await firstLoad;
+
+    const data = await context.store.get(zeroActivityNetworkLogs$);
+    const urls = data.networkLogs.map((entry) => {
+      return entry.url;
+    });
+
+    expect(urls).toContain("https://second.example.test/start");
+    expect(urls).toContain("https://second.example.test/next");
+    expect(urls).not.toContain("https://stale.example.test/old-run");
   });
 
   it("shows codex fallback event rows for failed activity details", async () => {

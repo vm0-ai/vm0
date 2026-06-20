@@ -7,6 +7,9 @@ import {
   getAxiomTokenEnvNameForDataset,
 } from "./axiom-datasets";
 
+const AXIOM_API_ORIGIN = "https://api.axiom.co";
+const AXIOM_QUERY_TIMEOUT_MS = 120_000;
+
 const sessionsAxiomClient = singleton(() => {
   return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
 });
@@ -100,28 +103,116 @@ export async function flushAxiom(
   }
 }
 
-// Minimal options surface — only the `noCache` knob is wired today (used by
-// the agent-event watermark wait to bypass Axiom's per-request cache for
-// freshly-completed runs). Other options from web's queryAxiom (maxRetries,
-// streamingDuration, timeoutMs) intentionally NOT ported — see leader
-// guidance on issue #12424; add them when a caller actually needs them.
+// Minimal options surface. `noCache` is used by the agent-event watermark wait
+// to bypass Axiom's per-request cache for freshly-completed runs; `cursor` is
+// used for Axiom-managed time pagination. Other options from web's queryAxiom
+// (maxRetries, streamingDuration, timeoutMs) intentionally NOT ported — see
+// leader guidance on issue #12424; add them when a caller actually needs them.
 export interface QueryAxiomOptions {
   readonly noCache?: boolean;
+  readonly cursor?: string;
+}
+
+interface AxiomQueryMatch {
+  readonly _time: string;
+  readonly data: Record<string, unknown>;
+}
+
+interface AxiomQueryResult {
+  readonly matches?: readonly AxiomQueryMatch[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAxiomQueryMatch(value: unknown): value is AxiomQueryMatch {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value._time === "string" && isRecord(value.data);
+}
+
+function isAxiomQueryResult(value: unknown): value is AxiomQueryResult {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.matches === undefined ||
+    (Array.isArray(value.matches) && value.matches.every(isAxiomQueryMatch))
+  );
+}
+
+function axiomAplQueryUrl(options: QueryAxiomOptions): string {
+  const url = new URL("/v1/datasets/_apl", AXIOM_API_ORIGIN);
+  url.searchParams.set("format", "legacy");
+  if (options.noCache === true) {
+    url.searchParams.set("nocache", "true");
+  }
+  return url.toString();
+}
+
+function mapAxiomMatches<T>(result: AxiomQueryResult): readonly T[] {
+  return (
+    result.matches?.map((m) => {
+      return { ...m.data, _time: m._time } as T;
+    }) ?? []
+  );
+}
+
+async function queryAxiomDirectWithCursor<T>(
+  apl: string,
+  options: QueryAxiomOptions & { readonly cursor: string },
+): Promise<readonly T[]> {
+  const response = await fetch(axiomAplQueryUrl(options), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${env(getAxiomTokenEnvNameForApl(apl))}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      apl,
+      cursor: options.cursor,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(AXIOM_QUERY_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Axiom query failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isAxiomQueryResult(payload)) {
+    throw new Error("Axiom query returned an unexpected response shape");
+  }
+
+  return mapAxiomMatches<T>(payload);
 }
 
 export async function queryAxiomDirect<T = Record<string, unknown>>(
   apl: string,
   options?: QueryAxiomOptions,
 ): Promise<readonly T[]> {
+  if (options?.cursor !== undefined) {
+    return queryAxiomDirectWithCursor<T>(apl, {
+      ...options,
+      cursor: options.cursor,
+    });
+  }
+
   const client = axiomClientForApl(apl);
   const axiomOptions =
-    options?.noCache !== undefined ? { noCache: options.noCache } : undefined;
+    options?.noCache !== undefined
+      ? {
+          ...(options.noCache !== undefined && { noCache: options.noCache }),
+        }
+      : undefined;
   const result = await client.query(apl, axiomOptions);
-  return (
-    result.matches?.map((m) => {
-      return { ...m.data, _time: m._time } as T;
-    }) ?? []
-  );
+  return mapAxiomMatches<T>(result);
 }
 
 export function queryAxiom(
