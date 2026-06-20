@@ -323,8 +323,8 @@ pub fn encode_exec_start(
 
 /// Encode exec_start payload.
 ///
-/// Wire format:
-/// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy][stdin_policy]`.
+/// See the crate-level wire-format documentation for the full `exec_start`
+/// payload schema.
 ///
 /// Duration timeout policies require a positive `timeout_ms`; use the explicit
 /// no-timeout policy for unbounded operation lifetimes.
