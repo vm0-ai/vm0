@@ -30,8 +30,9 @@
 //! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 //!
-//! App-server mode speaks newline-delimited JSON-RPC on stdio. Failure
-//! scenarios are selected with `MOCK_CODEX_APP_SERVER_SCENARIO`.
+//! App-server mode speaks the Codex app-server newline-delimited JSON
+//! request/response protocol on stdio. Failure scenarios are selected with
+//! `MOCK_CODEX_APP_SERVER_SCENARIO`.
 
 use clap::{Parser, Subcommand};
 use guest_mock_codex::{

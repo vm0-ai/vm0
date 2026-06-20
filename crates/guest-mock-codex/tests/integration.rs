@@ -238,6 +238,7 @@ fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Re
 
     let initialized = server.request(1, "initialize", json!({}))?;
     assert_eq!(initialized["id"], 1);
+    assert!(initialized.get("jsonrpc").is_none());
     assert!(initialized.get("type").is_none());
     assert!(initialized["result"]["codexHome"].as_str().is_some());
     server.notify("initialized", json!({}))?;
@@ -565,7 +566,7 @@ fn app_server_new_thread_clears_previous_active_turn() -> std::io::Result<()> {
 }
 
 #[test]
-fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
+fn app_server_stale_turn_scenario_returns_protocol_error() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(
         dir.path(),
@@ -602,6 +603,7 @@ fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()
         }),
     )?;
     assert_eq!(error["id"], 4);
+    assert!(error.get("jsonrpc").is_none());
     assert_eq!(error["error"]["code"], -32600);
     assert!(
         error["error"]["message"]
@@ -614,7 +616,7 @@ fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()
 }
 
 #[test]
-fn app_server_no_active_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
+fn app_server_no_active_turn_scenario_returns_protocol_error() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(
         dir.path(),

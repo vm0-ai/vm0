@@ -57,23 +57,26 @@ pub fn run_app_server(listen: &str) -> io::Result<()> {
 #[derive(Debug)]
 struct AppServerState {
     initialized: bool,
-    thread_id: Option<String>,
-    session_artifact_thread_id: Option<String>,
+    current_thread: Option<AppServerThread>,
     session_artifact_thread_ids: BTreeMap<String, String>,
-    active_turn_id: Option<String>,
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
     scenario: Scenario,
+}
+
+#[derive(Debug)]
+struct AppServerThread {
+    protocol_thread_id: String,
+    artifact_thread_id: String,
+    active_turn_id: Option<String>,
 }
 
 impl AppServerState {
     fn new(scenario: Scenario) -> Self {
         Self {
             initialized: false,
-            thread_id: None,
-            session_artifact_thread_id: None,
+            current_thread: None,
             session_artifact_thread_ids: BTreeMap::new(),
-            active_turn_id: None,
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
             scenario,
@@ -159,16 +162,15 @@ impl AppServerState {
                     return Ok(ServerAction::Stop);
                 }
 
-                let (thread_id, artifact_thread_id) =
-                    match self.current_thread(string_param(params, "threadId")) {
-                        Ok((thread_id, artifact_thread_id)) => {
-                            (thread_id.to_string(), artifact_thread_id.to_string())
-                        }
-                        Err(message) => {
-                            write_error(output, id, INVALID_REQUEST, message)?;
-                            return Ok(ServerAction::Continue);
-                        }
-                    };
+                let current_thread = match self.current_thread(string_param(params, "threadId")) {
+                    Ok(current_thread) => current_thread,
+                    Err(message) => {
+                        write_error(output, id, INVALID_REQUEST, message)?;
+                        return Ok(ServerAction::Continue);
+                    }
+                };
+                let thread_id = current_thread.protocol_thread_id.clone();
+                let artifact_thread_id = current_thread.artifact_thread_id.clone();
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -178,8 +180,10 @@ impl AppServerState {
                 };
 
                 let turn_id = Uuid::now_v7().to_string();
-                if self.scenario != Scenario::NoActiveTurn {
-                    self.active_turn_id = Some(turn_id.clone());
+                if self.scenario != Scenario::NoActiveTurn
+                    && let Some(current_thread) = &mut self.current_thread
+                {
+                    current_thread.active_turn_id = Some(turn_id.clone());
                 }
                 self.initial_inputs.extend(inputs.iter().cloned());
                 persist_input_events(
@@ -193,12 +197,19 @@ impl AppServerState {
                 Ok(ServerAction::Continue)
             }
             "turn/steer" => {
-                let Some(active_turn_id) = self.active_turn_id.clone() else {
-                    write_error(output, id, INVALID_REQUEST, "no active turn")?;
-                    return Ok(ServerAction::Continue);
-                };
                 let Some(expected_turn_id) = string_param(params, "expectedTurnId") else {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
+                    return Ok(ServerAction::Continue);
+                };
+                let current_thread = match self.current_thread(string_param(params, "threadId")) {
+                    Ok(current_thread) => current_thread,
+                    Err(message) => {
+                        write_error(output, id, INVALID_REQUEST, message)?;
+                        return Ok(ServerAction::Continue);
+                    }
+                };
+                let Some(active_turn_id) = current_thread.active_turn_id.clone() else {
+                    write_error(output, id, INVALID_REQUEST, "no active turn")?;
                     return Ok(ServerAction::Continue);
                 };
                 if self.scenario == Scenario::StaleTurn || expected_turn_id != active_turn_id {
@@ -206,16 +217,8 @@ impl AppServerState {
                     return Ok(ServerAction::Continue);
                 }
 
-                let (thread_id, artifact_thread_id) =
-                    match self.current_thread(string_param(params, "threadId")) {
-                        Ok((thread_id, artifact_thread_id)) => {
-                            (thread_id.to_string(), artifact_thread_id.to_string())
-                        }
-                        Err(message) => {
-                            write_error(output, id, INVALID_REQUEST, message)?;
-                            return Ok(ServerAction::Continue);
-                        }
-                    };
+                let thread_id = current_thread.protocol_thread_id.clone();
+                let artifact_thread_id = current_thread.artifact_thread_id.clone();
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -264,24 +267,23 @@ impl AppServerState {
             .entry(thread_id.clone())
             .or_insert_with(|| session_artifact_thread_id(&thread_id))
             .clone();
-        self.session_artifact_thread_id = Some(artifact_thread_id);
-        self.thread_id = Some(thread_id);
-        self.active_turn_id = None;
+        self.current_thread = Some(AppServerThread {
+            protocol_thread_id: thread_id,
+            artifact_thread_id,
+            active_turn_id: None,
+        });
     }
 
-    fn current_thread(&self, requested_thread_id: Option<&str>) -> Result<(&str, &str), &str> {
-        let Some(thread_id) = self.thread_id.as_deref() else {
+    fn current_thread(&self, requested_thread_id: Option<&str>) -> Result<&AppServerThread, &str> {
+        let Some(current_thread) = &self.current_thread else {
             return Err("no active thread");
         };
         if let Some(requested_thread_id) = requested_thread_id
-            && requested_thread_id != thread_id
+            && requested_thread_id != current_thread.protocol_thread_id
         {
             return Err("unknown threadId");
         }
-        let Some(artifact_thread_id) = self.session_artifact_thread_id.as_deref() else {
-            return Err("missing session artifact thread id");
-        };
-        Ok((thread_id, artifact_thread_id))
+        Ok(current_thread)
     }
 }
 
