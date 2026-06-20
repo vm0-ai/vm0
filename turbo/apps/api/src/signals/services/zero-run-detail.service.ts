@@ -19,6 +19,7 @@ import { escapeAplString } from "../../lib/axiom-apl";
 import {
   buildAgentEventPaginationFilters,
   buildTimePaginationFilters,
+  filterTimedAxiomRecords,
   nextSequenceCursor,
   nextTimeCursor,
   sequenceCursorValue,
@@ -180,8 +181,9 @@ ${buildTimePaginationFilters(params)}
     const pageHasMore = events.length > limit;
     const records = pageHasMore ? events.slice(0, limit) : events;
     const networkLogs = sanitizeAxiomNetworkEvents(records);
+    const timedRecords = filterTimedAxiomRecords(records);
     const nextCursor = nextTimeCursor(
-      records,
+      timedRecords,
       pageHasMore,
       order,
       previousCursorTimestamp,

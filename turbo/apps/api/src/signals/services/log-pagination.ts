@@ -282,3 +282,11 @@ export function nextTimeCursor<T extends TimedAxiomRecord>(
 
   return encodeTimeCursor(order, timestamp);
 }
+
+export function filterTimedAxiomRecords<T extends Record<string, unknown>>(
+  records: readonly T[],
+): Array<T & { readonly _time: string }> {
+  return records.filter((record): record is T & { readonly _time: string } => {
+    return typeof record._time === "string";
+  });
+}
