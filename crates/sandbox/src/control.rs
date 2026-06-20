@@ -24,7 +24,7 @@ pub enum SandboxExecTermination {
 }
 
 /// Result of executing a command inside a running sandbox.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct RemoteExecResult {
     /// Structured terminal state reported by the provider.
     pub termination: SandboxExecTermination,
@@ -32,7 +32,7 @@ pub struct RemoteExecResult {
     pub stdout: Vec<u8>,
     /// Raw stderr bytes.
     pub stderr: Vec<u8>,
-    /// Provider diagnostic text for non-stream output terminal states.
+    /// Provider diagnostic text associated with the terminal state.
     pub diagnostic: String,
     /// True when stdout exceeded the remote capture budget.
     pub stdout_truncated: bool,
