@@ -243,9 +243,7 @@ describe("GET /api/zero/connectors/search", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFeatureSwitches.push({ orgId, userId });
-    await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.StripeConnector]: true,
-    });
+    await enableFeatureSwitches(orgId, userId, {});
     mocks.clerk.session(userId, orgId);
 
     const authMethods = CONNECTOR_TYPES.stripe.authMethods;

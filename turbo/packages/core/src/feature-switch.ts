@@ -144,11 +144,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
-  [FeatureSwitchKey.StripeConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Stripe payment connector integration",
-    enabled: true,
-  },
   [FeatureSwitchKey.AwsConnector]: {
     maintainer: "liangyou@vm0.ai",
     description: "Enable the temporary AWS remote login connector",
@@ -298,12 +293,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show a PPTX download action for presentation HTML artifacts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatInlineFeedback]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",
