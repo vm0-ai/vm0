@@ -159,6 +159,22 @@ describe("zero logs view command", () => {
     expect(capturedUrl?.searchParams.get("since")).toBeNull();
   });
 
+  it("should reject invalid calendar dates for --since", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync([
+        "node",
+        "cli",
+        RUN_ID,
+        "--since",
+        "2024-02-30T00:00:00Z",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid time format");
+  });
+
   it("should respect --tail option", async () => {
     let capturedUrl: URL | undefined;
     server.use(

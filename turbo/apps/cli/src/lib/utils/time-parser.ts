@@ -13,6 +13,10 @@
  * @returns Unix timestamp in milliseconds
  * @throws Error if the time string is invalid
  */
+const ISO_8601_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[Tt](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/;
+const DAYS_BY_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
 export function parseTime(timeStr: string): number {
   // Try relative time first (e.g., "5m", "2h", "1d")
   const relativeMatch = timeStr.match(/^(\d+)([smhdw])$/);
@@ -34,15 +38,61 @@ export function parseTime(timeStr: string): number {
   }
 
   // Try ISO 8601 format
-  const date = new Date(timeStr);
-  if (!isNaN(date.getTime())) {
-    return date.getTime();
+  const timestamp = parseIsoTime(timeStr);
+  if (timestamp !== undefined) {
+    return timestamp;
   }
 
   throw new Error(
     `Invalid time format: "${timeStr}". ` +
       `Supported formats: relative (5m, 2h, 1d), ISO 8601 (2024-01-15T10:30:00Z), Unix timestamp`,
   );
+}
+
+function parseIsoTime(timeStr: string): number | undefined {
+  const match = ISO_8601_PATTERN.exec(timeStr);
+  if (!match) {
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = match[4] ? Number(match[4]) : 0;
+  const minute = match[5] ? Number(match[5]) : 0;
+  const second = match[6] ? Number(match[6]) : 0;
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    !Number.isInteger(second) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+
+  const timestamp = new Date(timeStr).getTime();
+  return Number.isNaN(timestamp) ? undefined : timestamp;
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28;
+  }
+  return DAYS_BY_MONTH[month - 1] ?? 0;
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 /**

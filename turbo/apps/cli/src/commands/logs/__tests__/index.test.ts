@@ -2004,6 +2004,23 @@ describe("logs command", () => {
       );
     });
 
+    it("should reject invalid calendar dates for --since", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--since",
+          "2024-02-30T00:00:00Z",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid time format"),
+      );
+    });
+
     it("should handle generic API error", async () => {
       server.use(
         http.get(
