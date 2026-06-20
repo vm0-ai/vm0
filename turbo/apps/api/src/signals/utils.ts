@@ -53,13 +53,10 @@ export function safeUrlParse(input: string): URL | undefined {
 }
 
 export function safeUriComponentDecode(input: string): string | undefined {
-  // eslint-disable-next-line no-restricted-syntax -- centralized guarded URI component decoding
-  try {
+  const result = safeSync(() => {
     return decodeURIComponent(input);
-  } catch (error) {
-    throwIfAbort(error);
-    return undefined;
-  }
+  });
+  return "ok" in result ? result.ok : undefined;
 }
 
 export function safeSync<T>(
