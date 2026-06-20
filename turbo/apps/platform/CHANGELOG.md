@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.478.1](https://github.com/vm0-ai/vm0/compare/app-v0.478.0...app-v0.478.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* apply mobile single-line composer switch to tiptap composer ([#18392](https://github.com/vm0-ai/vm0/issues/18392)) ([a1c5a8c](https://github.com/vm0-ai/vm0/commit/a1c5a8ced1ed44996e4040d07547c1e730bae56b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.106.2
+    * @vm0/connectors bumped to 1.97.0
+    * @vm0/core bumped to 8.360.1
+
 ## [0.478.0](https://github.com/vm0-ai/vm0/compare/app-v0.477.0...app-v0.478.0) (2026-06-20)
 
 
