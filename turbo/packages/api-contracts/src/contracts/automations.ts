@@ -77,8 +77,40 @@ export const automationResponseSchema = z.object({
   triggers: z.array(automationTriggerResponseSchema),
 });
 
+/**
+ * A workflow trigger (schedule or goal/event) bound to a chat thread, surfaced
+ * alongside automations so the thread's automation list shows every recurring
+ * thing attached to it. Carries the linked workflow's identity + description so
+ * the UI can show what each trigger runs without a second lookup.
+ */
+export const chatThreadWorkflowTriggerSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(["schedule", "event"]),
+  // Human-readable schedule rule (e.g. "Every 60s"); null for event triggers.
+  scheduleSummary: z.string().nullable(),
+  // Event discriminator (e.g. "thread-idle") for event triggers; null for schedules.
+  eventType: z.string().nullable(),
+  enabled: z.boolean(),
+  chatThreadId: z.string().uuid(),
+  nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  workflow: z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    displayName: z.string().nullable(),
+    description: z.string().nullable(),
+    // The goal's objective (from `preference`); null for non-goal workflows.
+    // The UI shows this for goals, which carry no `description`.
+    objective: z.string().nullable(),
+    type: z.enum(["workflow", "goal"]),
+  }),
+});
+
 export const automationListResponseSchema = z.object({
   automations: z.array(automationResponseSchema),
+  // Workflow + goal triggers bound to the caller's chat threads. Filter by
+  // `chatThreadId` client-side to show those attached to the open thread.
+  workflowTriggers: z.array(chatThreadWorkflowTriggerSchema),
 });
 
 const cronTriggerConfigSchema = z.object({
@@ -199,6 +231,23 @@ export const automationsMainContract = c.router({
       404: apiErrorSchema,
     },
     summary: "List automations with their triggers",
+  },
+  // Enable/disable a thread-bound workflow or goal trigger (the rows surfaced
+  // in `workflowTriggers`). Session-authed, returns no body.
+  toggleWorkflowTrigger: {
+    method: "POST",
+    path: "/api/automations/workflow-triggers/:id/enabled",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParamsSchema,
+    body: z.object({ enabled: z.boolean() }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Enable or disable a thread-bound workflow/goal trigger",
   },
 });
 
@@ -421,6 +470,9 @@ export type AutomationsMainContract = typeof automationsMainContract;
 export type AutomationsByRefContract = typeof automationsByRefContract;
 export type AutomationTriggersContract = typeof automationTriggersContract;
 
+export type ChatThreadWorkflowTrigger = z.infer<
+  typeof chatThreadWorkflowTriggerSchema
+>;
 export type AutomationResponse = z.infer<typeof automationResponseSchema>;
 export type AutomationTriggerResponse = z.infer<
   typeof automationTriggerResponseSchema

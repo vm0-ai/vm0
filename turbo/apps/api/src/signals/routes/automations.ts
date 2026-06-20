@@ -11,8 +11,13 @@ import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import { upsertMemberRoleCache$ } from "../services/auth.service";
+import {
+  listChatThreadWorkflowTriggers,
+  setChatThreadWorkflowTriggerEnabled,
+} from "../services/zero-workflow-trigger.service";
 import {
   addTrigger$,
   createAutomation$,
@@ -187,11 +192,49 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
+  const workflowTriggers = await listChatThreadWorkflowTriggers(set(writeDb$), {
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
+  signal.throwIfAborted();
   return {
     status: 200 as const,
-    body: { automations: views.map(automationResponse) },
+    body: {
+      automations: views.map(automationResponse),
+      workflowTriggers: [...workflowTriggers],
+    },
   };
 });
+
+const toggleWorkflowTriggerBody$ = bodyResultOf(
+  automationsMainContract.toggleWorkflowTrigger,
+);
+
+const toggleWorkflowTriggerInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(
+      pathParamsOf(automationsMainContract.toggleWorkflowTrigger),
+    );
+    const bodyResult = await get(toggleWorkflowTriggerBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await setChatThreadWorkflowTriggerEnabled(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      triggerId: params.id,
+      enabled: bodyResult.data.enabled,
+    });
+    signal.throwIfAborted();
+    if (result === "not-found") {
+      return notFound(NOT_FOUND_MESSAGE);
+    }
+    return { status: 204 as const, body: undefined };
+  },
+);
 
 const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -578,6 +621,17 @@ export const automationsRoutes: readonly RouteEntry[] = [
         requiredCapability: "automation:read",
       },
       listInner$,
+    ),
+  },
+  {
+    route: automationsMainContract.toggleWorkflowTrigger,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "automation:write",
+      },
+      toggleWorkflowTriggerInner$,
     ),
   },
   {

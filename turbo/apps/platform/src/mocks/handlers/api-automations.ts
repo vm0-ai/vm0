@@ -9,7 +9,12 @@ import {
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
-import { getMockAutomations, setMockAutomations } from "./automations-store.ts";
+import {
+  getMockAutomations,
+  getMockWorkflowTriggers,
+  setMockAutomations,
+  setMockWorkflowTriggers,
+} from "./automations-store.ts";
 
 // The Automation resource API over the shared automation store: each store row
 // (flat single-trigger projection) is served as an automation carrying one
@@ -144,7 +149,23 @@ export const apiAutomationsHandlers = [
       automations: getMockAutomations().map((view) => {
         return toMockAutomationResponse(view);
       }),
+      workflowTriggers: getMockWorkflowTriggers(),
     }),
+  ),
+
+  // POST /api/automations/workflow-triggers/:id/enabled
+  mockApi(
+    automationsMainContract.toggleWorkflowTrigger,
+    ({ params, body, respond }) => {
+      setMockWorkflowTriggers(
+        getMockWorkflowTriggers().map((trigger) => {
+          return trigger.id === params.id
+            ? { ...trigger, enabled: body.enabled }
+            : trigger;
+        }),
+      );
+      return respond(204);
+    },
   ),
 
   // POST /api/automations

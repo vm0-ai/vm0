@@ -178,9 +178,13 @@ import {
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
   headerAutomationMenu$,
+  headerWorkflowTriggers$,
   reloadHeaderAutomationMenu$,
+  toggleWorkflowTriggerEnabled$,
   automationsForThread,
+  workflowTriggersForThread,
   type HeaderAutomationEntry,
+  type HeaderWorkflowTriggerEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import {
   closeHeaderAutomationSidebar$,
@@ -983,14 +987,23 @@ export function AutomationMenuButton({
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
+  const allTriggers =
+    workflowTriggersLoadable.state === "hasData"
+      ? workflowTriggersLoadable.data
+      : (lastResolvedTriggers ?? []);
+  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const open = openThreadId === threadId;
 
-  if (automations.length === 0) {
+  // Show the opener when the thread has either an automation or a workflow/goal
+  // trigger — a thread with only a goal must still reach the sidebar.
+  if (automations.length === 0 && workflowTriggers.length === 0) {
     return null;
   }
 
@@ -2090,17 +2103,93 @@ function HeaderAutomationSidebarCard({
   );
 }
 
+function HeaderWorkflowTriggerCard({
+  trigger,
+}: {
+  trigger: HeaderWorkflowTriggerEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
+    toggleWorkflowTriggerEnabled$,
+  );
+  const toggling = togglingLoadable.state === "loading";
+  const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
+  // Goals have no description — their human text is the objective. Workflows use
+  // their description.
+  const description = (
+    trigger.workflowObjective ?? trigger.workflowDescription
+  )?.trim();
+
+  const toggleEnabled = (enabled: boolean) => {
+    detach(
+      toggleEnabledTracked({ triggerId: trigger.id, enabled }, pageSignal),
+      Reason.DomCallback,
+      "toggle workflow trigger enabled",
+    );
+  };
+
+  return (
+    <article
+      className={cn(
+        "rounded-lg border border-border bg-background p-4 transition-colors",
+        !trigger.enabled && "opacity-75",
+      )}
+    >
+      <p
+        className={cn(
+          "line-clamp-1 text-sm font-medium leading-snug",
+          trigger.enabled ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {title}
+      </p>
+      {description ? (
+        <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3 text-xs">
+        <span
+          className={cn(
+            "font-medium",
+            trigger.enabled ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {trigger.enabled ? "Active" : "Inactive"}
+        </span>
+        <LoadingSwitch
+          checked={trigger.enabled}
+          loading={toggling}
+          onCheckedChange={toggleEnabled}
+          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+        />
+      </div>
+    </article>
+  );
+}
+
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
   const close = useSet(closeHeaderAutomationSidebar$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
+  const allTriggers =
+    workflowTriggersLoadable.state === "hasData"
+      ? workflowTriggersLoadable.data
+      : (lastResolvedTriggers ?? []);
+  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
+  const isEmpty = automations.length === 0 && workflowTriggers.length === 0;
   const loading =
-    automationsLoadable.state === "loading" && automations.length === 0;
+    isEmpty &&
+    (automationsLoadable.state === "loading" ||
+      workflowTriggersLoadable.state === "loading");
 
   return (
     <aside
@@ -2130,20 +2219,36 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
             <Skeleton className="h-36 rounded-lg" />
             <Skeleton className="h-36 rounded-lg" />
           </div>
-        ) : automations.length === 0 ? (
+        ) : isEmpty ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
             No automations yet.
           </div>
         ) : (
-          <div className="grid gap-3">
-            {automations.map((automation) => {
-              return (
-                <HeaderAutomationSidebarCard
-                  key={automation.id}
-                  automation={automation}
-                />
-              );
-            })}
+          <div className="grid gap-6">
+            {automations.length > 0 ? (
+              <div className="grid gap-3">
+                {automations.map((automation) => {
+                  return (
+                    <HeaderAutomationSidebarCard
+                      key={automation.id}
+                      automation={automation}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+            {workflowTriggers.length > 0 ? (
+              <div className="grid gap-3">
+                {workflowTriggers.map((trigger) => {
+                  return (
+                    <HeaderWorkflowTriggerCard
+                      key={trigger.id}
+                      trigger={trigger}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

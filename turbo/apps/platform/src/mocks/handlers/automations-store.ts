@@ -1,8 +1,10 @@
+import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 
 // Shared in-memory store backing the automations mock handlers
 // (`/api/automations`).
 let mockAutomations: AutomationView[] = [];
+let mockWorkflowTriggers: ChatThreadWorkflowTrigger[] = [];
 
 export function getMockAutomations(): AutomationView[] {
   return mockAutomations;
@@ -12,8 +14,45 @@ export function setMockAutomations(automations: AutomationView[]): void {
   mockAutomations = automations;
 }
 
+export function getMockWorkflowTriggers(): ChatThreadWorkflowTrigger[] {
+  return mockWorkflowTriggers;
+}
+
+export function setMockWorkflowTriggers(
+  triggers: ChatThreadWorkflowTrigger[],
+): void {
+  mockWorkflowTriggers = triggers;
+}
+
 export function resetMockAutomations(): void {
   mockAutomations = [];
+  mockWorkflowTriggers = [];
+}
+
+/** A workflow-trigger store row (a goal by default) with sensible defaults. */
+export function createMockWorkflowTrigger(
+  overrides?: Partial<ChatThreadWorkflowTrigger>,
+): ChatThreadWorkflowTrigger {
+  return {
+    id: "e0000001-0000-4000-a000-000000000001",
+    kind: "event",
+    scheduleSummary: null,
+    eventType: "thread-idle",
+    enabled: true,
+    chatThreadId: DEFAULT_CHAT_THREAD_ID,
+    nextRunAt: null,
+    lastRunAt: null,
+    ...overrides,
+    workflow: {
+      id: "a0000001-0000-4000-a000-000000000001",
+      name: "goal-abc123",
+      displayName: "Goal",
+      description: null,
+      objective: "Drive the release to merge",
+      type: "goal",
+      ...overrides?.workflow,
+    },
+  };
 }
 
 const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";

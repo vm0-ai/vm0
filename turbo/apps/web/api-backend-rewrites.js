@@ -74,6 +74,10 @@ const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/:ref/run";
 const AUTOMATIONS_RUN_PATH_RE = /^\/api\/automations\/[^/]+\/run$/;
 const AUTOMATIONS_TRIGGERS_REWRITE_SOURCE = "/api/automations/:ref/triggers";
 const AUTOMATIONS_TRIGGERS_PATH_RE = /^\/api\/automations\/[^/]+\/triggers$/;
+const AUTOMATIONS_WORKFLOW_TRIGGER_TOGGLE_REWRITE_SOURCE = `/api/automations/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/enabled`;
+const AUTOMATIONS_WORKFLOW_TRIGGER_TOGGLE_PATH_RE = new RegExp(
+  `^/api/automations/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/enabled$`,
+);
 const AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
 const AUTOMATION_TRIGGERS_BY_ID_PATH_RE = new RegExp(
   `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
@@ -1251,6 +1255,11 @@ export const API_BACKEND_REWRITES = [
     AUTOMATIONS_TRIGGERS_REWRITE_SOURCE,
     "/api/automations/:ref/triggers",
     AUTOMATIONS_TRIGGERS_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_WORKFLOW_TRIGGER_TOGGLE_REWRITE_SOURCE,
+    "/api/automations/workflow-triggers/:id/enabled",
+    AUTOMATIONS_WORKFLOW_TRIGGER_TOGGLE_PATH_RE,
   ],
   [
     AUTOMATIONS_BY_REF_REWRITE_SOURCE,

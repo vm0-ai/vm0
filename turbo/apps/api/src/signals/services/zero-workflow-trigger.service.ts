@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
 import type {
   ZeroWorkflowSchedule,
   ZeroWorkflowTriggerSummary,
@@ -11,9 +12,10 @@ import {
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, isNotNull, or } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
@@ -296,6 +298,122 @@ export async function loadWorkflowTriggers(
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
   return rows.map(rowToSummary);
+}
+
+/**
+ * List every workflow trigger (schedule or goal/event) the caller owns that is
+ * bound to a chat thread, joined with its workflow's identity + description.
+ * Surfaced alongside automations so the chat-thread automation list shows the
+ * recurring workflows/goals attached to the thread. Filtered to the open thread
+ * client-side via `chatThreadId`.
+ */
+export async function listChatThreadWorkflowTriggers(
+  db: ReadonlyDb,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<readonly ChatThreadWorkflowTrigger[]> {
+  const rows = await db
+    .select({ trigger: zeroWorkflowTriggers, workflow: zeroWorkflows })
+    .from(zeroWorkflowTriggers)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+        isNotNull(zeroWorkflowTriggers.chatThreadId),
+      ),
+    )
+    .orderBy(asc(zeroWorkflowTriggers.createdAt));
+
+  return rows.flatMap(({ trigger, workflow }) => {
+    if (trigger.chatThreadId === null) {
+      return [];
+    }
+    return [
+      {
+        id: trigger.id,
+        kind: trigger.kind,
+        scheduleSummary:
+          trigger.kind === "schedule"
+            ? summarizeSchedule(rowToSchedule(trigger))
+            : null,
+        eventType: trigger.eventType,
+        enabled: trigger.enabled,
+        chatThreadId: trigger.chatThreadId,
+        nextRunAt: trigger.nextRunAt ? trigger.nextRunAt.toISOString() : null,
+        lastRunAt: trigger.lastRunAt ? trigger.lastRunAt.toISOString() : null,
+        workflow: {
+          id: workflow.id,
+          name: workflow.name,
+          displayName: workflow.displayName,
+          description: workflow.description,
+          // A goal carries no `description`; its human text is the objective in
+          // `preference`. Surface it separately so the UI can show it.
+          objective: workflow.preference?.objective ?? null,
+          type: workflow.type,
+        },
+      },
+    ];
+  });
+}
+
+/**
+ * Enable or disable a chat-thread-bound workflow or goal trigger (the rows the
+ * automation sidebar lists). Owner-scoped. Schedule triggers reseed/clear their
+ * next run; event (goal) triggers just flip `enabled`. Publishes the realtime
+ * automations-changed signal so open sidebars refresh.
+ */
+export async function setChatThreadWorkflowTriggerEnabled(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly triggerId: string;
+    readonly enabled: boolean;
+  },
+): Promise<"ok" | "not-found"> {
+  const [trigger] = await db
+    .select()
+    .from(zeroWorkflowTriggers)
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.id, args.triggerId),
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (!trigger) {
+    return "not-found";
+  }
+
+  const now = nowDate();
+  const nextRunAt =
+    trigger.kind === "schedule"
+      ? args.enabled
+        ? resolveNextRunAt(rowToSchedule(trigger), true, now)
+        : null
+      : trigger.nextRunAt;
+
+  await db
+    .update(zeroWorkflowTriggers)
+    .set({
+      enabled: args.enabled,
+      nextRunAt,
+      ...(args.enabled ? { consecutiveFailures: 0 } : {}),
+      updatedAt: now,
+    })
+    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
+
+  if (trigger.chatThreadId) {
+    await publishChatThreadAutomationsChangedSafely(
+      args.userId,
+      trigger.chatThreadId,
+    );
+  }
+  return "ok";
 }
 
 /**
