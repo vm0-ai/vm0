@@ -108,6 +108,71 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
+// Goal-state marker event ids (mirrors the backend goal-marker service). These
+// assistant rows publish a goal's workflow/trigger transitions into the thread
+// so the composer can fold the current goal state from the message stream
+// instead of polling. They are control rows: filtered out of the transcript.
+const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
+const GOAL_WORKFLOW_INACTIVE_EVENT_ID = "goal-workflow:inactive";
+const GOAL_TRIGGER_ACTIVE_EVENT_ID = "goal-trigger:active";
+const GOAL_TRIGGER_INACTIVE_EVENT_ID = "goal-trigger:inactive";
+
+function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
+  return (
+    msg.role === "assistant" &&
+    (msg.runEventId === GOAL_WORKFLOW_ACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_WORKFLOW_INACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID)
+  );
+}
+
+/** The thread's current active goal, folded from its message stream. */
+export interface ActiveGoalState {
+  readonly objective: string;
+  /** The goal trigger's id — the cancel control disables this trigger. */
+  readonly triggerId: string;
+}
+
+/**
+ * Fold the thread's message stream into its current goal, surfaced above the
+ * composer. Combines the two independent dimensions published by the backend —
+ * the goal workflow's active state and its trigger's enabled state — with the
+ * same rule as the backend `goalResponse`: the goal is shown only when it is
+ * active (workflow active AND trigger enabled), mirroring the prior behavior of
+ * hiding paused goals. The objective comes from the latest workflow-active
+ * marker. Messages are chronological, so each dimension is last-write-wins.
+ */
+function foldActiveGoal(
+  messages: readonly PagedChatMessage[],
+): ActiveGoalState | null {
+  let workflowActive = false;
+  let triggerEnabled = false;
+  let objective: string | null = null;
+  let triggerId: string | null = null;
+  for (const message of messages) {
+    if (message.role !== "assistant" || message.runEventId === undefined) {
+      continue;
+    }
+    if (message.runEventId === GOAL_WORKFLOW_ACTIVE_EVENT_ID) {
+      workflowActive = true;
+      objective = message.content;
+    } else if (message.runEventId === GOAL_WORKFLOW_INACTIVE_EVENT_ID) {
+      workflowActive = false;
+    } else if (message.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID) {
+      triggerEnabled = true;
+      triggerId = message.content;
+    } else if (message.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID) {
+      triggerEnabled = false;
+    }
+  }
+  const trimmed = objective?.trim();
+  if (workflowActive && triggerEnabled && trimmed && triggerId) {
+    return { objective: trimmed, triggerId };
+  }
+  return null;
+}
+
 function isUsageMessage(msg: PagedChatMessage): msg is Extract<
   PagedChatMessage,
   { role: "assistant" }
@@ -533,6 +598,9 @@ export interface ChatThreadSignals {
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
+  // The thread's active goal, folded from goal-state marker messages. Null when
+  // there is no active goal. Drives the goal row above the composer.
+  activeGoal$: Computed<Promise<ActiveGoalState | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
@@ -1324,6 +1392,7 @@ function createAllMessagesComputed(
         return (
           !isRecallControlMessage(entry.message) &&
           !isQueueMarkerMessage(entry.message) &&
+          !isGoalMarkerMessage(entry.message) &&
           !isInterruptedAssistantCancellation(
             entry.message,
             interruptedRunIds,
@@ -1499,6 +1568,18 @@ function createPagedMessages(
   const allMessages$ = createAllMessagesComputed(rawMessages$);
   const latestRunStatus$ = createLatestRunStatus(allMessages$, rawMessages$);
 
+  // The thread's active goal, folded from the (goal-marker) message stream so
+  // the composer reads it without polling /api/automations. Reads rawMessages$
+  // because the markers are filtered out of allMessages$.
+  const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
+    const raw = await get(rawMessages$);
+    return foldActiveGoal(
+      raw.map((entry) => {
+        return entry.message;
+      }),
+    );
+  });
+
   const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
     createGroupedChatMessagesCache(allMessages$);
 
@@ -1596,6 +1677,7 @@ function createPagedMessages(
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
+    activeGoal$,
     fetchNextPage$,
     refreshLatestMessages$,
     loadHistory$,
@@ -2634,6 +2716,7 @@ export function createChatThreadSignals(
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
+    activeGoal$,
     fetchNextPage$,
     refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
@@ -2714,6 +2797,7 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderHistory$,
     latestRunStatus$,
+    activeGoal$,
     allFinished$: runTracking.allFinished$,
     fetchNextPage$,
     loadHistory$,

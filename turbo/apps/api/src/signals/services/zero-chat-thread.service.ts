@@ -56,6 +56,7 @@ import {
   resolveAttachFileUrls,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 
 export { insertAssistantEventMessages$ };
@@ -573,6 +574,7 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
       and(
         eq(chatMessages.chatThreadId, chatThreads.id),
         visibleChatMessageCondition(),
+        excludeGoalMarkerCondition(),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
@@ -930,6 +932,7 @@ export function zeroChatSearch(args: {
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
       visibleChatMessageCondition(),
+      excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) {
@@ -971,6 +974,7 @@ export function zeroChatSearch(args: {
                     lt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
+                    excludeGoalMarkerCondition(),
                   ),
                 )
                 .orderBy(desc(chatMessages.createdAt))
@@ -986,6 +990,7 @@ export function zeroChatSearch(args: {
                     gt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
+                    excludeGoalMarkerCondition(),
                   ),
                 )
                 .orderBy(asc(chatMessages.createdAt))

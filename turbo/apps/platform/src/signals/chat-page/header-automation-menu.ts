@@ -142,12 +142,16 @@ export const toggleWorkflowTriggerEnabled$ = command(
   },
 );
 
-/** Workflow/goal triggers bound to a specific chat thread, for the sidebar. */
+/**
+ * Workflow triggers bound to a specific chat thread, for the sidebar. Goals are
+ * excluded — they are surfaced in the composer (folded from the thread's
+ * goal-state message stream), not the automation sidebar.
+ */
 export function workflowTriggersForThread(
   triggers: readonly HeaderWorkflowTriggerEntry[],
   threadId: string,
 ): readonly HeaderWorkflowTriggerEntry[] {
   return triggers.filter((trigger) => {
-    return trigger.chatThreadId === threadId;
+    return trigger.chatThreadId === threadId && trigger.workflowType !== "goal";
   });
 }

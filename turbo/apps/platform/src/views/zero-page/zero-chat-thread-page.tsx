@@ -1001,8 +1001,9 @@ export function AutomationMenuButton({
   const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const open = openThreadId === threadId;
 
-  // Show the opener when the thread has either an automation or a workflow/goal
-  // trigger — a thread with only a goal must still reach the sidebar.
+  // Show the opener when the thread has an automation or a (non-goal) workflow
+  // trigger. Goals live in the composer, so a goal-only thread has nothing to
+  // show in the automation sidebar.
   if (automations.length === 0 && workflowTriggers.length === 0) {
     return null;
   }
@@ -3531,6 +3532,29 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
+// The thread's active goal (folded from goal-state markers, no /api/automations
+// poll) plus its cancel handler. Cancelling disables the goal's trigger; the
+// backend then emits a goal-trigger:inactive marker, so the row folds away.
+function useChatComposerActiveGoal(
+  thread: ChatThreadSignals,
+  pageSignal: AbortSignal,
+) {
+  const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
+  const toggleWorkflowTrigger = useSet(toggleWorkflowTriggerEnabled$);
+  const onCancelActiveGoal = activeGoal
+    ? () => {
+        detach(
+          toggleWorkflowTrigger(
+            { triggerId: activeGoal.triggerId, enabled: false },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }
+    : undefined;
+  return { activeGoal, onCancelActiveGoal };
+}
+
 function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
@@ -3835,6 +3859,12 @@ function ChatThreadComposer({
     thread,
     groups,
   );
+  // The active goal row above the composer, with its cancel (disable-trigger)
+  // handler — folded from the thread's message stream, no /api/automations poll.
+  const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
+    thread,
+    pageSignal,
+  );
   const {
     modelPicker,
     modelPickerLoading,
@@ -3917,6 +3947,8 @@ function ChatThreadComposer({
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
+            activeGoal={activeGoal}
+            onCancelActiveGoal={onCancelActiveGoal}
             feedback={feedback}
           />
           <PersonalClaudeCodeDeviceAuthDialog />

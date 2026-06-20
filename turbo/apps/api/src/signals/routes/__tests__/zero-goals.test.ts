@@ -1,7 +1,9 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import {
@@ -173,6 +175,51 @@ async function loadGoalRows(fixture: GoalApiFixture) {
     )
     .limit(1);
   return row;
+}
+
+async function loadGoalMarkers(fixture: GoalApiFixture) {
+  const db = store.set(writeDb$);
+  const rows = await db
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runId: chatMessages.runId,
+      runEventId: chatMessages.runEventId,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.chatThreadId, fixture.threadId));
+  return rows.filter((row) => {
+    return row.runEventId?.startsWith("goal-") ?? false;
+  });
+}
+
+/**
+ * Order-independent multiset of marker event ids. Markers written in the same
+ * transaction (e.g. create's workflow+trigger pair) share a timestamp, so the
+ * test compares the set rather than a brittle row order.
+ */
+function eventIds(
+  rows: readonly { runEventId: string | null }[],
+): (string | null)[] {
+  return rows
+    .map((row) => {
+      return row.runEventId;
+    })
+    .sort();
+}
+
+/** The `content` payloads of every marker carrying the given event id. */
+function markerContent(
+  rows: readonly { runEventId: string | null; content: string | null }[],
+  eventId: string,
+): (string | null)[] {
+  return rows
+    .filter((row) => {
+      return row.runEventId === eventId;
+    })
+    .map((row) => {
+      return row.content;
+    });
 }
 
 describe("zero goals", () => {
@@ -445,5 +492,81 @@ describe("zero goals", () => {
       agentComposeId: fixture.agentId,
       title: "merge the release PR into main",
     });
+  });
+
+  it("publishes goal-state markers into the thread on each transition", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const goalRows = await loadGoalRows(fixture);
+    const afterCreate = await loadGoalMarkers(fixture);
+    // Every marker is an assistant control row that belongs to no run.
+    for (const marker of afterCreate) {
+      expect(marker.role).toBe("assistant");
+      expect(marker.runId).toBeNull();
+    }
+    // Creating a goal publishes both dimensions active; the workflow marker
+    // carries the objective and the trigger marker carries the trigger id (for
+    // the client fold + cancel control).
+    expect(eventIds(afterCreate)).toStrictEqual([
+      "goal-trigger:active",
+      "goal-workflow:active",
+    ]);
+    expect(markerContent(afterCreate, "goal-workflow:active")).toStrictEqual([
+      "ship goal workflows",
+    ]);
+    expect(markerContent(afterCreate, "goal-trigger:active")).toStrictEqual([
+      goalRows!.triggerId,
+    ]);
+
+    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
+    await accept(goalsClient().resume({ headers: headers(fixture) }), [200]);
+    await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
+
+    // block → trigger inactive, resume → trigger active, complete → workflow +
+    // trigger inactive. The full history lets the client fold the final state.
+    expect(eventIds(await loadGoalMarkers(fixture))).toStrictEqual([
+      "goal-trigger:active",
+      "goal-trigger:active",
+      "goal-trigger:inactive",
+      "goal-trigger:inactive",
+      "goal-workflow:active",
+      "goal-workflow:inactive",
+    ]);
+  });
+
+  it("excludes goal-state markers from a thread's unread state", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const unreads = await accept(
+      setupApp({ context })(chatThreadsContract).unreads({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { agentId: fixture.agentId },
+      }),
+      [200],
+    );
+
+    // The thread's only messages are goal markers (control rows). Even though
+    // they are the newest rows, the thread must not be surfaced as unread.
+    expect(
+      unreads.body.unreads.map((unread) => {
+        return unread.threadId;
+      }),
+    ).not.toContain(fixture.threadId);
   });
 });

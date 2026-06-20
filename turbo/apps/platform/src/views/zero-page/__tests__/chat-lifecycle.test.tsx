@@ -33,6 +33,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 import {
   createMockAutomationView,
   createMockWorkflowTrigger,
@@ -3230,9 +3231,26 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists thread workflow triggers with their workflow in the sidebar", async () => {
+  it("lists workflow triggers in the sidebar but excludes goals", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
+      // A scheduled workflow trigger — shown in the sidebar.
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000002",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "schedule",
+        scheduleSummary: "Every 60s",
+        eventType: null,
+        workflow: {
+          id: "a0000001-0000-4000-a000-000000000002",
+          name: "nightly-sync",
+          displayName: "Nightly sync",
+          description: "Sync the changelog every night",
+          objective: null,
+          type: "workflow",
+        },
+      }),
+      // A goal trigger — goals now live in the composer, so it must not appear.
       createMockWorkflowTrigger({ chatThreadId: AUTOMATION_THREAD_ID }),
     ]);
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -3255,15 +3273,150 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    // The goal card shows its title and the objective (goals have no
-    // description), plus the Active state with an enable/disable toggle.
-    expect(within(sidebar).getByText("Goal")).toBeInTheDocument();
+    // The workflow trigger card shows its name and description.
+    expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
     expect(
-      within(sidebar).getByText("Drive the release to merge"),
+      within(sidebar).getByText("Sync the changelog every night"),
     ).toBeInTheDocument();
-    // The enabled toggle (its aria-label) uniquely marks the active goal card;
-    // "Active" text also appears on the automation card, so assert the toggle.
-    expect(within(sidebar).getByLabelText("Disable Goal")).toBeInTheDocument();
+    // The goal is excluded from the automation sidebar.
+    expect(
+      within(sidebar).queryByText("Drive the release to merge"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByLabelText("Disable Goal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("folds goal-state markers into the goal row beneath the queued messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-goal-fold";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goal-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        // Goal-state markers: the workflow is active (carrying the objective)
+        // and its trigger is enabled — the fold should surface the goal.
+        {
+          id: "msg-goal-workflow-active",
+          runId: undefined,
+          role: "assistant",
+          content: "Drive the release to merge",
+          runEventId: "goal-workflow:active",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-goal-trigger-active",
+          runId: undefined,
+          role: "assistant",
+          // The trigger-active marker carries the trigger id for the cancel
+          // control to disable.
+          content: "trigger-goal-fold-1",
+          runEventId: "goal-trigger:active",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+    let canceledTrigger: { id: string; enabled: boolean } | null = null;
+    context.mocks.api(
+      automationsMainContract.toggleWorkflowTrigger,
+      ({ params, body, respond }) => {
+        canceledTrigger = { id: params.id, enabled: body.enabled };
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    // The folded goal surfaces above the composer.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Active goal")).toHaveTextContent(
+        "Drive the release to merge",
+      );
+    });
+    // The marker is a control row — it must not also render as a chat bubble.
+    expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
+
+    // The goal is the lowest-priority row: it sits after every queued message.
+    await sendQueuedMessage(user, "First queued follow-up");
+    await expectQueuedMessages(["First queued follow-up"]);
+    const goalRow = screen.getByLabelText("Active goal");
+    const strip = goalRow.closest('[role="list"]');
+    expect(strip).not.toBeNull();
+    const rows = within(strip as HTMLElement).getAllByRole("listitem");
+    const goalIndex = rows.indexOf(goalRow);
+    const queuedIndex = rows.findIndex((row) => {
+      return row.getAttribute("aria-label") === "Queued message";
+    });
+    expect(queuedIndex).toBeGreaterThanOrEqual(0);
+    expect(goalIndex).toBeGreaterThan(queuedIndex);
+
+    // Cancelling the goal row disables its trigger (by the folded trigger id).
+    await user.click(within(goalRow).getByLabelText("Cancel goal"));
+    await waitFor(() => {
+      expect(canceledTrigger).toStrictEqual({
+        id: "trigger-goal-fold-1",
+        enabled: false,
+      });
+    });
+  });
+
+  it("hides the goal row once a completion marker folds in", async () => {
+    const threadId = "thread-goal-complete";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goalc-workflow-active",
+          runId: undefined,
+          role: "assistant",
+          content: "Drive the release to merge",
+          runEventId: "goal-workflow:active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goalc-trigger-active",
+          runId: undefined,
+          role: "assistant",
+          content: "trigger-goal-complete-1",
+          runEventId: "goal-trigger:active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-goalc-workflow-inactive",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          runEventId: "goal-workflow:inactive",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    // Latest workflow marker is inactive → folds to "complete" → no goal row.
+    expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 
   it("shows automation run messages as automation links in chat history", async () => {

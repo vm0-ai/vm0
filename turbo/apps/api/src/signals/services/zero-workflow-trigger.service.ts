@@ -15,10 +15,18 @@ import {
 import { and, asc, eq, isNotNull, or } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
+import {
+  publishChatThreadAutomationsChangedSafely,
+  publishChatThreadMessageCreatedSafely,
+} from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
+import {
+  GOAL_TRIGGER_ACTIVE_EVENT_ID,
+  GOAL_TRIGGER_INACTIVE_EVENT_ID,
+  appendGoalStateMarker,
+} from "./zero-chat-goal-marker.service";
 import { fireWorkflowTriggerTestRun$ } from "./zero-workflow-trigger-poller.service";
 import {
   loadVisibleWorkflow,
@@ -408,6 +416,27 @@ export async function setChatThreadWorkflowTriggerEnabled(
     .where(eq(zeroWorkflowTriggers.id, args.triggerId));
 
   if (trigger.chatThreadId) {
+    // For a goal trigger, the sidebar toggle is the same active/inactive
+    // transition the goal API makes — publish it into the thread so the
+    // composer's folded goal state stays in sync.
+    const [workflow] = await db
+      .select({ type: zeroWorkflows.type })
+      .from(zeroWorkflows)
+      .where(eq(zeroWorkflows.id, trigger.workflowId))
+      .limit(1);
+    if (workflow?.type === "goal") {
+      await appendGoalStateMarker(db, {
+        chatThreadId: trigger.chatThreadId,
+        eventId: args.enabled
+          ? GOAL_TRIGGER_ACTIVE_EVENT_ID
+          : GOAL_TRIGGER_INACTIVE_EVENT_ID,
+        content: args.enabled ? args.triggerId : null,
+      });
+      await publishChatThreadMessageCreatedSafely(
+        args.userId,
+        trigger.chatThreadId,
+      );
+    }
     await publishChatThreadAutomationsChangedSafely(
       args.userId,
       trigger.chatThreadId,

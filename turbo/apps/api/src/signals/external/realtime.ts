@@ -120,6 +120,28 @@ export async function publishChatThreadRunFinished(args: {
 }
 
 /**
+ * Notify a chat thread's UI that a new message row was appended. The thread's
+ * message data source subscribes to this topic and refetches, so derived state
+ * (e.g. the composer's folded goal state) updates live.
+ *
+ * Best-effort: a failed publish must not fail the mutation that triggered it.
+ */
+export async function publishChatThreadMessageCreatedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread message created signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
