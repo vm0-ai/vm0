@@ -47,6 +47,14 @@ export const SEED_SKILLS: readonly string[] = [
   "status-updates",
 ] as const;
 
+/**
+ * The `goal` skill is NOT an unconditional seed. It is injected only when the
+ * `GoalWorkflows` feature switch is enabled (see agent-run-create.service.ts).
+ * Its body is still synced to storage by cron-sync-skills like every other
+ * skill in the repo, so a conditional mount resolves without listing it here.
+ */
+export const GOAL_SKILL_NAME = "goal";
+
 export function getSeedSkillNames(): string[] {
   const connectorSkillNames = CONNECTOR_TYPE_KEYS.filter((type) => {
     return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
