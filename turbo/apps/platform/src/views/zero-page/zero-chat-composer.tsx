@@ -5021,9 +5021,7 @@ function ComposerTextarea({
         // The resting height is floored by min-height; rows is kept at 1 so the
         // floor governs. Mobile rests at a single line and grows back to the
         // three-line desktop height from the md breakpoint up.
-        singleLineOnMobile
-          ? "min-h-[44px] md:min-h-[96px]"
-          : "min-h-[96px]",
+        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
       )}
       rows={singleLineOnMobile ? 1 : 3}
       placeholder={
