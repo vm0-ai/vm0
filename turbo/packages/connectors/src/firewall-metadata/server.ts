@@ -39,6 +39,32 @@ const builtinFirewallFixedHostOwnerLookup: Readonly<
   Record<string, FirewallPermissionSummaryMetadata["type"]>
 > = BUILTIN_FIREWALL_FIXED_HOST_OWNERS;
 
+function stripHostnameTrailingDot(host: string): string {
+  const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
+  if (portStart === -1) {
+    return host.replace(/\.+$/, "");
+  }
+
+  const hostname = host.slice(0, portStart).replace(/\.+$/, "");
+  return `${hostname}${host.slice(portStart)}`;
+}
+
+function normalizeBuiltinConnectorHostLookupKey(host: string): string | null {
+  const trimmedHost = host.trim();
+  if (trimmedHost.length === 0) {
+    return null;
+  }
+
+  try {
+    const url = trimmedHost.includes("://")
+      ? new URL(trimmedHost)
+      : new URL(`https://${trimmedHost}`);
+    return stripHostnameTrailingDot(url.host.toLowerCase());
+  } catch {
+    return stripHostnameTrailingDot(trimmedHost.toLowerCase());
+  }
+}
+
 export function isFirewallServerMetadataConnectorType(
   type: string,
 ): type is FirewallServerMetadataConnectorType {
@@ -60,7 +86,11 @@ export function getFirewallServerMetadataSummary(
 export function getBuiltinConnectorHostOwner(
   host: string,
 ): BuiltinConnectorHostOwner | null {
-  const normalizedHost = host.toLowerCase();
+  const normalizedHost = normalizeBuiltinConnectorHostLookupKey(host);
+  if (!normalizedHost) {
+    return null;
+  }
+
   const type = Object.prototype.hasOwnProperty.call(
     builtinFirewallFixedHostOwnerLookup,
     normalizedHost,

@@ -342,11 +342,31 @@ describe("firewall metadata", () => {
       type: "github",
       label: "GitHub",
     });
+    expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(
+      getBuiltinConnectorHostOwner("https://api.github.com/repos"),
+    ).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
     expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
       type: "slack",
       label: "Slack",
     });
     expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
     expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
     expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
   });
