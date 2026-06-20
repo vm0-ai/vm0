@@ -127,22 +127,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
 
             let err = std::io::stderr();
             let mut err = err.lock();
-            let _ = err.write_all(&result.stderr);
-            let mut stderr_line_open = write_remote_exec_terminal_diagnostic(&mut err, &result);
-            if result.stdout_truncated {
-                write_remote_exec_warning(
-                    &mut err,
-                    &mut stderr_line_open,
-                    "warning: remote stdout was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest",
-                );
-            }
-            if result.stderr_truncated {
-                write_remote_exec_warning(
-                    &mut err,
-                    &mut stderr_line_open,
-                    "warning: remote stderr was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest",
-                );
-            }
+            write_remote_exec_stderr(&mut err, &result);
 
             Ok(remote_exec_exit_code(result.termination))
         }
@@ -155,6 +140,8 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
 }
 
 const REMOTE_EXEC_TIMEOUT_EXIT_CODE: u8 = 124;
+const REMOTE_EXEC_STDOUT_TRUNCATED_WARNING: &str = "warning: remote stdout was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest";
+const REMOTE_EXEC_STDERR_TRUNCATED_WARNING: &str = "warning: remote stderr was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest";
 
 fn remote_exec_exit_code(termination: SandboxExecTermination) -> ExitCode {
     match termination {
@@ -166,38 +153,45 @@ fn remote_exec_exit_code(termination: SandboxExecTermination) -> ExitCode {
     }
 }
 
+fn write_remote_exec_stderr(stderr: &mut impl Write, result: &RemoteExecResult) {
+    let _ = stderr.write_all(&result.stderr);
+    let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
+
+    write_remote_exec_terminal_diagnostic(stderr, result, &mut line_open);
+    if result.stdout_truncated {
+        write_remote_exec_warning(stderr, &mut line_open, REMOTE_EXEC_STDOUT_TRUNCATED_WARNING);
+    }
+    if result.stderr_truncated {
+        write_remote_exec_warning(stderr, &mut line_open, REMOTE_EXEC_STDERR_TRUNCATED_WARNING);
+    }
+}
+
 fn write_remote_exec_terminal_diagnostic(
     stderr: &mut impl Write,
     result: &RemoteExecResult,
-) -> bool {
-    let fallback = match result.termination {
-        SandboxExecTermination::Exited { .. }
-        | SandboxExecTermination::StartFailed
-        | SandboxExecTermination::WaitFailed => None,
-        SandboxExecTermination::TimedOut => Some("Timeout"),
-        SandboxExecTermination::Cancelled => Some("Cancelled"),
+    line_open: &mut bool,
+) {
+    let (fallback, include_diagnostic) = match result.termination {
+        SandboxExecTermination::Exited { .. } => (None, false),
+        SandboxExecTermination::TimedOut => (Some("Timeout"), false),
+        SandboxExecTermination::Cancelled => (Some("Cancelled"), true),
+        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => (None, true),
     };
-
-    let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
 
     if result.stderr.is_empty() {
         if let Some(message) = fallback {
             let _ = writeln!(stderr, "{message}");
-            line_open = false;
+            *line_open = false;
         }
-    } else if !result.diagnostic.is_empty() && line_open {
+    } else if include_diagnostic && !result.diagnostic.is_empty() && *line_open {
         let _ = writeln!(stderr);
-        line_open = false;
+        *line_open = false;
     }
 
-    if !matches!(result.termination, SandboxExecTermination::Exited { .. })
-        && !result.diagnostic.is_empty()
-    {
+    if include_diagnostic && !result.diagnostic.is_empty() {
         let _ = writeln!(stderr, "{}", result.diagnostic);
-        line_open = false;
+        *line_open = false;
     }
-
-    line_open
 }
 
 fn write_remote_exec_warning(stderr: &mut impl Write, line_open: &mut bool, message: &str) {
@@ -352,9 +346,9 @@ mod tests {
             stdout_truncated: false,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
+        let mut stderr = Vec::new();
 
-        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result);
 
         assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
@@ -369,9 +363,9 @@ mod tests {
             stdout_truncated: false,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
+        let mut stderr = Vec::new();
 
-        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result);
 
         assert_eq!(stderr, b"stderr clue");
     }
@@ -386,9 +380,9 @@ mod tests {
             stdout_truncated: false,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
+        let mut stderr = Vec::new();
 
-        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result);
 
         assert_eq!(stderr, b"Cancelled\n");
     }
@@ -403,11 +397,28 @@ mod tests {
             stdout_truncated: false,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
+        let mut stderr = Vec::new();
 
-        write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result);
 
         assert_eq!(stderr, b"Cancelled\ncancel diagnostic\n");
+    }
+
+    #[test]
+    fn terminal_timeout_diagnostic_preserves_legacy_timeout_display() {
+        let result = RemoteExecResult {
+            termination: SandboxExecTermination::TimedOut,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: "timeout diagnostic".into(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut stderr = Vec::new();
+
+        write_remote_exec_stderr(&mut stderr, &result);
+
+        assert_eq!(stderr, b"Timeout\n");
     }
 
     #[test]
@@ -420,12 +431,14 @@ mod tests {
             stdout_truncated: true,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
-        let mut line_open = write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        let mut stderr = Vec::new();
 
-        write_remote_exec_warning(&mut stderr, &mut line_open, "warning: truncated");
+        write_remote_exec_stderr(&mut stderr, &result);
 
-        assert_eq!(stderr, b"stderr clue\nwarning: truncated\n");
+        assert_eq!(
+            stderr,
+            format!("stderr clue\n{REMOTE_EXEC_STDOUT_TRUNCATED_WARNING}\n").into_bytes()
+        );
     }
 
     #[test]
@@ -438,12 +451,15 @@ mod tests {
             stdout_truncated: true,
             stderr_truncated: false,
         };
-        let mut stderr = result.stderr.clone();
-        let mut line_open = write_remote_exec_terminal_diagnostic(&mut stderr, &result);
+        let mut stderr = Vec::new();
 
-        write_remote_exec_warning(&mut stderr, &mut line_open, "warning: truncated");
+        write_remote_exec_stderr(&mut stderr, &result);
 
-        assert_eq!(stderr, b"stderr clue\nwait failed\nwarning: truncated\n");
+        assert_eq!(
+            stderr,
+            format!("stderr clue\nwait failed\n{REMOTE_EXEC_STDOUT_TRUNCATED_WARNING}\n")
+                .into_bytes()
+        );
     }
 
     // ---- argument quoting -------------------------------------------------
