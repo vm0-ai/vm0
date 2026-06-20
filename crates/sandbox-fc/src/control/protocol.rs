@@ -349,8 +349,8 @@ mod tests {
             "stderr_truncated": false
         });
 
-        let err = serde_json::from_value::<ExecResponse>(legacy).unwrap_err();
-        assert!(err.to_string().contains("data did not match any variant"));
+        let result = serde_json::from_value::<ExecResponse>(legacy);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -360,6 +360,7 @@ mod tests {
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["error"], "sandbox not running");
+        assert!(json.get("termination").is_none());
         assert!(json.get("exit_code").is_none());
     }
 

@@ -188,6 +188,23 @@ mod tests {
     }
 
     #[test]
+    fn remote_exec_response_invalid_stderr_base64_is_connection_error() {
+        let result = remote_exec_result_from_response(ExecResponse::Success {
+            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            stdout: BASE64.encode(b""),
+            stderr: "not base64".into(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: String::new(),
+        });
+
+        let Err(SandboxControlError::Connection(message)) = result else {
+            panic!("expected connection error");
+        };
+        assert!(message.contains("decode stderr"));
+    }
+
+    #[test]
     fn remote_exec_response_error_maps_to_remote_error() {
         let result = remote_exec_result_from_response(ExecResponse::Error {
             error: "sandbox not running".into(),
