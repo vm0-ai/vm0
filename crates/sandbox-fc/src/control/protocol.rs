@@ -34,6 +34,7 @@ fn default_timeout() -> u32 {
 /// This enum is serialized without a tag. Clients should distinguish variants
 /// by shape: a command result response contains command result fields, while an
 /// error response contains only an `error` string.
+/// Unknown fields are rejected so mixed success/error shapes fail closed.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ExecResponse {
@@ -114,6 +115,7 @@ pub enum TerminateStatus {
 /// This enum is serialized without a tag. Clients should distinguish variants
 /// by shape: a status response contains a `status` field, while an error
 /// response contains only an `error` string.
+/// Unknown fields are rejected so mixed status/error shapes fail closed.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum TerminateResponse {
