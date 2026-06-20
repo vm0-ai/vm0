@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.2...desktop-v0.17.0) (2026-06-20)
+
+
+### Features
+
+* **desktop:** redesign Computer Use UI into init / online / offline states ([#18378](https://github.com/vm0-ai/vm0/issues/18378)) ([c3e62f5](https://github.com/vm0-ai/vm0/commit/c3e62f52016204503d84096913a6663b9e2684cd))
+
 ## [0.16.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.1...desktop-v0.16.2) (2026-06-19)
 
 

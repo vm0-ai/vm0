@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.478.0](https://github.com/vm0-ai/vm0/compare/app-v0.477.0...app-v0.478.0) (2026-06-20)
+
+
+### Features
+
+* default chat composer to single line on mobile behind org switch ([#18380](https://github.com/vm0-ai/vm0/issues/18380)) ([c19c2c2](https://github.com/vm0-ai/vm0/commit/c19c2c207ded7ef0cd1a0f83fb9634eea0cd9234))
+
+
+### Bug Fixes
+
+* correct cli logs pagination cursors ([#18340](https://github.com/vm0-ai/vm0/issues/18340)) ([8c49dc6](https://github.com/vm0-ai/vm0/commit/8c49dc6e6fb5303a71443bfc02309a49abfbc20a))
+
+
+### Refactoring
+
+* remove delivered ChatInlineFeedback and StripeConnector feature switches ([#18376](https://github.com/vm0-ai/vm0/issues/18376)) ([9638b06](https://github.com/vm0-ai/vm0/commit/9638b064b169a9df8a7368d5c5978fb2369fa0be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.106.1
+    * @vm0/connectors bumped to 1.96.0
+    * @vm0/core bumped to 8.360.0
+
 ## [0.477.0](https://github.com/vm0-ai/vm0/compare/app-v0.476.0...app-v0.477.0) (2026-06-20)
 
 
