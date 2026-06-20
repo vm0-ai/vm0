@@ -2021,6 +2021,23 @@ describe("logs command", () => {
       );
     });
 
+    it("should reject out-of-range Unix timestamps for --since", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--since",
+          "8640000000000001",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid time format"),
+      );
+    });
+
     it("should handle generic API error", async () => {
       server.use(
         http.get(

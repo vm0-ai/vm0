@@ -2774,6 +2774,14 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         scheduleRun.body.runId,
       ].sort(),
     );
+
+    const invalidListSince = await reads.requestListLogs(
+      actor,
+      { since: 8_640_000_000_000_001 },
+      [400],
+    );
+    expectApiError(invalidListSince.body);
+
     const webEntry = listed.body.data.find((entry) => {
       return entry.id === webRun.runId;
     });

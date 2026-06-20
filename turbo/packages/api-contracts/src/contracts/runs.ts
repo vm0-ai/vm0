@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import {
+  authHeadersSchema,
+  initContract,
+  isValidDateTimestamp,
+  timestampQueryNumberSchema,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 import {
@@ -427,10 +432,6 @@ interface LogPaginationQueryOptions {
   readonly defaultOrder?: LogPaginationOrder;
 }
 
-function isValidDateTimestamp(value: number): boolean {
-  return Number.isFinite(new Date(value).getTime());
-}
-
 const ISO_UTC_TIMESTAMP_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/;
 
@@ -462,13 +463,6 @@ const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
     },
     { message: "Sequence cursor is out of range" },
   );
-
-const timestampQueryNumberSchema = safeIntegerQueryNumberSchema.refine(
-  isValidDateTimestamp,
-  {
-    message: "Timestamp is out of range",
-  },
-);
 
 function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
   return cursorKind === "time"
@@ -928,13 +922,14 @@ export const logsSearchContract = c.router({
       keyword: z.string().min(1),
       agentId: z.string().uuid().optional(),
       runId: z.string().optional(),
-      since: z.coerce.number().optional(),
+      since: timestampQueryNumberSchema.optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),
       after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: logsSearchResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
     },
     summary: "Search agent events across runs",

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import {
+  authHeadersSchema,
+  initContract,
+  timestampQueryNumberSchema,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
@@ -315,13 +319,14 @@ export const zeroLogsSearchContract = c.router({
       keyword: z.string().min(1),
       agentId: z.string().uuid().optional(),
       runId: z.string().optional(),
-      since: z.coerce.number().optional(),
+      since: timestampQueryNumberSchema.optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),
       after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: logsSearchResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },

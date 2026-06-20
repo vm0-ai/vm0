@@ -16,25 +16,30 @@
 const ISO_8601_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})(?:[Tt](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/;
 const DAYS_BY_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
 
 export function parseTime(timeStr: string): number {
   // Try relative time first (e.g., "5m", "2h", "1d")
   const relativeMatch = timeStr.match(/^(\d+)([smhdw])$/);
   if (relativeMatch) {
-    const value = parseInt(relativeMatch[1]!, 10);
+    const value = Number(relativeMatch[1]!);
     const unit = relativeMatch[2]!;
-    return parseRelativeTime(value, unit);
+    const timestamp = parseRelativeTime(value, unit);
+    if (timestamp !== undefined) {
+      return timestamp;
+    }
   }
 
   // Try Unix timestamp (seconds or milliseconds)
   if (/^\d+$/.test(timeStr)) {
-    const timestamp = parseInt(timeStr, 10);
+    const rawTimestamp = Number(timeStr);
     // If timestamp is less than year 2000 in seconds, assume it's already in ms
     // If it looks like seconds (< 10000000000), convert to ms
-    if (timestamp < 10000000000) {
-      return timestamp * 1000;
+    const timestamp =
+      rawTimestamp < 10000000000 ? rawTimestamp * 1000 : rawTimestamp;
+    if (isValidTimestamp(timestamp)) {
+      return timestamp;
     }
-    return timestamp;
   }
 
   // Try ISO 8601 format
@@ -81,7 +86,7 @@ function parseIsoTime(timeStr: string): number | undefined {
   }
 
   const timestamp = new Date(timeStr).getTime();
-  return Number.isNaN(timestamp) ? undefined : timestamp;
+  return isValidTimestamp(timestamp) ? timestamp : undefined;
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -98,7 +103,11 @@ function isLeapYear(year: number): boolean {
 /**
  * Parse relative time and return Unix timestamp in milliseconds
  */
-function parseRelativeTime(value: number, unit: string): number {
+function parseRelativeTime(value: number, unit: string): number | undefined {
+  if (!Number.isSafeInteger(value)) {
+    return undefined;
+  }
+
   const now = Date.now();
   const multipliers: Record<string, number> = {
     s: 1000, // seconds
@@ -113,5 +122,13 @@ function parseRelativeTime(value: number, unit: string): number {
     throw new Error(`Unknown time unit: ${unit}`);
   }
 
-  return now - value * multiplier;
+  const timestamp = now - value * multiplier;
+  return isValidTimestamp(timestamp) ? timestamp : undefined;
+}
+
+function isValidTimestamp(timestamp: number): boolean {
+  return (
+    Number.isSafeInteger(timestamp) &&
+    Math.abs(timestamp) <= MAX_DATE_TIMESTAMP_MS
+  );
 }

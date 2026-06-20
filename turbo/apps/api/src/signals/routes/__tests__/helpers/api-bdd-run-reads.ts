@@ -384,7 +384,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestListLogs<TStatus extends 200 | 401>(
+    async requestListLogs<TStatus extends 200 | 400 | 401>(
       actor: ApiTestUser | null,
       query: LogsListQuery,
       statuses: readonly TStatus[],
