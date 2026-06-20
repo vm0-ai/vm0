@@ -491,6 +491,90 @@ function resolveComposerCanSend({
 // strip's bottom edge so it reads as one tucked-behind queue layer.
 // ---------------------------------------------------------------------------
 
+// The three-bar "queue" mark, sized to sit inline beside the goal's target so a
+// queued row and the goal row differ only by their leading icon.
+function ComposerQueueGlyph() {
+  return (
+    <span
+      className="inline-flex h-4 w-4 items-center justify-center gap-[2px]"
+      aria-hidden="true"
+    >
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800" />
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800/60" />
+      <span className="h-3 w-[3px] rounded-sm bg-emerald-800/30" />
+    </span>
+  );
+}
+
+// A single strip row — a queued message or the active goal. Both share one
+// layout so they read as the same kind of pending item; only the leading icon
+// distinguishes them. The icon is a popover trigger that names the row's kind
+// and shows its full prompt, since the inline text is truncated.
+function ComposerStripRow({
+  kind,
+  text,
+  onRemove,
+  removeAriaLabel,
+}: {
+  kind: "queued" | "goal";
+  text: string;
+  onRemove?: () => void;
+  removeAriaLabel: string;
+}) {
+  const isGoal = kind === "goal";
+  return (
+    <div
+      role="listitem"
+      aria-label={isGoal ? "Active goal" : "Queued message"}
+      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
+    >
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={isGoal ? "About this goal" : "About this queued message"}
+          >
+            {isGoal ? (
+              <IconTarget size={16} stroke={1.5} aria-hidden="true" />
+            ) : (
+              <ComposerQueueGlyph />
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-80 rounded-lg p-3"
+        >
+          <p className="text-xs font-semibold text-foreground">
+            {isGoal ? "Goal" : "Queued message"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isGoal
+              ? "Runs after the queue drains and keeps running until you cancel it."
+              : "Waits in line and sends once the current run finishes."}
+          </p>
+          <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
+            {text}
+          </div>
+        </PopoverContent>
+      </Popover>
+      <span className="min-w-0 flex-1 truncate">{text}</span>
+      <button
+        type="button"
+        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          onRemove?.();
+        }}
+        aria-label={removeAriaLabel}
+      >
+        <IconX size={16} stroke={1.5} />
+      </button>
+    </div>
+  );
+}
+
 function QueuedMessagesStrip({
   items,
   onRemove,
@@ -511,15 +595,7 @@ function QueuedMessagesStrip({
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
       {count > 0 ? (
-        <div className="flex items-center gap-2 px-5 pt-3 pb-2">
-          <span
-            className="inline-flex items-center gap-[2px]"
-            aria-hidden="true"
-          >
-            <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
-            <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
-            <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
-          </span>
+        <div className="px-5 pt-3 pb-2">
           <span className="text-sm text-muted-foreground">{label}</span>
         </div>
       ) : null}
@@ -532,24 +608,15 @@ function QueuedMessagesStrip({
       >
         {queued.map((item) => {
           return (
-            <div
+            <ComposerStripRow
               key={item.id}
-              role="listitem"
-              aria-label="Queued message"
-              className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
-            >
-              <span className="min-w-0 flex-1 truncate">{item.text}</span>
-              <button
-                type="button"
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => {
-                  onRemove?.(item.id);
-                }}
-                aria-label="Remove queued message"
-              >
-                <IconX size={16} stroke={1.5} />
-              </button>
-            </div>
+              kind="queued"
+              text={item.text}
+              onRemove={() => {
+                onRemove?.(item.id);
+              }}
+              removeAriaLabel="Remove queued message"
+            />
           );
         })}
         {/* The active goal sits last — below every queued message — because a
@@ -557,34 +624,14 @@ function QueuedMessagesStrip({
             than the queue. Like a queued message it can be cancelled; cancelling
             disables the goal's trigger so it no longer runs behind the queue. */}
         {activeGoal ? (
-          <div
-            role="listitem"
-            aria-label="Active goal"
-            className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
-          >
-            <IconTarget
-              size={16}
-              stroke={1.5}
-              className="shrink-0 text-emerald-800"
-              aria-hidden="true"
-            />
-            <span className="min-w-0 flex-1 truncate">
-              {activeGoal.objective}
-            </span>
-            <span className="shrink-0 rounded-full bg-emerald-800/10 px-2 py-0.5 text-xs font-medium text-emerald-800">
-              Goal
-            </span>
-            <button
-              type="button"
-              className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
-                onCancelGoal?.();
-              }}
-              aria-label="Cancel goal"
-            >
-              <IconX size={16} stroke={1.5} />
-            </button>
-          </div>
+          <ComposerStripRow
+            kind="goal"
+            text={activeGoal.objective}
+            onRemove={() => {
+              onCancelGoal?.();
+            }}
+            removeAriaLabel="Cancel goal"
+          />
         ) : null}
       </div>
     </div>
