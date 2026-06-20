@@ -21,19 +21,30 @@ function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
   return grant.expiresAt === null || new Date(grant.expiresAt) > checkedAt;
 }
 
-function resolvedMockExpiresAt(
-  existing: UserPermissionGrantResponse | undefined,
-  action: UserPermissionGrantResponse["action"],
-  expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0],
-  now: Date,
-): string | null {
+function resolvedMockExpiresAt({
+  existing,
+  action,
+  expiresIn,
+  preserveExisting,
+  now,
+}: {
+  readonly existing: UserPermissionGrantResponse | undefined;
+  readonly action: UserPermissionGrantResponse["action"];
+  readonly expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0];
+  readonly preserveExisting: boolean;
+  readonly now: Date;
+}): string | null {
   if (action !== "allow") {
     return null;
   }
   if (expiresIn !== undefined) {
     return userPermissionGrantExpiresAt(expiresIn, now.getTime());
   }
-  if (existing?.action === "allow" && isActiveGrant(existing, now)) {
+  if (
+    preserveExisting &&
+    existing?.action === "allow" &&
+    isActiveGrant(existing, now)
+  ) {
     return existing.expiresAt;
   }
   return null;
@@ -66,12 +77,13 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: resolvedMockExpiresAt(
+      expiresAt: resolvedMockExpiresAt({
         existing,
-        body.action,
-        body.expiresIn,
+        action: body.action,
+        expiresIn: body.expiresIn,
+        preserveExisting: true,
         now,
-      ),
+      }),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -86,14 +98,60 @@ export const apiUserPermissionGrantsHandlers = [
     return respond(200, grant);
   }),
 
-  mockApi(zeroUserPermissionGrantsContract.reset, ({ query, respond }) => {
-    mockUserPermissionGrants = mockUserPermissionGrants.filter((grant) => {
-      return (
-        grant.agentId !== query.agentId ||
-        grant.connectorRef !== query.connectorRef
-      );
+  mockApi(zeroUserPermissionGrantsContract.apply, ({ body, respond }) => {
+    const now = nowDate();
+    const existingGrants = body.reset
+      ? []
+      : mockUserPermissionGrants.filter((grant) => {
+          return (
+            grant.agentId === body.agentId &&
+            grant.connectorRef === body.connectorRef
+          );
+        });
+    const existingGrantsByPermission = new Map(
+      existingGrants.map((grant) => {
+        return [grant.permission, grant] as const;
+      }),
+    );
+    const grants = body.grants.flatMap((appliedGrant) => {
+      const existing = existingGrantsByPermission.get(appliedGrant.permission);
+      const expiresAt = resolvedMockExpiresAt({
+        existing,
+        action: appliedGrant.action,
+        expiresIn: appliedGrant.expiresIn,
+        preserveExisting: true,
+        now,
+      });
+      return {
+        agentId: body.agentId,
+        connectorRef: body.connectorRef,
+        permission: appliedGrant.permission,
+        action: appliedGrant.action,
+        expiresAt,
+        createdAt: existing?.createdAt ?? now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
     });
+    const appliedKeys = new Set(
+      grants.map((grant) => {
+        return grantKey(grant);
+      }),
+    );
 
-    return respond(204);
+    mockUserPermissionGrants = [
+      ...mockUserPermissionGrants.filter((grant) => {
+        if (
+          body.reset &&
+          grant.agentId === body.agentId &&
+          grant.connectorRef === body.connectorRef
+        ) {
+          return false;
+        }
+        return !appliedKeys.has(grantKey(grant));
+      }),
+      ...grants,
+    ];
+
+    return respond(200, grants);
   }),
 ];

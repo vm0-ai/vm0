@@ -30,11 +30,6 @@ export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
 
-export const resetUserPermissionGrantsQuerySchema = z.object({
-  agentId: agentIdSchema,
-  connectorRef: connectorRefSchema,
-});
-
 const upsertUserPermissionGrantBaseRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
@@ -54,6 +49,28 @@ export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
     }),
   ],
 );
+
+const applyUserPermissionGrantBaseSchema = z.object({
+  permission: permissionSchema,
+});
+
+export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
+  applyUserPermissionGrantBaseSchema.extend({
+    action: z.literal("allow"),
+    expiresIn: userPermissionGrantExpiresInSchema.optional(),
+  }),
+  applyUserPermissionGrantBaseSchema.extend({
+    action: z.literal("deny"),
+    expiresIn: z.never().optional(),
+  }),
+]);
+
+export const applyUserPermissionGrantsRequestSchema = z.object({
+  agentId: agentIdSchema,
+  connectorRef: connectorRefSchema,
+  reset: z.boolean(),
+  grants: z.array(applyUserPermissionGrantSchema),
+});
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {
@@ -84,19 +101,20 @@ export const zeroUserPermissionGrantsContract = c.router({
     },
     summary: "Upsert current user's permission grant for an agent",
   },
-  reset: {
-    method: "DELETE",
-    path: "/api/zero/user-permission-grants",
+  apply: {
+    method: "PUT",
+    path: "/api/zero/user-permission-grants/apply",
     headers: authHeadersSchema,
-    query: resetUserPermissionGrantsQuerySchema,
+    body: applyUserPermissionGrantsRequestSchema,
     responses: {
-      204: c.noBody(),
+      200: z.array(userPermissionGrantResponseSchema),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Reset current user's connector permission grants for an agent",
+    summary:
+      "Apply current user's explicit permission grant changes for one connector",
   },
 });
 
@@ -112,11 +130,14 @@ export type UserPermissionGrantResponse = z.infer<
 export type ListUserPermissionGrantsQuery = z.infer<
   typeof listUserPermissionGrantsQuerySchema
 >;
-export type ResetUserPermissionGrantsQuery = z.infer<
-  typeof resetUserPermissionGrantsQuerySchema
->;
 export type UpsertUserPermissionGrantRequest = z.infer<
   typeof upsertUserPermissionGrantRequestSchema
+>;
+export type ApplyUserPermissionGrant = z.infer<
+  typeof applyUserPermissionGrantSchema
+>;
+export type ApplyUserPermissionGrantsRequest = z.infer<
+  typeof applyUserPermissionGrantsRequestSchema
 >;
 export type ZeroUserPermissionGrantsContract =
   typeof zeroUserPermissionGrantsContract;

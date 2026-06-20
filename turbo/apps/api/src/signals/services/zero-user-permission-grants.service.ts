@@ -8,7 +8,7 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
-  ResetUserPermissionGrantsQuery,
+  ApplyUserPermissionGrantsRequest,
   UpsertUserPermissionGrantRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -19,6 +19,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
+type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
 interface UserPermissionGrantScope {
   readonly orgId: string;
@@ -32,10 +33,10 @@ interface UpsertUserPermissionGrantArgs {
   readonly grant: UpsertUserPermissionGrantRequest;
 }
 
-interface ResetUserPermissionGrantsArgs {
+interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly reset: ResetUserPermissionGrantsQuery;
+  readonly apply: ApplyUserPermissionGrantsRequest;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -65,9 +66,10 @@ type UpsertUserPermissionGrantResult =
   | NotFoundResponse
   | ValidationErrorResponse;
 
-type ResetUserPermissionGrantsResult =
+type ApplyUserPermissionGrantsResult =
   | {
       readonly kind: "ok";
+      readonly grants: readonly UserPermissionGrantResponse[];
     }
   | NotFoundResponse
   | ValidationErrorResponse;
@@ -146,24 +148,19 @@ function validateGrantTarget(
   return null;
 }
 
-function validateConnectorRef(
-  connectorRef: string,
-): ValidationErrorResponse | null {
-  if (isFirewallConnectorType(connectorRef)) {
-    return null;
+function validateGrantExpiration(grant: {
+  readonly action: UserPermissionGrantAction;
+  readonly expiresIn?: UserPermissionGrantExpiresIn;
+}): ValidationErrorResponse | null {
+  if (grant.action !== "allow") {
+    return grant.expiresIn === undefined
+      ? null
+      : validationError(
+          "Permission grant expiration is only supported for allow grants",
+        );
   }
-  return validationError(`Unknown connector ref: ${connectorRef}`);
-}
 
-function validateGrantExpiration(
-  grant: UpsertUserPermissionGrantRequest,
-): ValidationErrorResponse | null {
-  if (grant.action === "allow" || grant.expiresIn === undefined) {
-    return null;
-  }
-  return validationError(
-    "Permission grant expiration is only supported for allow grants",
-  );
+  return null;
 }
 
 function activeGrantCondition(checkedAt: Date) {
@@ -202,6 +199,29 @@ function preservedActiveGrantExpiresAt(
     return null;
   }
   return expiresAt.getTime() > timestamp.getTime() ? expiresAt : null;
+}
+
+function resolvedExpiresAt({
+  action,
+  expiresIn,
+  existing,
+  timestamp,
+}: {
+  readonly action: UserPermissionGrantAction;
+  readonly expiresIn: UserPermissionGrantExpiresIn | undefined;
+  readonly existing: UserPermissionGrantRow | undefined;
+  readonly timestamp: Date;
+}): Date | null {
+  if (action !== "allow") {
+    return null;
+  }
+  if (expiresIn !== undefined) {
+    return resolveGrantExpiresAt(expiresIn, timestamp);
+  }
+  return preservedActiveGrantExpiresAt(
+    existing?.action === "allow" ? existing.expiresAt : null,
+    timestamp,
+  );
 }
 
 function formatUserPermissionGrant(
@@ -307,15 +327,12 @@ async function upsertVisibleGrantRow(
       .for("update")
       .limit(1);
 
-    const expiresAt =
-      args.grant.action === "allow"
-        ? args.grant.expiresIn === undefined
-          ? preservedActiveGrantExpiresAt(
-              existing?.action === "allow" ? existing.expiresAt : null,
-              timestamp,
-            )
-          : resolveGrantExpiresAt(args.grant.expiresIn, timestamp)
-        : null;
+    const expiresAt = resolvedExpiresAt({
+      action: args.grant.action,
+      expiresIn: args.grant.expiresIn,
+      existing,
+      timestamp,
+    });
 
     const [row] = existing
       ? await tx
@@ -357,31 +374,127 @@ async function upsertVisibleGrantRow(
   });
 }
 
-async function resetVisibleConnectorGrantRows(
+function validateApplyUserPermissionGrants(
+  apply: ApplyUserPermissionGrantsRequest,
+): ValidationErrorResponse | null {
+  const names = validPermissionNames(apply.connectorRef);
+  if (!names) {
+    return validationError(`Unknown connector ref: ${apply.connectorRef}`);
+  }
+
+  const seenPermissions = new Set<string>();
+  for (const grant of apply.grants) {
+    if (seenPermissions.has(grant.permission)) {
+      return validationError(`Duplicate permission grant: ${grant.permission}`);
+    }
+    seenPermissions.add(grant.permission);
+
+    if (
+      grant.permission !== UNKNOWN_PERMISSION_GRANT &&
+      !names.has(grant.permission)
+    ) {
+      return validationError(
+        `Unknown permission "${grant.permission}" for connector "${apply.connectorRef}"`,
+      );
+    }
+
+    const expirationValidation = validateGrantExpiration(grant);
+    if (expirationValidation) {
+      return expirationValidation;
+    }
+  }
+  return null;
+}
+
+async function applyVisibleGrantRows(
   db: Db,
-  args: ResetUserPermissionGrantsArgs,
-): Promise<NotFoundResponse | null> {
+  args: ApplyUserPermissionGrantsArgs,
+): Promise<readonly UserPermissionGrantRow[] | NotFoundResponse> {
   return await db.transaction(async (tx) => {
     const visibleAgent = await lockVisibleAgentForUpdate(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      agentId: args.reset.agentId,
+      agentId: args.apply.agentId,
     });
     if (!visibleAgent) {
-      return notFound(`Agent not found: ${args.reset.agentId}`);
+      return notFound(`Agent not found: ${args.apply.agentId}`);
     }
 
-    await tx
-      .delete(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, args.orgId),
-          eq(userPermissionGrants.userId, args.userId),
-          eq(userPermissionGrants.agentId, args.reset.agentId),
-          eq(userPermissionGrants.connectorRef, args.reset.connectorRef),
-        ),
-      );
-    return null;
+    const timestamp = nowDate();
+    const connectorScopeCondition = and(
+      eq(userPermissionGrants.orgId, args.orgId),
+      eq(userPermissionGrants.userId, args.userId),
+      eq(userPermissionGrants.agentId, args.apply.agentId),
+      eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+    );
+
+    if (args.apply.reset) {
+      await tx.delete(userPermissionGrants).where(connectorScopeCondition);
+    }
+
+    if (args.apply.grants.length === 0) {
+      return [];
+    }
+
+    const existingRows = args.apply.reset
+      ? []
+      : await tx
+          .select()
+          .from(userPermissionGrants)
+          .where(connectorScopeCondition)
+          .for("update");
+    const existingRowsByPermission = new Map(
+      existingRows.map((row) => {
+        return [row.permission, row] as const;
+      }),
+    );
+    const rows: UserPermissionGrantRow[] = [];
+    for (const grant of args.apply.grants) {
+      const existing = existingRowsByPermission.get(grant.permission);
+      const expiresAt = resolvedExpiresAt({
+        action: grant.action,
+        expiresIn: grant.expiresIn,
+        existing,
+        timestamp,
+      });
+      const [row] = existing
+        ? await tx
+            .update(userPermissionGrants)
+            .set({
+              action: grant.action,
+              expiresAt,
+              updatedAt: timestamp,
+            })
+            .where(
+              and(
+                eq(userPermissionGrants.orgId, args.orgId),
+                eq(userPermissionGrants.userId, args.userId),
+                eq(userPermissionGrants.agentId, args.apply.agentId),
+                eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+                eq(userPermissionGrants.permission, grant.permission),
+              ),
+            )
+            .returning()
+        : await tx
+            .insert(userPermissionGrants)
+            .values({
+              orgId: args.orgId,
+              userId: args.userId,
+              agentId: args.apply.agentId,
+              connectorRef: args.apply.connectorRef,
+              permission: grant.permission,
+              action: grant.action,
+              expiresAt,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            })
+            .returning();
+      if (!row) {
+        throw new Error("User permission grant apply did not return a row");
+      }
+      rows.push(row);
+    }
+    return rows;
   });
 }
 
@@ -441,25 +554,28 @@ export const upsertUserPermissionGrant$ = command(
   },
 );
 
-export const resetUserPermissionGrants$ = command(
+export const applyUserPermissionGrants$ = command(
   async (
     { set },
-    args: ResetUserPermissionGrantsArgs,
+    args: ApplyUserPermissionGrantsArgs,
     signal: AbortSignal,
-  ): Promise<ResetUserPermissionGrantsResult> => {
-    const validation = validateConnectorRef(args.reset.connectorRef);
+  ): Promise<ApplyUserPermissionGrantsResult> => {
+    const validation = validateApplyUserPermissionGrants(args.apply);
     if (validation) {
       return validation;
     }
 
     const writeDb = set(writeDb$);
-    const error = await resetVisibleConnectorGrantRows(writeDb, args);
+    const rows = await applyVisibleGrantRows(writeDb, args);
     signal.throwIfAborted();
 
-    if (error) {
-      return error;
+    if ("status" in rows) {
+      return rows;
     }
 
-    return { kind: "ok" as const };
+    return {
+      kind: "ok" as const,
+      grants: rows.map(formatUserPermissionGrant),
+    };
   },
 );

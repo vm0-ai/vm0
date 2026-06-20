@@ -95,8 +95,7 @@ import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
 import {
-  resetUserPermissionGrants$,
-  upsertUserPermissionGrant$,
+  applyUserPermissionGrants$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
@@ -127,29 +126,21 @@ import {
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import type {
+  ApplyUserPermissionGrant,
   UserPermissionGrantAction,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
-type UpsertUserPermissionGrant = (
+type ApplyUserPermissionGrants = (
   params: {
     agentId: string;
     connectorRef: string;
-    permission: string;
-    action: UserPermissionGrantAction;
-    expiresIn?: UserPermissionGrantExpiresIn;
+    reset: boolean;
+    grants: readonly ApplyUserPermissionGrant[];
   },
   signal: AbortSignal,
-) => Promise<UserPermissionGrantResponse>;
-
-type ResetUserPermissionGrants = (
-  params: {
-    agentId: string;
-    connectorRef: string;
-  },
-  signal: AbortSignal,
-) => Promise<void>;
+) => Promise<readonly UserPermissionGrantResponse[]>;
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -687,6 +678,49 @@ function defaultFirewallPoliciesForConnector(
   };
 }
 
+function applyGrantFromChangedPolicy(
+  policy: ChangedUserGrantPolicy,
+): ApplyUserPermissionGrant {
+  return policy.action === "allow"
+    ? {
+        permission: policy.permission,
+        action: "allow",
+        ...(policy.expiresIn ? { expiresIn: policy.expiresIn } : {}),
+      }
+    : { permission: policy.permission, action: "deny" };
+}
+
+function buildAppliedUserGrantPolicies({
+  connectorType,
+  metadata,
+  initialPolicies,
+  initialGrants,
+  policies,
+  expiresInByPermission,
+  resetPending,
+}: {
+  connectorType: ConnectorType;
+  metadata: FirewallPermissionDetailMetadata;
+  initialPolicies: FirewallPolicies;
+  initialGrants: readonly UserPermissionGrantResponse[];
+  policies: FirewallPolicies;
+  expiresInByPermission: GrantExpirationSelections;
+  resetPending: boolean;
+}): readonly ApplyUserPermissionGrant[] {
+  const basePolicies = resetPending
+    ? defaultFirewallPoliciesForConnector(metadata)
+    : initialPolicies;
+  const baseGrants = resetPending ? [] : initialGrants;
+  return changedUserGrantPolicies({
+    connectorType,
+    metadata,
+    initialPolicies: basePolicies,
+    initialGrants: baseGrants,
+    policies,
+    expiresInByPermission,
+  }).map(applyGrantFromChangedPolicy);
+}
+
 async function saveUserGrantPolicies({
   agentId,
   connectorType,
@@ -697,8 +731,7 @@ async function saveUserGrantPolicies({
   expiresInByPermission,
   resetPending,
   pageSignal,
-  resetGrantPolicies,
-  upsertGrant,
+  applyGrantPolicies,
 }: {
   agentId: string;
   connectorType: ConnectorType;
@@ -709,43 +742,25 @@ async function saveUserGrantPolicies({
   expiresInByPermission: GrantExpirationSelections;
   resetPending: boolean;
   pageSignal: AbortSignal;
-  resetGrantPolicies: ResetUserPermissionGrants;
-  upsertGrant: UpsertUserPermissionGrant;
+  applyGrantPolicies: ApplyUserPermissionGrants;
 }): Promise<void> {
-  if (resetPending) {
-    await resetGrantPolicies(
-      {
-        agentId,
-        connectorRef: connectorType,
-      },
-      pageSignal,
-    );
-  }
-
-  const basePolicies = resetPending
-    ? defaultFirewallPoliciesForConnector(metadata)
-    : initialPolicies;
-  const baseGrants = resetPending ? [] : initialGrants;
-
-  for (const { permission, action, expiresIn } of changedUserGrantPolicies({
-    connectorType,
-    metadata,
-    initialPolicies: basePolicies,
-    initialGrants: baseGrants,
-    policies,
-    expiresInByPermission,
-  })) {
-    await upsertGrant(
-      {
-        agentId,
-        connectorRef: connectorType,
-        permission,
-        action,
-        ...(action === "allow" && expiresIn ? { expiresIn } : {}),
-      },
-      pageSignal,
-    );
-  }
+  await applyGrantPolicies(
+    {
+      agentId,
+      connectorRef: connectorType,
+      reset: resetPending,
+      grants: buildAppliedUserGrantPolicies({
+        connectorType,
+        metadata,
+        initialPolicies,
+        initialGrants,
+        policies,
+        expiresInByPermission,
+        resetPending,
+      }),
+    },
+    pageSignal,
+  );
 }
 
 async function saveDrawerPolicies({
@@ -756,8 +771,7 @@ async function saveDrawerPolicies({
   initialGrants,
   intent,
   pageSignal,
-  resetGrantPolicies,
-  upsertGrant,
+  applyGrantPolicies,
 }: {
   agentId: string;
   connectorType: ConnectorType;
@@ -766,11 +780,8 @@ async function saveDrawerPolicies({
   initialGrants: readonly UserPermissionGrantResponse[];
   intent: PermissionDraftIntent;
   pageSignal: AbortSignal;
-  resetGrantPolicies: ResetUserPermissionGrants;
-  upsertGrant: UpsertUserPermissionGrant;
+  applyGrantPolicies: ApplyUserPermissionGrants;
 }): Promise<void> {
-  // TODO(#18218): replace this final compatibility expansion with compact
-  // user permission grant persistence once the storage/API shape supports it.
   const { policies, expiresInByPermission } =
     materializePermissionDraftForLegacySave({
       context: createPermissionDraftContext({ metadata, initialPolicies }),
@@ -787,8 +798,7 @@ async function saveDrawerPolicies({
     expiresInByPermission,
     resetPending: intent.resetPending,
     pageSignal,
-    resetGrantPolicies,
-    upsertGrant,
+    applyGrantPolicies,
   });
 }
 
@@ -1053,8 +1063,7 @@ function JobPermissionsTab({
       ? permissionGrantsToFirewallPolicies(userGrants)
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
-  const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
-  const [, resetGrantPolicies] = useLoadableSet(resetUserPermissionGrants$);
+  const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
   const connectorType = useGet(permConnectorType$);
   const setConnectorType = useSet(setPermConnectorType$);
   const search = useGet(permSearch$);
@@ -1147,8 +1156,7 @@ function JobPermissionsTab({
                 initialGrants: userGrants,
                 intent,
                 pageSignal,
-                resetGrantPolicies,
-                upsertGrant,
+                applyGrantPolicies,
               });
               toast.success("Permissions updated");
             }}

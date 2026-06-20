@@ -6,8 +6,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import {
+  applyUserPermissionGrants$,
   listUserPermissionGrants$,
-  resetUserPermissionGrants$,
   upsertUserPermissionGrant$,
 } from "../services/zero-user-permission-grants.service";
 
@@ -18,7 +18,7 @@ const userPermissionGrantAuthOptions = {
 
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const upsertBody$ = bodyResultOf(zeroUserPermissionGrantsContract.upsert);
-const resetQuery$ = queryOf(zeroUserPermissionGrantsContract.reset);
+const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
 
 const listUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -69,23 +69,28 @@ const upsertUserPermissionGrantInner$ = command(
   },
 );
 
-const resetUserPermissionGrantsInner$ = command(
+const applyUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const query = get(resetQuery$);
+    const bodyResult = await get(applyBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
     const result = await set(
-      resetUserPermissionGrants$,
+      applyUserPermissionGrants$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        reset: query,
+        apply: bodyResult.data,
       },
       signal,
     );
     signal.throwIfAborted();
 
     if ("kind" in result) {
-      return { status: 204 as const, body: undefined };
+      return { status: 200 as const, body: [...result.grants] };
     }
     return result;
   },
@@ -107,10 +112,10 @@ export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroUserPermissionGrantsContract.reset,
+    route: zeroUserPermissionGrantsContract.apply,
     handler: authRoute(
       userPermissionGrantAuthOptions,
-      resetUserPermissionGrantsInner$,
+      applyUserPermissionGrantsInner$,
     ),
   },
 ];

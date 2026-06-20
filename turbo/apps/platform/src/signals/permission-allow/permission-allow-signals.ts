@@ -1,5 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
+  type ApplyUserPermissionGrant,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   type UserPermissionGrantResponse,
@@ -205,25 +206,29 @@ export const upsertUserPermissionGrant$ = command(
   },
 );
 
-export const resetUserPermissionGrants$ = command(
+export const applyUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
       agentId: string;
       connectorRef: string;
+      reset: boolean;
+      grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<readonly UserPermissionGrantResponse[]> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    await accept(
-      client.reset({
-        query: {
+    const result = await accept(
+      client.apply({
+        body: {
           agentId: params.agentId,
           connectorRef: params.connectorRef,
+          reset: params.reset,
+          grants: [...params.grants],
         },
         fetchOptions: { signal },
       }),
-      [204],
+      [200],
     );
     signal.throwIfAborted();
     set(internalUserPermissionGrantsReload$, (prev) => {
@@ -233,5 +238,6 @@ export const resetUserPermissionGrants$ = command(
       return prev + 1;
     });
     set(reloadAgentById$);
+    return result.body;
   },
 );

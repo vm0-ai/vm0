@@ -11,7 +11,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
-  type UpsertUserPermissionGrantRequest,
+  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -736,23 +736,28 @@ describe("team page navigation", () => {
   it("finds and saves permissions beyond the initial drawer page", async () => {
     mockTeamAPIs();
     context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
-    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
-        capturedUpserts.push(body);
-        return respond(200, {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt: null,
-          createdAt: "2026-03-01T00:00:00.000Z",
-          updatedAt: "2026-03-01T00:00:00.000Z",
-        });
+        capturedApplies.push(body);
+        return respond(
+          200,
+          body.grants.map((grant) => {
+            return {
+              agentId: body.agentId,
+              connectorRef: body.connectorRef,
+              permission: grant.permission,
+              action: grant.action,
+              expiresAt: null,
+              createdAt: "2026-03-01T00:00:00.000Z",
+              updatedAt: "2026-03-01T00:00:00.000Z",
+            };
+          }),
+        );
       },
     );
 
@@ -794,12 +799,17 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
     });
-    expect(capturedUpserts).toStrictEqual([
+    expect(capturedApplies).toStrictEqual([
       {
         agentId: researchAgentId,
         connectorRef: "cloudflare",
-        permission: "memberships.read",
-        action: "deny",
+        reset: false,
+        grants: [
+          {
+            permission: "memberships.read",
+            action: "deny",
+          },
+        ],
       },
     ]);
   });
@@ -807,7 +817,7 @@ describe("team page navigation", () => {
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();
-    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId: researchAgentId,
@@ -818,36 +828,64 @@ describe("team page navigation", () => {
         createdAt: "2026-03-01T00:00:00.000Z",
         updatedAt: "2026-03-01T00:00:00.000Z",
       },
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        permission: "dashboards|read",
+        action: "allow",
+        expiresAt: isoFromNowMs(2 * 60 * 60 * 1000),
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        permission: "datasets|read",
+        action: "allow",
+        expiresAt: isoFromNowMs(-60 * 1000),
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        permission: "legacy|removed",
+        action: "deny",
+        expiresAt: null,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
     ];
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
-        capturedUpserts.push(body);
-        const grant: UserPermissionGrantResponse = {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt:
-            body.action === "allow" && body.expiresIn !== "always"
-              ? isoFromNowMs(60 * 60 * 1000)
-              : null,
-          createdAt: "2026-03-01T00:00:00.000Z",
-          updatedAt: "2026-03-01T00:30:00.000Z",
-        };
+        capturedApplies.push(body);
+        const appliedGrants: UserPermissionGrantResponse[] = body.grants.map(
+          (grant) => {
+            return {
+              agentId: body.agentId,
+              connectorRef: body.connectorRef,
+              permission: grant.permission,
+              action: grant.action,
+              expiresAt:
+                grant.action === "allow" && grant.expiresIn !== "always"
+                  ? isoFromNowMs(60 * 60 * 1000)
+                  : null,
+              createdAt: "2026-03-01T00:00:00.000Z",
+              updatedAt: "2026-03-01T00:30:00.000Z",
+            };
+          },
+        );
         grants = [
           ...grants.filter((current) => {
-            return (
-              current.connectorRef !== grant.connectorRef ||
-              current.permission !== grant.permission
-            );
+            return current.connectorRef !== body.connectorRef;
           }),
-          grant,
+          ...appliedGrants,
         ];
-        return respond(200, grant);
+        return respond(200, appliedGrants);
       },
     );
 
@@ -882,17 +920,20 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
     });
-    expect(capturedUpserts).toStrictEqual(
-      expect.arrayContaining([
-        {
-          agentId: researchAgentId,
-          connectorRef: "axiom",
-          permission: "annotations|create",
-          action: "allow",
-          expiresIn: "always",
-        },
-      ]),
-    );
+    expect(capturedApplies).toStrictEqual([
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        reset: false,
+        grants: [
+          {
+            permission: "annotations|create",
+            action: "allow",
+            expiresIn: "always",
+          },
+        ],
+      },
+    ]);
   });
 
   it("updates grouped connector permission policies from an agent page", async () => {
