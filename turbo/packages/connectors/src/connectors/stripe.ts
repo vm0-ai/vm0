@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const stripe = {
   stripe: {
@@ -10,7 +9,6 @@ export const stripe = {
       "Connect your Stripe account to manage payments, customers, and subscriptions",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.StripeConnector,
         showExperimentalLabel: false,
         label: "Sign in with Stripe",
         helpText: "Sign in with Stripe to grant access.",

@@ -9,7 +9,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.StripeConnector, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -95,8 +94,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.StripeConnector]).toBe(true);
-    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -147,16 +144,14 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
   });
 
-  it("should let individuals opt in to chat PR tracking and opt out of inline feedback", () => {
+  it("should let individuals opt in to chat PR tracking", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       overrides: {
         [FeatureSwitchKey.ChatGithubPrTracking]: true,
-        [FeatureSwitchKey.ChatInlineFeedback]: false,
       },
     });
     expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
-    expect(states[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
