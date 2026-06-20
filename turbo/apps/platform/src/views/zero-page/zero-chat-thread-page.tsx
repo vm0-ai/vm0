@@ -1001,8 +1001,9 @@ export function AutomationMenuButton({
   const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const open = openThreadId === threadId;
 
-  // Show the opener when the thread has either an automation or a workflow/goal
-  // trigger — a thread with only a goal must still reach the sidebar.
+  // Show the opener when the thread has an automation or a (non-goal) workflow
+  // trigger. Goals live in the composer, so a goal-only thread has nothing to
+  // show in the automation sidebar.
   if (automations.length === 0 && workflowTriggers.length === 0) {
     return null;
   }

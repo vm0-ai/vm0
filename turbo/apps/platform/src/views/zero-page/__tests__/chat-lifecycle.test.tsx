@@ -3230,9 +3230,26 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists thread workflow triggers with their workflow in the sidebar", async () => {
+  it("lists workflow triggers in the sidebar but excludes goals", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
+      // A scheduled workflow trigger — shown in the sidebar.
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000002",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "schedule",
+        scheduleSummary: "Every 60s",
+        eventType: null,
+        workflow: {
+          id: "a0000001-0000-4000-a000-000000000002",
+          name: "nightly-sync",
+          displayName: "Nightly sync",
+          description: "Sync the changelog every night",
+          objective: null,
+          type: "workflow",
+        },
+      }),
+      // A goal trigger — goals now live in the composer, so it must not appear.
       createMockWorkflowTrigger({ chatThreadId: AUTOMATION_THREAD_ID }),
     ]);
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -3255,15 +3272,18 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    // The goal card shows its title and the objective (goals have no
-    // description), plus the Active state with an enable/disable toggle.
-    expect(within(sidebar).getByText("Goal")).toBeInTheDocument();
+    // The workflow trigger card shows its name and description.
+    expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
     expect(
-      within(sidebar).getByText("Drive the release to merge"),
+      within(sidebar).getByText("Sync the changelog every night"),
     ).toBeInTheDocument();
-    // The enabled toggle (its aria-label) uniquely marks the active goal card;
-    // "Active" text also appears on the automation card, so assert the toggle.
-    expect(within(sidebar).getByLabelText("Disable Goal")).toBeInTheDocument();
+    // The goal is excluded from the automation sidebar.
+    expect(
+      within(sidebar).queryByText("Drive the release to merge"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByLabelText("Disable Goal"),
+    ).not.toBeInTheDocument();
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
