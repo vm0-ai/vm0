@@ -81,6 +81,7 @@ struct AppServerProcess {
 impl AppServerProcess {
     fn request(&mut self, id: i64, method: &str, params: Value) -> std::io::Result<Value> {
         self.send(&json!({
+            "jsonrpc": "2.0",
             "id": id,
             "method": method,
             "params": params,
@@ -90,6 +91,7 @@ impl AppServerProcess {
 
     fn notify(&mut self, method: &str, params: Value) -> std::io::Result<()> {
         self.send(&json!({
+            "jsonrpc": "2.0",
             "method": method,
             "params": params,
         }))
@@ -105,12 +107,14 @@ impl AppServerProcess {
     }
 
     fn read_required(&mut self) -> std::io::Result<Value> {
-        self.read_message()?.ok_or_else(|| {
+        let value = self.read_message()?.ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "app-server closed stdout before responding",
             )
-        })
+        })?;
+        assert_eq!(value.get("jsonrpc").and_then(Value::as_str), Some("2.0"));
+        Ok(value)
     }
 
     fn read_message(&mut self) -> std::io::Result<Option<Value>> {
@@ -632,6 +636,7 @@ fn app_server_exit_on_turn_start_closes_stdout_without_response() -> std::io::Re
         .unwrap()
         .to_string();
     server.send(&json!({
+        "jsonrpc": "2.0",
         "id": 3,
         "method": "turn/start",
         "params": {

@@ -424,13 +424,21 @@ fn session_artifact_thread_id(thread_id: &str) -> String {
 }
 
 fn write_success<W: Write>(output: &mut W, id: Value, result: Value) -> io::Result<()> {
-    write_json_line(output, &json!({ "id": id, "result": result }))
+    write_json_line(
+        output,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result
+        }),
+    )
 }
 
 fn write_error<W: Write>(output: &mut W, id: Value, code: i64, message: &str) -> io::Result<()> {
     write_json_line(
         output,
         &json!({
+            "jsonrpc": "2.0",
             "id": id,
             "error": {
                 "code": code,
