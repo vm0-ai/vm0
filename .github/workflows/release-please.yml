@@ -148,7 +148,7 @@ jobs:
       APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
       APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: desktop-v${{ needs.release-please.outputs.desktop_version }}
 
@@ -510,7 +510,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/toolchain-init
 
@@ -711,7 +711,7 @@ jobs:
       id-token: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -829,7 +829,7 @@ jobs:
       id-token: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Install neonctl
@@ -958,7 +958,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1015,7 +1015,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -1172,7 +1172,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1299,7 +1299,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1415,7 +1415,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -1538,7 +1538,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1662,7 +1662,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1927,7 +1927,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2071,7 +2071,7 @@ jobs:
       contents: write
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -2309,7 +2309,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2476,7 +2476,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2499,7 +2499,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Generate Node.js SBOM
