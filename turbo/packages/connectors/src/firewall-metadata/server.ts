@@ -60,7 +60,13 @@ export function getFirewallServerMetadataSummary(
 export function getBuiltinConnectorHostOwner(
   host: string,
 ): BuiltinConnectorHostOwner | null {
-  const type = builtinFirewallFixedHostOwnerLookup[host.toLowerCase()];
+  const normalizedHost = host.toLowerCase();
+  const type = Object.prototype.hasOwnProperty.call(
+    builtinFirewallFixedHostOwnerLookup,
+    normalizedHost,
+  )
+    ? builtinFirewallFixedHostOwnerLookup[normalizedHost]
+    : undefined;
   if (!type || !isFirewallServerMetadataConnectorType(type)) {
     return null;
   }
@@ -78,6 +84,11 @@ async function loadFirewallPermissionDetail(
   const detail = await loadGeneratedFirewallPermissionMetadata(type);
   if (!detail) {
     throw new Error(`Missing firewall permission metadata: ${type}`);
+  }
+  if (detail.type !== type) {
+    throw new Error(
+      `Mismatched firewall permission metadata: requested ${type}, got ${detail.type}`,
+    );
   }
   return detail;
 }

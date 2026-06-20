@@ -347,6 +347,8 @@ describe("firewall metadata", () => {
       label: "Slack",
     });
     expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
   });
 
   it("loads memoized server permission indexes from lazy detail metadata", async () => {
@@ -357,9 +359,15 @@ describe("firewall metadata", () => {
 
     const first = await loadFirewallPermissionIndex("slack");
     const second = await loadFirewallPermissionIndex("slack");
+    const [concurrentFirst, concurrentSecond] = await Promise.all([
+      loadFirewallPermissionIndex("github"),
+      loadFirewallPermissionIndex("github"),
+    ]);
 
     expect(first).not.toBeNull();
     expect(first).toBe(second);
+    expect(concurrentFirst).not.toBeNull();
+    expect(concurrentFirst).toBe(concurrentSecond);
     expect(first!.type).toBe("slack");
     expect(first!.label).toBe("Slack");
     expect(first!.hasPermission("channels:read")).toBe(true);
@@ -373,6 +381,17 @@ describe("firewall metadata", () => {
     expect(first!.policyResolver.permission("channels:read")).toBe("allow");
     expect(first!.policyResolver.permission("chat:write")).toBe("deny");
     expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
+  });
+
+  it("keeps server permission indexes aligned with generated summaries", async () => {
+    for (const [type, summary] of Object.entries(
+      FIREWALL_PERMISSION_METADATA_SUMMARIES,
+    )) {
+      const index = await loadFirewallPermissionIndex(type);
+      expect(index).not.toBeNull();
+      expect(index!.type).toBe(type);
+      expect(index!.label).toBe(summary.label);
+    }
   });
 
   it("keeps summary metadata synchronized with the runtime registry", () => {
