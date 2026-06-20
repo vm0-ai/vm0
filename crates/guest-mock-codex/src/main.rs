@@ -18,6 +18,8 @@
 //!                          [--append-system-prompt <s>] [--last]
 //!                          [-- <prompt>]
 //!   guest-mock-codex exec resume <canonical-uuid-thread-id> [-- <prompt>]
+//!   guest-mock-codex app-server --listen stdio:// [-c <config>]
+//!   guest-mock-codex app-server --stdio [-c <config>]
 //! ```
 //!
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
@@ -27,6 +29,9 @@
 //! persisted to the session file. Used by
 //! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
 //! codex-event-parser branches that the synthetic sequence cannot reach.
+//!
+//! App-server mode speaks newline-delimited JSON-RPC on stdio. Failure
+//! scenarios are selected with `MOCK_CODEX_APP_SERVER_SCENARIO`.
 
 use clap::{Parser, Subcommand};
 use guest_mock_codex::{

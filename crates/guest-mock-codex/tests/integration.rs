@@ -384,6 +384,76 @@ fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
 }
 
 #[test]
+fn app_server_initialized_notification_does_not_replace_initialize_request() -> std::io::Result<()>
+{
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.notify("initialized", json!({}))?;
+    let error = server.request(1, "thread/start", json!({}))?;
+
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not initialized")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_new_thread_clears_previous_active_turn() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", json!({}))?;
+    let first_thread = server.request(2, "thread/start", json!({}))?;
+    let first_thread_id = first_thread["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let first_turn = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": first_thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let first_turn_id = first_turn["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let second_thread = server.request(4, "thread/start", json!({}))?;
+    let second_thread_id = second_thread["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let error = server.request(
+        5,
+        "turn/steer",
+        json!({
+            "threadId": second_thread_id,
+            "expectedTurnId": first_turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no active turn")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(

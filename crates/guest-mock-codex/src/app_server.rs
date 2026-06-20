@@ -255,15 +255,16 @@ impl AppServerState {
         }
     }
 
-    fn handle_notification(&mut self, method: &str) {
-        if method == "initialized" {
-            self.initialized = true;
-        }
+    fn handle_notification(&mut self, _method: &str) {
+        // The client sends `initialized` after the `initialize` request. It
+        // must not substitute for the request itself because later requests
+        // need initialize response state to exist.
     }
 
     fn set_current_thread(&mut self, thread_id: String) {
         self.session_artifact_thread_id = Some(session_artifact_thread_id(&thread_id));
         self.thread_id = Some(thread_id);
+        self.active_turn_id = None;
     }
 
     fn current_thread(&self, requested_thread_id: Option<&str>) -> Result<(&str, &str), &str> {
