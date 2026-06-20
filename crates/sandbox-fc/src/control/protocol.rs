@@ -35,7 +35,7 @@ fn default_timeout() -> u32 {
 /// by shape: a command result response contains command result fields, while an
 /// error response contains only an `error` string.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum ExecResponse {
     /// Command execution produced a captured result.
     Success {
@@ -115,7 +115,7 @@ pub enum TerminateStatus {
 /// by shape: a status response contains a `status` field, while an error
 /// response contains only an `error` string.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum TerminateResponse {
     /// Termination request completed with a status result.
     ///
@@ -354,6 +354,25 @@ mod tests {
     }
 
     #[test]
+    fn exec_response_rejects_mixed_success_error_shape() {
+        let mixed = serde_json::json!({
+            "termination": {
+                "kind": "exited",
+                "exit_code": 0,
+            },
+            "stdout": BASE64.encode(b""),
+            "stderr": BASE64.encode(b""),
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "diagnostic": "",
+            "error": "sandbox not running",
+        });
+
+        let result = serde_json::from_value::<ExecResponse>(mixed);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn exec_response_error_serialization() {
         let resp = ExecResponse::Error {
             error: "sandbox not running".into(),
@@ -416,6 +435,17 @@ mod tests {
                 error: "sandbox not running".into()
             }
         );
+    }
+
+    #[test]
+    fn terminate_response_rejects_mixed_status_error_shape() {
+        let mixed = serde_json::json!({
+            "status": "accepted",
+            "error": "sandbox not running",
+        });
+
+        let result = serde_json::from_value::<TerminateResponse>(mixed);
+        assert!(result.is_err());
     }
 
     #[test]
