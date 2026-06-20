@@ -26,7 +26,8 @@ use super::path_safety::{
 };
 use super::types::{
     CacheBudget, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImageActiveLeaseRequest, WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
+    WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    WorkspaceImagePromotionRequest,
 };
 use super::{
     CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
@@ -78,9 +79,105 @@ struct WorkspaceImagePromotionInput<'a> {
     storage_fingerprints: &'a StorageFingerprints,
 }
 
+struct WorkspaceImageLeaseCommon<'a> {
+    run_id: RunId,
+    profile_name: &'a str,
+    cli_agent_session_id: Option<&'a str>,
+    raw_working_dir: &'a str,
+    normalized_working_dir: Option<String>,
+    active_image: PathBuf,
+    image_size_bytes: u64,
+}
+
+struct WorkspaceImageLeaseBase {
+    cache: SessionWorkspaceCache,
+    profile_name: String,
+    cli_agent_session_id: Option<String>,
+    working_dir: String,
+    active_image: PathBuf,
+    image_size_bytes: u64,
+}
+
+struct WorkspaceImageLeaseState {
+    cache_key: Option<String>,
+    source_image: Option<PathBuf>,
+    consumed_cache_hit: bool,
+    previous_storage: Option<StorageFingerprints>,
+    entry_lock: Option<Flock<std::fs::File>>,
+    workspace_drive_enabled: bool,
+    result: WorkspaceCacheCheckoutResult,
+}
+
 fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
     let mib = 1024 * 1024;
     image_size_bytes.div_ceil(mib).min(u64::from(u32::MAX)) as u32
+}
+
+impl<'a> WorkspaceImageLeaseCommon<'a> {
+    fn new(cache: &SessionWorkspaceCache, identity: WorkspaceImageLeaseIdentity<'a>) -> Self {
+        Self {
+            run_id: identity.run_id,
+            profile_name: identity.profile_name,
+            cli_agent_session_id: identity.cli_agent_session_id,
+            raw_working_dir: identity.working_dir,
+            normalized_working_dir: normalize_safe_guest_working_dir(identity.working_dir),
+            active_image: cache.paths().active_workspace_image(&identity.sandbox_id),
+            image_size_bytes: identity.image_size_bytes,
+        }
+    }
+
+    fn safe_working_dir(&self) -> Option<&str> {
+        self.normalized_working_dir.as_deref()
+    }
+
+    fn lease_working_dir(&self) -> &str {
+        self.safe_working_dir().unwrap_or(self.raw_working_dir)
+    }
+
+    fn cache_key(
+        &self,
+        cache: &SessionWorkspaceCache,
+        cli_agent_session_id: &str,
+        working_dir: &str,
+    ) -> String {
+        cache.scoped_cache_key(
+            self.profile_name,
+            cli_agent_session_id,
+            working_dir,
+            self.image_size_bytes,
+        )
+    }
+
+    fn lease_base(&self, cache: &SessionWorkspaceCache) -> WorkspaceImageLeaseBase {
+        WorkspaceImageLeaseBase {
+            cache: cache.clone(),
+            profile_name: self.profile_name.to_owned(),
+            cli_agent_session_id: self.cli_agent_session_id.map(str::to_owned),
+            working_dir: self.lease_working_dir().to_owned(),
+            active_image: self.active_image.clone(),
+            image_size_bytes: self.image_size_bytes,
+        }
+    }
+}
+
+impl WorkspaceImageLease {
+    fn from_parts(base: WorkspaceImageLeaseBase, state: WorkspaceImageLeaseState) -> Self {
+        Self {
+            cache: base.cache,
+            cache_key: state.cache_key,
+            profile_name: base.profile_name,
+            cli_agent_session_id: base.cli_agent_session_id,
+            working_dir: base.working_dir,
+            active_image: base.active_image,
+            source_image: state.source_image,
+            consumed_cache_hit: state.consumed_cache_hit,
+            image_size_bytes: base.image_size_bytes,
+            workspace_drive_enabled: state.workspace_drive_enabled,
+            result: state.result,
+            previous_storage: state.previous_storage,
+            entry_lock: state.entry_lock,
+        }
+    }
 }
 
 impl SessionWorkspaceCache {
@@ -88,45 +185,35 @@ impl SessionWorkspaceCache {
         &self,
         request: WorkspaceImageActiveLeaseRequest<'_>,
     ) -> WorkspaceImageLease {
-        let active_image = self.paths().active_workspace_image(&request.sandbox_id);
-        let normalized_working_dir = normalize_safe_guest_working_dir(request.working_dir);
-        let lease_working_dir = normalized_working_dir
-            .as_deref()
-            .unwrap_or(request.working_dir);
-        let active_lease = |result, lock, cache_key| WorkspaceImageLease {
-            cache: self.clone(),
-            cache_key,
-            profile_name: request.profile_name.to_owned(),
-            cli_agent_session_id: request.cli_agent_session_id.map(str::to_owned),
-            working_dir: lease_working_dir.to_owned(),
-            active_image: active_image.clone(),
-            source_image: None,
-            consumed_cache_hit: false,
-            image_size_bytes: request.image_size_bytes,
-            workspace_drive_enabled: request.workspace_drive_available,
-            result,
-            previous_storage: None,
-            entry_lock: lock,
+        let common = WorkspaceImageLeaseCommon::new(self, request.identity);
+        let active_lease = |result, entry_lock, cache_key| {
+            WorkspaceImageLease::from_parts(
+                common.lease_base(self),
+                WorkspaceImageLeaseState {
+                    cache_key,
+                    source_image: None,
+                    consumed_cache_hit: false,
+                    previous_storage: None,
+                    entry_lock,
+                    workspace_drive_enabled: request.workspace_drive_available,
+                    result,
+                },
+            )
         };
 
-        let Some(working_dir) = normalized_working_dir.as_deref() else {
+        let Some(working_dir) = common.safe_working_dir() else {
             warn!(
-                run_id = %request.run_id,
-                working_dir = %request.working_dir,
+                run_id = %common.run_id,
+                working_dir = %common.raw_working_dir,
                 "workspace image cache active lease disabled for unsafe working directory"
             );
             return active_lease(WorkspaceCacheCheckoutResult::InvalidWorkingDir, None, None);
         };
-        let Some(cli_agent_session_id) = request.cli_agent_session_id else {
+        let Some(cli_agent_session_id) = common.cli_agent_session_id else {
             return active_lease(WorkspaceCacheCheckoutResult::NoSession, None, None);
         };
 
-        let cache_key = self.scoped_cache_key(
-            request.profile_name,
-            cli_agent_session_id,
-            working_dir,
-            request.image_size_bytes,
-        );
+        let cache_key = common.cache_key(self, cli_agent_session_id, working_dir);
         match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
             Ok(lock) => active_lease(
                 WorkspaceCacheCheckoutResult::Miss,
@@ -135,7 +222,7 @@ impl SessionWorkspaceCache {
             ),
             Err(e) => {
                 info!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     cache_key,
                     error = %e,
                     "workspace image cache active lease lock busy or unavailable; promotion disabled"
@@ -149,40 +236,33 @@ impl SessionWorkspaceCache {
         &self,
         request: WorkspaceImagePrepareRequest<'_>,
     ) -> WorkspaceImageLease {
-        let active_image = self.paths().active_workspace_image(&request.sandbox_id);
-        let normalized_working_dir = normalize_safe_guest_working_dir(request.working_dir);
-        let lease_working_dir = normalized_working_dir
-            .as_deref()
-            .unwrap_or(request.working_dir);
+        let common = WorkspaceImageLeaseCommon::new(self, request.identity);
         let workspace_drive = |result,
                                source_image: Option<PathBuf>,
-                               previous_storage,
-                               lock,
+                               previous_storage: Option<StorageFingerprints>,
+                               entry_lock,
                                cache_key,
                                workspace_drive_enabled| {
             let consumed_cache_hit =
                 result == WorkspaceCacheCheckoutResult::Hit && source_image.is_some();
-            WorkspaceImageLease {
-                cache: self.clone(),
-                cache_key,
-                profile_name: request.profile_name.to_owned(),
-                cli_agent_session_id: request.cli_agent_session_id.map(str::to_owned),
-                working_dir: lease_working_dir.to_owned(),
-                active_image: active_image.clone(),
-                source_image,
-                consumed_cache_hit,
-                image_size_bytes: request.image_size_bytes,
-                workspace_drive_enabled,
-                result,
-                previous_storage,
-                entry_lock: lock,
-            }
+            WorkspaceImageLease::from_parts(
+                common.lease_base(self),
+                WorkspaceImageLeaseState {
+                    cache_key,
+                    source_image,
+                    consumed_cache_hit,
+                    previous_storage,
+                    entry_lock,
+                    workspace_drive_enabled,
+                    result,
+                },
+            )
         };
 
-        let Some(working_dir) = normalized_working_dir.as_deref() else {
+        let Some(working_dir) = common.safe_working_dir() else {
             warn!(
-                run_id = %request.run_id,
-                working_dir = %request.working_dir,
+                run_id = %common.run_id,
+                working_dir = %common.raw_working_dir,
                 "workspace image cache disabled for unsafe working directory"
             );
             return workspace_drive(
@@ -194,7 +274,7 @@ impl SessionWorkspaceCache {
                 request.workspace_drive_required,
             );
         };
-        let Some(cli_agent_session_id) = request.cli_agent_session_id else {
+        let Some(cli_agent_session_id) = common.cli_agent_session_id else {
             return workspace_drive(
                 WorkspaceCacheCheckoutResult::NoSession,
                 None,
@@ -206,7 +286,7 @@ impl SessionWorkspaceCache {
         };
         let Ok(mut stats) = self.fs_stats().await else {
             warn!(
-                run_id = %request.run_id,
+                run_id = %common.run_id,
                 "workspace image cache disabled because filesystem stats are unavailable"
             );
             return workspace_drive(
@@ -227,14 +307,14 @@ impl SessionWorkspaceCache {
                         budget = CacheBudget::from_fs_stats(stats);
                     }
                     Err(e) => warn!(
-                        run_id = %request.run_id,
+                        run_id = %common.run_id,
                         error = %e,
                         "workspace image cache stats refresh failed after GC"
                     ),
                 },
                 Ok(_) => {}
                 Err(e) => warn!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     error = %e,
                     "workspace image cache GC failed before checkout"
                 ),
@@ -242,7 +322,7 @@ impl SessionWorkspaceCache {
         }
         if stats.available_bytes < budget.min_free_bytes {
             info!(
-                run_id = %request.run_id,
+                run_id = %common.run_id,
                 available_bytes = stats.available_bytes,
                 min_free_bytes = budget.min_free_bytes,
                 "workspace image cache skipped due to free-space pressure"
@@ -257,18 +337,13 @@ impl SessionWorkspaceCache {
             );
         }
 
-        let cache_key = self.scoped_cache_key(
-            request.profile_name,
-            cli_agent_session_id,
-            working_dir,
-            request.image_size_bytes,
-        );
+        let cache_key = common.cache_key(self, cli_agent_session_id, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
         let lock = match crate::lock::try_acquire(lock_path).await {
             Ok(lock) => lock,
             Err(e) => {
                 info!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     cache_key,
                     error = %e,
                     "workspace image cache lock busy or unavailable; using fresh workspace image"
@@ -288,7 +363,7 @@ impl SessionWorkspaceCache {
         match remove_non_directory_workspace_cache_entry(&entry_dir).await {
             Ok(true) => {
                 info!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     cache_key,
                     path = %entry_dir.display(),
                     "removed non-directory workspace image cache entry before checkout"
@@ -305,7 +380,7 @@ impl SessionWorkspaceCache {
             Ok(false) => {}
             Err(e) => {
                 warn!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     cache_key,
                     path = %entry_dir.display(),
                     error = %e,
@@ -327,10 +402,10 @@ impl SessionWorkspaceCache {
         let hit = match self
             .read_valid_metadata(
                 &metadata_path,
-                request.profile_name,
+                common.profile_name,
                 cli_agent_session_id,
                 working_dir,
-                request.image_size_bytes,
+                common.image_size_bytes,
             )
             .await
         {
@@ -339,14 +414,14 @@ impl SessionWorkspaceCache {
                 match fs::remove_file(&metadata_path).await {
                     Ok(()) => {
                         info!(
-                            run_id = %request.run_id,
+                            run_id = %common.run_id,
                             cache_key,
                             "workspace image cache hit checked out with move seed"
                         );
                     }
                     Err(e) => {
                         warn!(
-                            run_id = %request.run_id,
+                            run_id = %common.run_id,
                             cache_key,
                             error = %e,
                             "failed to remove workspace image cache metadata before move checkout; using fresh workspace image"
@@ -366,7 +441,7 @@ impl SessionWorkspaceCache {
             Ok(None) => None,
             Err(e) => {
                 warn!(
-                    run_id = %request.run_id,
+                    run_id = %common.run_id,
                     cache_key,
                     error = %e,
                     "workspace image cache metadata invalid; using fresh workspace image"
@@ -375,7 +450,7 @@ impl SessionWorkspaceCache {
                 match fs::remove_dir_all(&entry_dir).await {
                     Ok(()) => {
                         info!(
-                            run_id = %request.run_id,
+                            run_id = %common.run_id,
                             cache_key,
                             "removed invalid workspace image cache entry before fresh checkout"
                         );
@@ -400,7 +475,7 @@ impl SessionWorkspaceCache {
                     }
                     Err(remove_error) => {
                         warn!(
-                            run_id = %request.run_id,
+                            run_id = %common.run_id,
                             cache_key,
                             error = %remove_error,
                             "failed to remove invalid workspace image cache entry"
@@ -1108,16 +1183,13 @@ impl WorkspaceImagePromotionContext {
             .await
     }
 
-    pub(crate) fn into_active_lease(
-        self,
-        request: WorkspaceImageActiveLeaseRequest<'_>,
-    ) -> WorkspaceImageLease {
+    pub(crate) fn into_active_lease(self, workspace_drive_available: bool) -> WorkspaceImageLease {
         let Self {
             cache,
             cache_key,
             entry_lock,
             run_id: _,
-            sandbox_id,
+            sandbox_id: _,
             profile_name,
             cli_agent_session_id,
             working_dir,
@@ -1128,32 +1200,26 @@ impl WorkspaceImagePromotionContext {
             completed_at: _,
             storage_fingerprints: _,
         } = self;
-        debug_assert_eq!(request.sandbox_id, sandbox_id);
-        debug_assert_eq!(request.profile_name, profile_name.as_str());
-        debug_assert_eq!(
-            request.cli_agent_session_id,
-            Some(cli_agent_session_id.as_str())
-        );
-        debug_assert_eq!(
-            normalize_safe_guest_working_dir(request.working_dir).as_deref(),
-            Some(working_dir.as_str())
-        );
-        debug_assert_eq!(request.image_size_bytes, image_size_bytes);
-        WorkspaceImageLease {
+        let base = WorkspaceImageLeaseBase {
             cache,
-            cache_key: Some(cache_key),
             profile_name,
             cli_agent_session_id: Some(cli_agent_session_id),
             working_dir,
             active_image,
-            source_image: None,
-            consumed_cache_hit,
             image_size_bytes,
-            workspace_drive_enabled: request.workspace_drive_available,
-            result: WorkspaceCacheCheckoutResult::Miss,
-            previous_storage: None,
-            entry_lock,
-        }
+        };
+        WorkspaceImageLease::from_parts(
+            base,
+            WorkspaceImageLeaseState {
+                cache_key: Some(cache_key),
+                source_image: None,
+                consumed_cache_hit,
+                previous_storage: None,
+                entry_lock,
+                workspace_drive_enabled: workspace_drive_available,
+                result: WorkspaceCacheCheckoutResult::Miss,
+            },
+        )
     }
 }
 

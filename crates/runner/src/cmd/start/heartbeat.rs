@@ -203,7 +203,7 @@ mod tests {
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
     use crate::workspace_image_cache::{
-        WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
+        WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{SandboxFactory, SandboxId};
@@ -252,12 +252,14 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let lease = cache
             .prepare(WorkspaceImagePrepareRequest {
-                run_id,
-                sandbox_id,
-                profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: b"image".len() as u64,
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
                 workspace_drive_required: true,
             })
             .await;

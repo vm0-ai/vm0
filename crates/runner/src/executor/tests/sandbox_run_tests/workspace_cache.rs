@@ -224,12 +224,14 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: &params.profile_name,
-            cli_agent_session_id: Some(session_id),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -264,12 +266,14 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: &params.profile_name,
-            cli_agent_session_id: Some(session_id),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -439,12 +443,14 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: &params.profile_name,
-            cli_agent_session_id: Some(session_id),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -496,12 +502,14 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: &params.profile_name,
-            cli_agent_session_id: Some(session_id),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -535,12 +543,14 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: &params.profile_name,
-            cli_agent_session_id: Some(session_id),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -631,12 +641,14 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: &params.profile_name,
-            cli_agent_session_id: None,
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                cli_agent_session_id: None,
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;

@@ -118,6 +118,7 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
+    WorkspaceImageLeaseIdentity,
 };
 
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
@@ -508,17 +509,7 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
 
     if let Err(error) = validate_resume_session_id(&context) {
         let workspace_image = match config.workspace_cache.as_ref() {
-            Some(_) => workspace_promotion.map(|promotion| {
-                promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
-                    run_id,
-                    sandbox_id,
-                    profile_name: &params.profile_name,
-                    cli_agent_session_id: Some(idle_cli_agent_session_id.as_str()),
-                    working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-                    workspace_drive_available: true,
-                })
-            }),
+            Some(_) => workspace_promotion.map(|promotion| promotion.into_active_lease(true)),
             None => {
                 if let Some(promotion) = workspace_promotion
                     && let Err(error) = promotion
@@ -562,21 +553,24 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
     }
 
     let workspace_image = match config.workspace_cache.as_ref() {
-        Some(cache) => {
-            let active_request = WorkspaceImageActiveLeaseRequest {
-                run_id,
-                sandbox_id,
-                profile_name: &params.profile_name,
-                cli_agent_session_id: context.cli_agent_session_id(),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-                workspace_drive_available: true,
-            };
-            Some(match workspace_promotion {
-                Some(promotion) => promotion.into_active_lease(active_request),
-                None => cache.lease_active(active_request).await,
-            })
-        }
+        Some(cache) => Some(match workspace_promotion {
+            Some(promotion) => promotion.into_active_lease(true),
+            None => {
+                cache
+                    .lease_active(WorkspaceImageActiveLeaseRequest {
+                        identity: WorkspaceImageLeaseIdentity {
+                            run_id,
+                            sandbox_id,
+                            profile_name: &params.profile_name,
+                            cli_agent_session_id: context.cli_agent_session_id(),
+                            working_dir: CANONICAL_WORKING_DIR,
+                            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                        },
+                        workspace_drive_available: true,
+                    })
+                    .await
+            }
+        }),
         None => {
             if let Some(promotion) = workspace_promotion
                 && let Err(error) = promotion

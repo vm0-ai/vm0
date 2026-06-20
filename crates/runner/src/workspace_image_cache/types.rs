@@ -25,24 +25,24 @@ pub(crate) enum WorkspaceCacheTerminalStatus {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkspaceImagePrepareRequest<'a> {
+pub(crate) struct WorkspaceImageLeaseIdentity<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: &'a str,
     pub(crate) cli_agent_session_id: Option<&'a str>,
     pub(crate) working_dir: &'a str,
     pub(crate) image_size_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceImagePrepareRequest<'a> {
+    pub(crate) identity: WorkspaceImageLeaseIdentity<'a>,
     pub(crate) workspace_drive_required: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WorkspaceImageActiveLeaseRequest<'a> {
-    pub(crate) run_id: RunId,
-    pub(crate) sandbox_id: sandbox::SandboxId,
-    pub(crate) profile_name: &'a str,
-    pub(crate) cli_agent_session_id: Option<&'a str>,
-    pub(crate) working_dir: &'a str,
-    pub(crate) image_size_bytes: u64,
+    pub(crate) identity: WorkspaceImageLeaseIdentity<'a>,
     pub(crate) workspace_drive_available: bool,
 }
 
