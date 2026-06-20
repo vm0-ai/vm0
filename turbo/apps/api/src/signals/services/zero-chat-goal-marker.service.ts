@@ -17,7 +17,7 @@ import type { Db } from "../external/db";
  * search hit. The workflow markers carry the objective in `content` so the fold
  * can render it; the trigger markers carry no content.
  */
-export const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
+const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
 export const GOAL_WORKFLOW_INACTIVE_EVENT_ID = "goal-workflow:inactive";
 export const GOAL_TRIGGER_ACTIVE_EVENT_ID = "goal-trigger:active";
 export const GOAL_TRIGGER_INACTIVE_EVENT_ID = "goal-trigger:inactive";
