@@ -7,7 +7,10 @@
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use chrono::{Datelike, Utc};
 use guest_mock_codex::{
@@ -18,6 +21,8 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-mock-codex");
+const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 struct RunOutput {
@@ -73,9 +78,10 @@ fn spawn(codex_home: &Path, args: &[&str]) -> std::io::Result<Child> {
 }
 
 struct AppServerProcess {
-    child: Child,
+    child: Option<Child>,
     stdin: Option<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    stdout_rx: Receiver<Result<Option<Value>, String>>,
+    stdout_thread: Option<JoinHandle<()>>,
 }
 
 impl AppServerProcess {
@@ -114,36 +120,91 @@ impl AppServerProcess {
     }
 
     fn read_message(&mut self) -> std::io::Result<Option<Value>> {
-        let mut line = String::new();
-        if self.stdout.read_line(&mut line)? == 0 {
-            return Ok(None);
+        match self.stdout_rx.recv_timeout(APP_SERVER_READ_TIMEOUT) {
+            Ok(result) => result
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message)),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out waiting for app-server stdout message",
+            )),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "app-server stdout reader exited without EOF",
+            )),
         }
-        let value = serde_json::from_str(&line)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
-        Ok(Some(value))
     }
 
     fn close_and_wait(&mut self) -> std::io::Result<i32> {
         self.stdin.take();
-        let status = self.child.wait()?;
+        let child = self
+            .child
+            .take()
+            .ok_or_else(|| std::io::Error::other("app-server child already waited"))?;
+        let status = wait_child(child)?;
+        self.join_stdout_thread()?;
         Ok(status.code().unwrap_or(-1))
+    }
+
+    fn join_stdout_thread(&mut self) -> std::io::Result<()> {
+        if let Some(stdout_thread) = self.stdout_thread.take() {
+            stdout_thread
+                .join()
+                .map_err(|_| std::io::Error::other("app-server stdout reader panicked"))?;
+        }
+        Ok(())
     }
 }
 
 impl Drop for AppServerProcess {
     fn drop(&mut self) {
         self.stdin.take();
-        match self.child.try_wait() {
-            Ok(Some(_)) => {
-                let _ = self.child.wait();
+        if let Some(mut child) = self.child.take() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    let _ = child.wait();
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                Err(_) => {}
             }
-            Ok(None) => {
-                let _ = self.child.kill();
-                let _ = self.child.wait();
-            }
-            Err(_) => {}
         }
+        let _ = self.join_stdout_thread();
     }
+}
+
+fn wait_child(mut child: Child) -> std::io::Result<ExitStatus> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = child.wait();
+        let _ = tx.send(result);
+    });
+
+    let status = match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // SAFETY: this is test cleanup for the child process spawned by this helper.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+            rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("app-server child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "app-server child wait thread exited without status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("app-server child wait thread panicked"))?;
+    status
 }
 
 fn spawn_app_server(
@@ -174,10 +235,34 @@ fn spawn_app_server(
             "failed to open app-server stdout",
         )
     })?;
+    let (stdout_tx, stdout_rx) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(line) => line,
+                Err(error) => {
+                    let _ = stdout_tx.send(Err(format!("read app-server stdout line: {error}")));
+                    return;
+                }
+            };
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value = serde_json::from_str::<Value>(&line)
+                .map(Some)
+                .map_err(|error| format!("parse app-server stdout JSON: {error}; line={line:?}"));
+            if stdout_tx.send(value).is_err() {
+                return;
+            }
+        }
+        let _ = stdout_tx.send(Ok(None));
+    });
     Ok(AppServerProcess {
-        child,
+        child: Some(child),
         stdin: Some(stdin),
-        stdout: BufReader::new(stdout),
+        stdout_rx,
+        stdout_thread: Some(stdout_thread),
     })
 }
 
