@@ -527,11 +527,12 @@ async function showSystemLog(
       order: options.order,
     });
 
-    if (response.systemLog) {
+    const pageHasLog = response.systemLog.length > 0;
+    if (pageHasLog) {
       pages.push(response.systemLog);
     }
 
-    if (remainingBatches !== undefined) {
+    if (remainingBatches !== undefined && pageHasLog) {
       remainingBatches -= limit;
       if (remainingBatches <= 0) {
         break;

@@ -1361,6 +1361,40 @@ describe("logs command", () => {
       expect(logCalls).toContain("second page");
       expect(logCalls).not.toContain("No system log found");
     });
+
+    it("should not consume limited system log batches on empty pages with cursors", async () => {
+      const capturedCursors: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/system-log",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+            capturedCursors.push(cursor);
+
+            if (!cursor) {
+              return HttpResponse.json({
+                systemLog: "",
+                hasMore: true,
+                nextCursor: "time:desc:1",
+              });
+            }
+
+            return HttpResponse.json({
+              systemLog: "visible page\n",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--system"]);
+
+      expect(capturedCursors).toStrictEqual([null, "time:desc:1"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("visible page");
+      expect(logCalls).not.toContain("No system log found");
+    });
   });
 
   describe("metrics", () => {
