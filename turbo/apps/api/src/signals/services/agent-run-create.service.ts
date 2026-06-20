@@ -510,9 +510,9 @@ function skillMountPath(
 const BUILTIN_GOAL_DISALLOWED_TOOLS = ["goal", "update_goal"] as const;
 
 function withBuiltinGoalDisabled(
-  disallowedTools: readonly string[] | undefined,
+  disallowedTools: string[] | undefined,
   goalSeedEnabled: boolean,
-): readonly string[] | undefined {
+): string[] | undefined {
   if (!goalSeedEnabled) {
     return disallowedTools;
   }
@@ -1434,8 +1434,7 @@ interface ModelProviderEnvironmentRow {
   readonly encryptedValue: string | null;
 }
 
-interface ResolvableModelProviderEnvironmentRow
-  extends ModelProviderEnvironmentRow {
+interface ResolvableModelProviderEnvironmentRow extends ModelProviderEnvironmentRow {
   readonly type: ModelProviderType;
 }
 
