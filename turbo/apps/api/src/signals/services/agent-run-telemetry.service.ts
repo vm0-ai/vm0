@@ -26,12 +26,14 @@ import {
 import { escapeAplString } from "../../lib/axiom-apl";
 import {
   buildAgentEventPaginationFilters,
+  buildTimeCursorProjection,
   buildTimePaginationFilters,
+  buildTimePaginationOrder,
   filterTimedAxiomRecords,
   nextSequenceCursor,
   nextTimeCursor,
   sequenceCursorValue,
-  timeCursorTimestamp,
+  timeCursorBoundary,
 } from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 
@@ -387,14 +389,15 @@ export function agentRunSystemLog(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-system");
-    const previousCursorTimestamp = timeCursorTimestamp(
+    const previousCursorBoundary = timeCursorBoundary(
       params.cursor,
       params.order,
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
-| order by _time ${params.order}
+${buildTimePaginationOrder(params.order)}
 | limit ${params.limit + 1}`;
 
     const events = (
@@ -406,7 +409,7 @@ ${buildTimePaginationFilters(params)}
       records,
       pageHasMore,
       params.order,
-      previousCursorTimestamp,
+      previousCursorBoundary,
     );
     const hasMore = nextCursor !== null;
 
@@ -432,14 +435,15 @@ export function agentRunMetrics(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-metrics");
-    const previousCursorTimestamp = timeCursorTimestamp(
+    const previousCursorBoundary = timeCursorBoundary(
       params.cursor,
       params.order,
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
-| order by _time ${params.order}
+${buildTimePaginationOrder(params.order)}
 | limit ${params.limit + 1}`;
 
     const events = (
@@ -451,7 +455,7 @@ ${buildTimePaginationFilters(params)}
       records,
       pageHasMore,
       params.order,
-      previousCursorTimestamp,
+      previousCursorBoundary,
     );
     const hasMore = nextCursor !== null;
 
@@ -482,14 +486,15 @@ export function agentRunNetworkLogs(
     }
 
     const dataset = getDatasetName("sandbox-telemetry-network");
-    const previousCursorTimestamp = timeCursorTimestamp(
+    const previousCursorBoundary = timeCursorBoundary(
       params.cursor,
       params.order,
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
-| order by _time ${params.order}
+${buildTimePaginationOrder(params.order)}
 | limit ${params.limit + 1}`;
 
     const events = (await get(queryAxiom(apl))).slice();
@@ -501,7 +506,7 @@ ${buildTimePaginationFilters(params)}
       timedRecords,
       pageHasMore,
       params.order,
-      previousCursorTimestamp,
+      previousCursorBoundary,
     );
     const hasMore = nextCursor !== null;
 

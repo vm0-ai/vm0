@@ -1277,18 +1277,42 @@ function dispatchAxiomQueries(
       return Promise.resolve([...(rows.events ?? [])]);
     }
     if (apl.includes("['sandbox-telemetry-system']")) {
-      return Promise.resolve([...(rows.systemLogs ?? [])]);
+      return Promise.resolve(timeCursorRows(apl, rows.systemLogs ?? []));
     }
     if (apl.includes("['sandbox-telemetry-metrics']")) {
-      return Promise.resolve([...(rows.metrics ?? [])]);
+      return Promise.resolve(timeCursorRows(apl, rows.metrics ?? []));
     }
     if (apl.includes("['sandbox-telemetry-network']")) {
-      return Promise.resolve([...(rows.network ?? [])]);
+      return Promise.resolve(timeCursorRows(apl, rows.network ?? []));
     }
     if (apl.includes("['run-context']")) {
       return Promise.resolve([...(rows.runContext ?? [])]);
     }
     return Promise.resolve([]);
+  });
+}
+
+function isAxiomRow(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function timeCursorRows(
+  apl: string,
+  rows: readonly unknown[],
+): readonly unknown[] {
+  if (!apl.includes("cursor_current()")) {
+    return [...rows];
+  }
+
+  return rows.map((row, index) => {
+    if (!isAxiomRow(row) || typeof row._vm0Cursor === "string") {
+      return row;
+    }
+
+    return {
+      ...row,
+      _vm0Cursor: `cursor-${index.toString().padStart(4, "0")}`,
+    };
   });
 }
 
@@ -1372,8 +1396,14 @@ function networkHardeningRows(
   ];
 }
 
-function timeLogCursor(order: "asc" | "desc", timestamp: string): string {
-  return `time:${order}:${encodeURIComponent(timestamp)}`;
+function timeLogCursor(
+  order: "asc" | "desc",
+  timestamp: string,
+  tieBreaker: string,
+): string {
+  return `time:${order}:${encodeURIComponent(timestamp)}:${encodeURIComponent(
+    tieBreaker,
+  )}`;
 }
 
 describe("RUN-04: agent run telemetry families", () => {
@@ -1719,7 +1749,11 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(systemAsc.body).toStrictEqual({
       systemLog: "boot\n",
       hasMore: true,
-      nextCursor: timeLogCursor("asc", "2026-06-10T10:30:00.123456Z"),
+      nextCursor: timeLogCursor(
+        "asc",
+        "2026-06-10T10:30:00.123456Z",
+        "cursor-0000",
+      ),
     });
     const systemApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(systemApl).toContain("sandbox-telemetry-system");
@@ -1731,7 +1765,7 @@ describe("RUN-04: agent run telemetry families", () => {
       actor,
       runId,
       {
-        cursor: timeLogCursor("desc", highPrecisionSystemCursor),
+        cursor: timeLogCursor("desc", highPrecisionSystemCursor, "cursor-0001"),
         limit: 1,
         order: "desc",
         sinceTime: sinceMs,
@@ -1787,7 +1821,7 @@ describe("RUN-04: agent run telemetry families", () => {
       actor,
       runId,
       {
-        cursor: timeLogCursor("asc", "2026-02-30T00:00:00Z"),
+        cursor: timeLogCursor("asc", "2026-02-30T00:00:00Z", "cursor-0000"),
         limit: 1,
         order: "asc",
       },
@@ -1828,7 +1862,7 @@ describe("RUN-04: agent run telemetry families", () => {
         },
       ],
       hasMore: true,
-      nextCursor: timeLogCursor("desc", "2026-06-10T10:30:00Z"),
+      nextCursor: timeLogCursor("desc", "2026-06-10T10:30:00Z", "cursor-0000"),
     });
     const metricsApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(metricsApl).toContain("sandbox-telemetry-metrics");
@@ -1951,7 +1985,11 @@ describe("RUN-04: agent run telemetry families", () => {
         firewall_error: "connector_not_configured",
       },
     ];
-    const expectedNextCursor = timeLogCursor("asc", "2026-06-10T12:01:00Z");
+    const expectedNextCursor = timeLogCursor(
+      "asc",
+      "2026-06-10T12:01:00Z",
+      "cursor-0003",
+    );
 
     expect(agentNetwork.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
@@ -1963,6 +2001,105 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: true,
       nextCursor: expectedNextCursor,
     });
+  });
+
+  it("keeps same-timestamp telemetry rows reachable across time cursor pages", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-time-cursor-ties");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit tied system logs",
+    });
+    const runId = run.runId;
+    const timestamp = "2026-06-10T12:30:00Z";
+    const rows = [
+      { _time: timestamp, _vm0Cursor: "row-a", runId, log: "first\n" },
+      { _time: timestamp, _vm0Cursor: "row-b", runId, log: "second\n" },
+      {
+        _time: "2026-06-10T12:30:01Z",
+        _vm0Cursor: "row-c",
+        runId,
+        log: "third\n",
+      },
+    ];
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (
+        typeof apl !== "string" ||
+        !apl.includes("['sandbox-telemetry-system']")
+      ) {
+        return Promise.resolve([]);
+      }
+
+      const boundaryMatch =
+        /_time == datetime\("([^"]+)"\) and _vm0Cursor (>|<) "([^"]+)"/.exec(
+          apl,
+        );
+      const limitMatch = /\| limit (\d+)/.exec(apl);
+      const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
+      const filteredRows = rows.filter((row) => {
+        if (!boundaryMatch) {
+          return true;
+        }
+
+        const [, boundaryTime, operator, boundaryCursor] = boundaryMatch;
+        if (
+          boundaryTime === undefined ||
+          operator === undefined ||
+          boundaryCursor === undefined
+        ) {
+          return false;
+        }
+
+        if (operator === ">") {
+          return (
+            row._time > boundaryTime ||
+            (row._time === boundaryTime && row._vm0Cursor > boundaryCursor)
+          );
+        }
+
+        return (
+          row._time < boundaryTime ||
+          (row._time === boundaryTime && row._vm0Cursor < boundaryCursor)
+        );
+      });
+
+      return Promise.resolve(filteredRows.slice(0, limit));
+    });
+
+    const firstPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(firstPage.body).toStrictEqual({
+      systemLog: "first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "row-a"),
+    });
+
+    const cursor = firstPage.body.nextCursor;
+    if (!cursor) {
+      throw new Error("Expected the first tied page to return a cursor");
+    }
+
+    const secondPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(secondPage.body).toStrictEqual({
+      systemLog: "second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "row-b"),
+    });
+
+    const secondPageApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(secondPageApl).toContain(
+      `(_time == datetime("${timestamp}") and _vm0Cursor > "row-a")`,
+    );
   });
 
   it("does not advertise another telemetry page when the cursor cannot advance", async () => {
@@ -2044,7 +2181,11 @@ describe("RUN-04: agent run telemetry families", () => {
     const systemLog = await reads.requestRunSystemLog(
       actor,
       runId,
-      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      {
+        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
       [200],
     );
     expect(systemLog.body).toStrictEqual({
@@ -2055,7 +2196,11 @@ describe("RUN-04: agent run telemetry families", () => {
     const metrics = await reads.requestRunMetrics(
       actor,
       runId,
-      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      {
+        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
       [200],
     );
     expect(metrics.body).toStrictEqual({
@@ -2075,7 +2220,11 @@ describe("RUN-04: agent run telemetry families", () => {
     const networkLogs = await reads.requestRunNetworkLogs(
       actor,
       runId,
-      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      {
+        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
       [200],
     );
     expect(networkLogs.body).toStrictEqual({
@@ -2106,7 +2255,11 @@ describe("RUN-04: agent run telemetry families", () => {
     const zeroNetworkLogs = await reads.requestZeroRunNetworkLogs(
       actor,
       runId,
-      { cursor: timeLogCursor("asc", boundaryTime), limit: 1, order: "asc" },
+      {
+        cursor: timeLogCursor("asc", boundaryTime, "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
       [200],
     );
     expect(zeroNetworkLogs.body).toStrictEqual({
@@ -2514,7 +2667,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(pagedNetwork.body.networkLogs).toHaveLength(2);
     expect(pagedNetwork.body.hasMore).toBeTruthy();
     expect(pagedNetwork.body.nextCursor).toBe(
-      timeLogCursor("asc", "2026-06-10T11:00:01Z"),
+      timeLogCursor("asc", "2026-06-10T11:00:01Z", "cursor-0001"),
     );
     const networkApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(networkApl).toContain(new Date(sinceMs).toISOString());

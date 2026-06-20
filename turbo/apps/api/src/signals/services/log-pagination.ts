@@ -1,5 +1,8 @@
 import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
 
+import { escapeAplString } from "../../lib/axiom-apl";
+import { safeUriComponentDecode } from "../utils";
+
 type LogOrder = "asc" | "desc";
 
 interface DecodedSequenceCursor {
@@ -10,10 +13,12 @@ interface DecodedSequenceCursor {
 interface DecodedTimeCursor {
   readonly order: LogOrder;
   readonly timestamp: string;
+  readonly tieBreaker: string;
 }
 
 interface TimedAxiomRecord {
   readonly _time: string;
+  readonly _vm0Cursor?: unknown;
 }
 
 interface TimePaginationParams {
@@ -25,6 +30,8 @@ interface TimePaginationParams {
 
 const ISO_UTC_TIMESTAMP_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/;
+const MAX_TIME_CURSOR_TIE_BREAKER_LENGTH = 2048;
+const TIME_CURSOR_APL_FIELD = "_vm0Cursor";
 
 function safeInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isSafeInteger(value) ? value : undefined;
@@ -103,13 +110,44 @@ function exactUtcTimestamp(value: string): string | null {
     : null;
 }
 
+function decodeCursorComponent(rawValue: string): string | null {
+  return safeUriComponentDecode(rawValue) ?? null;
+}
+
 function timeCursorTimestampValue(rawValue: string): string | null {
-  if (/^-?\d+$/.test(rawValue)) {
-    return isoTimestamp(Number(rawValue));
+  const decoded = decodeCursorComponent(rawValue);
+  if (decoded === null) {
+    return null;
+  }
+  return exactUtcTimestamp(decoded);
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) {
+      return true;
+    }
   }
 
-  const decoded = rawValue.replaceAll(/%3A/gi, ":").replaceAll(/%2E/gi, ".");
-  return exactUtcTimestamp(decoded);
+  return false;
+}
+
+function exactTimeCursorTieBreaker(value: string): string | null {
+  if (
+    value.length === 0 ||
+    value.length > MAX_TIME_CURSOR_TIE_BREAKER_LENGTH ||
+    hasControlCharacter(value)
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function timeCursorTieBreakerValue(rawValue: string): string | null {
+  const decoded = decodeCursorComponent(rawValue);
+  return decoded === null ? null : exactTimeCursorTieBreaker(decoded);
 }
 
 function encodeSequenceCursor(order: LogOrder, value: number): string | null {
@@ -120,13 +158,20 @@ function encodeSequenceCursor(order: LogOrder, value: number): string | null {
   return `sequence:${order}:${value}`;
 }
 
-function encodeTimeCursor(order: LogOrder, timestamp: string): string | null {
+function encodeTimeCursor(
+  order: LogOrder,
+  timestamp: string,
+  tieBreaker: string,
+): string | null {
   const exactTimestamp = exactUtcTimestamp(timestamp);
-  if (exactTimestamp === null) {
+  const exactTieBreaker = exactTimeCursorTieBreaker(tieBreaker);
+  if (exactTimestamp === null || exactTieBreaker === null) {
     return null;
   }
 
-  return `time:${order}:${encodeURIComponent(exactTimestamp)}`;
+  return `time:${order}:${encodeURIComponent(
+    exactTimestamp,
+  )}:${encodeURIComponent(exactTieBreaker)}`;
 }
 
 function decodeSequenceCursor(
@@ -168,23 +213,29 @@ function decodeTimeCursor(
     return null;
   }
 
-  const match = /^time:(asc|desc):(.+)$/.exec(cursor);
+  const match = /^time:(asc|desc):([^:]+):(.+)$/.exec(cursor);
   if (!match) {
     return null;
   }
 
   const order = match[1];
-  const rawValue = match[2];
+  const rawTimestamp = match[2];
+  const rawTieBreaker = match[3];
   if (order !== expectedOrder || (order !== "asc" && order !== "desc")) {
     return null;
   }
 
-  const timestamp = rawValue ? timeCursorTimestampValue(rawValue) : null;
-  if (timestamp === null) {
+  const timestamp = rawTimestamp
+    ? timeCursorTimestampValue(rawTimestamp)
+    : null;
+  const tieBreaker = rawTieBreaker
+    ? timeCursorTieBreakerValue(rawTieBreaker)
+    : null;
+  if (timestamp === null || tieBreaker === null) {
     return null;
   }
 
-  return { order, timestamp };
+  return { order, timestamp, tieBreaker };
 }
 
 export function sequenceCursorValue(
@@ -194,11 +245,11 @@ export function sequenceCursorValue(
   return decodeSequenceCursor(cursor, order)?.value;
 }
 
-export function timeCursorTimestamp(
+export function timeCursorBoundary(
   cursor: string | undefined,
   order: LogOrder,
-): string | undefined {
-  return decodeTimeCursor(cursor, order)?.timestamp;
+): DecodedTimeCursor | undefined {
+  return decodeTimeCursor(cursor, order) ?? undefined;
 }
 
 function buildSequencePaginationFilter(
@@ -233,13 +284,23 @@ export function buildTimePaginationFilters(
     filters.push(sinceTimeFilter);
   }
 
-  const cursorTimestamp = timeCursorTimestamp(params.cursor, params.order);
-  if (cursorTimestamp !== undefined) {
+  const cursorBoundary = timeCursorBoundary(params.cursor, params.order);
+  if (cursorBoundary !== undefined) {
     const operator = params.order === "asc" ? ">" : "<";
-    filters.push(`| where _time ${operator} datetime("${cursorTimestamp}")`);
+    filters.push(
+      `| where _time ${operator} datetime("${cursorBoundary.timestamp}") or (_time == datetime("${cursorBoundary.timestamp}") and ${TIME_CURSOR_APL_FIELD} ${operator} "${escapeAplString(cursorBoundary.tieBreaker)}")`,
+    );
   }
 
   return filters.join("\n");
+}
+
+export function buildTimeCursorProjection(): string {
+  return `| extend ${TIME_CURSOR_APL_FIELD} = cursor_current()`;
+}
+
+export function buildTimePaginationOrder(order: LogOrder): string {
+  return `| order by _time ${order}, ${TIME_CURSOR_APL_FIELD} ${order}`;
 }
 
 export function nextSequenceCursor(
@@ -264,7 +325,7 @@ export function nextTimeCursor<T extends TimedAxiomRecord>(
   records: readonly T[],
   hasMore: boolean,
   order: LogOrder,
-  previousCursorTimestamp: string | undefined,
+  previousCursorBoundary: DecodedTimeCursor | undefined,
 ): string | null {
   if (!hasMore || records.length === 0) {
     return null;
@@ -276,16 +337,25 @@ export function nextTimeCursor<T extends TimedAxiomRecord>(
   }
 
   const timestamp = exactUtcTimestamp(lastRecord._time);
-  if (timestamp === null || timestamp === previousCursorTimestamp) {
+  const tieBreaker =
+    typeof lastRecord._vm0Cursor === "string" ? lastRecord._vm0Cursor : null;
+  if (timestamp === null || tieBreaker === null) {
     return null;
   }
 
-  return encodeTimeCursor(order, timestamp);
+  if (
+    timestamp === previousCursorBoundary?.timestamp &&
+    tieBreaker === previousCursorBoundary.tieBreaker
+  ) {
+    return null;
+  }
+
+  return encodeTimeCursor(order, timestamp, tieBreaker);
 }
 
 export function filterTimedAxiomRecords<T extends Record<string, unknown>>(
   records: readonly T[],
-): Array<T & { readonly _time: string }> {
+): (T & { readonly _time: string })[] {
   return records.filter((record): record is T & { readonly _time: string } => {
     return typeof record._time === "string";
   });

@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   authHeadersSchema,
   initContract,
-  isValidDateTimestamp,
   timestampQueryNumberSchema,
 } from "./base";
 import { apiErrorSchema } from "./errors";
@@ -510,17 +509,39 @@ function exactUtcTimestamp(value: string): string | null {
 }
 
 function timeCursorTimestampValue(rawValue: string): string | null {
-  if (/^-?\d+$/.test(rawValue)) {
-    const value = Number(rawValue);
-    if (!Number.isSafeInteger(value) || !isValidDateTimestamp(value)) {
-      return null;
-    }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+  return exactUtcTimestamp(decoded);
+}
 
-    return new Date(value).toISOString();
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) {
+      return true;
+    }
   }
 
-  const decoded = rawValue.replaceAll(/%3A/gi, ":").replaceAll(/%2E/gi, ".");
-  return exactUtcTimestamp(decoded);
+  return false;
+}
+
+function timeCursorTieBreakerValue(rawValue: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+
+  if (decoded.length === 0 || decoded.length > 2048) {
+    return null;
+  }
+
+  return hasControlCharacter(decoded) ? null : decoded;
 }
 
 type ParsedLogCursor =
@@ -533,28 +554,39 @@ type ParsedLogCursor =
       readonly kind: "time";
       readonly order: LogPaginationOrder;
       readonly timestamp: string;
+      readonly tieBreaker: string;
     };
 
 function parseLogCursor(cursor: string): ParsedLogCursor | null {
-  const match = /^(sequence|time):(asc|desc):(.+)$/.exec(cursor);
-  if (!match) {
+  const timeMatch = /^time:(asc|desc):([^:]+):(.+)$/.exec(cursor);
+  if (timeMatch) {
+    const order = timeMatch[1];
+    const rawTimestamp = timeMatch[2];
+    const rawTieBreaker = timeMatch[3];
+    if (
+      (order !== "asc" && order !== "desc") ||
+      rawTimestamp === undefined ||
+      rawTieBreaker === undefined
+    ) {
+      return null;
+    }
+
+    const timestamp = timeCursorTimestampValue(rawTimestamp);
+    const tieBreaker = timeCursorTieBreakerValue(rawTieBreaker);
+    return timestamp === null || tieBreaker === null
+      ? null
+      : { kind: "time", order, timestamp, tieBreaker };
+  }
+
+  const sequenceMatch = /^sequence:(asc|desc):(-?\d+)$/.exec(cursor);
+  if (!sequenceMatch) {
     return null;
   }
 
-  const kind = match[1];
-  const order = match[2];
-  const rawValue = match[3];
-  if (
-    (kind !== "sequence" && kind !== "time") ||
-    (order !== "asc" && order !== "desc") ||
-    rawValue === undefined
-  ) {
+  const order = sequenceMatch[1];
+  const rawValue = sequenceMatch[2];
+  if ((order !== "asc" && order !== "desc") || rawValue === undefined) {
     return null;
-  }
-
-  if (kind === "time") {
-    const timestamp = timeCursorTimestampValue(rawValue);
-    return timestamp === null ? null : { kind, order, timestamp };
   }
 
   if (!/^-?\d+$/.test(rawValue)) {
@@ -566,7 +598,7 @@ function parseLogCursor(cursor: string): ParsedLogCursor | null {
     return null;
   }
 
-  return { kind, order, value };
+  return { kind: "sequence", order, value };
 }
 
 function sequenceCursorOutOfRange(cursor: ParsedLogCursor): boolean {
