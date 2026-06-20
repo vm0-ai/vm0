@@ -1,8 +1,12 @@
 //! Reusable mock Codex contract used by the `guest-mock-codex` binary and tests.
 //!
-//! The mock emits Codex `exec --json` protocol events on stdout and persists a
-//! JSONL session file under Codex's date-partitioned session tree:
-//! `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`.
+//! The mock supports two test-only Codex surfaces:
+//!
+//! - `exec --json`: emits Codex JSONL protocol events on stdout and persists a
+//!   JSONL session file under Codex's date-partitioned session tree:
+//!   `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`.
+//! - `app-server`: speaks newline-delimited JSON-RPC over stdio for focused
+//!   app-server client tests.
 //!
 //! Resume can also append to runner-restored rollout filenames, matching the
 //! real Codex CLI's filesystem resume candidates.

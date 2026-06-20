@@ -327,6 +327,28 @@ fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()>
 }
 
 #[test]
+fn app_server_rejects_non_stdio_listen_url() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let out = run(
+        dir.path(),
+        &["app-server", "--stdio", "--listen", "tcp://127.0.0.1:0"],
+    )?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "unsupported app-server listen URL should not emit stdout JSON: {:?}",
+        out.events
+    );
+    assert!(
+        out.stderr.contains("only supports stdio transport"),
+        "unsupported app-server listen URL should fail clearly: {:?}",
+        out.stderr
+    );
+    Ok(())
+}
+
+#[test]
 fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let supplied_thread_id = "thread-1";
@@ -379,6 +401,31 @@ fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
     assert_eq!(events[0]["text"], "initial prompt");
     assert_eq!(events[1]["thread_id"], supplied_thread_id);
     assert_eq!(events[1]["text"], "follow-up prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_empty_resume_thread_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", json!({}))?;
+    let error = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": ""
+        }),
+    )?;
+
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("threadId")
+    );
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }
@@ -560,7 +607,10 @@ fn app_server_disconnect_after_initialize_closes_stdout() -> std::io::Result<()>
     )?;
 
     let initialized = server.request(1, "initialize", json!({}))?;
-    assert_eq!(initialized["result"]["platformFamily"], "unix");
+    assert_eq!(
+        initialized["result"]["platformFamily"],
+        std::env::consts::FAMILY
+    );
     assert!(server.read_message()?.is_none());
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())

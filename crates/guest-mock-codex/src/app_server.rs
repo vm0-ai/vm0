@@ -42,7 +42,7 @@ impl Scenario {
 }
 
 pub fn run_app_server(options: AppServerOptions) -> io::Result<()> {
-    if !options.stdio && options.listen != "stdio://" {
+    if options.listen != "stdio://" {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
@@ -149,7 +149,7 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
                     return Ok(ServerAction::Continue);
                 }
-                let Some(thread_id) = string_param(params, "threadId") else {
+                let Some(thread_id) = non_empty_string_param(params, "threadId") else {
                     write_error(output, id, INVALID_REQUEST, "missing threadId")?;
                     return Ok(ServerAction::Continue);
                 };
@@ -365,6 +365,10 @@ fn turn(turn_id: &str) -> Value {
 
 fn string_param<'a>(params: &'a Value, name: &str) -> Option<&'a str> {
     params.get(name).and_then(Value::as_str)
+}
+
+fn non_empty_string_param<'a>(params: &'a Value, name: &str) -> Option<&'a str> {
+    string_param(params, name).filter(|value| !value.is_empty())
 }
 
 fn text_inputs(params: &Value) -> Result<Vec<String>, String> {
