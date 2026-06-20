@@ -19,12 +19,14 @@ import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflows,
   zeroWorkflowTriggers,
 } from "@vm0/db/schema/zero-workflow";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -1699,6 +1701,12 @@ async function seedGoalForThread(args: {
     chatThreadId: args.threadId,
     consecutiveFailures: args.consecutiveFailures ?? 0,
   });
+  // Goal continuation only runs when the GoalWorkflows feature is enabled.
+  await db.insert(userFeatureSwitches).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    switches: { [FeatureSwitchKey.GoalWorkflows]: true },
+  });
 }
 
 function pushPayload(call: readonly unknown[] | undefined): unknown {
@@ -1785,7 +1793,9 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
     await flushWaitUntilForTest();
 
     await expect
-      .poll(() => context.mocks.webpush.sendNotification.mock.calls.length)
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
       .toBe(1);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
@@ -1873,7 +1883,9 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
     await flushWaitUntilForTest();
 
     await expect
-      .poll(() => context.mocks.webpush.sendNotification.mock.calls.length)
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
       .toBe(1);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
