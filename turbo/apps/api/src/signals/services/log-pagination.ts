@@ -1,6 +1,5 @@
 import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
 
-import { escapeAplString } from "../../lib/axiom-apl";
 import { safeUriComponentDecode } from "../utils";
 
 type LogOrder = "asc" | "desc";
@@ -284,14 +283,6 @@ export function buildTimePaginationFilters(
     filters.push(sinceTimeFilter);
   }
 
-  const cursorBoundary = timeCursorBoundary(params.cursor, params.order);
-  if (cursorBoundary !== undefined) {
-    const operator = params.order === "asc" ? ">" : "<";
-    filters.push(
-      `| where _time ${operator} datetime("${cursorBoundary.timestamp}") or (_time == datetime("${cursorBoundary.timestamp}") and ${TIME_CURSOR_APL_FIELD} ${operator} "${escapeAplString(cursorBoundary.tieBreaker)}")`,
-    );
-  }
-
   return filters.join("\n");
 }
 
@@ -300,7 +291,7 @@ export function buildTimeCursorProjection(): string {
 }
 
 export function buildTimePaginationOrder(order: LogOrder): string {
-  return `| order by _time ${order}, ${TIME_CURSOR_APL_FIELD} ${order}`;
+  return `| order by _time ${order}`;
 }
 
 export function nextSequenceCursor(

@@ -1296,6 +1296,14 @@ function isAxiomRow(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function axiomCursorOption(value: unknown): string | undefined {
+  if (!isAxiomRow(value)) {
+    return undefined;
+  }
+
+  return typeof value.cursor === "string" ? value.cursor : undefined;
+}
+
 function timeCursorRows(
   apl: string,
   rows: readonly unknown[],
@@ -1772,11 +1780,12 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       [200],
     );
-    const systemCursorApl = axiomCallAt(axiomCallCount() - 1)[0];
+    const systemCursorCall = axiomCallAt(axiomCallCount() - 1);
+    const systemCursorApl = systemCursorCall[0];
     expect(systemCursorApl).toContain(new Date(sinceMs).toISOString());
-    expect(systemCursorApl).toContain(
-      `| where _time < datetime("${highPrecisionSystemCursor}")`,
-    );
+    expect(systemCursorApl).toContain("| order by _time desc");
+    expect(systemCursorApl).not.toContain(highPrecisionSystemCursor);
+    expect(systemCursorCall[1]).toStrictEqual({ cursor: "cursor-0001" });
 
     const wrongSystemCursorOrder = await reads.requestRunSystemLog(
       actor,
@@ -2023,49 +2032,34 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     ];
 
-    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
-      if (
-        typeof apl !== "string" ||
-        !apl.includes("['sandbox-telemetry-system']")
-      ) {
-        return Promise.resolve([]);
-      }
-
-      const boundaryMatch =
-        /_time == datetime\("([^"]+)"\) and _vm0Cursor (>|<) "([^"]+)"/.exec(
-          apl,
-        );
-      const limitMatch = /\| limit (\d+)/.exec(apl);
-      const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
-      const filteredRows = rows.filter((row) => {
-        if (!boundaryMatch) {
-          return true;
-        }
-
-        const [, boundaryTime, operator, boundaryCursor] = boundaryMatch;
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
         if (
-          boundaryTime === undefined ||
-          operator === undefined ||
-          boundaryCursor === undefined
+          typeof apl !== "string" ||
+          !apl.includes("['sandbox-telemetry-system']")
         ) {
-          return false;
+          return Promise.resolve([]);
         }
 
-        if (operator === ">") {
-          return (
-            row._time > boundaryTime ||
-            (row._time === boundaryTime && row._vm0Cursor > boundaryCursor)
-          );
-        }
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : rows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? rows.length
+              : cursorIndex + 1;
 
-        return (
-          row._time < boundaryTime ||
-          (row._time === boundaryTime && row._vm0Cursor < boundaryCursor)
-        );
-      });
-
-      return Promise.resolve(filteredRows.slice(0, limit));
-    });
+        return Promise.resolve(rows.slice(startIndex, startIndex + limit));
+      },
+    );
 
     const firstPage = await reads.requestRunSystemLog(
       actor,
@@ -2096,10 +2090,11 @@ describe("RUN-04: agent run telemetry families", () => {
       nextCursor: timeLogCursor("asc", timestamp, "row-b"),
     });
 
-    const secondPageApl = axiomCallAt(axiomCallCount() - 1)[0];
-    expect(secondPageApl).toContain(
-      `(_time == datetime("${timestamp}") and _vm0Cursor > "row-a")`,
-    );
+    const secondPageCall = axiomCallAt(axiomCallCount() - 1);
+    const secondPageApl = secondPageCall[0];
+    expect(secondPageCall[1]).toStrictEqual({ cursor: "row-a" });
+    expect(secondPageApl).toContain(`| order by _time asc`);
+    expect(secondPageApl).not.toContain("_vm0Cursor >");
   });
 
   it("does not advertise another telemetry page when the cursor cannot advance", async () => {

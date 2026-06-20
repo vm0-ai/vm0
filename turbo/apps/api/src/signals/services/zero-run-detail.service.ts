@@ -174,12 +174,21 @@ export function zeroRunNetworkLogs(
     const dataset = getDatasetName("sandbox-telemetry-network");
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(order)}
+${buildTimeCursorProjection()}
 | limit ${limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))).slice();
+    const events = (
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
+    ).slice();
 
     const pageHasMore = events.length > limit;
     const records = pageHasMore ? events.slice(0, limit) : events;

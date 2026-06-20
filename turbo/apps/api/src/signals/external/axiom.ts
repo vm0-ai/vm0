@@ -100,13 +100,14 @@ export async function flushAxiom(
   }
 }
 
-// Minimal options surface — only the `noCache` knob is wired today (used by
-// the agent-event watermark wait to bypass Axiom's per-request cache for
-// freshly-completed runs). Other options from web's queryAxiom (maxRetries,
-// streamingDuration, timeoutMs) intentionally NOT ported — see leader
-// guidance on issue #12424; add them when a caller actually needs them.
+// Minimal options surface. `noCache` is used by the agent-event watermark wait
+// to bypass Axiom's per-request cache for freshly-completed runs; `cursor` is
+// used for Axiom-managed time pagination. Other options from web's queryAxiom
+// (maxRetries, streamingDuration, timeoutMs) intentionally NOT ported — see
+// leader guidance on issue #12424; add them when a caller actually needs them.
 export interface QueryAxiomOptions {
   readonly noCache?: boolean;
+  readonly cursor?: string;
 }
 
 export async function queryAxiomDirect<T = Record<string, unknown>>(
@@ -115,7 +116,12 @@ export async function queryAxiomDirect<T = Record<string, unknown>>(
 ): Promise<readonly T[]> {
   const client = axiomClientForApl(apl);
   const axiomOptions =
-    options?.noCache !== undefined ? { noCache: options.noCache } : undefined;
+    options?.noCache !== undefined || options?.cursor !== undefined
+      ? {
+          ...(options.noCache !== undefined && { noCache: options.noCache }),
+          ...(options.cursor !== undefined && { cursor: options.cursor }),
+        }
+      : undefined;
   const result = await client.query(apl, axiomOptions);
   return (
     result.matches?.map((m) => {

@@ -1679,7 +1679,8 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
       return respond(200, codexRunContext(runId));
     });
-    const secondDownloadNetworkCursor = "time:asc:2026-03-10T14%3A56%3A03Z";
+    const secondDownloadNetworkCursor =
+      "time:asc:2026-03-10T14%3A56%3A03Z:cursor-download-2";
     const requestedDownloadNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
@@ -1790,7 +1791,8 @@ describe("activity detail polling", () => {
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
       return respond(200, { sandboxReuseResult: "reused" });
     });
-    const secondNetworkPageCursor = "time:asc:2026-03-10T15%3A00%3A02Z";
+    const secondNetworkPageCursor =
+      "time:asc:2026-03-10T15%3A00%3A02Z:cursor-network-2";
     const requestedNetworkCursors: (string | undefined)[] = [];
     context.mocks.api(
       zeroRunNetworkLogsContract.getNetworkLogs,
@@ -1930,8 +1932,8 @@ describe("activity detail polling", () => {
   it("ignores stale network page responses after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000501";
     const secondRunId = "a0000000-0000-4000-a000-000000000502";
-    const firstCursor = "time:asc:2026-03-10T17%3A00%3A01Z";
-    const secondCursor = "time:asc:2026-03-10T18%3A00%3A01Z";
+    const firstCursor = "time:asc:2026-03-10T17%3A00%3A01Z:cursor-first-2";
+    const secondCursor = "time:asc:2026-03-10T18%3A00%3A01Z:cursor-second-2";
     const stalePage = Promise.withResolvers<void>();
     let firstSecondPageRequested = false;
 

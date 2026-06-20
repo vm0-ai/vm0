@@ -395,13 +395,20 @@ export function agentRunSystemLog(
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
     const events = (
-      await get(queryAxiom(apl))
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
     ).slice() as unknown as AxiomSystemLogEvent[];
     const pageHasMore = events.length > params.limit;
     const records = pageHasMore ? events.slice(0, params.limit) : events;
@@ -441,13 +448,20 @@ export function agentRunMetrics(
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
     const events = (
-      await get(queryAxiom(apl))
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
     ).slice() as unknown as AxiomMetricEvent[];
     const pageHasMore = events.length > params.limit;
     const records = pageHasMore ? events.slice(0, params.limit) : events;
@@ -492,12 +506,21 @@ export function agentRunNetworkLogs(
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-${buildTimeCursorProjection()}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(params.order)}
+${buildTimeCursorProjection()}
 | limit ${params.limit + 1}`;
 
-    const events = (await get(queryAxiom(apl))).slice();
+    const events = (
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
+    ).slice();
     const pageHasMore = events.length > params.limit;
     const records = pageHasMore ? events.slice(0, params.limit) : events;
     const networkLogs = sanitizeAxiomNetworkEvents(records);
