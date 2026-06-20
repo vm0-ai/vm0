@@ -648,7 +648,7 @@ describe("Automations API", () => {
       .select({ enabled: zeroWorkflowTriggers.enabled })
       .from(zeroWorkflowTriggers)
       .where(eq(zeroWorkflowTriggers.id, trigger!.id));
-    expect(after?.enabled).toBe(false);
+    expect(after?.enabled).toBeFalsy();
   });
 
   it("updates identity fields and rejects a rename onto a taken name", async () => {

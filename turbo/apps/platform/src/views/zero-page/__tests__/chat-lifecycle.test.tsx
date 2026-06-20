@@ -3261,7 +3261,8 @@ describe("chat lifecycle", () => {
     expect(
       within(sidebar).getByText("Drive the release to merge"),
     ).toBeInTheDocument();
-    expect(within(sidebar).getByText("Active")).toBeInTheDocument();
+    // The enabled toggle (its aria-label) uniquely marks the active goal card;
+    // "Active" text also appears on the automation card, so assert the toggle.
     expect(within(sidebar).getByLabelText("Disable Goal")).toBeInTheDocument();
   });
 
