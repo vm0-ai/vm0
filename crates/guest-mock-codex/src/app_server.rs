@@ -7,12 +7,6 @@ use uuid::Uuid;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 
-#[derive(Debug)]
-pub struct AppServerOptions {
-    pub listen: String,
-    pub stdio: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scenario {
     Success,
@@ -41,13 +35,13 @@ impl Scenario {
     }
 }
 
-pub fn run_app_server(options: AppServerOptions) -> io::Result<()> {
-    if options.listen != "stdio://" {
+pub fn run_app_server(listen: &str) -> io::Result<()> {
+    if listen != "stdio://" {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "guest-mock-codex app-server only supports stdio transport, got {:?}",
-                options.listen
+                listen
             ),
         ));
     }

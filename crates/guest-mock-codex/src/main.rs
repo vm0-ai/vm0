@@ -35,8 +35,7 @@
 
 use clap::{Parser, Subcommand};
 use guest_mock_codex::{
-    AppServerOptions, join_prompt_cow, lookup_fixture, run_app_server, run_fixture, run_new,
-    run_resume,
+    join_prompt_cow, lookup_fixture, run_app_server, run_fixture, run_new, run_resume,
 };
 use std::io;
 use std::path::PathBuf;
@@ -133,9 +132,9 @@ fn main() -> io::Result<()> {
     match cli.command {
         Cmd::AppServer(AppServerArgs {
             listen,
-            stdio,
+            stdio: _,
             config: _,
-        }) => run_app_server(AppServerOptions { listen, stdio }),
+        }) => run_app_server(&listen),
         Cmd::Exec(ExecArgs {
             sub: Some(ExecSub::Resume { thread_id, prompt }),
             ..

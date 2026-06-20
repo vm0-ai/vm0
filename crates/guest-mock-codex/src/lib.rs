@@ -21,7 +21,7 @@ mod fixtures;
 mod prompt;
 mod session;
 
-pub use app_server::{AppServerOptions, run_app_server};
+pub use app_server::run_app_server;
 pub use events::build_events;
 pub use fixtures::{lookup_fixture, run_fixture};
 pub use prompt::{join_prompt, join_prompt_cow};
