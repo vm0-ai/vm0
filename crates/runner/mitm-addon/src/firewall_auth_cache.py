@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from firewall_auth_client import (
     FirewallAuthPayload,
+    FirewallAuthRequest,
     fetch_firewall_headers,
 )
 
@@ -152,17 +153,7 @@ def _build_cache_hit(
 async def get_firewall_headers(
     run_id: str,
     api_id: str,
-    encrypted_secrets: str,
-    auth_headers: dict,
-    sandbox_token: str,
-    *,
-    secret_connector_map: dict | None = None,
-    secret_connector_metadata_map: dict | None = None,
-    vars_map: dict | None = None,
-    auth_base: str | None = None,
-    auth_query: dict | None = None,
-    auth_aws_sigv4: dict | None = None,
-    firewall_billable: bool = False,
+    request: FirewallAuthRequest,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
@@ -179,7 +170,7 @@ async def get_firewall_headers(
 
     # Fast path: cache hit (no lock needed — single-threaded event loop)
     if state.cache:
-        hit = _build_cache_hit(state.cache, firewall_billable=firewall_billable)
+        hit = _build_cache_hit(state.cache, firewall_billable=request.firewall_billable)
         if hit:
             return hit
 
@@ -187,7 +178,7 @@ async def get_firewall_headers(
     async with state.lock:
         # Double-check: another coroutine may have populated cache while we waited
         if state.cache:
-            hit = _build_cache_hit(state.cache, firewall_billable=firewall_billable)
+            hit = _build_cache_hit(state.cache, firewall_billable=request.firewall_billable)
             if hit:
                 return hit
 
@@ -203,19 +194,10 @@ async def get_firewall_headers(
             state.last_force_refresh_at = time.time()
 
         result = await fetch_firewall_headers(
-            encrypted_secrets,
-            auth_headers,
-            sandbox_token,
-            secret_connector_map=secret_connector_map,
-            secret_connector_metadata_map=secret_connector_metadata_map,
-            vars_map=vars_map,
-            auth_base=auth_base,
-            auth_query=auth_query,
-            auth_aws_sigv4=auth_aws_sigv4,
-            firewall_billable=firewall_billable,
+            request,
             force_refresh=force_refresh,
         )
-        if firewall_billable and not _has_valid_expiry(result.expires_at):
+        if request.firewall_billable and not _has_valid_expiry(result.expires_at):
             raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
