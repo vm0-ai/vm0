@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.475.2](https://github.com/vm0-ai/vm0/compare/app-v0.475.1...app-v0.475.2) (2026-06-19)
+
+
+### Bug Fixes
+
+* group chat messages by run turn ([#18349](https://github.com/vm0-ai/vm0/issues/18349)) ([9c74ffc](https://github.com/vm0-ai/vm0/commit/9c74ffc45963f89597a92fc5c2a95595d7118fe7))
+* restore stripe cli device auth ([#18336](https://github.com/vm0-ai/vm0/issues/18336)) ([fe7ad84](https://github.com/vm0-ai/vm0/commit/fe7ad84a8ca9aa1918f39c6c986bdb4ca1d47df5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.105.1
+    * @vm0/connectors bumped to 1.95.1
+    * @vm0/core bumped to 8.359.1
+
 ## [0.475.1](https://github.com/vm0-ai/vm0/compare/app-v0.475.0...app-v0.475.1) (2026-06-19)
 
 

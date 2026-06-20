@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.16.80](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.79...guest-init-v0.16.80) (2026-06-19)
+
 ## [0.16.79](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.78...guest-init-v0.16.79) (2026-06-19)
 
 ## [0.16.78](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.77...guest-init-v0.16.78) (2026-06-18)
