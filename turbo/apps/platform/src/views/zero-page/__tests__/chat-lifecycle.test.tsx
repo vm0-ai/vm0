@@ -3266,6 +3266,121 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getByLabelText("Disable Goal")).toBeInTheDocument();
   });
 
+  it("folds goal-state markers into the goal row beneath the queued messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-goal-fold";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goal-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        // Goal-state markers: the workflow is active (carrying the objective)
+        // and its trigger is enabled — the fold should surface the goal.
+        {
+          id: "msg-goal-workflow-active",
+          runId: undefined,
+          role: "assistant",
+          content: "Drive the release to merge",
+          runEventId: "goal-workflow:active",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-goal-trigger-active",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          runEventId: "goal-trigger:active",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    // The folded goal surfaces above the composer.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Active goal")).toHaveTextContent(
+        "Drive the release to merge",
+      );
+    });
+    // The marker is a control row — it must not also render as a chat bubble.
+    expect(
+      screen.getAllByText("Drive the release to merge"),
+    ).toHaveLength(1);
+
+    // The goal is the lowest-priority row: it sits after every queued message.
+    await sendQueuedMessage(user, "First queued follow-up");
+    await expectQueuedMessages(["First queued follow-up"]);
+    const goalRow = screen.getByLabelText("Active goal");
+    const strip = goalRow.closest('[role="list"]');
+    expect(strip).not.toBeNull();
+    const rows = within(strip as HTMLElement).getAllByRole("listitem");
+    const goalIndex = rows.indexOf(goalRow);
+    const queuedIndex = rows.findIndex((row) => {
+      return row.getAttribute("aria-label") === "Queued message";
+    });
+    expect(queuedIndex).toBeGreaterThanOrEqual(0);
+    expect(goalIndex).toBeGreaterThan(queuedIndex);
+  });
+
+  it("hides the goal row once a completion marker folds in", async () => {
+    const threadId = "thread-goal-complete";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goalc-workflow-active",
+          runId: undefined,
+          role: "assistant",
+          content: "Drive the release to merge",
+          runEventId: "goal-workflow:active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goalc-trigger-active",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          runEventId: "goal-trigger:active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-goalc-workflow-inactive",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          runEventId: "goal-workflow:inactive",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    // Latest workflow marker is inactive → folds to "complete" → no goal row.
+    expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
+  });
+
   it("shows automation run messages as automation links in chat history", async () => {
     const threadId = "thread-automation-message";
     const automationId = "f0000001-0000-4000-a000-000000000721";

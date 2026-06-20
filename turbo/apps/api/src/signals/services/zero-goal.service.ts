@@ -16,7 +16,17 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
-import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
+import {
+  publishChatThreadAutomationsChangedSafely,
+  publishChatThreadMessageCreatedSafely,
+} from "../external/realtime";
+import {
+  GOAL_TRIGGER_ACTIVE_EVENT_ID,
+  GOAL_TRIGGER_INACTIVE_EVENT_ID,
+  GOAL_WORKFLOW_ACTIVE_EVENT_ID,
+  GOAL_WORKFLOW_INACTIVE_EVENT_ID,
+  appendGoalStateMarker,
+} from "./zero-chat-goal-marker.service";
 import type { TriggerRow } from "./zero-workflow-trigger-run.service";
 
 export type GoalResult =
@@ -253,6 +263,20 @@ export async function createGoalForCurrentThread(
       throw new Error("Failed to create goal trigger");
     }
 
+    // Publish the new goal's state into the thread so the composer can fold it
+    // from the message stream: the workflow is active (carries the objective)
+    // and its trigger is enabled.
+    await appendGoalStateMarker(tx, {
+      chatThreadId: threadId,
+      eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
+      objective: args.objective,
+    });
+    await appendGoalStateMarker(tx, {
+      chatThreadId: threadId,
+      eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
+      objective: null,
+    });
+
     return {
       row: {
         workflowId: workflow.id,
@@ -279,6 +303,7 @@ export async function createGoalForCurrentThread(
     args.userId,
     created.threadId,
   );
+  await publishChatThreadMessageCreatedSafely(args.userId, created.threadId);
 
   return {
     kind: "ok",
@@ -337,8 +362,21 @@ export async function completeCurrentGoal(
         updatedAt: completedAt,
       })
       .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+    // The goal is done: workflow inactive (+ trigger disabled) folds to
+    // "complete", so the composer drops the goal row.
+    await appendGoalStateMarker(tx, {
+      chatThreadId: goal.threadId,
+      eventId: GOAL_WORKFLOW_INACTIVE_EVENT_ID,
+      objective: null,
+    });
+    await appendGoalStateMarker(tx, {
+      chatThreadId: goal.threadId,
+      eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
+      objective: null,
+    });
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
+  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
@@ -360,7 +398,14 @@ export async function blockCurrentGoal(
     .update(zeroWorkflowTriggers)
     .set({ enabled: false, updatedAt: blockedAt })
     .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+  // Trigger disabled while the workflow stays active folds to "blocked".
+  await appendGoalStateMarker(db, {
+    chatThreadId: goal.threadId,
+    eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
+    objective: null,
+  });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
+  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
@@ -382,7 +427,14 @@ export async function resumeCurrentGoal(
     .update(zeroWorkflowTriggers)
     .set({ enabled: true, consecutiveFailures: 0, updatedAt: resumedAt })
     .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+  // Trigger re-enabled while the workflow is active folds back to "active".
+  await appendGoalStateMarker(db, {
+    chatThreadId: goal.threadId,
+    eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
+    objective: null,
+  });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
+  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",

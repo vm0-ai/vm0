@@ -31,6 +31,7 @@ import {
   IconPlus,
   IconQuote,
   IconSearch,
+  IconTarget,
   IconTemplate,
   IconVideo,
   IconX,
@@ -312,6 +313,13 @@ interface ZeroChatComposerProps {
   /** Cancels a queued message (routed to the recall flow by the caller). */
   onRemoveQueuedItem?: (id: string) => void;
   /**
+   * The thread's active goal. Rendered as a row beneath the queued messages in
+   * the strip above the composer — a goal runs only once the queue drains, so it
+   * sits closest to the composer to read as lower priority than the queue.
+   * Absent when the thread has no in-progress goal.
+   */
+  activeGoal?: ActiveGoalComposerItem;
+  /**
    * Inline feedback drafted from selected assistant text. When at least one
    * quoted fragment is present the composer swaps its textarea for the stacked
    * quote + note rows and its Send button dispatches the feedback turn — so the
@@ -333,6 +341,11 @@ export interface ComposerFeedback {
 export interface QueuedComposerItem {
   id: string;
   text: string;
+}
+
+interface ActiveGoalComposerItem {
+  /** The goal's objective — the human-readable text shown in the row. */
+  objective: string;
 }
 
 interface ComposerComputerUseHost {
@@ -479,27 +492,41 @@ function resolveComposerCanSend({
 function QueuedMessagesStrip({
   items,
   onRemove,
+  activeGoal,
 }: {
   items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
+  activeGoal?: ActiveGoalComposerItem;
 }) {
-  if (!items || items.length === 0) {
+  const queued = items ?? [];
+  if (queued.length === 0 && !activeGoal) {
     return null;
   }
-  const count = items.length;
+  const count = queued.length;
   const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      <div className="flex items-center gap-2 px-5 pt-3 pb-2">
-        <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
-          <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
-          <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
-          <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
-        </span>
-        <span className="text-sm text-muted-foreground">{label}</span>
-      </div>
-      <div className="max-h-[200px] overflow-y-auto px-2 pt-1 pb-7" role="list">
-        {items.map((item) => {
+      {count > 0 ? (
+        <div className="flex items-center gap-2 px-5 pt-3 pb-2">
+          <span
+            className="inline-flex items-center gap-[2px]"
+            aria-hidden="true"
+          >
+            <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
+            <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
+            <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
+          </span>
+          <span className="text-sm text-muted-foreground">{label}</span>
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "max-h-[200px] overflow-y-auto px-2 pb-7",
+          count > 0 ? "pt-1" : "pt-3",
+        )}
+        role="list"
+      >
+        {queued.map((item) => {
           return (
             <div
               key={item.id}
@@ -521,6 +548,30 @@ function QueuedMessagesStrip({
             </div>
           );
         })}
+        {/* The active goal sits last — below every queued message — because a
+            goal only runs once the queue drains, so it reads as lower priority
+            than the queue. It is informational here (managed from the automation
+            sidebar), so unlike a queued message it carries no remove control. */}
+        {activeGoal ? (
+          <div
+            role="listitem"
+            aria-label="Active goal"
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground"
+          >
+            <IconTarget
+              size={16}
+              stroke={1.5}
+              className="shrink-0 text-emerald-800"
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {activeGoal.objective}
+            </span>
+            <span className="shrink-0 rounded-full bg-emerald-800/10 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              Goal
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -5224,6 +5275,7 @@ export function ZeroChatComposer({
   submitBlocker,
   queuedItems,
   onRemoveQueuedItem,
+  activeGoal,
   feedback,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
@@ -5595,6 +5647,7 @@ export function ZeroChatComposer({
         <QueuedMessagesStrip
           items={queuedItems}
           onRemove={onRemoveQueuedItem}
+          activeGoal={activeGoal}
         />
         <Card
           className={cn(

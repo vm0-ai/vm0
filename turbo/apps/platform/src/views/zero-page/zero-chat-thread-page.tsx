@@ -3835,6 +3835,10 @@ function ChatThreadComposer({
     thread,
     groups,
   );
+  // The active goal is folded from the thread's message stream (goal-state
+  // markers) — no /api/automations poll. Shown as a low-priority row beneath
+  // the queued messages above the composer.
+  const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
   const {
     modelPicker,
     modelPickerLoading,
@@ -3917,6 +3921,7 @@ function ChatThreadComposer({
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
+            activeGoal={activeGoal}
             feedback={feedback}
           />
           <PersonalClaudeCodeDeviceAuthDialog />
