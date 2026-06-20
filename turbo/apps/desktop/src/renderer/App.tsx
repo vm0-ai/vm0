@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IconActivityHeartbeat,
   IconAlertCircle,
@@ -7,9 +7,9 @@ import {
   IconCheck,
   IconChevronRight,
   IconCode,
+  IconDots,
   IconExternalLink,
   IconHistory,
-  IconLoader2,
   IconLogout,
   IconMaximize,
   IconPhoto,
@@ -17,9 +17,9 @@ import {
   IconPlayerStop,
   IconRefresh,
   IconShieldCheck,
-  IconUserCircle,
   IconX,
 } from "@tabler/icons-react";
+import { zeroAvatarDataUrl } from "./zero-avatar";
 import { useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../desktop-bridge";
@@ -69,17 +69,6 @@ const STATUS_LABELS = {
   needs_organization: "Select workspace",
   disabled: "Disabled",
   error: "Error",
-} as const satisfies Record<HostStatus, string>;
-
-const COMPUTER_USE_STATUS_COPY = {
-  offline: "Computer Use is stopped on this Mac.",
-  connecting: "Starting Computer Use on this Mac.",
-  online: "This Mac is available for Zero computer use.",
-  recovering: "Computer Use is reconnecting automatically.",
-  unauthenticated: "Sign in to Zero before starting Computer Use.",
-  needs_organization: "Select a workspace before starting Computer Use.",
-  disabled: "Computer Use is disabled for this Mac.",
-  error: "Computer Use needs attention before it can continue.",
 } as const satisfies Record<HostStatus, string>;
 
 const COMMAND_STATUS_LABELS = {
@@ -425,7 +414,7 @@ function AuthStepCard({
       <section className="step-card step-card-compact">
         <div className="compact-step-main">
           <StepIndex step={1} tone="ready" />
-          <IconUserCircle size={17} />
+          <ZeroFace className="zero-face-chip" size={26} />
           <span className="compact-step-copy">
             <strong>Signed in</strong>
             <span>
@@ -583,10 +572,15 @@ function PermissionsStepCard({
     useLoadableSet(requestScreenRecordingPermission$);
   const [, openAccessibility] = useLoadableSet(openAccessibilitySettings$);
   const [, openScreenRecording] = useLoadableSet(openScreenRecordingSettings$);
-  const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const accessibilityGranted = state.permissions.accessibility;
   const screenRecordingGranted = state.permissions.screenRecording;
   const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
+
+  // When permissions are granted the renderer shows the online/offline hero
+  // instead of this setup card, so there is nothing to render here.
+  if (permissionsReady) {
+    return null;
+  }
 
   if (!authReady) {
     return (
@@ -600,48 +594,6 @@ function PermissionsStepCard({
             <h2>Allow Computer Use permissions</h2>
             <p>Sign in and select a workspace first.</p>
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (permissionsReady) {
-    return (
-      <section className="step-card step-card-compact">
-        <div className="compact-step-main">
-          <StepIndex step={2} tone="ready" />
-          <IconShieldCheck size={17} />
-          <span className="compact-step-copy">
-            <strong>Permissions ready</strong>
-            <span>Accessibility and Screen Recording granted</span>
-          </span>
-        </div>
-        <div className="row-actions">
-          <IconButton
-            icon={<IconExternalLink size={15} />}
-            onClick={() => {
-              void openAccessibility();
-            }}
-          >
-            Accessibility Settings
-          </IconButton>
-          <IconButton
-            icon={<IconExternalLink size={15} />}
-            onClick={() => {
-              void openScreenRecording();
-            }}
-          >
-            Screen Recording Settings
-          </IconButton>
-          <IconButton
-            icon={<IconRefresh size={15} />}
-            onClick={() => {
-              void refresh();
-            }}
-            disabled={refreshLoadable.state === "loading"}
-          >
-            Refresh
-          </IconButton>
         </div>
       </section>
     );
@@ -800,67 +752,317 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
-function ComputerUseStatusPanel({
+const PERMISSION_POLL_INTERVAL_MS = 5_000;
+const ARRIVAL_ANIMATION_MS = 1_100;
+
+function isRunningStatus(status: HostStatus): boolean {
+  return (
+    status === "online" || status === "connecting" || status === "recovering"
+  );
+}
+
+/**
+ * Re-checks macOS permission state on an interval so the status stays current
+ * without a manual refresh button. Mounted only while Computer Use is not
+ * online (during setup or while offline).
+ */
+function PermissionAutoRefresh() {
+  const refresh = useSet(refreshComputerUse$);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refresh();
+    }, PERMISSION_POLL_INTERVAL_MS);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [refresh]);
+  return null;
+}
+
+function Radar() {
+  return (
+    <div className="radar" aria-hidden="true">
+      <span className="radar-aura" />
+      <span className="radar-wave radar-wave-3" />
+      <span className="radar-wave radar-wave-2" />
+      <span className="radar-wave radar-wave-1" />
+      <ZeroFace className="zero-face-hero" size={104} />
+    </div>
+  );
+}
+
+interface FooterMenuItem {
+  readonly disabled?: boolean;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly tone?: "default" | "danger";
+}
+
+function FooterMenu({ items }: { readonly items: readonly FooterMenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="footer-menu" ref={containerRef}>
+      <button
+        type="button"
+        className="footer-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account actions"
+        onClick={() => {
+          setOpen((value) => !value);
+        }}
+      >
+        <IconDots size={17} />
+      </button>
+      {open && (
+        <div className="footer-menu-popover" role="menu">
+          {items.map((item) => {
+            return (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className={`footer-menu-item${
+                  item.tone === "danger" ? " is-danger" : ""
+                }`}
+                disabled={item.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick();
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HeroFooter({
+  authState,
+  menuItems,
+  permissionGranted,
+}: {
+  readonly authState: DesktopAuthState | null;
+  readonly menuItems: readonly FooterMenuItem[];
+  readonly permissionGranted?: boolean;
+}) {
+  const signedIn = authState?.status === "signed_in" ? authState : null;
+  const email = signedIn?.user.email ?? "Signed in";
+  const organization = signedIn?.organization?.name ?? null;
+  const identity = organization ? `${email} · ${organization}` : email;
+  return (
+    <div className="hero-footer">
+      <span className="hero-footer-id">
+        {permissionGranted !== undefined && (
+          <span
+            className={`status-dot${
+              permissionGranted ? " is-online" : " is-pending"
+            }`}
+            title={
+              permissionGranted
+                ? "Accessibility and screen recording granted"
+                : "Accessibility and screen recording needed"
+            }
+          />
+        )}
+        <span>{identity}</span>
+      </span>
+      <FooterMenu items={menuItems} />
+    </div>
+  );
+}
+
+function OnlineHero({
+  authState,
   state,
 }: {
+  readonly authState: DesktopAuthState | null;
   readonly state: DesktopComputerUseState;
 }) {
-  const [startLoadable, start] = useLoadableSet(startComputerUse$);
   const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
-  const running =
-    state.host.status === "connecting" ||
-    state.host.status === "online" ||
-    state.host.status === "recovering";
-  const startDisabled =
-    running ||
-    state.host.status === "disabled" ||
-    startLoadable.state === "loading";
+  const deviceName = state.deviceName?.trim() ? state.deviceName.trim() : null;
+  const statusLabel = STATUS_LABELS[state.host.status];
   const stopDisabled =
     (state.host.status !== "online" && state.host.status !== "recovering") ||
     stopLoadable.state === "loading";
+  return (
+    <section className="hero hero-online">
+      <div className="hero-stage">
+        <Radar />
+        <p className="hero-name">{deviceName ?? statusLabel}</p>
+        {deviceName && (
+          <p className="hero-substatus">
+            <span
+              className={`status-dot${
+                state.host.status === "online" ? " is-online" : " is-pending"
+              }`}
+            />
+            {statusLabel}
+          </p>
+        )}
+      </div>
+      <HeroFooter
+        authState={authState}
+        menuItems={[
+          {
+            icon: <IconPlayerStop size={15} />,
+            label: "Stop",
+            tone: "danger",
+            disabled: stopDisabled,
+            onClick: () => {
+              void stop();
+            },
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
+function OfflineHero({
+  authState,
+  state,
+}: {
+  readonly authState: DesktopAuthState | null;
+  readonly state: DesktopComputerUseState;
+}) {
+  const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
+    openDesktopOrgSelection$,
+  );
+  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
+  const startDisabled =
+    state.host.status === "disabled" || startLoadable.state === "loading";
+  const permissionGranted = hasRequiredComputerUsePermissions(
+    state.permissions,
+  );
+  return (
+    <section className="hero hero-offline">
+      <div className="hero-stage">
+        <ZeroFace className="zero-face-offline" size={108} />
+        <p className="hero-name hero-name-muted">Offline</p>
+        <button
+          type="button"
+          className="go-online-button"
+          onClick={() => {
+            void start();
+          }}
+          disabled={startDisabled}
+        >
+          <IconPlayerPlay size={16} />
+          <span>Go online</span>
+        </button>
+      </div>
+      <HeroFooter
+        authState={authState}
+        permissionGranted={permissionGranted}
+        menuItems={[
+          {
+            icon: <IconBuilding size={15} />,
+            label: "Switch workspace",
+            disabled: orgSelectionLoadable.state === "loading",
+            onClick: () => {
+              void selectOrg();
+            },
+          },
+          {
+            icon: <IconLogout size={15} />,
+            label: "Sign out",
+            tone: "danger",
+            disabled: signOutLoadable.state === "loading",
+            onClick: () => {
+              void signOut();
+            },
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
+function ArrivalOverlay() {
+  return (
+    <div className="arrival-overlay" aria-hidden="true">
+      <span className="arrival-flash" />
+      <span className="arrival-label">Connected</span>
+    </div>
+  );
+}
+
+function ReadyExperience({
+  authState,
+  developerToolsEnabled,
+  state,
+}: {
+  readonly authState: DesktopAuthState | null;
+  readonly developerToolsEnabled: boolean;
+  readonly state: DesktopComputerUseState;
+}) {
+  const running = isRunningStatus(state.host.status);
+  const previousStatusRef = useRef<HostStatus>(state.host.status);
+  const [arrivalVisible, setArrivalVisible] = useState(false);
+
+  useEffect(() => {
+    const previous = previousStatusRef.current;
+    previousStatusRef.current = state.host.status;
+    if (state.host.status === "online" && !isRunningStatus(previous)) {
+      setArrivalVisible(true);
+      const id = window.setTimeout(() => {
+        setArrivalVisible(false);
+      }, ARRIVAL_ANIMATION_MS);
+      return () => {
+        window.clearTimeout(id);
+      };
+    }
+    return undefined;
+  }, [state.host.status]);
 
   return (
-    <Panel title="Computer Use" icon={<IconActivityHeartbeat size={18} />}>
-      <div
-        className={`computer-use-status-card computer-use-status-${state.host.status}`}
-      >
-        <div className="computer-use-status-main">
-          <div className="computer-use-status-mark" aria-hidden="true">
-            <IconActivityHeartbeat size={26} />
-          </div>
-          <div className="computer-use-status-copy">
-            <span>Status</span>
-            <strong>{STATUS_LABELS[state.host.status]}</strong>
-            <p>{COMPUTER_USE_STATUS_COPY[state.host.status]}</p>
-          </div>
-        </div>
-        <div className="computer-use-status-action">
-          {running ? (
-            <IconButton
-              tone="danger"
-              icon={<IconPlayerStop size={15} />}
-              onClick={() => {
-                void stop();
-              }}
-              disabled={stopDisabled}
-            >
-              Stop
-            </IconButton>
-          ) : (
-            <IconButton
-              tone="primary"
-              icon={<IconPlayerPlay size={15} />}
-              onClick={() => {
-                void start();
-              }}
-              disabled={startDisabled}
-            >
-              Start
-            </IconButton>
-          )}
-        </div>
-      </div>
-    </Panel>
+    <>
+      {running ? (
+        <OnlineHero authState={authState} state={state} />
+      ) : (
+        <OfflineHero authState={authState} state={state} />
+      )}
+      {!running && <PermissionAutoRefresh />}
+      {developerToolsEnabled && (
+        <>
+          <RuntimePanel state={state} />
+          <CommandLogPanel state={state} />
+        </>
+      )}
+      {arrivalVisible && <ArrivalOverlay />}
+    </>
   );
 }
 
@@ -1342,16 +1544,34 @@ function UnsupportedPanel({ platform }: { readonly platform: string }) {
   );
 }
 
+function ZeroFace({
+  className,
+  size,
+}: {
+  readonly className?: string;
+  readonly size: number;
+}) {
+  return (
+    <span
+      className={`zero-face${className ? ` ${className}` : ""}`}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      <img src={zeroAvatarDataUrl} alt="" draggable={false} />
+    </span>
+  );
+}
+
 function StartupLoadingScreen() {
   return (
     <section className="startup-loading" aria-live="polite">
-      <div className="startup-loading-mark" aria-hidden="true">
-        <IconLoader2 size={22} />
+      <ZeroFace className="zero-face-init" size={92} />
+      <div className="loading-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
       </div>
-      <div className="startup-loading-copy">
-        <h2>Preparing Computer Use</h2>
-        <p>Checking your Zero account and workspace before setup begins.</p>
-      </div>
+      <h2 className="startup-loading-title">Preparing</h2>
     </section>
   );
 }
@@ -1370,27 +1590,25 @@ function ComputerUseContent({
   const authReady = hasReadyDesktopAuth(authState);
   const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
 
+  if (!state.supported) {
+    return <UnsupportedPanel platform={state.platform} />;
+  }
+
+  if (authReady && permissionsReady) {
+    return (
+      <ReadyExperience
+        authState={authState}
+        developerToolsEnabled={developerToolsEnabled}
+        state={state}
+      />
+    );
+  }
+
   return (
     <>
-      {!state.supported ? (
-        <UnsupportedPanel platform={state.platform} />
-      ) : (
-        <>
-          <AuthStepCard authLoading={authLoading} authState={authState} />
-          <PermissionsStepCard authReady={authReady} state={state} />
-          {authReady && permissionsReady && (
-            <>
-              <ComputerUseStatusPanel state={state} />
-              {developerToolsEnabled && (
-                <>
-                  <RuntimePanel state={state} />
-                  <CommandLogPanel state={state} />
-                </>
-              )}
-            </>
-          )}
-        </>
-      )}
+      <AuthStepCard authLoading={authLoading} authState={authState} />
+      <PermissionsStepCard authReady={authReady} state={state} />
+      <PermissionAutoRefresh />
     </>
   );
 }

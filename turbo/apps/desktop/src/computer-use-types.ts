@@ -81,6 +81,11 @@ export interface DesktopComputerUseState {
   readonly featureSwitchKey: typeof COMPUTER_USE_FEATURE_SWITCH_KEY;
   readonly platform: NodeJS.Platform;
   readonly supported: boolean;
+  /**
+   * Friendly name of this Mac (derived from the system hostname), shown under
+   * the online status. Optional so existing state constructors stay valid.
+   */
+  readonly deviceName?: string | null;
   readonly permissions: ComputerUsePermissionState;
   readonly host: ComputerUseHostRuntimeState;
   readonly keepAwake: DesktopKeepAwakeState;

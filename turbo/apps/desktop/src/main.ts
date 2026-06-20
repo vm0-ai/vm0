@@ -1,4 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -416,11 +417,20 @@ function installDesktopRendererProtocol(): void {
     return net.fetch(pathToFileURL(filePath).toString());
   });
 }
+function friendlyDeviceName(): string | null {
+  const hostname = os.hostname().trim();
+  if (!hostname) {
+    return null;
+  }
+  return hostname.replace(/\.local$/i, "");
+}
+
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
     featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: process.platform,
     supported: process.platform === "darwin",
+    deviceName: friendlyDeviceName(),
     permissions: getComputerUsePermissionState(),
     host:
       computerUseRuntime?.getState() ??
