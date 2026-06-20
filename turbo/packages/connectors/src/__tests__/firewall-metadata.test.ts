@@ -23,6 +23,12 @@ import {
   type FirewallConfig,
 } from "../firewall-types";
 import {
+  getBuiltinConnectorHostOwner,
+  getFirewallServerMetadataSummary,
+  isFirewallServerMetadataConnectorType,
+  loadFirewallPermissionIndex,
+} from "../firewall-metadata/server";
+import {
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
@@ -199,6 +205,22 @@ describe("firewall metadata", () => {
     ]);
   });
 
+  it("keeps server metadata behind an explicit package subpath", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+
+    expect(rootEntrypoint).not.toContain("firewall-metadata/server");
+    expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
+  });
+
   it("resolves metadata permission defaults and overrides", () => {
     const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
 
@@ -301,6 +323,44 @@ describe("firewall metadata", () => {
         expect(spec).not.toMatch(/\/firewalls(?:\/|$)/);
       }
     }
+  });
+
+  it("looks up fixed builtin host owners from server metadata", () => {
+    expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
+      type: "slack",
+      label: "Slack",
+    });
+    expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+  });
+
+  it("loads memoized server permission indexes from lazy detail metadata", async () => {
+    expect(isFirewallServerMetadataConnectorType("slack")).toBe(true);
+    expect(getFirewallServerMetadataSummary("slack")?.label).toBe("Slack");
+    expect(isFirewallServerMetadataConnectorType("cloudinary")).toBe(false);
+    expect(getFirewallServerMetadataSummary("cloudinary")).toBeNull();
+
+    const first = await loadFirewallPermissionIndex("slack");
+    const second = await loadFirewallPermissionIndex("slack");
+
+    expect(first).not.toBeNull();
+    expect(first).toBe(second);
+    expect(first!.type).toBe("slack");
+    expect(first!.label).toBe("Slack");
+    expect(first!.hasPermission("channels:read")).toBe(true);
+    expect(first!.permissionNames.has("channels:read")).toBe(true);
+    expect(first!.permissionDescription("channels:read")).toBe(
+      "View basic information about public channels in a workspace",
+    );
+    expect(first!.hasPermission(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.permissionNames.has(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.unknownPolicy).toBe("allow");
+    expect(first!.policyResolver.permission("channels:read")).toBe("allow");
+    expect(first!.policyResolver.permission("chat:write")).toBe("deny");
+    expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
   });
 
   it("keeps summary metadata synchronized with the runtime registry", () => {

@@ -491,6 +491,33 @@ function sortedRecord(
   );
 }
 
+export function fixedFirewallApiBaseHost(base: string): string | null {
+  if (base.includes("${{")) {
+    return null;
+  }
+  try {
+    return new URL(base).host;
+  } catch {
+    return null;
+  }
+}
+
+function buildFixedHostOwners(
+  sources: readonly GeneratedFirewallSource[],
+): Record<string, string> {
+  const owners = new Map<string, string>();
+  for (const source of sources) {
+    for (const api of source.firewall.apis) {
+      const host = fixedFirewallApiBaseHost(api.base);
+      if (!host || owners.has(host)) {
+        continue;
+      }
+      owners.set(host, source.type);
+    }
+  }
+  return sortedRecord(owners.entries());
+}
+
 function choosePermissionDefault(policy: FirewallPolicy): FirewallPolicyValue {
   const counts = new Map<FirewallPolicyValue, number>(
     POLICY_VALUES.map((value) => {
@@ -611,6 +638,13 @@ export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} a
 `;
 }
 
+function renderServerFile(fixedHostOwners: Record<string, string>): string {
+  return `${generatedHeader()}import type { FirewallPermissionSummaryMetadata } from "./types";
+
+export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS = ${stableJson(fixedHostOwners)} as const satisfies Readonly<Record<string, FirewallPermissionSummaryMetadata["type"]>>;
+`;
+}
+
 function renderLoaderFile(types: readonly FirewallConnectorType[]): string {
   const loaders = types
     .map((type) => {
@@ -660,15 +694,27 @@ export async function generateFirewallMetadata(): Promise<void> {
   );
   const summaryFile = path.join(outputDir, "summary.generated.ts");
   const loaderFile = path.join(outputDir, "loader.generated.ts");
+  const serverFile = path.join(outputDir, "server.generated.ts");
   const detailsDir = path.join(outputDir, "details");
 
+  const registeredTypes = extractRegisteredFirewallTypes(firewallsIndexFile);
   const sources = await Promise.all(
-    extractRegisteredFirewallTypes(firewallsIndexFile)
-      .sort(compareStrings)
-      .map((type) => {
-        return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
-      }),
+    [...registeredTypes].sort(compareStrings).map((type) => {
+      return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
+    }),
   );
+  const sourceByType = new Map<FirewallConnectorType, GeneratedFirewallSource>(
+    sources.map((source) => {
+      return [source.type, source];
+    }),
+  );
+  const registryOrderedSources = registeredTypes.map((type) => {
+    const source = sourceByType.get(type);
+    if (!source) {
+      throw new Error(`Missing firewall metadata source: ${type}`);
+    }
+    return source;
+  });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
   const details: {
     readonly type: FirewallConnectorType;
@@ -698,6 +744,10 @@ export async function generateFirewallMetadata(): Promise<void> {
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
+    path.join(nextOutputDir, "server.generated.ts"),
+    renderServerFile(buildFixedHostOwners(registryOrderedSources)),
+  );
+  writeGeneratedFile(
     path.join(nextOutputDir, "loader.generated.ts"),
     renderLoaderFile(
       sources.map((source) => {
@@ -719,6 +769,12 @@ export async function generateFirewallMetadata(): Promise<void> {
       replaceGeneratedPath(
         loaderFile,
         path.join(nextOutputDir, "loader.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        serverFile,
+        path.join(nextOutputDir, "server.generated.ts"),
       ),
     );
   } catch (error) {
