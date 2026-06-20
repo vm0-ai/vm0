@@ -117,18 +117,13 @@ const GOAL_WORKFLOW_INACTIVE_EVENT_ID = "goal-workflow:inactive";
 const GOAL_TRIGGER_ACTIVE_EVENT_ID = "goal-trigger:active";
 const GOAL_TRIGGER_INACTIVE_EVENT_ID = "goal-trigger:inactive";
 
-const GOAL_MARKER_EVENT_IDS = new Set<string>([
-  GOAL_WORKFLOW_ACTIVE_EVENT_ID,
-  GOAL_WORKFLOW_INACTIVE_EVENT_ID,
-  GOAL_TRIGGER_ACTIVE_EVENT_ID,
-  GOAL_TRIGGER_INACTIVE_EVENT_ID,
-]);
-
 function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "assistant" &&
-    msg.runEventId !== undefined &&
-    GOAL_MARKER_EVENT_IDS.has(msg.runEventId)
+    (msg.runEventId === GOAL_WORKFLOW_ACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_WORKFLOW_INACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID ||
+      msg.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID)
   );
 }
 
@@ -1685,6 +1680,7 @@ function createPagedMessages(
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
+    activeGoal$,
     fetchNextPage$,
     refreshLatestMessages$,
     loadHistory$,
@@ -2723,6 +2719,7 @@ export function createChatThreadSignals(
     rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
+    activeGoal$,
     fetchNextPage$,
     refreshLatestMessages$,
     loadHistory$: loadPagedHistory$,
