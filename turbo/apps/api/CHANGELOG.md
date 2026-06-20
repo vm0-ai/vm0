@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.164.0](https://github.com/vm0-ai/vm0/compare/api-v1.163.0...api-v1.164.0) (2026-06-20)
+
+
+### Features
+
+* surface a thread's active goal above the composer via folded goal-state messages ([#18361](https://github.com/vm0-ai/vm0/issues/18361)) ([df15d7b](https://github.com/vm0-ai/vm0/commit/df15d7be20c072770f8cc0fd589d66766d47cd2c))
+
 ## [1.163.0](https://github.com/vm0-ai/vm0/compare/api-v1.162.1...api-v1.163.0) (2026-06-20)
 
 
