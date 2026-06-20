@@ -29,7 +29,10 @@
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 
 use clap::{Parser, Subcommand};
-use guest_mock_codex::{join_prompt_cow, lookup_fixture, run_fixture, run_new, run_resume};
+use guest_mock_codex::{
+    AppServerOptions, join_prompt_cow, lookup_fixture, run_app_server, run_fixture, run_new,
+    run_resume,
+};
 use std::io;
 use std::path::PathBuf;
 
@@ -44,6 +47,8 @@ struct Cli {
 enum Cmd {
     /// Mirrors `codex exec`.
     Exec(ExecArgs),
+    /// Mirrors `codex app-server`.
+    AppServer(AppServerArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -102,36 +107,62 @@ enum ExecSub {
     },
 }
 
+#[derive(clap::Args, Debug)]
+struct AppServerArgs {
+    /// Listen URL (mock supports stdio://).
+    #[arg(long, default_value = "stdio://")]
+    listen: String,
+
+    /// Use stdio transport.
+    #[arg(long)]
+    stdio: bool,
+
+    /// Codex config override (accepted, ignored).
+    #[arg(short = 'c', long = "config")]
+    config: Vec<String>,
+}
+
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
-    // Fixture mode short-circuits the synthetic event sequence. Used by
-    // `t-codex-event-mapping.bats` to exercise codex-event-parser
-    // branches (command_execution, file_edit, file_read, file_change,
-    // reasoning, turn.failed, error) that the 3-event synthetic
-    // sequence cannot reach.
+    match cli.command {
+        Cmd::AppServer(AppServerArgs {
+            listen,
+            stdio,
+            config: _,
+        }) => run_app_server(AppServerOptions { listen, stdio }),
+        Cmd::Exec(ExecArgs {
+            sub: Some(ExecSub::Resume { thread_id, prompt }),
+            ..
+        }) => {
+            if maybe_run_fixture()? {
+                return Ok(());
+            }
+            let joined_prompt = join_prompt_cow(&prompt);
+            run_resume(&thread_id, joined_prompt.as_ref())
+        }
+        Cmd::Exec(ExecArgs { prompt, .. }) => {
+            if maybe_run_fixture()? {
+                return Ok(());
+            }
+            let joined_prompt = join_prompt_cow(&prompt);
+            run_new(joined_prompt.as_ref())
+        }
+    }
+}
+
+fn maybe_run_fixture() -> io::Result<bool> {
+    // Fixture mode is specific to the one-shot `exec --json` event stream.
     if let Ok(fixture_name) = std::env::var("MOCK_CODEX_FIXTURE")
         && !fixture_name.is_empty()
     {
         if let Some(content) = lookup_fixture(&fixture_name) {
-            return run_fixture(content);
+            run_fixture(content)?;
+            return Ok(true);
         }
         eprintln!(
             "warning: MOCK_CODEX_FIXTURE={fixture_name:?} not found, falling through to synthetic events"
         );
     }
-
-    match cli.command {
-        Cmd::Exec(ExecArgs {
-            sub: Some(ExecSub::Resume { thread_id, prompt }),
-            ..
-        }) => {
-            let joined_prompt = join_prompt_cow(&prompt);
-            run_resume(&thread_id, joined_prompt.as_ref())
-        }
-        Cmd::Exec(ExecArgs { prompt, .. }) => {
-            let joined_prompt = join_prompt_cow(&prompt);
-            run_new(joined_prompt.as_ref())
-        }
-    }
+    Ok(false)
 }

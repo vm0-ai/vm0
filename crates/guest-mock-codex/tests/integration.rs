@@ -5,15 +5,16 @@
 //! on-disk session file path / format, and resume semantics.
 
 use std::collections::BTreeSet;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use chrono::{Datelike, Utc};
 use guest_mock_codex::{
     build_events, build_session_path, find_session_file, read_session_file, session_artifacts,
     session_files, write_session_file,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-mock-codex");
@@ -71,6 +72,123 @@ fn spawn(codex_home: &Path, args: &[&str]) -> std::io::Result<Child> {
     cmd.spawn()
 }
 
+struct AppServerProcess {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    stdout: BufReader<ChildStdout>,
+}
+
+impl AppServerProcess {
+    fn request(&mut self, id: i64, method: &str, params: Value) -> std::io::Result<Value> {
+        self.send(&json!({
+            "id": id,
+            "method": method,
+            "params": params,
+        }))?;
+        self.read_required()
+    }
+
+    fn notify(&mut self, method: &str, params: Value) -> std::io::Result<()> {
+        self.send(&json!({
+            "method": method,
+            "params": params,
+        }))
+    }
+
+    fn send(&mut self, message: &Value) -> std::io::Result<()> {
+        let stdin = self.stdin.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "app-server stdin is closed")
+        })?;
+        serde_json::to_writer(&mut *stdin, message).map_err(std::io::Error::other)?;
+        writeln!(stdin)?;
+        stdin.flush()
+    }
+
+    fn read_required(&mut self) -> std::io::Result<Value> {
+        self.read_message()?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "app-server closed stdout before responding",
+            )
+        })
+    }
+
+    fn read_message(&mut self) -> std::io::Result<Option<Value>> {
+        let mut line = String::new();
+        if self.stdout.read_line(&mut line)? == 0 {
+            return Ok(None);
+        }
+        let value = serde_json::from_str(&line)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        Ok(Some(value))
+    }
+
+    fn close_and_wait(&mut self) -> std::io::Result<i32> {
+        self.stdin.take();
+        let status = self.child.wait()?;
+        Ok(status.code().unwrap_or(-1))
+    }
+}
+
+impl Drop for AppServerProcess {
+    fn drop(&mut self) {
+        self.stdin.take();
+        match self.child.try_wait() {
+            Ok(Some(_)) => {
+                let _ = self.child.wait();
+            }
+            Ok(None) => {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+            }
+            Err(_) => {}
+        }
+    }
+}
+
+fn spawn_app_server(
+    codex_home: &Path,
+    args: &[&str],
+    scenario: Option<&str>,
+) -> std::io::Result<AppServerProcess> {
+    let mut cmd = Command::new(BIN);
+    cmd.env("CODEX_HOME", codex_home).args(args);
+    cmd.env_remove("MOCK_CODEX_FIXTURE");
+    cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
+    if let Some(value) = scenario {
+        cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = cmd.spawn()?;
+    let stdin = child.stdin.take().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "failed to open app-server stdin",
+        )
+    })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "failed to open app-server stdout",
+        )
+    })?;
+    Ok(AppServerProcess {
+        child,
+        stdin: Some(stdin),
+        stdout: BufReader::new(stdout),
+    })
+}
+
+fn text_input(text: &str) -> Value {
+    json!({
+        "type": "text",
+        "text": text,
+        "text_elements": []
+    })
+}
+
 fn assert_invalid_resume_rejected(codex_home: &Path, out: &RunOutput) -> std::io::Result<()> {
     assert_ne!(out.status, 0, "invalid resume id should fail");
     assert!(
@@ -111,6 +229,276 @@ fn require_session_file(codex_home: &Path) -> std::io::Result<PathBuf> {
 fn session_year_candidates() -> [String; 2] {
     let year = Utc::now().date_naive().year();
     [format!("{year:04}"), format!("{:04}", year + 1)]
+}
+
+#[test]
+fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    let initialized = server.request(1, "initialize", json!({}))?;
+    assert_eq!(initialized["id"], 1);
+    assert!(initialized.get("type").is_none());
+    assert!(initialized["result"]["codexHome"].as_str().is_some());
+    server.notify("initialized", json!({}))?;
+
+    let started = server.request(2, "thread/start", json!({ "cwd": "/tmp" }))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(started["result"]["thread"]["source"], "appServer");
+    assert_eq!(started["result"]["thread"]["status"]["type"], "idle");
+    assert_eq!(started["result"]["sandbox"]["type"], "dangerFullAccess");
+
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(turn_started["result"]["turn"]["status"], "inProgress");
+
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let recorded = server.request(5, "mock/inputs", json!({}))?;
+    assert_eq!(recorded["result"]["initial"], json!(["initial prompt"]));
+    assert_eq!(recorded["result"]["steered"], json!(["follow-up prompt"]));
+
+    let session_path = require_session_file(dir.path())?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["type"], "mock.app_server.input");
+    assert_eq!(events[0]["kind"], "initial");
+    assert_eq!(events[0]["text"], "initial prompt");
+    assert_eq!(events[1]["kind"], "steered");
+    assert_eq!(events[1]["text"], "follow-up prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let mut server = spawn_app_server(
+        dir.path(),
+        &[
+            "app-server",
+            "--stdio",
+            "-c",
+            "model=gpt-5",
+            "--config",
+            "sandbox=danger-full-access",
+        ],
+        None,
+    )?;
+
+    server.request(1, "initialize", json!({}))?;
+    server.notify("initialized", json!({}))?;
+    let resumed = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+
+    assert_eq!(resumed["result"]["thread"]["id"], supplied_thread_id);
+    assert_eq!(resumed["result"]["thread"]["sessionId"], supplied_thread_id);
+    assert!(resumed["result"]["initialTurnsPage"].is_null());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("stale-turn"),
+    )?;
+
+    server.request(1, "initialize", json!({}))?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let error = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(error["id"], 4);
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("stale")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_no_active_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("no-active-turn"),
+    )?;
+
+    server.request(1, "initialize", json!({}))?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let error = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no active turn")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_disconnect_after_initialize_closes_stdout() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("disconnect-after-initialize"),
+    )?;
+
+    let initialized = server.request(1, "initialize", json!({}))?;
+    assert_eq!(initialized["result"]["platformFamily"], "unix");
+    assert!(server.read_message()?.is_none());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_exit_on_turn_start_closes_stdout_without_response() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("exit-on-turn-start"),
+    )?;
+
+    server.request(1, "initialize", json!({}))?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.send(&json!({
+        "id": 3,
+        "method": "turn/start",
+        "params": {
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }
+    }))?;
+
+    assert!(server.read_message()?.is_none());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_returns_errors_for_unsupported_method_and_input() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    server.request(1, "initialize", json!({}))?;
+    let unsupported = server.request(2, "unknown/method", json!({}))?;
+    assert_eq!(unsupported["error"]["code"], -32601);
+
+    let started = server.request(3, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let invalid_input = server.request(
+        4,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": []
+        }),
+    )?;
+    assert_eq!(invalid_input["error"]["code"], -32600);
+    assert!(
+        invalid_input["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
 }
 
 #[test]

@@ -11,11 +11,13 @@ use chrono::Utc;
 use std::io;
 use uuid::Uuid;
 
+mod app_server;
 mod events;
 mod fixtures;
 mod prompt;
 mod session;
 
+pub use app_server::{AppServerOptions, run_app_server};
 pub use events::build_events;
 pub use fixtures::{lookup_fixture, run_fixture};
 pub use prompt::{join_prompt, join_prompt_cow};
