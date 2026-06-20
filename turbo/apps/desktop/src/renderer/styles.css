@@ -909,7 +909,6 @@ button {
 }
 
 .startup-loading {
-  min-height: min(460px, calc(100vh - 144px));
   display: grid;
   place-items: center;
   align-content: center;
@@ -1017,9 +1016,17 @@ button {
 /* ---- Hero shell (online / offline) ---- */
 .hero {
   -webkit-app-region: no-drag;
-  min-height: min(470px, calc(100vh - 150px));
   display: flex;
   flex-direction: column;
+}
+
+/* When the hero (or the init screen) is the only thing on screen, stretch the
+   single grid row so it fills the content area: the footer then pins to the
+   bottom and the stage centers in the space above it. With developer panels
+   present this does not match, so they fall back to natural height + scroll. */
+.content:has(> .hero:only-child),
+.content:has(> .startup-loading:only-child) {
+  align-content: stretch;
 }
 
 .hero-stage {
