@@ -102,12 +102,14 @@ async fn promote_current_cache_entry(
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: image.len() as u64,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image.len() as u64,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -150,12 +152,14 @@ async fn promotion_does_not_overwrite_newer_cache_entry() {
     let stale_sandbox_id = sandbox::SandboxId::new_v4();
     let stale_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: stale_run_id,
-            sandbox_id: stale_sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: stale_run_id,
+                sandbox_id: stale_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -215,12 +219,14 @@ async fn promotion_does_not_overwrite_same_completed_at_cache_entry() {
     let competing_sandbox_id = sandbox::SandboxId::new_v4();
     let competing_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: competing_run_id,
-            sandbox_id: competing_sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: competing_run_id,
+                sandbox_id: competing_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -286,12 +292,14 @@ async fn promotion_overwrites_older_cache_entry() {
     let newer_sandbox_id = sandbox::SandboxId::new_v4();
     let newer_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: newer_run_id,
-            sandbox_id: newer_sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: newer_run_id,
+                sandbox_id: newer_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -941,12 +949,14 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1093,12 +1103,14 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/",
-            image_size_bytes: 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/",
+                image_size_bytes: 1024,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1111,12 +1123,14 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
 
     let no_session_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/",
-            image_size_bytes: 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/",
+                image_size_bytes: 1024,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1129,12 +1143,14 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
 
     let snapshot_restore_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/",
-            image_size_bytes: 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/",
+                image_size_bytes: 1024,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1170,12 +1186,14 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace//repo/",
-            image_size_bytes: 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace//repo/",
+                image_size_bytes: 1024,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1207,12 +1225,14 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
 
     let lease = cache_a
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1238,12 +1258,14 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
 
     let checkout = cache_b
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1293,12 +1315,14 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-move-hit"),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-move-hit"),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1334,12 +1358,14 @@ async fn metadata_missing_current_present_is_not_a_cache_hit() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-no-metadata"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-no-metadata"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1376,12 +1402,14 @@ async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-move-promote"),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-move-promote"),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1444,12 +1472,14 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-move-invalidate"),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-move-invalidate"),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: true,
         })
         .await;
@@ -1485,12 +1515,14 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
 
     let lease_a = cache_a
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1498,12 +1530,14 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
 
     let blocked_checkout = cache_b
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1522,12 +1556,14 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
     drop(lease_a);
     let checkout_after_drop = cache_b
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1560,12 +1596,14 @@ async fn shared_cache_is_scoped_by_runner_group() {
 
     let lease = cache_a
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1591,12 +1629,14 @@ async fn shared_cache_is_scoped_by_runner_group() {
 
     let checkout = cache_b
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -1631,12 +1671,14 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
 
     let lease = cache_a
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2065,12 +2107,14 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: image_size,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2489,12 +2533,14 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: current_metadata.len(),
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: current_metadata.len(),
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2557,12 +2603,14 @@ async fn lock_busy_checkout_cannot_promote_without_entry_lock() {
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 1024,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2632,12 +2680,14 @@ async fn active_lease_hides_cached_session_until_dropped() {
 
     let lease = cache
         .lease_active(WorkspaceImageActiveLeaseRequest {
-            run_id,
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-1"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_available: true,
         })
         .await;
@@ -2660,12 +2710,14 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2685,12 +2737,14 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
 
     let blocked_by_context = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2699,24 +2753,18 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
         WorkspaceCacheCheckoutResult::LockBusy
     );
 
-    let active_lease = promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
-        run_id: RunId::new_v4(),
-        sandbox_id,
-        profile_name: TEST_PROFILE_NAME,
-        cli_agent_session_id: Some(session_id),
-        working_dir: "/workspace",
-        image_size_bytes,
-        workspace_drive_available: true,
-    });
+    let active_lease = promotion.into_active_lease(true);
 
     let blocked_by_active_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -2728,12 +2776,14 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
     drop(active_lease);
     let after_drop = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: RunId::new_v4(),
-            sandbox_id: sandbox::SandboxId::new_v4(),
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3413,12 +3463,14 @@ async fn promote_skips_symlink_active_image_without_following_it() {
     let session_id = "sess-active-symlink";
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3469,12 +3521,14 @@ async fn promote_replaces_symlink_cache_entry_dir_without_following_it() {
     let session_id = "sess-promote-entry-symlink";
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some(session_id),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3533,12 +3587,14 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3592,12 +3648,14 @@ async fn promote_removes_stale_temporary_directory_before_copy() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3641,12 +3699,14 @@ async fn promote_replaces_stale_current_directory_before_rename() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3690,12 +3750,14 @@ async fn promote_skips_copied_image_with_unexpected_logical_size() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-size-mismatch"),
-            working_dir: "/workspace",
-            image_size_bytes: 16 * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-size-mismatch"),
+                working_dir: "/workspace",
+                image_size_bytes: 16 * 1024 * 1024,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3737,12 +3799,14 @@ async fn promote_skips_when_capacity_lock_is_busy() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: Some("sess-capacity-lock"),
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some("sess-capacity-lock"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3787,12 +3851,14 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3845,12 +3911,14 @@ async fn late_session_promotion_skips_when_entry_lock_is_busy() {
     let session_id = "sess-late-lock-busy";
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3900,12 +3968,14 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
     let session_id = "sess-reused-late-context";
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id,
-            sandbox_id,
-            profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: None,
-            working_dir: "/workspace//repo/",
-            image_size_bytes: 5,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace//repo/",
+                image_size_bytes: 5,
+            },
             workspace_drive_required: false,
         })
         .await;
@@ -3921,15 +3991,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
         })
         .unwrap();
 
-    let active_lease = promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
-        run_id: RunId::new_v4(),
-        sandbox_id,
-        profile_name: TEST_PROFILE_NAME,
-        cli_agent_session_id: Some(session_id),
-        working_dir: "/workspace//repo/",
-        image_size_bytes: 5,
-        workspace_drive_available: true,
-    });
+    let active_lease = promotion.into_active_lease(true);
 
     assert_eq!(active_lease.working_dir(), "/workspace/repo");
     assert!(active_lease.can_attempt_promotion(Some(session_id)));

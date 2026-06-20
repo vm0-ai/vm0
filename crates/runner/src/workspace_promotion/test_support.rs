@@ -5,8 +5,8 @@ use crate::ids::RunId;
 use crate::paths::RunnerPaths;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionContext, WorkspaceImagePromotionRequest,
+    SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionContext, WorkspaceImagePromotionRequest,
 };
 
 pub(crate) const TEST_COMPLETED_AT: &str = "2026-06-03T00:00:00.000Z";
@@ -30,12 +30,14 @@ impl WorkspacePromotionFixture {
         let image = b"workspace image";
         let workspace_image = cache
             .prepare(WorkspaceImagePrepareRequest {
-                run_id,
-                sandbox_id,
-                profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: image.len() as u64,
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: image.len() as u64,
+                },
                 workspace_drive_required: true,
             })
             .await;

@@ -47,8 +47,8 @@ pub(crate) use types::{
     CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
     WorkspaceImageCacheInspectionEntry, WorkspaceImageCacheInspectionStatus,
-    WorkspaceImageCacheInspectionSummary, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionRequest,
+    WorkspaceImageCacheInspectionSummary, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
 };
 
 const CACHE_FORMAT_VERSION: u32 = 1;

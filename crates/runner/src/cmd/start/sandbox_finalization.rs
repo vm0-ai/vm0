@@ -600,7 +600,8 @@ mod tests {
     use crate::storage_fingerprints::StorageFingerprint;
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
-        SessionWorkspaceCache, WorkspaceImagePrepareRequest, WorkspaceImagePromotionContext,
+        SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+        WorkspaceImagePromotionContext,
     };
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
@@ -701,12 +702,14 @@ mod tests {
     ) -> WorkspaceImageLease {
         let lease = cache
             .prepare(WorkspaceImagePrepareRequest {
-                run_id,
-                sandbox_id,
-                profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: b"image".len() as u64,
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
                 workspace_drive_required: true,
             })
             .await;
@@ -977,12 +980,14 @@ mod tests {
             drop(promotion);
             let checkout = cache
                 .prepare(WorkspaceImagePrepareRequest {
-                    run_id: RunId::new_v4(),
-                    sandbox_id: SandboxId::new_v4(),
-                    profile_name: "vm0/default",
-                    cli_agent_session_id: Some(session_id),
-                    working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: b"image".len() as u64,
+                    identity: WorkspaceImageLeaseIdentity {
+                        run_id: RunId::new_v4(),
+                        sandbox_id: SandboxId::new_v4(),
+                        profile_name: "vm0/default",
+                        cli_agent_session_id: Some(session_id),
+                        working_dir: CANONICAL_WORKING_DIR,
+                        image_size_bytes: b"image".len() as u64,
+                    },
                     workspace_drive_required: true,
                 })
                 .await;
@@ -1054,12 +1059,14 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
             .prepare(WorkspaceImagePrepareRequest {
-                run_id,
-                sandbox_id,
-                profile_name: "vm0/default",
-                cli_agent_session_id: None,
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: b"image".len() as u64,
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: None,
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
                 workspace_drive_required: true,
             })
             .await;
@@ -1138,12 +1145,14 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
             .prepare(WorkspaceImagePrepareRequest {
-                run_id,
-                sandbox_id,
-                profile_name: "vm0/default",
-                cli_agent_session_id: Some("sess-new"),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: b"image".len() as u64,
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some("sess-new"),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
                 workspace_drive_required: true,
             })
             .await;

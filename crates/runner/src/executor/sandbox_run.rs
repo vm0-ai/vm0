@@ -26,7 +26,9 @@ use crate::paths::diagnostic_session_fingerprint;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
-use crate::workspace_image_cache::{WorkspaceImageLease, WorkspaceImagePrepareRequest};
+use crate::workspace_image_cache::{
+    WorkspaceImageLease, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+};
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -208,12 +210,14 @@ pub(super) async fn prepare_workspace_image(
     let cache = config.workspace_cache.as_ref()?;
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
-            run_id: context.run_id,
-            sandbox_id,
-            profile_name,
-            cli_agent_session_id: context.cli_agent_session_id(),
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: context.run_id,
+                sandbox_id,
+                profile_name,
+                cli_agent_session_id: context.cli_agent_session_id(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+            },
             workspace_drive_required: true,
         })
         .await;

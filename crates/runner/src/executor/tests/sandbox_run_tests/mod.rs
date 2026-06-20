@@ -39,7 +39,7 @@ use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
 use crate::types::{ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImagePrepareRequest,
+    WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use tracing::Level;
 use tracing_subscriber::prelude::*;
