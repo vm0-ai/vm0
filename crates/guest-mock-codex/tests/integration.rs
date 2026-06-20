@@ -185,7 +185,20 @@ fn text_input(text: &str) -> Value {
     json!({
         "type": "text",
         "text": text,
-        "text_elements": []
+        "textElements": []
+    })
+}
+
+fn initialize_params() -> Value {
+    json!({
+        "clientInfo": {
+            "name": "guest-mock-codex-tests",
+            "title": null,
+            "version": "0.1.0"
+        },
+        "capabilities": {
+            "experimentalApi": true
+        }
     })
 }
 
@@ -236,7 +249,7 @@ fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Re
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
 
-    let initialized = server.request(1, "initialize", json!({}))?;
+    let initialized = server.request(1, "initialize", initialize_params())?;
     assert_eq!(initialized["id"], 1);
     assert!(initialized.get("jsonrpc").is_none());
     assert!(initialized.get("type").is_none());
@@ -310,7 +323,7 @@ fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()>
         None,
     )?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     server.notify("initialized", json!({}))?;
     let resumed = server.request(
         2,
@@ -355,7 +368,7 @@ fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
     let supplied_thread_id = "thread-1";
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let resumed = server.request(
         2,
         "thread/resume",
@@ -412,7 +425,7 @@ fn app_server_reuses_artifact_for_repeated_non_uuid_resume() -> std::io::Result<
     let supplied_thread_id = "thread-1";
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     server.request(
         2,
         "thread/resume",
@@ -475,7 +488,7 @@ fn app_server_rejects_empty_resume_thread_id() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let error = server.request(
         2,
         "thread/resume",
@@ -520,7 +533,7 @@ fn app_server_new_thread_clears_previous_active_turn() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let first_thread = server.request(2, "thread/start", json!({}))?;
     let first_thread_id = first_thread["result"]["thread"]["id"]
         .as_str()
@@ -574,7 +587,7 @@ fn app_server_stale_turn_scenario_returns_protocol_error() -> std::io::Result<()
         Some("stale-turn"),
     )?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let started = server.request(2, "thread/start", json!({}))?;
     let thread_id = started["result"]["thread"]["id"]
         .as_str()
@@ -624,7 +637,7 @@ fn app_server_no_active_turn_scenario_returns_protocol_error() -> std::io::Resul
         Some("no-active-turn"),
     )?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let started = server.request(2, "thread/start", json!({}))?;
     let thread_id = started["result"]["thread"]["id"]
         .as_str()
@@ -672,7 +685,7 @@ fn app_server_disconnect_after_initialize_closes_stdout() -> std::io::Result<()>
         Some("disconnect-after-initialize"),
     )?;
 
-    let initialized = server.request(1, "initialize", json!({}))?;
+    let initialized = server.request(1, "initialize", initialize_params())?;
     assert_eq!(
         initialized["result"]["platformFamily"],
         std::env::consts::FAMILY
@@ -691,7 +704,7 @@ fn app_server_exit_on_turn_start_closes_stdout_without_response() -> std::io::Re
         Some("exit-on-turn-start"),
     )?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let started = server.request(2, "thread/start", json!({}))?;
     let thread_id = started["result"]["thread"]["id"]
         .as_str()
@@ -716,7 +729,7 @@ fn app_server_returns_errors_for_unsupported_method_and_input() -> std::io::Resu
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
 
-    server.request(1, "initialize", json!({}))?;
+    server.request(1, "initialize", initialize_params())?;
     let unsupported = server.request(2, "unknown/method", json!({}))?;
     assert_eq!(unsupported["error"]["code"], -32601);
 
