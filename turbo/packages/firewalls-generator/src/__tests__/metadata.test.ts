@@ -58,4 +58,23 @@ describe("firewall metadata generator", () => {
     );
     expect(source).not.toContain("CONNECTOR_TYPES");
   });
+
+  it("keeps generated server metadata host-owner only", () => {
+    const source = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../connectors/src/firewall-metadata/server.generated.ts",
+      ),
+      "utf-8",
+    );
+
+    expect(staticValueModuleSpecifiers(source)).toStrictEqual([]);
+    expect(source).toContain('"api.github.com": "github"');
+    expect(source).toContain('"{network}.g.alchemy.com": "alchemy"');
+    expect(source).toContain('"slack.com": "slack"');
+    expect(source).not.toContain("${{");
+    expect(source).not.toContain('"permissions"');
+    expect(source).not.toContain('"description"');
+    expect(source).not.toContain('"rules"');
+  });
 });

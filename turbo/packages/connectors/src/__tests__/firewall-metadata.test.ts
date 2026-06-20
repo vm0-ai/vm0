@@ -23,6 +23,13 @@ import {
   type FirewallConfig,
 } from "../firewall-types";
 import {
+  getBuiltinConnectorHostOwner,
+  getFirewallServerMetadataSummary,
+  isFirewallServerMetadataConnectorType,
+  loadFirewallPermissionIndex,
+} from "../firewall-metadata/server";
+import {
+  getAllBuiltinConnectorHosts,
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
@@ -199,6 +206,22 @@ describe("firewall metadata", () => {
     ]);
   });
 
+  it("keeps server metadata behind an explicit package subpath", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+
+    expect(rootEntrypoint).not.toContain("firewall-metadata/server");
+    expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
+  });
+
   it("resolves metadata permission defaults and overrides", () => {
     const resolver = createFirewallMetadataPolicyResolver(RESOLVER_METADATA);
 
@@ -300,6 +323,98 @@ describe("firewall metadata", () => {
         expect(spec).not.toMatch(/^(\.\.\/)+firewalls(?:\/|$)/);
         expect(spec).not.toMatch(/\/firewalls(?:\/|$)/);
       }
+    }
+  });
+
+  it("keeps fixed builtin host owners synchronized with runtime hosts", () => {
+    for (const [host, type] of getAllBuiltinConnectorHosts()) {
+      expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
+        type,
+        label: connectorLabel(type),
+      });
+    }
+
+    expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(
+      getBuiltinConnectorHostOwner("https://api.github.com/repos"),
+    ).toStrictEqual({
+      type: "github",
+      label: "GitHub",
+    });
+    expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
+      type: "slack",
+      label: "Slack",
+    });
+    expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
+    expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
+  });
+
+  it("loads memoized server permission indexes from lazy detail metadata", async () => {
+    expect(isFirewallServerMetadataConnectorType("slack")).toBe(true);
+    expect(getFirewallServerMetadataSummary("slack")?.label).toBe("Slack");
+    expect(isFirewallServerMetadataConnectorType("cloudinary")).toBe(false);
+    expect(getFirewallServerMetadataSummary("cloudinary")).toBeNull();
+
+    const first = await loadFirewallPermissionIndex("slack");
+    const second = await loadFirewallPermissionIndex("slack");
+    const [concurrentFirst, concurrentSecond] = await Promise.all([
+      loadFirewallPermissionIndex("github"),
+      loadFirewallPermissionIndex("github"),
+    ]);
+
+    expect(first).not.toBeNull();
+    expect(first).toBe(second);
+    expect(concurrentFirst).not.toBeNull();
+    expect(concurrentFirst).toBe(concurrentSecond);
+    expect(first!.type).toBe("slack");
+    expect(first!.label).toBe("Slack");
+    expect(first!.hasPermission("channels:read")).toBe(true);
+    expect(first!.permissionNames.has("channels:read")).toBe(true);
+    expect(first!.permissionDescription("channels:read")).toBe(
+      "View basic information about public channels in a workspace",
+    );
+    expect(first!.hasPermission(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.permissionNames.has(UNKNOWN_PERMISSION_GRANT)).toBe(false);
+    expect(first!.unknownPolicy).toBe("allow");
+    expect(first!.policyResolver.permission("channels:read")).toBe("allow");
+    expect(first!.policyResolver.permission("chat:write")).toBe("deny");
+    expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
+  });
+
+  it("keeps server permission indexes aligned with generated summaries", async () => {
+    for (const [type, summary] of Object.entries(
+      FIREWALL_PERMISSION_METADATA_SUMMARIES,
+    )) {
+      const index = await loadFirewallPermissionIndex(type);
+      expect(index).not.toBeNull();
+      expect(index!.type).toBe(type);
+      expect(index!.label).toBe(summary.label);
     }
   });
 
