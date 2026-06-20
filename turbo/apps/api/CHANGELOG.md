@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.165.0](https://github.com/vm0-ai/vm0/compare/api-v1.164.1...api-v1.165.0) (2026-06-20)
+
+
+### Features
+
+* gate goal-triggered PWA pushes to terminal goal states ([#18383](https://github.com/vm0-ai/vm0/issues/18383)) ([91a4bdf](https://github.com/vm0-ai/vm0/commit/91a4bdfd37ec8fce5fba04af500093a8748b48f9))
+
 ## [1.164.1](https://github.com/vm0-ai/vm0/compare/api-v1.164.0...api-v1.164.1) (2026-06-20)
 
 
