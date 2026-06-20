@@ -63,6 +63,7 @@ pub fn run_app_server(options: AppServerOptions) -> io::Result<()> {
 struct AppServerState {
     initialized: bool,
     thread_id: Option<String>,
+    session_artifact_thread_id: Option<String>,
     active_turn_id: Option<String>,
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
@@ -74,6 +75,7 @@ impl AppServerState {
         Self {
             initialized: false,
             thread_id: None,
+            session_artifact_thread_id: None,
             active_turn_id: None,
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
@@ -138,7 +140,7 @@ impl AppServerState {
                     return Ok(ServerAction::Continue);
                 }
                 let thread_id = Uuid::now_v7().to_string();
-                self.thread_id = Some(thread_id.clone());
+                self.set_current_thread(thread_id.clone());
                 write_success(output, id, thread_response(&thread_id, false))?;
                 Ok(ServerAction::Continue)
             }
@@ -151,7 +153,7 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "missing threadId")?;
                     return Ok(ServerAction::Continue);
                 };
-                self.thread_id = Some(thread_id.to_string());
+                self.set_current_thread(thread_id.to_string());
                 write_success(output, id, thread_response(thread_id, true))?;
                 Ok(ServerAction::Continue)
             }
@@ -160,13 +162,16 @@ impl AppServerState {
                     return Ok(ServerAction::Stop);
                 }
 
-                let Some(thread_id) = string_param(params, "threadId")
-                    .or(self.thread_id.as_deref())
-                    .map(str::to_string)
-                else {
-                    write_error(output, id, INVALID_REQUEST, "missing threadId")?;
-                    return Ok(ServerAction::Continue);
-                };
+                let (thread_id, artifact_thread_id) =
+                    match self.current_thread(string_param(params, "threadId")) {
+                        Ok((thread_id, artifact_thread_id)) => {
+                            (thread_id.to_string(), artifact_thread_id.to_string())
+                        }
+                        Err(message) => {
+                            write_error(output, id, INVALID_REQUEST, message)?;
+                            return Ok(ServerAction::Continue);
+                        }
+                    };
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -180,7 +185,13 @@ impl AppServerState {
                     self.active_turn_id = Some(turn_id.clone());
                 }
                 self.initial_inputs.extend(inputs.iter().cloned());
-                persist_input_events(&thread_id, &turn_id, "initial", &inputs)?;
+                persist_input_events(
+                    &artifact_thread_id,
+                    &thread_id,
+                    &turn_id,
+                    "initial",
+                    &inputs,
+                )?;
                 write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
                 Ok(ServerAction::Continue)
             }
@@ -198,13 +209,16 @@ impl AppServerState {
                     return Ok(ServerAction::Continue);
                 }
 
-                let Some(thread_id) = string_param(params, "threadId")
-                    .or(self.thread_id.as_deref())
-                    .map(str::to_string)
-                else {
-                    write_error(output, id, INVALID_REQUEST, "missing threadId")?;
-                    return Ok(ServerAction::Continue);
-                };
+                let (thread_id, artifact_thread_id) =
+                    match self.current_thread(string_param(params, "threadId")) {
+                        Ok((thread_id, artifact_thread_id)) => {
+                            (thread_id.to_string(), artifact_thread_id.to_string())
+                        }
+                        Err(message) => {
+                            write_error(output, id, INVALID_REQUEST, message)?;
+                            return Ok(ServerAction::Continue);
+                        }
+                    };
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -213,7 +227,13 @@ impl AppServerState {
                     }
                 };
                 self.steered_inputs.extend(inputs.iter().cloned());
-                persist_input_events(&thread_id, &active_turn_id, "steered", &inputs)?;
+                persist_input_events(
+                    &artifact_thread_id,
+                    &thread_id,
+                    &active_turn_id,
+                    "steered",
+                    &inputs,
+                )?;
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
                 Ok(ServerAction::Continue)
             }
@@ -240,6 +260,26 @@ impl AppServerState {
             self.initialized = true;
         }
     }
+
+    fn set_current_thread(&mut self, thread_id: String) {
+        self.session_artifact_thread_id = Some(session_artifact_thread_id(&thread_id));
+        self.thread_id = Some(thread_id);
+    }
+
+    fn current_thread(&self, requested_thread_id: Option<&str>) -> Result<(&str, &str), &str> {
+        let Some(thread_id) = self.thread_id.as_deref() else {
+            return Err("no active thread");
+        };
+        if let Some(requested_thread_id) = requested_thread_id
+            && requested_thread_id != thread_id
+        {
+            return Err("unknown threadId");
+        }
+        let Some(artifact_thread_id) = self.session_artifact_thread_id.as_deref() else {
+            return Err("missing session artifact thread id");
+        };
+        Ok((thread_id, artifact_thread_id))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,9 +290,9 @@ enum ServerAction {
 
 fn initialize_response() -> Value {
     json!({
-        "userAgent": "guest-mock-codex-app-server/0.2.5",
+        "userAgent": format!("guest-mock-codex-app-server/{}", env!("CARGO_PKG_VERSION")),
         "codexHome": session::codex_home(),
-        "platformFamily": "unix",
+        "platformFamily": std::env::consts::FAMILY,
         "platformOs": std::env::consts::OS,
     })
 }
@@ -355,6 +395,7 @@ fn text_inputs(params: &Value) -> Result<Vec<String>, String> {
 }
 
 fn persist_input_events(
+    artifact_thread_id: &str,
     thread_id: &str,
     turn_id: &str,
     kind: &str,
@@ -373,7 +414,14 @@ fn persist_input_events(
         })
         .collect::<Vec<_>>();
     let home = session::codex_home();
-    session::persist_resume_session(&home, Utc::now().date_naive(), thread_id, &events)
+    session::persist_resume_session(&home, Utc::now().date_naive(), artifact_thread_id, &events)
+}
+
+fn session_artifact_thread_id(thread_id: &str) -> String {
+    match Uuid::parse_str(thread_id) {
+        Ok(uuid) if uuid.to_string() == thread_id => thread_id.to_string(),
+        _ => Uuid::now_v7().to_string(),
+    }
 }
 
 fn write_success<W: Write>(output: &mut W, id: Value, result: Value) -> io::Result<()> {

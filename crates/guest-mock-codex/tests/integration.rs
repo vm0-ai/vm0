@@ -327,6 +327,63 @@ fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()>
 }
 
 #[test]
+fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "thread-1";
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", json!({}))?;
+    let resumed = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    assert_eq!(resumed["result"]["thread"]["id"], supplied_thread_id);
+
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": supplied_thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let session_path = require_session_file(dir.path())?;
+    let file_name = session_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    assert!(
+        !file_name.starts_with(supplied_thread_id),
+        "non-UUID app-server thread ids should not be used directly as session filenames: {file_name}"
+    );
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events[0]["thread_id"], supplied_thread_id);
+    assert_eq!(events[0]["text"], "initial prompt");
+    assert_eq!(events[1]["thread_id"], supplied_thread_id);
+    assert_eq!(events[1]["text"], "follow-up prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_stale_turn_scenario_returns_json_rpc_error() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(
