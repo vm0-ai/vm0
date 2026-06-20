@@ -2140,9 +2140,10 @@ describe("getAvailableConnectorAuthMethodIds", () => {
         "cli",
         "api-token",
       ]);
-      expect(
-        getAvailableConnectorAuthMethodIds("stripe", {}),
-      ).toStrictEqual(["cli", "api-token"]);
+      expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
+        "cli",
+        "api-token",
+      ]);
     } finally {
       Object.defineProperty(authMethods, "oauth", {
         value: originalOauth,
