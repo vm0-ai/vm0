@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.16](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.15...vsock-proto-v0.18.16) (2026-06-20)
+
+
+### Documentation
+
+* expand vsock exec wire schemas ([#18386](https://github.com/vm0-ai/vm0/issues/18386)) ([d296dea](https://github.com/vm0-ai/vm0/commit/d296deaedbf0f4f0408e631303b4ba3663e84cc3))
+
 ## [0.18.15](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.14...vsock-proto-v0.18.15) (2026-06-15)
 
 

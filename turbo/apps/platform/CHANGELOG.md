@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.479.0](https://github.com/vm0-ai/vm0/compare/app-v0.478.2...app-v0.479.0) (2026-06-20)
+
+
+### Features
+
+* **composer:** unify goal row with queued style and add icon popovers ([#18393](https://github.com/vm0-ai/vm0/issues/18393)) ([f8097b4](https://github.com/vm0-ai/vm0/commit/f8097b420f56e538b528aeb4d51effa2a71d0f57))
+
 ## [0.478.2](https://github.com/vm0-ai/vm0/compare/app-v0.478.1...app-v0.478.2) (2026-06-20)
 
 

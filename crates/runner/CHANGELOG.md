@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.125.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.0...runner-rs-v0.125.1) (2026-06-20)
+
+
+### Refactoring
+
+* **mitm-addon:** consolidate firewall auth request inputs ([#18387](https://github.com/vm0-ai/vm0/issues/18387)) ([98c7bac](https://github.com/vm0-ai/vm0/commit/98c7bacdaeefbbb18f66490850122a3723c15cbd))
+* **runner:** model workspace image lease identity ([#18389](https://github.com/vm0-ai/vm0/issues/18389)) ([ba1b945](https://github.com/vm0-ai/vm0/commit/ba1b9454845e1dd529aee79999dc4bb4e53f8416))
+
 ## [0.125.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.124.3...runner-rs-v0.125.0) (2026-06-19)
 
 
