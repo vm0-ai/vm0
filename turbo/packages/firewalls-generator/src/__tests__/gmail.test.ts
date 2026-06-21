@@ -81,6 +81,42 @@ describe("Gmail permission manifest", () => {
     }).toThrow("Missing Gmail manifest route keys");
   });
 
+  it("derives upload route keys from Discovery media upload protocol paths", () => {
+    const routeKeys = buildGmailOfficialRouteKeys({
+      version: "test",
+      resources: {
+        users: {
+          resources: {
+            messages: {
+              methods: {
+                insert: {
+                  id: "gmail.users.messages.insert",
+                  httpMethod: "POST",
+                  path: "gmail/v1/users/{userId}/messages",
+                  supportsMediaUpload: true,
+                  mediaUpload: {
+                    protocols: {
+                      simple: {
+                        path: "/upload/gmail/v1/users/{userId}/messages",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(routeKeys).toEqual(
+      new Set([
+        "base:POST /v1/users/{userId}/messages",
+        "upload:POST /v1/users/{userId}/messages",
+      ]),
+    );
+  });
+
   it("fails duplicate route assignments", () => {
     const duplicateRoute = "base:GET /v1/users/{userId}/profile";
     const manifest = cloneManifest();

@@ -27,6 +27,12 @@ interface DiscoveryMethod {
   path?: string;
   flatPath?: string;
   supportsMediaUpload?: boolean;
+  mediaUpload?: {
+    protocols?: {
+      simple?: { path?: string };
+      resumable?: { path?: string };
+    };
+  };
 }
 
 interface DiscoveryResource {
@@ -327,22 +333,63 @@ function baseRuleForMethod(method: DiscoveryMethod): string {
   return `${httpMethod.toUpperCase()} /${methodPath.slice("gmail/".length)}`;
 }
 
+function uploadRuleForMethod(
+  method: DiscoveryMethod,
+  kind: Exclude<GmailRouteKeyKind, "base">,
+): string | null {
+  const httpMethod = method.httpMethod;
+  if (!httpMethod) {
+    throw new Error(`Gmail upload method missing httpMethod: ${method.id}`);
+  }
+
+  const protocol =
+    kind === "upload"
+      ? method.mediaUpload?.protocols?.simple
+      : method.mediaUpload?.protocols?.resumable;
+  if (!protocol?.path) return null;
+
+  const prefix =
+    kind === "upload" ? "/upload/gmail/" : "/resumable/upload/gmail/";
+  if (!protocol.path.startsWith(prefix)) {
+    throw new Error(
+      `Unexpected Gmail ${kind} media upload path for ${method.id ?? "unknown"}: ${protocol.path}`,
+    );
+  }
+
+  return `${httpMethod.toUpperCase()} /${protocol.path.slice(prefix.length)}`;
+}
+
 export function buildGmailOfficialRouteKeys(
   discovery: GmailDiscoveryDocument,
 ): Set<string> {
   const routeKeys = new Set<string>();
-  let uploadMethodCount = 0;
+  let uploadRouteCount = 0;
   console.error(`  API version: ${discovery.version ?? "unknown"}`);
   for (const method of extractMethods(discovery.resources ?? {})) {
     const rule = baseRuleForMethod(method);
     routeKeys.add(`base:${rule}`);
     if (method.supportsMediaUpload) {
-      uploadMethodCount += 1;
-      routeKeys.add(`upload:${rule}`);
-      routeKeys.add(`resumable-upload:${rule}`);
+      const uploadRule = uploadRuleForMethod(method, "upload");
+      const resumableUploadRule = uploadRuleForMethod(
+        method,
+        "resumable-upload",
+      );
+      if (!uploadRule && !resumableUploadRule) {
+        throw new Error(
+          `Gmail Discovery reports media upload support without upload protocol paths: ${method.id ?? rule}`,
+        );
+      }
+      if (uploadRule) {
+        uploadRouteCount += 1;
+        routeKeys.add(`upload:${uploadRule}`);
+      }
+      if (resumableUploadRule) {
+        uploadRouteCount += 1;
+        routeKeys.add(`resumable-upload:${resumableUploadRule}`);
+      }
     }
   }
-  if (uploadMethodCount === 0) {
+  if (uploadRouteCount === 0) {
     throw new Error("Gmail Discovery reports no upload methods");
   }
   return routeKeys;

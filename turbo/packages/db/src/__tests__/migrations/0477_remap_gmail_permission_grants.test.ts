@@ -87,6 +87,30 @@ const OLD_DENY_REMAPS = {
   ],
 } as const satisfies Record<string, readonly string[]>;
 
+const PRESERVED_OLD_ALLOW_REMAPS = {
+  "gmail.addons.current.action.compose": [
+    "drafts.send",
+    "drafts.write",
+    "messages.send",
+  ],
+  "gmail.compose": ["drafts.read", "drafts.write", "profile.read"],
+  "gmail.labels": ["labels.read", "labels.write"],
+  "gmail.send": ["drafts.send", "messages.send"],
+  "gmail.settings.basic": ["settings.read", "settings.write"],
+  "gmail.settings.sharing": ["settings.sharing"],
+} as const satisfies Record<string, readonly string[]>;
+
+const DROPPED_OLD_ALLOW_PERMISSIONS = [
+  "gmail",
+  "gmail.addons.current.message.action",
+  "gmail.addons.current.message.metadata",
+  "gmail.addons.current.message.readonly",
+  "gmail.insert",
+  "gmail.metadata",
+  "gmail.modify",
+  "gmail.readonly",
+] as const;
+
 interface GrantRow {
   readonly connectorRef: string;
   readonly permission: string;
@@ -306,12 +330,6 @@ describe("migration 0477 remap Gmail permission grants", () => {
         },
         {
           connectorRef: "gmail",
-          permission: "messages.write",
-          action: "allow",
-          expiresAt: new Date("2029-01-01T00:00:00Z"),
-        },
-        {
-          connectorRef: "gmail",
           permission: "notifications.write",
           action: "deny",
           expiresAt: null,
@@ -353,6 +371,144 @@ describe("migration 0477 remap Gmail permission grants", () => {
           expiresAt: new Date("2040-01-01T00:00:00Z"),
         },
       ]);
+    });
+  });
+
+  it("preserves non-expanding narrow Gmail allow grants", async () => {
+    await runInRollbackTransaction(async (tx) => {
+      const orgId = uniqueId("org");
+      const ownerId = uniqueId("owner");
+
+      const [compose] = await tx
+        .insert(agentComposes)
+        .values({
+          orgId,
+          userId: ownerId,
+          name: uniqueId("compose"),
+        })
+        .returning({ id: agentComposes.id });
+      const agentId = compose!.id;
+
+      await tx.insert(zeroAgents).values({
+        id: agentId,
+        orgId,
+        owner: ownerId,
+        name: uniqueId("agent"),
+      });
+
+      const usersByOldPermission = new Map<string, string>();
+      await tx.insert(userPermissionGrants).values(
+        Object.keys(PRESERVED_OLD_ALLOW_REMAPS).map((permission) => {
+          const userId = uniqueId("user");
+          usersByOldPermission.set(permission, userId);
+          return {
+            orgId,
+            userId,
+            agentId,
+            connectorRef: "gmail",
+            permission,
+            action: "allow" as const,
+            expiresAt: new Date("2035-01-01T00:00:00Z"),
+          };
+        }),
+      );
+
+      await tx.execute(sql.raw(migrationSql));
+
+      const grants = await tx
+        .select({
+          userId: userPermissionGrants.userId,
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.orgId, orgId))
+        .orderBy(
+          asc(userPermissionGrants.userId),
+          asc(userPermissionGrants.permission),
+        );
+
+      const grantsByUser = new Map<string, typeof grants>();
+      for (const grant of grants) {
+        const rows = grantsByUser.get(grant.userId) ?? [];
+        rows.push(grant);
+        grantsByUser.set(grant.userId, rows);
+      }
+
+      for (const [oldPermission, expectedNewPermissions] of Object.entries(
+        PRESERVED_OLD_ALLOW_REMAPS,
+      )) {
+        const userId = usersByOldPermission.get(oldPermission)!;
+        expect(grantsByUser.get(userId)).toStrictEqual(
+          expectedNewPermissions.map((permission) => {
+            return {
+              userId,
+              permission,
+              action: "allow",
+              expiresAt: new Date("2035-01-01T00:00:00Z"),
+            };
+          }),
+        );
+      }
+    });
+  });
+
+  it("drops old Gmail allow grants that are not safely preservable", async () => {
+    await runInRollbackTransaction(async (tx) => {
+      const orgId = uniqueId("org");
+      const ownerId = uniqueId("owner");
+
+      const [compose] = await tx
+        .insert(agentComposes)
+        .values({
+          orgId,
+          userId: ownerId,
+          name: uniqueId("compose"),
+        })
+        .returning({ id: agentComposes.id });
+      const agentId = compose!.id;
+
+      await tx.insert(zeroAgents).values({
+        id: agentId,
+        orgId,
+        owner: ownerId,
+        name: uniqueId("agent"),
+      });
+
+      const droppedUsers = new Set<string>();
+      await tx.insert(userPermissionGrants).values(
+        DROPPED_OLD_ALLOW_PERMISSIONS.map((permission) => {
+          const userId = uniqueId("user");
+          droppedUsers.add(userId);
+          return {
+            orgId,
+            userId,
+            agentId,
+            connectorRef: "gmail",
+            permission,
+            action: "allow" as const,
+            expiresAt: new Date("2035-01-01T00:00:00Z"),
+          };
+        }),
+      );
+
+      await tx.execute(sql.raw(migrationSql));
+
+      const grants = await tx
+        .select({
+          userId: userPermissionGrants.userId,
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+        })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.orgId, orgId));
+
+      expect(
+        grants.filter((grant) => {
+          return droppedUsers.has(grant.userId);
+        }),
+      ).toStrictEqual([]);
     });
   });
 
