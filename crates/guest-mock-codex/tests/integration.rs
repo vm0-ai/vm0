@@ -163,11 +163,10 @@ impl Drop for AppServerProcess {
                 Ok(Some(_)) => {
                     let _ = child.wait();
                 }
-                Ok(None) => {
+                Ok(None) | Err(_) => {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-                Err(_) => {}
             }
         }
         let _ = self.join_stdout_thread();
