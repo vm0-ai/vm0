@@ -468,6 +468,73 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     )
 
 
+def test_shutdown_partial_enqueue_failure_retains_unfinished_without_rescheduling_timer(
+    tmp_path,
+):
+    pending_path = tmp_path / "usage-pending"
+    attempted_runs: list[str] = []
+
+    def fail_second_batch(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, path, log_type
+        attempted_runs.append(payload["runId"])
+        if payload["runId"] == "run-2":
+            raise OSError("shutdown second batch failed")
+        return True
+
+    enqueue = RecordingEnqueue(side_effect=fail_second_batch)
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+    for run_id, source_key in (("run-1", "source-1"), ("run-2", "source-2")):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            run_id,
+            [event(source_key=source_key)],
+            str(proxy_log_path),
+        )
+    assert len(timers) == 1
+
+    with pytest.raises(OSError, match="shutdown second batch failed"):
+        usage.flush_usage_events(trigger="shutdown")
+
+    assert attempted_runs == ["run-1", "run-2"]
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="shutdown-partial-retained",
+    )
+    retained_entries = [
+        entry
+        for entry in flush_log_entries(proxy_log_path)
+        if entry.get("reason") == "shutdown_retained_without_retry"
+    ]
+    assert len(retained_entries) == 1
+    assert retained_entries[0]["level"] == "error"
+    assert retained_entries[0]["type"] == "usage_underbilling"
+    assert retained_entries[0]["trigger"] == "shutdown"
+    assert retained_entries[0]["retained_source_event_count"] == 1
+    assert retained_entries[0]["retained_webhook_batch_count"] == 1
+
+    enqueue.side_effect = None
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["runId"] == "run-2"
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="shutdown-partial-drained",
+    )
+
+
 def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
     pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"

@@ -23,6 +23,7 @@ from .models import (
     _DeliveryCompletion,
     _PendingBatch,
     _PendingFlush,
+    _RetainBatchesResult,
 )
 from .state import _UsageBufferState
 from .summaries import _apply_retained_batch_counts, _build_flush_summaries
@@ -221,48 +222,34 @@ class UsageEventBuffer:
             try:
                 admission_result = self._enqueue_pending_flush(pending_flush, trigger)
             except _BatchEnqueueError as exc:
-                timer_to_start = None
                 with self._lock:
                     retain_result = self._state.complete_admission(
                         pending_flush, exc.admission_result
                     )
-                    if retain_result.retained_batches and trigger != "shutdown":
-                        timer_to_start = self._schedule_timer_if_buffered_locked()
-                    self._sync_buffered_counter_locked()
-                if retain_result.dropped_batches:
-                    _log_dropped_batches(
+                    timer_to_start = self._prepare_failed_flush_retention_locked(
                         trigger,
-                        pending_flush.flush_sequence,
-                        retain_result.dropped_batches,
+                        schedule_retry=bool(retain_result.retained_batches),
                     )
-                _log_shutdown_retained_batches(
+                self._finish_failed_flush_retention(
                     trigger,
-                    pending_flush.flush_sequence,
-                    retain_result.retained_batches,
+                    pending_flush,
+                    retain_result,
+                    timer_to_start,
                 )
-                if timer_to_start is not None:
-                    timer_to_start.start()
                 raise exc.original from exc
             except Exception:
-                timer_to_start = None
                 with self._lock:
                     retain_result = self._state.fail_enqueue(pending_flush, flush_generation)
-                    if trigger != "shutdown":
-                        timer_to_start = self._schedule_timer_if_buffered_locked()
-                    self._sync_buffered_counter_locked()
-                if retain_result.dropped_batches:
-                    _log_dropped_batches(
+                    timer_to_start = self._prepare_failed_flush_retention_locked(
                         trigger,
-                        pending_flush.flush_sequence,
-                        retain_result.dropped_batches,
+                        schedule_retry=True,
                     )
-                _log_shutdown_retained_batches(
+                self._finish_failed_flush_retention(
                     trigger,
-                    pending_flush.flush_sequence,
-                    retain_result.retained_batches,
+                    pending_flush,
+                    retain_result,
+                    timer_to_start,
                 )
-                if timer_to_start is not None:
-                    timer_to_start.start()
                 raise
 
             flushed_batch_count += admission_result.admitted_batch_count
@@ -282,6 +269,39 @@ class UsageEventBuffer:
                 timer_to_start.start()
             if admission_result.retained_batches:
                 return flushed_batch_count
+
+    def _prepare_failed_flush_retention_locked(
+        self,
+        trigger: UsageFlushTrigger,
+        *,
+        schedule_retry: bool,
+    ) -> _TimerHandle | None:
+        timer_to_start = None
+        if schedule_retry and trigger != "shutdown":
+            timer_to_start = self._schedule_timer_if_buffered_locked()
+        self._sync_buffered_counter_locked()
+        return timer_to_start
+
+    @staticmethod
+    def _finish_failed_flush_retention(
+        trigger: UsageFlushTrigger,
+        pending_flush: _PendingFlush,
+        retain_result: _RetainBatchesResult,
+        timer_to_start: _TimerHandle | None,
+    ) -> None:
+        if retain_result.dropped_batches:
+            _log_dropped_batches(
+                trigger,
+                pending_flush.flush_sequence,
+                retain_result.dropped_batches,
+            )
+        _log_shutdown_retained_batches(
+            trigger,
+            pending_flush.flush_sequence,
+            retain_result.retained_batches,
+        )
+        if timer_to_start is not None:
+            timer_to_start.start()
 
     def _enqueue_pending_flush(
         self,
