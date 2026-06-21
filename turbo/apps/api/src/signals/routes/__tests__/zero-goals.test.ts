@@ -555,7 +555,7 @@ describe("zero goals", () => {
     const edited = await accept(
       goalsClient().edit({
         headers: headers(fixture, ["goal-objective:write"]),
-        body: { objective: "ship goal workflows v2", tokenBudget: 5_000 },
+        body: { objective: "ship goal workflows v2", tokenBudget: 5000 },
       }),
       [200],
     );
@@ -563,7 +563,7 @@ describe("zero goals", () => {
       active: true,
       objective: "ship goal workflows v2",
       status: "active",
-      tokenBudget: 5_000,
+      tokenBudget: 5000,
     });
 
     const read = await accept(
@@ -574,7 +574,7 @@ describe("zero goals", () => {
       active: true,
       objective: "ship goal workflows v2",
       status: "active",
-      tokenBudget: 5_000,
+      tokenBudget: 5000,
     });
   });
 

@@ -313,12 +313,18 @@ async function notifyGoalAutoStopped(
   });
 }
 
-async function disableGoalTrigger(db: Db, triggerId: string): Promise<void> {
+// Disables a goal trigger after a user cancel, recording the "paused" stop
+// reason so the goal surfaces as paused rather than agent-blocked.
+async function disableGoalTrigger(
+  db: Db,
+  trigger: { readonly id: string; readonly workflowId: string },
+): Promise<void> {
   const currentTime = nowDate();
   await db
     .update(zeroWorkflowTriggers)
     .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-    .where(eq(zeroWorkflowTriggers.id, triggerId));
+    .where(eq(zeroWorkflowTriggers.id, trigger.id));
+  await setGoalStopReason(db, trigger.workflowId, "paused");
 }
 
 /**
@@ -354,9 +360,11 @@ async function resetGoalTriggerFailures(
     .where(eq(zeroWorkflowTriggers.id, triggerId));
 }
 
+// Increments the failure counter and, once the threshold disables the trigger,
+// records the "failed" stop reason so the goal surfaces the auto-stop cause.
 async function incrementGoalTriggerFailures(
   db: Db,
-  triggerId: string,
+  trigger: { readonly id: string; readonly workflowId: string },
 ): Promise<FailureUpdateResult> {
   const currentTime = nowDate();
   const [updated] = await db
@@ -369,7 +377,7 @@ async function incrementGoalTriggerFailures(
     })
     .where(
       and(
-        eq(zeroWorkflowTriggers.id, triggerId),
+        eq(zeroWorkflowTriggers.id, trigger.id),
         eq(zeroWorkflowTriggers.enabled, true),
       ),
     )
@@ -378,14 +386,16 @@ async function incrementGoalTriggerFailures(
       enabled: zeroWorkflowTriggers.enabled,
     });
 
-  if (!updated) {
-    return { disabled: true, consecutiveFailures: MAX_CONSECUTIVE_FAILURES };
+  const result: FailureUpdateResult = updated
+    ? {
+        disabled: !updated.enabled,
+        consecutiveFailures: updated.consecutiveFailures,
+      }
+    : { disabled: true, consecutiveFailures: MAX_CONSECUTIVE_FAILURES };
+  if (result.disabled) {
+    await setGoalStopReason(db, trigger.workflowId, "failed");
   }
-
-  return {
-    disabled: !updated.enabled,
-    consecutiveFailures: updated.consecutiveFailures,
-  };
+  return result;
 }
 
 export const continueGoalIfIdle$ = command(
@@ -424,15 +434,13 @@ export const continueGoalIfIdle$ = command(
     const trigger = goal.trigger;
 
     if (run.status === "cancelled") {
-      await disableGoalTrigger(db, trigger.id);
-      signal.throwIfAborted();
-      await setGoalStopReason(db, trigger.workflowId, "paused");
+      await disableGoalTrigger(db, trigger);
       signal.throwIfAborted();
       return { kind: "paused", triggerId: trigger.id };
     }
 
     if (run.status === "failed" || run.status === "timeout") {
-      const failureUpdate = await incrementGoalTriggerFailures(db, trigger.id);
+      const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
       signal.throwIfAborted();
       if (failureUpdate.disabled) {
         log.warn("Goal continuation auto-stopped after run failures", {
@@ -440,8 +448,6 @@ export const continueGoalIfIdle$ = command(
           runId: run.runId,
           consecutiveFailures: failureUpdate.consecutiveFailures,
         });
-        await setGoalStopReason(db, trigger.workflowId, "failed");
-        signal.throwIfAborted();
         await notifyGoalAutoStopped(db, {
           userId: run.userId,
           chatThreadId: run.chatThreadId,
@@ -492,7 +498,7 @@ export const continueGoalIfIdle$ = command(
       return { kind: "skipped", reason: "previous-run-active" };
     }
 
-    const failureUpdate = await incrementGoalTriggerFailures(db, trigger.id);
+    const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
     signal.throwIfAborted();
     const error = failureMessage(runResult);
     if (failureUpdate.disabled) {
@@ -502,8 +508,6 @@ export const continueGoalIfIdle$ = command(
         consecutiveFailures: failureUpdate.consecutiveFailures,
         error,
       });
-      await setGoalStopReason(db, trigger.workflowId, "failed");
-      signal.throwIfAborted();
       await notifyGoalAutoStopped(db, {
         userId: run.userId,
         chatThreadId: run.chatThreadId,
