@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.200.0](https://github.com/vm0-ai/vm0/compare/cli-v9.199.6...cli-v9.200.0) (2026-06-21)
+
+
+### Features
+
+* add goal objective editing, stop reasons, and creation guard ([#18408](https://github.com/vm0-ai/vm0/issues/18408)) ([a942723](https://github.com/vm0-ai/vm0/commit/a942723f5640a4019cd710935432e658d582b213))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.107.0
+    * @vm0/connectors bumped to 1.98.0
+    * @vm0/core bumped to 8.362.0
+
 ## [9.199.6](https://github.com/vm0-ai/vm0/compare/cli-v9.199.5...cli-v9.199.6) (2026-06-20)
 
 
