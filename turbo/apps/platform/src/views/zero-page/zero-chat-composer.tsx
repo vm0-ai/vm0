@@ -25,6 +25,7 @@ import {
   IconMicrophone,
   IconPaperclip,
   IconPalette,
+  IconPlayerPlay,
   IconPlayerStop,
   IconPlug,
   IconPhoto,
@@ -968,7 +969,18 @@ function playVideoTemplatePreview(video: HTMLVideoElement | null): void {
   video.defaultMuted = true;
   video.muted = true;
   video.playsInline = true;
+  video.preload = "metadata";
   detach(video.play(), Reason.DomCallback);
+}
+
+function markVideoTemplatePreviewPlaying(
+  video: HTMLVideoElement | null,
+  playing: boolean,
+): void {
+  if (!video) {
+    return;
+  }
+  video.dataset.previewPlaying = playing ? "true" : "false";
 }
 
 function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
@@ -977,6 +989,18 @@ function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
   }
   video.pause();
   video.currentTime = 0;
+  markVideoTemplatePreviewPlaying(video, false);
+}
+
+function toggleVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video) {
+    return;
+  }
+  if (video.paused || video.ended) {
+    playVideoTemplatePreview(video);
+    return;
+  }
+  resetVideoTemplatePreview(video);
 }
 
 function videoTemplatePosterImage(item: VideoTemplateItem): string {
@@ -992,21 +1016,61 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   const posterImage = videoTemplatePosterImage(item);
   return (
-    <video
-      src={item.previewVideo}
-      poster={posterImage}
-      className="h-full w-full object-cover"
-      preload="none"
-      playsInline
-      muted
-      loop
+    <div
+      data-video-template-preview=""
+      className="group/video-template-preview relative h-full w-full overflow-hidden bg-muted"
       onMouseEnter={(event) => {
-        playVideoTemplatePreview(event.currentTarget);
+        playVideoTemplatePreview(event.currentTarget.querySelector("video"));
       }}
       onMouseLeave={(event) => {
-        resetVideoTemplatePreview(event.currentTarget);
+        resetVideoTemplatePreview(event.currentTarget.querySelector("video"));
       }}
-    />
+    >
+      <video
+        src={item.previewVideo}
+        poster={posterImage}
+        className="peer h-full w-full object-cover"
+        preload="none"
+        playsInline
+        muted
+        loop
+        onPlaying={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, true);
+        }}
+        onPause={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, false);
+        }}
+        onEnded={(event) => {
+          resetVideoTemplatePreview(event.currentTarget);
+        }}
+        onError={(event) => {
+          markVideoTemplatePreviewPlaying(event.currentTarget, false);
+        }}
+      />
+      <img
+        src={posterImage}
+        alt=""
+        aria-hidden="true"
+        data-video-template-poster=""
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200 peer-data-[preview-playing=true]:opacity-0"
+      />
+      <button
+        type="button"
+        aria-label={`Play video template preview ${item.title}`}
+        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-0 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:opacity-100 focus-visible:outline-none group-hover/video-template-preview:opacity-100 group-focus-within/video-template-preview:opacity-100 peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0 [@media(hover:none)]:opacity-100"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleVideoTemplatePreview(
+            event.currentTarget.parentElement?.querySelector("video") ?? null,
+          );
+        }}
+      >
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
+          <IconPlayerPlay size={20} stroke={1.8} />
+        </span>
+      </button>
+    </div>
   );
 }
 

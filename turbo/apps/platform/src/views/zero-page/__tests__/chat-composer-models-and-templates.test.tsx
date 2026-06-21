@@ -2304,8 +2304,22 @@ describe("chat composer templates", () => {
         if (!previewVideo) {
           throw new Error("Video template preview video not found");
         }
+        const previewRoot = previewVideo.closest(
+          "[data-video-template-preview]",
+        );
+        if (!previewRoot) {
+          throw new Error("Video template preview root not found");
+        }
+        expect(
+          previewRoot.querySelector("[data-video-template-poster]"),
+        ).toHaveAttribute("src", posterUrl);
         expect(previewVideo).toHaveAttribute("poster", posterUrl);
         expect(previewVideo).toHaveAttribute("preload", "none");
+        expect(
+          screen.getByLabelText(
+            `Play video template preview ${videoStyle.title}`,
+          ),
+        ).toBeInTheDocument();
         expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
         expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
       });
@@ -2318,15 +2332,30 @@ describe("chat composer templates", () => {
       if (!previewVideo) {
         throw new Error("Video template preview video not found");
       }
-      fireEvent.mouseEnter(previewVideo);
+      const previewRoot = previewVideo.closest("[data-video-template-preview]");
+      if (!previewRoot) {
+        throw new Error("Video template preview root not found");
+      }
+      fireEvent.click(
+        screen.getByLabelText(
+          `Play video template preview ${videoStyle.title}`,
+        ),
+      );
       expect(playSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.defaultMuted).toBeTruthy();
       expect(previewVideo.muted).toBeTruthy();
+      expect(previewVideo.preload).toBe("metadata");
+      fireEvent.playing(previewVideo);
+      expect(previewVideo.dataset.previewPlaying).toBe("true");
 
       previewVideo.currentTime = 3;
-      fireEvent.mouseLeave(previewVideo);
+      fireEvent.mouseLeave(previewRoot);
       expect(pauseSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.currentTime).toBe(0);
+      expect(previewVideo.dataset.previewPlaying).toBe("false");
+
+      fireEvent.mouseEnter(previewRoot);
+      expect(playSpy).toHaveBeenCalledTimes(2);
     } finally {
       playSpy.mockRestore();
       pauseSpy.mockRestore();
