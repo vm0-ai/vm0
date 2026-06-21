@@ -15,23 +15,26 @@ const FORBIDDEN_RUNTIME_FIREWALL_IMPORTS = [
   "@vm0/connectors/firewalls",
   "@vm0/core/firewalls",
 ] as const;
+const IMPORT_SPECIFIER_PATTERN =
+  /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+function importSpecifiers(source: string): readonly string[] {
+  return [...source.matchAll(IMPORT_SPECIFIER_PATTERN)].map((match) => {
+    return match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
+  });
 }
 
-function importPattern(specifier: string): RegExp {
-  const escapedSpecifier = escapeRegExp(specifier);
-  const importSpecifier = `${escapedSpecifier}(?:/[^"']*)?`;
-  return new RegExp(
-    `(?:from\\s+["']${importSpecifier}["']|import\\s*\\(\\s*["']${importSpecifier}["']\\s*\\)|import\\s+["']${importSpecifier}["']|require\\s*\\(\\s*["']${importSpecifier}["']\\s*\\))`,
-  );
+function importsSpecifier(source: string, specifier: string): boolean {
+  return importSpecifiers(source).some((importedSpecifier) => {
+    return (
+      importedSpecifier === specifier ||
+      importedSpecifier.startsWith(`${specifier}/`)
+    );
+  });
 }
 
 describe("firewall metadata import boundary", () => {
   it("matches forbidden runtime firewall import forms", () => {
-    const pattern = importPattern("@vm0/connectors/firewalls");
-
     for (const source of [
       `import { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `import type { FirewallConnectorType } from "@vm0/connectors/firewalls";`,
@@ -40,12 +43,17 @@ describe("firewall metadata import boundary", () => {
       `import "@vm0/connectors/firewalls";`,
       `require("@vm0/connectors/firewalls/github.generated");`,
     ]) {
-      expect(source).toMatch(pattern);
+      expect(
+        importsSpecifier(source, "@vm0/connectors/firewalls"),
+      ).toBeTruthy();
     }
 
     expect(
-      `import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";`,
-    ).not.toMatch(pattern);
+      importsSpecifier(
+        `import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";`,
+        "@vm0/connectors/firewalls",
+      ),
+    ).toBeFalsy();
   });
 
   it.each(METADATA_ONLY_SERVICES)(
@@ -54,7 +62,7 @@ describe("firewall metadata import boundary", () => {
       const source = readFileSync(resolve(SERVICE_DIR, service), "utf8");
 
       for (const specifier of FORBIDDEN_RUNTIME_FIREWALL_IMPORTS) {
-        expect(source).not.toMatch(importPattern(specifier));
+        expect(importsSpecifier(source, specifier)).toBeFalsy();
       }
     },
   );
