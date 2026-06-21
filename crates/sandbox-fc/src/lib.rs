@@ -40,6 +40,7 @@ mod paths;
 mod prerequisites;
 mod process;
 mod runtime;
+mod runtime_dirs;
 mod sandbox;
 mod snapshot;
 mod workspace_drive_image;

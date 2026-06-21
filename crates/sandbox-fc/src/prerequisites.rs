@@ -7,7 +7,8 @@ use nix::unistd::{AccessFlags, eaccess};
 use sandbox::SandboxError;
 
 use crate::config::SnapshotConfig;
-use crate::paths::RUNTIME_DIR;
+use crate::paths::{RUNTIME_DIR, RuntimePaths};
+use crate::runtime_dirs::ensure_traversable_runtime_dir;
 
 /// Common inputs needed for prerequisite checks.
 ///
@@ -79,7 +80,7 @@ pub(crate) async fn check_prerequisites(
     check_kvm(&mut errors);
     let commands = required_commands(config.mode);
     check_required_commands(&commands, &mut errors);
-    ensure_runtime_dir(&mut errors);
+    ensure_runtime_namespace(&mut errors);
 
     prerequisite_result(errors)
 }
@@ -287,14 +288,25 @@ fn required_commands_for_groups<'a>(command_groups: &[&'a [&'a str]]) -> Vec<&'a
     commands
 }
 
-/// Create `/run/vm0` with mode 1777 (world-writable + sticky bit) if needed.
-fn ensure_runtime_dir(errors: &mut Vec<String>) {
-    if let Err(e) = std::fs::create_dir_all(RUNTIME_DIR) {
-        errors.push(format!("failed to create {RUNTIME_DIR}: {e}"));
+/// Create and validate the owner-writable runtime socket namespace.
+fn ensure_runtime_namespace(errors: &mut Vec<String>) {
+    let runtime = RuntimePaths::new();
+    ensure_runtime_namespace_at(Path::new(RUNTIME_DIR), &runtime.sock_base(), errors);
+}
+
+fn ensure_runtime_namespace_at(runtime_dir: &Path, sock_base: &Path, errors: &mut Vec<String>) {
+    if let Err(e) = ensure_traversable_runtime_dir(runtime_dir) {
+        errors.push(format!(
+            "failed to prepare runtime dir {}: {e}",
+            runtime_dir.display()
+        ));
         return;
     }
-    if let Err(e) = std::fs::set_permissions(RUNTIME_DIR, std::fs::Permissions::from_mode(0o1777)) {
-        errors.push(format!("failed to chmod {RUNTIME_DIR}: {e}"));
+    if let Err(e) = ensure_traversable_runtime_dir(sock_base) {
+        errors.push(format!(
+            "failed to prepare runtime sock dir {}: {e}",
+            sock_base.display()
+        ));
     }
 }
 
@@ -422,6 +434,14 @@ mod tests {
         );
     }
 
+    fn mode(path: &Path) -> u32 {
+        std::fs::symlink_metadata(path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777
+    }
+
     fn snapshot_config() -> SnapshotConfig {
         SnapshotConfig {
             snapshot_path: PathBuf::from("/tmp/snapshot.bin"),
@@ -526,6 +546,37 @@ mod tests {
             required_commands_for_groups(&[NETWORK_COMMANDS]),
             vec!["ip", "iptables", "iptables-save", "sysctl"]
         );
+    }
+
+    #[test]
+    fn runtime_namespace_creates_traversable_runtime_and_sock_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("vm0");
+        let sock_base = runtime_dir.join("sock");
+        let mut errors = Vec::new();
+
+        ensure_runtime_namespace_at(&runtime_dir, &sock_base, &mut errors);
+
+        assert_no_errors(&errors);
+        assert_eq!(mode(&runtime_dir), 0o711);
+        assert_eq!(mode(&sock_base), 0o711);
+    }
+
+    #[test]
+    fn runtime_namespace_reports_unsafe_sock_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("vm0");
+        let sock_base = runtime_dir.join("sock");
+        let target = tmp.path().join("target");
+        std::fs::create_dir(&runtime_dir).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &sock_base).unwrap();
+        let mut errors = Vec::new();
+
+        ensure_runtime_namespace_at(&runtime_dir, &sock_base, &mut errors);
+
+        assert_error_contains(&errors, "failed to prepare runtime sock dir");
+        assert_error_contains(&errors, "is a symlink");
     }
 
     #[test]

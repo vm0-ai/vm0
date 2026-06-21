@@ -1,3 +1,4 @@
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::time::Duration;
 
@@ -345,6 +346,35 @@ async fn cleanup_existing_snapshot_sock_dir_removes_existing_dir() {
     );
 
     cleanup_existing_snapshot_sock_dir(&sock_dir).await;
+}
+
+#[tokio::test]
+async fn snapshot_attempt_prepare_firecracker_files_rejects_socket_symlink() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (mut attempt, sock_dir) = snapshot_attempt_for_test(&dir);
+    let target = dir.path().join("target");
+    std::fs::create_dir(&target).expect("create symlink target");
+    symlink(&target, &sock_dir).expect("create sock symlink");
+    let config = SnapshotCreateConfig {
+        id: "snapshot-attempt-test".into(),
+        binary_path: dir.path().join("firecracker"),
+        kernel_path: dir.path().join("vmlinux"),
+        rootfs_path: dir.path().join("rootfs.ext4"),
+        output_dir: dir.path().join("output"),
+        vcpu_count: 2,
+        memory_mb: 512,
+        workspace_disk_mb: 1024,
+    };
+
+    let err = attempt
+        .prepare_firecracker_files(&config)
+        .await
+        .expect_err("prepare firecracker files should reject sock symlink");
+
+    let message = err.to_string();
+    assert!(message.contains("prepare sock dir"), "got: {message}");
+    assert!(message.contains("is a symlink"), "got: {message}");
+    assert!(target.is_dir());
 }
 
 #[tokio::test]

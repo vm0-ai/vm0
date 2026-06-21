@@ -17,6 +17,7 @@ use crate::config::SnapshotConfig;
 use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
+use crate::runtime_dirs::checked_runtime_sock_dir;
 
 use self::attempt::{
     SnapshotAttempt, cleanup_after_netns_pool_failure, cleanup_existing_snapshot_sock_dir,
@@ -68,6 +69,10 @@ pub async fn create_snapshot(
 async fn create_uncommitted_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<FirecrackerPendingSnapshotPublish, SnapshotError> {
+    let runtime_paths = RuntimePaths::new();
+    let sock_dir = checked_runtime_sock_dir(&runtime_paths, &config.id)
+        .map_err(|e| SnapshotError::Setup(format!("snapshot socket id: {e}")))?;
+
     // Check prerequisites (binary, kernel, rootfs, kvm, runtime dir, etc.).
     prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
         binary_path: &config.binary_path,
@@ -84,8 +89,6 @@ async fn create_uncommitted_snapshot(
     let work = prepare_snapshot_output(&output).await?;
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
-    let runtime_paths = RuntimePaths::new();
-    let sock_dir = runtime_paths.sock_dir(&config.id);
     cleanup_existing_snapshot_sock_dir(&sock_dir).await;
 
     let paths = SandboxPaths::new(work);
@@ -171,4 +174,43 @@ async fn create_uncommitted_snapshot(
     attempt.cleanup_sock_dir().await;
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn create_uncommitted_snapshot_rejects_invalid_socket_id_before_output_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_dir = tmp.path().join("output");
+        tokio::fs::create_dir_all(&output_dir).await.unwrap();
+        let sentinel = output_dir.join("keep.txt");
+        tokio::fs::write(&sentinel, b"keep").await.unwrap();
+
+        let result = create_uncommitted_snapshot(SnapshotCreateConfig {
+            id: "../snapshot".into(),
+            binary_path: tmp.path().join("firecracker"),
+            kernel_path: tmp.path().join("vmlinux"),
+            rootfs_path: tmp.path().join("rootfs.ext4"),
+            output_dir,
+            vcpu_count: 2,
+            memory_mb: 512,
+            workspace_disk_mb: 1024,
+        })
+        .await;
+
+        match result {
+            Ok(_) => panic!("expected invalid socket id to fail"),
+            Err(SnapshotError::Setup(message)) => {
+                assert!(message.contains("snapshot socket id"), "got: {message}");
+                assert!(
+                    message.contains("runtime socket id must be"),
+                    "got: {message}"
+                );
+            }
+            Err(other) => panic!("expected setup error, got {other:?}"),
+        }
+        assert!(sentinel.exists());
+    }
 }

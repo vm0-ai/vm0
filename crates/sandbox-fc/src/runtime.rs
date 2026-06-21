@@ -12,6 +12,7 @@ use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::factory::FirecrackerFactory;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
+use crate::runtime_dirs::checked_runtime_sock_dir;
 
 /// Firecracker-backed sandbox runtime.
 ///
@@ -64,7 +65,10 @@ impl FirecrackerRuntime {
     }
 
     fn to_firecracker_config(&self, config: FactoryConfig) -> sandbox::Result<FirecrackerConfig> {
-        let snapshot = config.snapshot.map(|s| Self::resolve_snapshot(&s));
+        let snapshot = match config.snapshot.as_ref() {
+            Some(snapshot_ref) => Some(Self::resolve_snapshot(snapshot_ref)?),
+            None => None,
+        };
         Ok(FirecrackerConfig {
             binary_path: config.binary_path,
             kernel_path: config.kernel_path,
@@ -77,19 +81,24 @@ impl FirecrackerRuntime {
         })
     }
 
-    fn resolve_snapshot(snapshot_ref: &SnapshotRef) -> SnapshotConfig {
+    fn resolve_snapshot(snapshot_ref: &SnapshotRef) -> sandbox::Result<SnapshotConfig> {
         let output = SnapshotOutputPaths::new(snapshot_ref.output_dir.clone());
         let work = SandboxPaths::new(output.work_dir());
         let runtime = RuntimePaths::new();
-        let sock = SockPaths::new(runtime.sock_dir(&snapshot_ref.hash));
-        SnapshotConfig {
+        let sock_dir = checked_runtime_sock_dir(&runtime, &snapshot_ref.hash).map_err(|e| {
+            SandboxError::Configuration {
+                message: format!("snapshot socket id: {e}"),
+            }
+        })?;
+        let sock = SockPaths::new(sock_dir);
+        Ok(SnapshotConfig {
             snapshot_path: output.snapshot(),
             memory_path: output.memory(),
             cow_path: output.cow(),
             drive_bind_path: work.cow_device_bind(),
             workspace_drive_bind_path: work.workspace_device_bind(),
             vsock_bind_dir: sock.vsock_dir(),
-        }
+        })
     }
 }
 
@@ -140,5 +149,49 @@ impl RuntimeProvider for FirecrackerRuntimeProvider {
         config: sandbox::RuntimeConfig,
     ) -> sandbox::Result<Box<dyn SandboxRuntime>> {
         Ok(Box::new(FirecrackerRuntime::new(config).await?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_snapshot_rejects_invalid_socket_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshot_ref = SnapshotRef {
+            output_dir: tmp.path().join("snapshot"),
+            hash: "../snapshot".into(),
+        };
+
+        let err = FirecrackerRuntime::resolve_snapshot(&snapshot_ref).unwrap_err();
+
+        match err {
+            SandboxError::Configuration { message } => {
+                assert!(message.contains("snapshot socket id"), "got: {message}");
+                assert!(
+                    message.contains("runtime socket id must be"),
+                    "got: {message}"
+                );
+            }
+            other => panic!("expected configuration error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_snapshot_uses_checked_runtime_socket_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hash = "a".repeat(64);
+        let snapshot_ref = SnapshotRef {
+            output_dir: tmp.path().join("snapshot"),
+            hash: hash.clone(),
+        };
+
+        let snapshot = FirecrackerRuntime::resolve_snapshot(&snapshot_ref).unwrap();
+
+        assert_eq!(
+            snapshot.vsock_bind_dir,
+            RuntimePaths::new().sock_dir(&hash).join("vsock")
+        );
     }
 }
