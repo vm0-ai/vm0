@@ -29,6 +29,25 @@ function importPattern(specifier: string): RegExp {
 }
 
 describe("firewall metadata import boundary", () => {
+  it("matches forbidden runtime firewall import forms", () => {
+    const pattern = importPattern("@vm0/connectors/firewalls");
+
+    for (const source of [
+      `import { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
+      `import type { FirewallConnectorType } from "@vm0/connectors/firewalls";`,
+      `export { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
+      `await import("@vm0/connectors/firewalls/github.generated");`,
+      `import "@vm0/connectors/firewalls";`,
+      `require("@vm0/connectors/firewalls/github.generated");`,
+    ]) {
+      expect(source).toMatch(pattern);
+    }
+
+    expect(
+      `import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";`,
+    ).not.toMatch(pattern);
+  });
+
   it.each(METADATA_ONLY_SERVICES)(
     "%s does not import runtime firewall catalogs",
     (service) => {
