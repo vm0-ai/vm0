@@ -30,6 +30,8 @@ import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
+import { setupAgentWorkflowsPage$ } from "./workflows-page/agent-workflows-page-setup.ts";
+import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
@@ -161,6 +163,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.reportError,
     setup: setupAuthPageWrapper(setupReportErrorPage$),
+  },
+  {
+    path: ROUTES.agentWorkflowDetail,
+    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+  },
+  {
+    path: ROUTES.agentWorkflows,
+    setup: setupAuthSidebarPageWrapper(setupAgentWorkflowsPage$),
   },
   {
     path: ROUTES.agentDetail,

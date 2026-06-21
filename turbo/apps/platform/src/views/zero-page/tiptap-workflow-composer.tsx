@@ -18,7 +18,7 @@ import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
-import { orgWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import { composerWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   slashWorkflowCaretIndex$,
   setSlashWorkflowCaretIndex$,
@@ -502,12 +502,14 @@ export function TiptapWorkflowComposer({
   const features = useLastResolved(featureSwitch$);
   const singleLineOnMobile =
     features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false;
-  const orgWorkflowsLoadable = useLastLoadable(orgWorkflows$);
-  const orgWorkflowsData =
-    orgWorkflowsLoadable.state === "hasData" ? orgWorkflowsLoadable.data : [];
+  const composerWorkflowsLoadable = useLastLoadable(composerWorkflows$);
+  const composerWorkflowsData =
+    composerWorkflowsLoadable.state === "hasData"
+      ? composerWorkflowsLoadable.data
+      : [];
   const composerWorkflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,
-    workflows: orgWorkflowsData,
+    workflows: composerWorkflowsData,
   });
   const workflowNames = composerWorkflows.map((workflow) => {
     return workflow.name;
@@ -519,7 +521,7 @@ export function TiptapWorkflowComposer({
         return matchesWorkflowQuery(workflow, slashRange.query);
       })
     : [];
-  const isLoadingOrgWorkflows = orgWorkflowsLoadable.state === "loading";
+  const isLoadingOrgWorkflows = composerWorkflowsLoadable.state === "loading";
   const showWorkflowsPageLink =
     features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
   const showSlashWorkflowMenu =

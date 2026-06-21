@@ -76,9 +76,7 @@ export function buildComposerSlashWorkflows({
 
   return workflows
     .filter((workflow) => {
-      return workflow.attachedAgents.some((agent) => {
-        return agent.agentId === agentId;
-      });
+      return workflow.agentId === agentId;
     })
     .map((workflow) => {
       const name = workflow.name;

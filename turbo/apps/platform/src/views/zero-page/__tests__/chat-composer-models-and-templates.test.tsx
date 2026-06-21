@@ -515,30 +515,24 @@ function workflowSummary({
   name,
   displayName,
   description,
-  attachedAgentIds = [],
+  agentId = OTHER_AGENT_ID,
 }: {
   readonly name: string;
   readonly displayName: string | null;
   readonly description: string | null;
-  readonly attachedAgentIds?: readonly string[];
+  readonly agentId?: string;
 }) {
   return {
+    id: crypto.randomUUID(),
+    agentId,
+    agentName: null,
+    agentDisplayName: agentId === AGENT_ID ? "Scout" : "Other Agent",
     name,
     displayName,
     description,
     visibility: "public" as const,
+    requestToPublish: false,
     ownerUserId: "user-1",
-    attachedAgentCount: attachedAgentIds.length,
-    attachedAgents: attachedAgentIds.map((agentId) => {
-      return {
-        agentId,
-        ownerId: "test-user-123",
-        displayName: agentId === AGENT_ID ? "Scout" : "Other Agent",
-        description: null,
-        avatarUrl: null,
-        visibility: "public" as const,
-      };
-    }),
     canManage: true,
   };
 }
@@ -560,13 +554,13 @@ describe("chat composer models", () => {
           name: "sales-research",
           displayName: "Sales Research",
           description: "Find account context before outreach",
-          attachedAgentIds: [AGENT_ID],
+          agentId: AGENT_ID,
         }),
         workflowSummary({
           name: "support-escalation",
           displayName: "Support Escalation",
           description: "Summarize customer issues for handoff",
-          attachedAgentIds: [AGENT_ID],
+          agentId: AGENT_ID,
         }),
         workflowSummary({
           name: "deep-dive",
@@ -577,7 +571,7 @@ describe("chat composer models", () => {
           name: "other-agent-workflow",
           displayName: "Other Agent Workflow",
           description: "Attached somewhere else",
-          attachedAgentIds: [OTHER_AGENT_ID],
+          agentId: OTHER_AGENT_ID,
         }),
       ]);
     });
@@ -639,7 +633,7 @@ describe("chat composer models", () => {
           name: "other-agent-workflow",
           displayName: "Other Agent Workflow",
           description: null,
-          attachedAgentIds: [OTHER_AGENT_ID],
+          agentId: OTHER_AGENT_ID,
         }),
       ]);
     });
@@ -706,7 +700,7 @@ describe("chat composer models", () => {
           name: "sales-research",
           displayName: "Sales Research",
           description: null,
-          attachedAgentIds: [AGENT_ID],
+          agentId: AGENT_ID,
         }),
       ]);
     });
@@ -745,7 +739,7 @@ describe("chat composer models", () => {
             name,
             displayName: null,
             description: null,
-            attachedAgentIds: [AGENT_ID],
+            agentId: AGENT_ID,
           });
         }),
       );
