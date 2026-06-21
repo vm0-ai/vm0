@@ -147,6 +147,14 @@ fn process_failure_exit_code(exit: &sandbox::ProcessExit) -> i32 {
     }
 }
 
+fn process_failure_stderr(exit: &sandbox::ProcessExit) -> String {
+    if matches!(exit.termination, SandboxExecTermination::TimedOut) && exit.stderr.is_empty() {
+        return "Timeout".to_string();
+    }
+
+    String::from_utf8_lossy(&exit.stderr).to_string()
+}
+
 /// How this run is entering its sandbox. Each field feeds a distinct step:
 /// `restore_guest_state` gates clock/entropy repair, `prev_storage` enables
 /// the download-skip optimization on reuse, and `reuse_result` is forwarded
@@ -558,7 +566,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         Some(ExecutionFailure::cancelled())
     } else if process_failed(&exit) {
         let failure_exit_code = process_failure_exit_code(&exit);
-        let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+        let stderr = process_failure_stderr(&exit);
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let guest_error = if stderr.is_empty() {
             read_guest_error_file(sandbox, context.run_id).await

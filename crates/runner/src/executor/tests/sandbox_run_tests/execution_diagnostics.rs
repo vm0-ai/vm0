@@ -596,15 +596,15 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
 }
 
 #[tokio::test]
-async fn execute_inner_timeout_zero_code_is_failure() {
+async fn execute_inner_timeout_without_stderr_uses_timeout_message() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let mut exit = ProcessExit::new(1, 0, Vec::new(), b"Timeout".to_vec());
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
     exit.termination = SandboxExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
-    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -638,6 +638,12 @@ async fn execute_inner_timeout_zero_code_is_failure() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
 }
 
 #[tokio::test]
