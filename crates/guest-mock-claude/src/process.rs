@@ -8,13 +8,16 @@ use crate::transcript::{
 use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
+use std::thread;
 use std::time::Duration;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
+const STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
+const STREAM_JSON_SHELL_READ_BUFFER_BYTES: usize = 8 * 1024;
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
     if parsed.input_format == "stream-json" {
@@ -444,6 +447,121 @@ fn run_text_mode(prompt: &str) -> ExitCode {
     }
 }
 
+#[derive(Default)]
+struct CapturedShellStream {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+struct CapturedShellOutput {
+    stdout: CapturedShellStream,
+    stderr: CapturedShellStream,
+    exit_code: i32,
+}
+
+impl CapturedShellOutput {
+    fn spawn_failed() -> Self {
+        Self {
+            stdout: CapturedShellStream::default(),
+            stderr: CapturedShellStream::default(),
+            exit_code: 1,
+        }
+    }
+}
+
+fn capture_shell_stream(mut reader: impl Read) -> CapturedShellStream {
+    let mut stream = CapturedShellStream {
+        bytes: Vec::with_capacity(STREAM_JSON_SHELL_READ_BUFFER_BYTES),
+        truncated: false,
+    };
+    let mut buffer = [0_u8; STREAM_JSON_SHELL_READ_BUFFER_BYTES];
+
+    loop {
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(_) => break,
+        };
+
+        let remaining = STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES.saturating_sub(stream.bytes.len());
+        if remaining == 0 {
+            stream.truncated = true;
+            continue;
+        }
+
+        let retained = remaining.min(read);
+        let Some(retained_bytes) = buffer.get(..retained) else {
+            break;
+        };
+        stream.bytes.extend_from_slice(retained_bytes);
+        if retained < read {
+            stream.truncated = true;
+        }
+    }
+
+    stream
+}
+
+fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
+    let mut child = match Command::new("bash")
+        .args(["-c", prompt])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return CapturedShellOutput::spawn_failed(),
+    };
+
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return CapturedShellOutput::spawn_failed();
+    };
+    let Some(stderr) = child.stderr.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return CapturedShellOutput::spawn_failed();
+    };
+    let stdout_thread = thread::spawn(move || capture_shell_stream(stdout));
+    let stderr_thread = thread::spawn(move || capture_shell_stream(stderr));
+
+    let exit_code = child.wait().map_or(1, |status| status.code().unwrap_or(1));
+    let stdout = stdout_thread.join().unwrap_or_default();
+    let stderr = stderr_thread.join().unwrap_or_default();
+
+    CapturedShellOutput {
+        stdout,
+        stderr,
+        exit_code,
+    }
+}
+
+fn append_truncation_marker(output: &mut String, stream_name: &str) {
+    output.push_str("\n[");
+    output.push_str(stream_name);
+    output.push_str(" truncated after ");
+    output.push_str(&STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES.to_string());
+    output.push_str(" bytes]\n");
+}
+
+fn format_captured_shell_output(captured: &CapturedShellOutput) -> String {
+    let mut output = String::from_utf8_lossy(&captured.stdout.bytes).into_owned();
+    if captured.stdout.truncated {
+        append_truncation_marker(&mut output, "stdout");
+    }
+
+    if captured.exit_code != 0 {
+        output.push_str(&String::from_utf8_lossy(&captured.stderr.bytes));
+        if captured.stderr.truncated {
+            append_truncation_marker(&mut output, "stderr");
+        }
+    }
+
+    output
+}
+
 /// Execute prompt in stream-json mode: output JSONL events, capture output.
 fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
     let session_history_file = create_session_history(session_id);
@@ -463,24 +581,10 @@ fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
         json!({"command": prompt}),
     ));
 
-    // 4. Execute bash and capture output
-    let (output, exit_code) = match Command::new("bash")
-        .args(["-c", prompt])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-    {
-        Ok(result) => {
-            let mut combined = String::from_utf8_lossy(&result.stdout).into_owned();
-            if !result.status.success() {
-                combined.push_str(&String::from_utf8_lossy(&result.stderr));
-            }
-            let code = result.status.code().unwrap_or(1);
-            (combined, code)
-        }
-        Err(_) => (String::new(), 1),
-    };
+    // 4. Execute bash and capture bounded output
+    let captured = capture_shell_output(prompt);
+    let output = format_captured_shell_output(&captured);
+    let exit_code = captured.exit_code;
 
     let is_error = exit_code != 0;
 

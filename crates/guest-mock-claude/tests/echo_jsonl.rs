@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -12,6 +12,10 @@ const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
 const CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_STREAM_JSON_EVENTS: usize = 32;
+const MOCK_CAPTURE_LIMIT_BYTES: usize = 1024 * 1024;
+const LARGE_MOCK_OUTPUT_BYTES: usize = MOCK_CAPTURE_LIMIT_BYTES + 1024;
+const STDOUT_TRUNCATION_MARKER: &str = "[stdout truncated after 1048576 bytes]";
+const STDERR_TRUNCATION_MARKER: &str = "[stderr truncated after 1048576 bytes]";
 
 struct StreamJsonChild {
     child: Option<Child>,
@@ -106,6 +110,32 @@ fn event_kind(event: &Value) -> String {
             format!("{event_type}/{content_type}")
         }
         _ => event_type.to_string(),
+    }
+}
+
+fn tool_result_content(events: &[Value]) -> Result<&str, Box<dyn std::error::Error>> {
+    match events.iter().find_map(|event| {
+        if event.get("type").and_then(Value::as_str) != Some("user") {
+            return None;
+        }
+        event
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str)
+    }) {
+        Some(content) => Ok(content),
+        None => Err("missing tool result content".into()),
+    }
+}
+
+fn result_content(events: &[Value]) -> Result<&str, Box<dyn std::error::Error>> {
+    match events.iter().find_map(|event| {
+        if event.get("type").and_then(Value::as_str) != Some("result") {
+            return None;
+        }
+        event.get("result").and_then(Value::as_str)
+    }) {
+        Some(content) => Ok(content),
+        None => Err("missing result content".into()),
     }
 }
 
@@ -264,6 +294,77 @@ fn wait_child(
         .join()
         .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
     Ok((child_result?, stderr))
+}
+
+fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
+    let pid = child.id();
+    let mut child_stdout = child.stdout.take().ok_or("missing stdout")?;
+    let mut child_stderr = child.stderr.take().ok_or("missing stderr")?;
+    let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
+        let mut stdout = Vec::new();
+        child_stdout.read_to_end(&mut stdout)?;
+        Ok(stdout)
+    });
+    let stderr_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
+        let mut stderr = Vec::new();
+        child_stderr.read_to_end(&mut stderr)?;
+        Ok(stderr)
+    });
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = child.wait();
+        let _ = tx.send(result);
+    });
+
+    let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // SAFETY: this is a test cleanup path for the child process that
+            // this helper just spawned. The wait thread reaps it below.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mock child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "mock child wait thread exited without status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+    let stdout = stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
+    let stderr = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+
+    Ok(Output {
+        status: child_result?,
+        stdout,
+        stderr,
+    })
+}
+
+fn mock_stream_json_shell_output(
+    home: &std::path::Path,
+    prompt: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
+    let mut command = mock_claude();
+    command
+        .env("HOME", home)
+        .args(["--output-format", "stream-json", "--", prompt])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    wait_child_output(command.spawn()?)
 }
 
 #[test]
@@ -762,6 +863,130 @@ fn stream_json_shell_failure_writes_error_history() -> Result<(), Box<dyn std::e
         events[4].get("is_error").and_then(Value::as_bool),
         Some(true)
     );
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stdout_is_bounded() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("yes A | head -c {LARGE_MOCK_OUTPUT_BYTES}");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(!tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= MOCK_CAPTURE_LIMIT_BYTES + 128);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stderr_failure_is_bounded() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("printf out; yes E | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; exit 7");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert_eq!(output.status.code(), Some(7));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.starts_with("out"));
+    assert!(tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(!tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= MOCK_CAPTURE_LIMIT_BYTES + 128);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_large_stdout_and_stderr_do_not_deadlock()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!(
+        "yes O | head -c {LARGE_MOCK_OUTPUT_BYTES}; \
+         yes E | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; \
+         exit 8"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert_eq!(output.status.code(), Some(8));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, result_output);
+    assert!(tool_output.contains(STDOUT_TRUNCATION_MARKER));
+    assert!(tool_output.contains(STDERR_TRUNCATION_MARKER));
+    assert!(tool_output.len() <= (MOCK_CAPTURE_LIMIT_BYTES * 2) + 256);
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_success_drains_stderr_without_exposing_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let prompt = format!("yes hidden-stderr | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; printf ok");
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, "ok");
+    assert_eq!(result_output, "ok");
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_invalid_utf8_output_remains_valid_jsonl()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let output = mock_stream_json_shell_output(home.path(), "printf '\\377'")?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let tool_output = tool_result_content(&events)?;
+    let result_output = result_content(&events)?;
+
+    assert_eq!(tool_output, "\u{fffd}");
+    assert_eq!(result_output, "\u{fffd}");
     Ok(())
 }
 
