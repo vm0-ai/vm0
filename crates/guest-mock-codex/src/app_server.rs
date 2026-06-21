@@ -13,6 +13,9 @@ enum Scenario {
     Success,
     DisconnectAfterInitialize,
     ExitOnTurnStart,
+    InterleavedNotification,
+    MalformedStdout,
+    ServerRequestBeforeResponse,
     StaleTurn,
     NoActiveTurn,
 }
@@ -24,6 +27,9 @@ impl Scenario {
             Ok(value) => match value.as_str() {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
+                "interleaved-notification" => Ok(Self::InterleavedNotification),
+                "malformed-stdout" => Ok(Self::MalformedStdout),
+                "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 _ => Err(io::Error::new(
@@ -61,7 +67,16 @@ struct AppServerState {
     session_artifact_thread_ids: BTreeMap<String, String>,
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
+    initialized_notification_received: bool,
+    pending_response: Option<PendingResponse>,
+    server_request_responses: Vec<Value>,
     scenario: Scenario,
+}
+
+#[derive(Debug)]
+struct PendingResponse {
+    id: Value,
+    result: Value,
 }
 
 #[derive(Debug)]
@@ -79,6 +94,9 @@ impl AppServerState {
             session_artifact_thread_ids: BTreeMap::new(),
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
+            initialized_notification_received: false,
+            pending_response: None,
+            server_request_responses: Vec::new(),
             scenario,
         }
     }
@@ -104,17 +122,16 @@ impl AppServerState {
         message: Value,
         output: &mut W,
     ) -> io::Result<ServerAction> {
-        let method = message
-            .get("method")
-            .and_then(Value::as_str)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing method"))?;
-        let params = message.get("params").unwrap_or(&Value::Null);
-
-        if let Some(id) = message.get("id").cloned() {
-            self.handle_request(id, method, params, output)
+        if let Some(method) = message.get("method").and_then(Value::as_str) {
+            let params = message.get("params").unwrap_or(&Value::Null);
+            if let Some(id) = message.get("id").cloned() {
+                self.handle_request(id, method, params, output)
+            } else {
+                self.handle_notification(method);
+                Ok(ServerAction::Continue)
+            }
         } else {
-            self.handle_notification(method);
-            Ok(ServerAction::Continue)
+            self.handle_client_response(message, output)
         }
     }
 
@@ -135,6 +152,11 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, message)?;
                     return Ok(ServerAction::Continue);
                 }
+                if self.scenario == Scenario::MalformedStdout {
+                    writeln!(output, "{{not-valid-json")?;
+                    output.flush()?;
+                    return Ok(ServerAction::Stop);
+                }
                 self.initialized = true;
                 write_success(output, id, initialize_response())?;
                 if self.scenario == Scenario::DisconnectAfterInitialize {
@@ -149,7 +171,20 @@ impl AppServerState {
                 }
                 let thread_id = Uuid::now_v7().to_string();
                 self.set_current_thread(thread_id.clone());
-                write_success(output, id, thread_response(&thread_id, false))?;
+                let result = thread_response(&thread_id, false);
+                match self.scenario {
+                    Scenario::InterleavedNotification => {
+                        write_json_line(output, &server_notification())?;
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::ServerRequestBeforeResponse => {
+                        write_json_line(output, &server_request())?;
+                        self.pending_response = Some(PendingResponse { id, result });
+                    }
+                    _ => {
+                        write_success(output, id, result)?;
+                    }
+                }
                 Ok(ServerAction::Continue)
             }
             "thread/resume" => {
@@ -281,6 +316,18 @@ impl AppServerState {
                 )?;
                 Ok(ServerAction::Continue)
             }
+            "mock/state" => {
+                write_success(
+                    output,
+                    id,
+                    json!({
+                        "initializedNotificationReceived": self.initialized_notification_received,
+                        "serverRequestResponses": &self.server_request_responses,
+                        "hasPendingResponse": self.pending_response.is_some(),
+                    }),
+                )?;
+                Ok(ServerAction::Continue)
+            }
             _ => {
                 write_error(output, id, METHOD_NOT_FOUND, "unsupported method")?;
                 Ok(ServerAction::Continue)
@@ -288,10 +335,43 @@ impl AppServerState {
         }
     }
 
-    fn handle_notification(&mut self, _method: &str) {
+    fn handle_client_response<W: Write>(
+        &mut self,
+        message: Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if message.get("id").is_none()
+            || (message.get("result").is_none() && message.get("error").is_none())
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "missing method"));
+        }
+
+        if self.scenario != Scenario::ServerRequestBeforeResponse {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        }
+
+        let Some(pending) = self.pending_response.take() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        };
+        self.server_request_responses.push(message);
+        write_success(output, pending.id, pending.result)?;
+
+        Ok(ServerAction::Continue)
+    }
+
+    fn handle_notification(&mut self, method: &str) {
         // The client sends `initialized` after the `initialize` request. It
         // must not substitute for the request itself because later requests
         // need initialize response state to exist.
+        if method == "initialized" {
+            self.initialized_notification_received = true;
+        }
     }
 
     fn set_current_thread(&mut self, thread_id: String) {
@@ -346,6 +426,12 @@ fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {
     if client_info.get("version").and_then(Value::as_str).is_none() {
         return Err("missing clientInfo.version");
     }
+    let Some(capabilities) = params.get("capabilities") else {
+        return Err("missing capabilities");
+    };
+    if capabilities.get("experimentalApi").and_then(Value::as_bool) != Some(true) {
+        return Err("missing capabilities.experimentalApi");
+    }
     Ok(())
 }
 
@@ -371,6 +457,25 @@ fn thread_response(thread_id: &str, resume: bool) -> Value {
         fields.insert("initialTurnsPage".to_string(), Value::Null);
     }
     response
+}
+
+fn server_notification() -> Value {
+    json!({
+        "method": "experimental/server-notification",
+        "params": {
+            "message": "guest-mock-codex notification"
+        }
+    })
+}
+
+fn server_request() -> Value {
+    json!({
+        "id": "guest-mock-codex-server-request-1",
+        "method": "experimental/server-request",
+        "params": {
+            "message": "guest-mock-codex server request"
+        }
+    })
 }
 
 fn thread(thread_id: &str) -> Value {
