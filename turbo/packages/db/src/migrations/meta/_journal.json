@@ -3347,6 +3347,13 @@
       "when": 1782029188450,
       "tag": "0477_remap_gmail_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 478,
+      "version": "7",
+      "when": 1782052356993,
+      "tag": "0478_remap_google_analytics_permission_grants",
+      "breakpoints": true
     }
   ]
 }
