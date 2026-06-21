@@ -3333,6 +3333,13 @@
       "when": 1781879791124,
       "tag": "0475_fast_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 476,
+      "version": "7",
+      "when": 1782022729272,
+      "tag": "0476_remap_google_drive_permission_grants",
+      "breakpoints": true
     }
   ]
 }

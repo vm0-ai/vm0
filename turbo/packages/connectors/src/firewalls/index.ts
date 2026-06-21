@@ -146,7 +146,13 @@ import {
 } from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
-import { googleDriveFirewall } from "./google-drive.generated";
+import {
+  googleDriveCategories,
+  googleDriveCategoryOrder,
+  googleDriveDefaultAllowed,
+  googleDriveDefaultUnknownPolicy,
+  googleDriveFirewall,
+} from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
 import { googleSearchConsoleFirewall } from "./google-search-console.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
@@ -722,6 +728,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleCloudCategories,
     displayOrder: googleCloudCategoryOrder,
   },
+  "google-drive": {
+    categories: googleDriveCategories,
+    displayOrder: googleDriveCategoryOrder,
+  },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
@@ -875,6 +885,7 @@ const DEFAULT_ALLOWED: Partial<
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
+  "google-drive": googleDriveDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
@@ -886,6 +897,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
+  "google-drive": googleDriveDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
 };
 
