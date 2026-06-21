@@ -2131,7 +2131,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d0f6b313-9899-4143-a6da-26781fd7b946/aplocoto.html",
       previewImage: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES[0],
       cardPreviewImage:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f37e3c21-0864-46a2-b961-4adfebb1cba9/template-card-presentation-playful-launch-presentation-480x270.jpg",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bd6ce25a-6e94-4b9a-a77b-7827086c7c6d/template-card-presentation-playful-launch-presentation-480x270.jpg",
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
       colorSystemId: "color-system:carnival",
       designSystemId: "design-system:playful-editorial",
