@@ -3340,6 +3340,13 @@
       "when": 1782022729272,
       "tag": "0476_remap_google_drive_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 477,
+      "version": "7",
+      "when": 1782049557558,
+      "tag": "0477_agent_scoped_workflows",
+      "breakpoints": true
     }
   ]
 }
