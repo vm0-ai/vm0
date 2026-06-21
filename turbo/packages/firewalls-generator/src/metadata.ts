@@ -27,11 +27,17 @@ interface ConnectorCategories {
 
 interface GeneratedFirewallSource {
   readonly type: FirewallConnectorType;
+  readonly firewallExportName: string;
   readonly firewall: FirewallConfig;
   readonly label: string;
   readonly categories: ConnectorCategories | null;
   readonly defaultAllowed: readonly string[] | null;
   readonly defaultUnknownPolicy: FirewallPolicyValue;
+}
+
+interface RegisteredFirewallSource {
+  readonly type: FirewallConnectorType;
+  readonly firewallExportName: string;
 }
 
 interface GeneratedPathReplacement {
@@ -97,6 +103,21 @@ function getRequiredGeneratedExport<T>(
     );
   }
   const [name, value] = match;
+  if (!isExpected(value)) {
+    throw new Error(
+      `Unexpected ${name} export shape for firewall metadata: ${type}`,
+    );
+  }
+  return value;
+}
+
+function getRequiredGeneratedExportByName<T>(
+  moduleExports: Readonly<Record<string, unknown>>,
+  type: FirewallConnectorType,
+  name: string,
+  isExpected: (value: unknown) => value is T,
+): T {
+  const value = moduleExports[name];
   if (!isExpected(value)) {
     throw new Error(
       `Unexpected ${name} export shape for firewall metadata: ${type}`,
@@ -263,15 +284,16 @@ function buildDefaultPolicy(
 async function loadGeneratedFirewallSource(
   firewallsDir: string,
   connectorsDir: string,
-  type: FirewallConnectorType,
+  registration: RegisteredFirewallSource,
 ): Promise<GeneratedFirewallSource> {
+  const { type, firewallExportName } = registration;
   const moduleExports = await importModule(
     path.join(firewallsDir, generatedDetailFileName(type)),
   );
-  const firewall = getRequiredGeneratedExport(
+  const firewall = getRequiredGeneratedExportByName(
     moduleExports,
     type,
-    "Firewall",
+    firewallExportName,
     isFirewallConfig,
   );
   const categories = getOptionalGeneratedExport(
@@ -294,6 +316,7 @@ async function loadGeneratedFirewallSource(
 
   return {
     type,
+    firewallExportName,
     firewall,
     label: loadConnectorLabel(connectorsDir, type),
     categories:
@@ -339,9 +362,9 @@ function findConnectorFirewallsRegistry(
   return registry;
 }
 
-function extractRegisteredFirewallTypes(
+function extractRegisteredFirewallSources(
   firewallsIndexFile: string,
-): FirewallConnectorType[] {
+): RegisteredFirewallSource[] {
   const source = fs.readFileSync(firewallsIndexFile, "utf-8");
   const sourceFile = ts.createSourceFile(
     firewallsIndexFile,
@@ -364,7 +387,15 @@ function extractRegisteredFirewallTypes(
     if (!name) {
       throw new Error("CONNECTOR_FIREWALLS contains an unsupported key");
     }
-    return name as FirewallConnectorType;
+    if (!ts.isIdentifier(property.initializer)) {
+      throw new Error(
+        `CONNECTOR_FIREWALLS contains an unsupported value for: ${name}`,
+      );
+    }
+    return {
+      type: name as FirewallConnectorType,
+      firewallExportName: property.initializer.text,
+    };
   });
 }
 
@@ -406,6 +437,10 @@ function generatedDetailFileName(type: FirewallConnectorType): string {
 
 function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
   return `./details/${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
+}
+
+function generatedRuntimeModuleSpecifier(type: FirewallConnectorType): string {
+  return `./${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function replaceGeneratedPath(
@@ -676,6 +711,58 @@ export async function loadGeneratedFirewallPermissionMetadata(
 `;
 }
 
+function renderRuntimeLoaderFile(
+  sources: readonly GeneratedFirewallSource[],
+): string {
+  const connectorTypes = sources
+    .map((source) => {
+      return `  ${JSON.stringify(source.type)},`;
+    })
+    .join("\n");
+  const loaders = sources
+    .map((source) => {
+      const key = JSON.stringify(source.type);
+      const specifier = JSON.stringify(
+        generatedRuntimeModuleSpecifier(source.type),
+      );
+      return `  ${key}: async () => {
+    return (await import(${specifier})).${source.firewallExportName};
+  },`;
+    })
+    .join("\n");
+
+  return `${generatedHeader()}import type { FirewallConfig } from "../firewall-types";
+
+export const RUNTIME_FIREWALL_CONNECTOR_TYPES = [
+${connectorTypes}
+] as const;
+
+export type GeneratedRuntimeFirewallConnectorType =
+  (typeof RUNTIME_FIREWALL_CONNECTOR_TYPES)[number];
+
+const GENERATED_RUNTIME_FIREWALL_LOADERS: Readonly<
+  Record<GeneratedRuntimeFirewallConnectorType, () => Promise<FirewallConfig>>
+> = {
+${loaders}
+};
+
+export function hasGeneratedRuntimeFirewall(
+  type: string,
+): type is GeneratedRuntimeFirewallConnectorType {
+  return Object.prototype.hasOwnProperty.call(
+    GENERATED_RUNTIME_FIREWALL_LOADERS,
+    type,
+  );
+}
+
+export async function loadGeneratedRuntimeFirewall(
+  type: GeneratedRuntimeFirewallConnectorType,
+): Promise<FirewallConfig> {
+  return await GENERATED_RUNTIME_FIREWALL_LOADERS[type]();
+}
+`;
+}
+
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -696,19 +783,32 @@ export async function generateFirewallMetadata(): Promise<void> {
   const loaderFile = path.join(outputDir, "loader.generated.ts");
   const serverFile = path.join(outputDir, "server.generated.ts");
   const detailsDir = path.join(outputDir, "details");
+  const runtimeLoaderFile = path.join(
+    firewallsDir,
+    "runtime-loader.generated.ts",
+  );
 
-  const registeredTypes = extractRegisteredFirewallTypes(firewallsIndexFile);
+  const registeredSources =
+    extractRegisteredFirewallSources(firewallsIndexFile);
   const sources = await Promise.all(
-    [...registeredTypes].sort(compareStrings).map((type) => {
-      return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
-    }),
+    [...registeredSources]
+      .sort((a, b) => {
+        return compareStrings(a.type, b.type);
+      })
+      .map((registration) => {
+        return loadGeneratedFirewallSource(
+          firewallsDir,
+          connectorsDir,
+          registration,
+        );
+      }),
   );
   const sourceByType = new Map<FirewallConnectorType, GeneratedFirewallSource>(
     sources.map((source) => {
       return [source.type, source];
     }),
   );
-  const registryOrderedSources = registeredTypes.map((type) => {
+  const registryOrderedSources = registeredSources.map(({ type }) => {
     const source = sourceByType.get(type);
     if (!source) {
       throw new Error(`Missing firewall metadata source: ${type}`);
@@ -755,6 +855,10 @@ export async function generateFirewallMetadata(): Promise<void> {
       }),
     ),
   );
+  writeGeneratedFile(
+    path.join(nextOutputDir, "runtime-loader.generated.ts"),
+    renderRuntimeLoaderFile(sources),
+  );
 
   const replacements: GeneratedPathReplacement[] = [];
   try {
@@ -775,6 +879,12 @@ export async function generateFirewallMetadata(): Promise<void> {
       replaceGeneratedPath(
         serverFile,
         path.join(nextOutputDir, "server.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        runtimeLoaderFile,
+        path.join(nextOutputDir, "runtime-loader.generated.ts"),
       ),
     );
   } catch (error) {
