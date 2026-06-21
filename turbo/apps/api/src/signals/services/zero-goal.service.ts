@@ -2,7 +2,9 @@ import { randomBytes } from "node:crypto";
 
 import {
   zeroGoalPreferenceSchema,
+  type ZeroGoalPreference,
   type ZeroGoalResponse,
+  type ZeroGoalStopReason,
 } from "@vm0/api-contracts/contracts/zero-goals";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -78,16 +80,66 @@ function generatedGoalName(): string {
 
 function goalResponse(row: ActiveGoalRow): ZeroGoalResponse {
   const preference = zeroGoalPreferenceSchema.parse(row.preference);
+  const status = row.workflowActive
+    ? row.triggerEnabled
+      ? "active"
+      : "blocked"
+    : "complete";
   return {
     active: row.workflowActive,
     objective: preference.objective,
-    status: row.workflowActive
-      ? row.triggerEnabled
-        ? "active"
-        : "blocked"
-      : "complete",
+    status,
     ...(preference.tokenBudget ? { tokenBudget: preference.tokenBudget } : {}),
+    // stopReason is only meaningful while the goal is stopped (trigger
+    // disabled with the workflow still active); otherwise it is omitted.
+    ...(status === "blocked" && preference.stopReason
+      ? { stopReason: preference.stopReason }
+      : {}),
   };
+}
+
+/**
+ * Serialize all state writes for a goal on a chat thread. Every goal mutation
+ * (create, complete, block, resume, edit) acquires this transaction-scoped
+ * advisory lock first so concurrent writers cannot interleave.
+ */
+async function lockGoalThread(
+  tx: Pick<Db, "execute">,
+  threadId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('goal:' || ${threadId}))`,
+  );
+}
+
+/**
+ * Merge a partial update into the goal workflow's preference jsonb, preserving
+ * the existing objective/tokenBudget unless overridden. `stopReason: null`
+ * clears the field. Keeps `version: 1`.
+ */
+function mergeGoalPreference(
+  current: unknown,
+  update: {
+    readonly objective?: string;
+    readonly tokenBudget?: number;
+    readonly stopReason?: ZeroGoalStopReason | null;
+  },
+): ZeroGoalPreference {
+  const preference = zeroGoalPreferenceSchema.parse(current);
+  const merged: ZeroGoalPreference = {
+    version: 1,
+    objective: update.objective ?? preference.objective,
+  };
+  const tokenBudget = update.tokenBudget ?? preference.tokenBudget;
+  if (tokenBudget !== undefined) {
+    merged.tokenBudget = tokenBudget;
+  }
+  const stopReason =
+    update.stopReason === undefined ? preference.stopReason : update.stopReason;
+  if (stopReason !== null && stopReason !== undefined) {
+    merged.stopReason = stopReason;
+  }
+  return merged;
 }
 
 async function currentGoalContext(
@@ -201,9 +253,7 @@ export async function createGoalForCurrentThread(
       threadId = thread.id;
     }
 
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext('goal:' || ${threadId}))`,
-    );
+    await lockGoalThread(tx, threadId);
 
     const existing = await loadActiveGoalForThread(tx, {
       orgId: args.orgId,
@@ -339,9 +389,16 @@ export async function completeCurrentGoal(
 
   const completedAt = nowDate();
   await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
     await tx
       .update(zeroWorkflows)
-      .set({ active: false, updatedAt: completedAt })
+      .set({
+        active: false,
+        preference: mergeGoalPreference(goal.row.preference, {
+          stopReason: null,
+        }),
+        updatedAt: completedAt,
+      })
       .where(eq(zeroWorkflows.id, goal.row.workflowId));
     await tx
       .update(zeroWorkflowTriggers)
@@ -384,22 +441,39 @@ export async function blockCurrentGoal(
   }
 
   const blockedAt = nowDate();
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ enabled: false, updatedAt: blockedAt })
-    .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
-  // Trigger disabled while the workflow stays active folds to "blocked".
-  await appendGoalStateMarker(db, {
-    chatThreadId: goal.threadId,
-    eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-    content: null,
+  await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
+    await tx
+      .update(zeroWorkflows)
+      .set({
+        preference: mergeGoalPreference(goal.row.preference, {
+          stopReason: "blocked",
+        }),
+        updatedAt: blockedAt,
+      })
+      .where(eq(zeroWorkflows.id, goal.row.workflowId));
+    await tx
+      .update(zeroWorkflowTriggers)
+      .set({ enabled: false, updatedAt: blockedAt })
+      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+    // Trigger disabled while the workflow stays active folds to "blocked".
+    await appendGoalStateMarker(tx, {
+      chatThreadId: goal.threadId,
+      eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
+      content: null,
+    });
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
   await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
 
   return {
     kind: "ok",
-    goal: { ...goalResponse(goal.row), active: true, status: "blocked" },
+    goal: {
+      ...goalResponse(goal.row),
+      active: true,
+      status: "blocked",
+      stopReason: "blocked",
+    },
   };
 }
 
@@ -413,15 +487,27 @@ export async function resumeCurrentGoal(
   }
 
   const resumedAt = nowDate();
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ enabled: true, consecutiveFailures: 0, updatedAt: resumedAt })
-    .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
-  // Trigger re-enabled while the workflow is active folds back to "active".
-  await appendGoalStateMarker(db, {
-    chatThreadId: goal.threadId,
-    eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
-    content: goal.row.triggerId,
+  await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
+    await tx
+      .update(zeroWorkflows)
+      .set({
+        preference: mergeGoalPreference(goal.row.preference, {
+          stopReason: null,
+        }),
+        updatedAt: resumedAt,
+      })
+      .where(eq(zeroWorkflows.id, goal.row.workflowId));
+    await tx
+      .update(zeroWorkflowTriggers)
+      .set({ enabled: true, consecutiveFailures: 0, updatedAt: resumedAt })
+      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+    // Trigger re-enabled while the workflow is active folds back to "active".
+    await appendGoalStateMarker(tx, {
+      chatThreadId: goal.threadId,
+      eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
+      content: goal.row.triggerId,
+    });
   });
   await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
   await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
@@ -429,6 +515,62 @@ export async function resumeCurrentGoal(
   return {
     kind: "ok",
     goal: { ...goalResponse(goal.row), active: true, status: "active" },
+  };
+}
+
+export async function editCurrentGoal(
+  db: Db,
+  args: GoalAuth & {
+    readonly objective?: string;
+    readonly tokenBudget?: number;
+  },
+): Promise<GoalResult> {
+  const goal = await loadGoalForAuth(db, args);
+  if (goal.kind !== "ok") {
+    return goal;
+  }
+
+  // Editing a blocked goal (trigger disabled, workflow active) auto-resumes it:
+  // re-enable the trigger, reset the failure counter, and clear stopReason.
+  const autoResume = !goal.row.triggerEnabled;
+  const editedAt = nowDate();
+  const nextPreference = mergeGoalPreference(goal.row.preference, {
+    ...(args.objective !== undefined ? { objective: args.objective } : {}),
+    ...(args.tokenBudget !== undefined
+      ? { tokenBudget: args.tokenBudget }
+      : {}),
+    ...(autoResume ? { stopReason: null } : {}),
+  });
+
+  await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
+    await tx
+      .update(zeroWorkflows)
+      .set({ preference: nextPreference, updatedAt: editedAt })
+      .where(eq(zeroWorkflows.id, goal.row.workflowId));
+    if (autoResume) {
+      await tx
+        .update(zeroWorkflowTriggers)
+        .set({ enabled: true, consecutiveFailures: 0, updatedAt: editedAt })
+        .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+      // Trigger re-enabled while the workflow is active folds back to "active".
+      await appendGoalStateMarker(tx, {
+        chatThreadId: goal.threadId,
+        eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
+        content: goal.row.triggerId,
+      });
+    }
+  });
+  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
+  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
+
+  return {
+    kind: "ok",
+    goal: goalResponse({
+      ...goal.row,
+      preference: nextPreference,
+      triggerEnabled: goal.row.triggerEnabled || autoResume,
+    }),
   };
 }
 

@@ -60,6 +60,38 @@ describe("zero goal command", () => {
     );
   });
 
+  it("edits a goal and prints the JSON response", async () => {
+    const edited = {
+      active: true,
+      objective: "ship goal workflows v2",
+      status: "active",
+      tokenBudget: 5000,
+    };
+    server.use(
+      http.patch("http://localhost:3000/api/zero/goal", async ({ request }) => {
+        await expect(request.json()).resolves.toStrictEqual({
+          objective: "ship goal workflows v2",
+          tokenBudget: 5000,
+        });
+        return HttpResponse.json(edited);
+      }),
+    );
+
+    await zeroGoalCommand.parseAsync([
+      "node",
+      "cli",
+      "edit",
+      "--objective",
+      "ship goal workflows v2",
+      "--token-budget",
+      "5000",
+    ]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      edited,
+    );
+  });
+
   it("gets the current goal", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/goal", () => {

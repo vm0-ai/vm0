@@ -1,6 +1,7 @@
 import {
   zeroGoalPreferenceSchema,
   type ZeroGoalPreference,
+  type ZeroGoalStopReason,
 } from "@vm0/api-contracts/contracts/zero-goals";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -320,6 +321,29 @@ async function disableGoalTrigger(db: Db, triggerId: string): Promise<void> {
     .where(eq(zeroWorkflowTriggers.id, triggerId));
 }
 
+/**
+ * Record why a goal stopped in the workflow's preference jsonb. The status enum
+ * stays "blocked"; stopReason is an additional field that distinguishes a manual
+ * cancel ("paused") from a repeated-failure auto-stop ("failed").
+ */
+async function setGoalStopReason(
+  db: Db,
+  workflowId: string,
+  stopReason: ZeroGoalStopReason,
+): Promise<void> {
+  const preference = await loadGoalPreference(db, workflowId);
+  if (!preference) {
+    return;
+  }
+  await db
+    .update(zeroWorkflows)
+    .set({
+      preference: { ...preference, stopReason },
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflows.id, workflowId));
+}
+
 async function resetGoalTriggerFailures(
   db: Db,
   triggerId: string,
@@ -402,6 +426,8 @@ export const continueGoalIfIdle$ = command(
     if (run.status === "cancelled") {
       await disableGoalTrigger(db, trigger.id);
       signal.throwIfAborted();
+      await setGoalStopReason(db, trigger.workflowId, "paused");
+      signal.throwIfAborted();
       return { kind: "paused", triggerId: trigger.id };
     }
 
@@ -414,6 +440,8 @@ export const continueGoalIfIdle$ = command(
           runId: run.runId,
           consecutiveFailures: failureUpdate.consecutiveFailures,
         });
+        await setGoalStopReason(db, trigger.workflowId, "failed");
+        signal.throwIfAborted();
         await notifyGoalAutoStopped(db, {
           userId: run.userId,
           chatThreadId: run.chatThreadId,
@@ -474,6 +502,8 @@ export const continueGoalIfIdle$ = command(
         consecutiveFailures: failureUpdate.consecutiveFailures,
         error,
       });
+      await setGoalStopReason(db, trigger.workflowId, "failed");
+      signal.throwIfAborted();
       await notifyGoalAutoStopped(db, {
         userId: run.userId,
         chatThreadId: run.chatThreadId,

@@ -17,6 +17,7 @@ import {
   blockCurrentGoal,
   completeCurrentGoal,
   createGoalForCurrentThread,
+  editCurrentGoal,
   getCurrentGoal,
   resumeCurrentGoal,
   type GoalResult,
@@ -37,6 +38,13 @@ const goalWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "goal:write",
+  accept: ["zero"],
+} as const;
+
+const goalEditAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "goal:update",
   accept: ["zero"],
 } as const;
 
@@ -150,6 +158,38 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
+const editGoalBody$ = bodyResultOf(zeroGoalsContract.edit);
+
+const editGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = goalAuth(get(organizationAuthContext$));
+  const bodyResult = await get(editGoalBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const db = set(writeDb$);
+  if (!(await goalFeatureEnabled(db, auth))) {
+    return forbidden("Goal workflows are not enabled");
+  }
+  signal.throwIfAborted();
+
+  const result = await editCurrentGoal(db, {
+    ...auth,
+    ...(bodyResult.data.objective !== undefined
+      ? { objective: bodyResult.data.objective }
+      : {}),
+    ...(bodyResult.data.tokenBudget !== undefined
+      ? { tokenBudget: bodyResult.data.tokenBudget }
+      : {}),
+  });
+  signal.throwIfAborted();
+  if (result.kind === "ok") {
+    return { status: 200 as const, body: result.goal };
+  }
+  return goalErrorResponse(result);
+});
+
 const getGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
@@ -220,6 +260,10 @@ export const zeroGoalsRoutes: readonly RouteEntry[] = [
   {
     route: zeroGoalsContract.create,
     handler: authRoute(goalWriteAuth, createGoalInner$),
+  },
+  {
+    route: zeroGoalsContract.edit,
+    handler: authRoute(goalEditAuth, editGoalInner$),
   },
   {
     route: zeroGoalsContract.get,

@@ -4,6 +4,7 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
@@ -27,6 +28,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["goal:read", FeatureSwitchKey.GoalWorkflows],
   ["goal:write", FeatureSwitchKey.GoalWorkflows],
+  ["goal:update", FeatureSwitchKey.GoalWorkflows],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -253,12 +255,23 @@ export function generateZeroToken(
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: { readonly computerUseHostId?: string },
+  options?: {
+    readonly computerUseHostId?: string;
+    readonly triggerSource?: TriggerSource;
+  },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
+      continue;
+    }
+    // Goal continuation runs are autonomous and must not edit their own
+    // objective; goal:update is user-driven only.
+    if (
+      capability === "goal:update" &&
+      options?.triggerSource === "workflow-event"
+    ) {
       continue;
     }
     if (

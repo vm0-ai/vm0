@@ -3568,9 +3568,14 @@ function buildRunnerJobPayload(
               args.run.id,
               args.orgId,
               featureSwitchOverrides,
-              args.zeroTokenComputerUseHostId
-                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-                : undefined,
+              {
+                ...(args.zeroTokenComputerUseHostId
+                  ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+                  : {}),
+                ...(args.body.triggerSource
+                  ? { triggerSource: args.body.triggerSource }
+                  : {}),
+              },
             ),
           )
         : args.body;
