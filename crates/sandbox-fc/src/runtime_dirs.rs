@@ -35,7 +35,7 @@ pub(crate) fn ensure_traversable_runtime_dir(path: &Path) -> io::Result<()> {
     ensure_runtime_dir_with_mode(path, TRAVERSABLE_RUNTIME_DIR_MODE)
 }
 
-pub(crate) fn prepare_private_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
+pub(crate) fn prepare_runtime_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
     ensure_traversable_runtime_dir(sock_paths.dir())?;
     ensure_private_runtime_dir(&sock_paths.vsock_dir())
 }
@@ -324,11 +324,11 @@ mod tests {
     }
 
     #[test]
-    fn prepare_private_socket_dir_creates_sock_and_vsock_dirs() {
+    fn prepare_runtime_socket_dir_creates_traversable_sock_and_private_vsock_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let sock_paths = SockPaths::new(tmp.path().join("sandbox"));
 
-        prepare_private_socket_dir(&sock_paths).unwrap();
+        prepare_runtime_socket_dir(&sock_paths).unwrap();
 
         assert_eq!(mode(sock_paths.dir()), TRAVERSABLE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_private_socket_dir_normalizes_existing_dirs() {
+    fn prepare_runtime_socket_dir_normalizes_existing_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let sock_paths = SockPaths::new(tmp.path().join("sandbox"));
         std::fs::create_dir(sock_paths.dir()).unwrap();
@@ -398,7 +398,7 @@ mod tests {
         )
         .unwrap();
 
-        prepare_private_socket_dir(&sock_paths).unwrap();
+        prepare_runtime_socket_dir(&sock_paths).unwrap();
 
         assert_eq!(mode(sock_paths.dir()), TRAVERSABLE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);

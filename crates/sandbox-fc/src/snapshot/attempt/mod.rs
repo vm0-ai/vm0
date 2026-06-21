@@ -18,7 +18,7 @@ use crate::config::SnapshotConfig;
 use crate::network::NetnsPool;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
-use crate::runtime_dirs::prepare_private_socket_dir;
+use crate::runtime_dirs::prepare_runtime_socket_dir;
 use crate::workspace_drive_image::prepare_workspace_drive_image;
 
 use super::SnapshotError;
@@ -217,7 +217,7 @@ impl SnapshotAttempt {
         // The empty bind target file is consumed by `mount --bind` inside
         // `unshare --mount` at spawn time; file content is irrelevant
         // because the bind overlay is what FC reads.
-        if let Err(e) = prepare_private_socket_dir(self.sock_paths()?) {
+        if let Err(e) = prepare_runtime_socket_dir(self.sock_paths()?) {
             self.cleanup_resources
                 .destroy_cow_after_setup_error("prepare sock dir")
                 .await;

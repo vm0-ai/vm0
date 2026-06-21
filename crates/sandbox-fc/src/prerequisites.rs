@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_namespace_creates_private_runtime_and_sock_dirs() {
+    fn runtime_namespace_creates_traversable_runtime_and_sock_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("vm0");
         let sock_base = runtime_dir.join("sock");
