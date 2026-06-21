@@ -128,7 +128,7 @@ pub struct ExecMatcher {
 
 struct ExecMatcherResult {
     pattern: String,
-    result: ExecResult,
+    result: SandboxExecResult,
 }
 
 /// Captured `exec` request fields recorded for test assertions.
@@ -655,11 +655,13 @@ impl MockSandboxOverrides {
             .lock_ignoring_poison()
             .push(ExecMatcherResult {
                 pattern: matcher.pattern,
-                result: ExecResult {
-                    termination: ProcessTerminationKind::Exited,
-                    exit_code: matcher.exit_code,
+                result: SandboxExecResult {
+                    termination: SandboxExecTermination::Exited {
+                        exit_code: matcher.exit_code,
+                    },
                     stdout: matcher.stdout,
                     stderr: matcher.stderr,
+                    diagnostic: String::new(),
                     stdout_truncated: false,
                     stderr_truncated: false,
                 },
@@ -670,7 +672,7 @@ impl MockSandboxOverrides {
     ///
     /// Use this when a test needs a non-ordinary terminal state such as timeout,
     /// cancel, start failure, or wait failure.
-    pub fn add_exec_result_matcher(&self, pattern: impl Into<String>, result: ExecResult) {
+    pub fn add_exec_result_matcher(&self, pattern: impl Into<String>, result: SandboxExecResult) {
         self.exec_matchers
             .lock_ignoring_poison()
             .push(ExecMatcherResult {
@@ -1018,7 +1020,7 @@ impl Default for MockSandboxOverrides {
 pub struct MockSandbox {
     id: String,
     source_ip: String,
-    exec_results: Mutex<VecDeque<Result<ExecResult>>>,
+    exec_results: Mutex<VecDeque<Result<SandboxExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
@@ -1075,7 +1077,7 @@ impl MockSandbox {
     }
 
     /// Queue an exec result. Results are consumed in FIFO order.
-    pub fn push_exec_result(&self, result: Result<ExecResult>) {
+    pub fn push_exec_result(&self, result: Result<SandboxExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
@@ -1158,11 +1160,14 @@ impl MockSandbox {
     }
 }
 
-fn default_exec_result() -> ExecResult {
-    ExecResult::new(0, Vec::new(), Vec::new())
+fn default_exec_result() -> SandboxExecResult {
+    SandboxExecResult::new(0, Vec::new(), Vec::new())
 }
 
-fn apply_exec_output_limits(mut result: ExecResult, limits: ExecOutputLimits) -> ExecResult {
+fn apply_exec_output_limits(
+    mut result: SandboxExecResult,
+    limits: ExecOutputLimits,
+) -> SandboxExecResult {
     if result.stdout.len() > limits.stdout_limit_bytes as usize {
         result.stdout.truncate(limits.stdout_limit_bytes as usize);
         result.stdout_truncated = true;
@@ -1253,7 +1258,7 @@ impl Sandbox for MockSandbox {
         o.unpark_behaviors.next_result()
     }
 
-    async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
+    async fn exec(&self, request: &ExecRequest<'_>) -> Result<SandboxExecResult> {
         validate_mock_exec_env_keys(SandboxOperation::Exec, request.env)?;
         let call = ExecCall {
             cmd: request.cmd.to_string(),
@@ -2031,8 +2036,10 @@ mod tests {
             })
             .await;
         let exec = result.unwrap();
-        assert_eq!(exec.termination, ProcessTerminationKind::Exited);
-        assert_eq!(exec.exit_code, 0);
+        assert_eq!(
+            exec.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
         assert!(exec.stdout.is_empty());
     }
 
@@ -2162,19 +2169,19 @@ mod tests {
     #[tokio::test]
     async fn sandbox_queued_exec_results() {
         let sandbox = MockSandbox::new("test-1");
-        sandbox.push_exec_result(Ok(ExecResult {
-            termination: ProcessTerminationKind::Exited,
-            exit_code: 42,
+        sandbox.push_exec_result(Ok(SandboxExecResult {
+            termination: SandboxExecTermination::Exited { exit_code: 42 },
             stdout: b"out".to_vec(),
             stderr: b"err".to_vec(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
-        sandbox.push_exec_result(Ok(ExecResult {
-            termination: ProcessTerminationKind::WaitFailed,
-            exit_code: 1,
+        sandbox.push_exec_result(Ok(SandboxExecResult {
+            termination: SandboxExecTermination::WaitFailed,
             stdout: Vec::new(),
             stderr: b"wait failed".to_vec(),
+            diagnostic: "wait failed".to_string(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
@@ -2195,15 +2202,17 @@ mod tests {
 
         // First call returns queued result.
         let r1 = sandbox.exec(&req).await.unwrap();
-        assert_eq!(r1.termination, ProcessTerminationKind::Exited);
-        assert_eq!(r1.exit_code, 42);
+        assert_eq!(
+            r1.termination,
+            SandboxExecTermination::Exited { exit_code: 42 }
+        );
         assert_eq!(r1.stdout, b"out");
 
         // Second call preserves a queued non-exited terminal state.
         let r2 = sandbox.exec(&req).await.unwrap();
-        assert_eq!(r2.termination, ProcessTerminationKind::WaitFailed);
-        assert_eq!(r2.exit_code, 1);
+        assert_eq!(r2.termination, SandboxExecTermination::WaitFailed);
         assert_eq!(r2.stderr, b"wait failed");
+        assert_eq!(r2.diagnostic, "wait failed");
 
         // Third call returns queued error.
         let r3 = sandbox.exec(&req).await;
@@ -2211,8 +2220,10 @@ mod tests {
 
         // Fourth call falls back to default (exit 0).
         let r4 = sandbox.exec(&req).await.unwrap();
-        assert_eq!(r4.termination, ProcessTerminationKind::Exited);
-        assert_eq!(r4.exit_code, 0);
+        assert_eq!(
+            r4.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
     }
 
     #[tokio::test]
@@ -2568,7 +2579,7 @@ mod tests {
     #[tokio::test]
     async fn sandbox_exec_applies_mock_capture_budget() {
         let sandbox = MockSandbox::new("test-1");
-        sandbox.push_exec_result(Ok(ExecResult::new(
+        sandbox.push_exec_result(Ok(SandboxExecResult::new(
             0,
             b"stdout".to_vec(),
             b"stderr".to_vec(),
@@ -2590,7 +2601,10 @@ mod tests {
         assert!(result.stdout_truncated);
         assert_eq!(result.stderr, b"stde");
         assert!(result.stderr_truncated);
-        assert_eq!(result.termination, ProcessTerminationKind::Exited);
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
     }
 
     #[tokio::test]
@@ -3597,7 +3611,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.pid, 1);
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
         assert!(result.stdout.is_empty());
         assert!(result.stderr.is_empty());
         assert!(!result.stream_overflowed);
@@ -3659,7 +3676,10 @@ mod tests {
         gate.release_one();
         let result = wait.await.unwrap().unwrap();
         assert_eq!(result.pid, 1);
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
     }
 
     #[tokio::test]
@@ -3712,11 +3732,17 @@ mod tests {
         .await
         .expect("future wait_process calls should bypass a cleared gate")
         .unwrap();
-        assert_eq!(second_result.exit_code, 0);
+        assert_eq!(
+            second_result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
 
         gate.release_one();
         let first_result = first_wait.await.unwrap().unwrap();
-        assert_eq!(first_result.exit_code, 0);
+        assert_eq!(
+            first_result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
     }
 
     #[tokio::test]
@@ -3746,7 +3772,10 @@ mod tests {
 
         cancel.cancel(Duration::from_secs(1)).await.unwrap();
         let result = wait.await.unwrap().unwrap();
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 0 }
+        );
         assert_eq!(overrides.process_cancel_calls().len(), 1);
     }
 

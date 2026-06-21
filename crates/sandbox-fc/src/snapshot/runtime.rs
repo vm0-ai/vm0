@@ -13,7 +13,7 @@ use vsock_proto::ExecTermination;
 
 use crate::api::ApiClient;
 use crate::config::SnapshotConfig;
-use crate::exec_result_compat::{captured_exec_output_bytes, reject_stream_overflow};
+use crate::exec_operation_result::{captured_exec_output_bytes, reject_stream_overflow};
 use crate::factory::InvariantConfig;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;

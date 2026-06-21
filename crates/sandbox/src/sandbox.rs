@@ -38,8 +38,8 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::types::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, GuestProcessHandle, ProcessExit,
+    SandboxExecResult, StartProcessRequest,
 };
 
 /// A process-isolation environment that runs guest workloads for the runner.
@@ -201,8 +201,8 @@ pub trait Sandbox: Send + Sync + Any {
     /// process crashes during execution.
     ///
     /// Implementations must honor the selected capture budget or report
-    /// truncation explicitly in [`ExecResult`].
-    async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
+    /// truncation explicitly in [`SandboxExecResult`].
+    async fn exec(&self, request: &ExecRequest<'_>) -> Result<SandboxExecResult>;
 
     /// Read a small file from the guest.
     ///

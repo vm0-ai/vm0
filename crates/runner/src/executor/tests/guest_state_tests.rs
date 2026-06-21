@@ -1,4 +1,4 @@
-use sandbox::{ExecResult, ProcessTerminationKind, Sandbox};
+use sandbox::{Sandbox, SandboxExecResult, SandboxExecTermination};
 use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
@@ -26,7 +26,7 @@ async fn fix_guest_clock_propagates_exec_error() {
 #[tokio::test]
 async fn fix_guest_clock_fails_on_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
         2,
         b"date stdout".to_vec(),
         b"date stderr".to_vec(),
@@ -50,13 +50,13 @@ async fn fix_guest_clock_fails_on_nonzero_exit() {
 }
 
 #[tokio::test]
-async fn fix_guest_clock_fails_on_non_exited_zero_exit_code() {
+async fn fix_guest_clock_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::WaitFailed,
-        exit_code: 0,
+    sandbox.push_exec_result(Ok(SandboxExecResult {
+        termination: SandboxExecTermination::WaitFailed,
         stdout: b"date stdout".to_vec(),
         stderr: b"wait failed".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -65,7 +65,7 @@ async fn fix_guest_clock_fails_on_non_exited_zero_exit_code() {
 
     let message = result.unwrap_err().to_string();
     assert!(
-        message.contains("guest clock sync failed (wait failed; compatibility exit code 0)"),
+        message.contains("guest clock sync failed (wait failed)"),
         "got: {message}"
     );
     assert!(
@@ -104,7 +104,7 @@ async fn reseed_guest_entropy_propagates_exec_error() {
 async fn reseed_guest_entropy_fails_on_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
     // guest-reseed exits with code 1 (e.g., ioctl failed).
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
         1,
         Vec::new(),
         b"RNDRESEEDCRNG failed: Operation not permitted".to_vec(),
@@ -215,7 +215,7 @@ async fn capture_sync_guest_timezone_events(
 #[tokio::test(flavor = "current_thread")]
 async fn sync_guest_timezone_logs_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
         2,
         b"timezone stdout".to_vec(),
         b"timezone stderr".to_vec(),
@@ -263,13 +263,13 @@ async fn sync_guest_timezone_logs_nonzero_exit() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn sync_guest_timezone_logs_non_exited_zero_exit_code() {
+async fn sync_guest_timezone_logs_non_exited_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::StartFailed,
-        exit_code: 0,
+    sandbox.push_exec_result(Ok(SandboxExecResult {
+        termination: SandboxExecTermination::StartFailed,
         stdout: b"timezone stdout".to_vec(),
         stderr: b"start failed".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -290,7 +290,7 @@ async fn sync_guest_timezone_logs_non_exited_zero_exit_code() {
         event.fields.get("termination").map(String::as_str),
         Some("start_failed")
     );
-    assert_eq!(event.fields.get("exit_code").map(String::as_str), Some("0"));
+    assert_eq!(event.fields.get("exit_code"), None);
     assert!(
         event
             .fields

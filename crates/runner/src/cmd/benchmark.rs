@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, RuntimeProvider, SandboxConfig,
-    SandboxFactory, SandboxId, SandboxRuntime,
+    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, RuntimeProvider, SandboxConfig, SandboxExecResult,
+    SandboxExecTermination, SandboxFactory, SandboxId, SandboxRuntime,
 };
 use tracing::{info, warn};
 
@@ -222,6 +222,7 @@ pub async fn run_benchmark(
     } = timing;
     match &result {
         Ok(exec_result) => {
+            let exit_code = benchmark_exit_code(exec_result);
             info!(
                 proxy_ms,
                 factory_ms,
@@ -230,7 +231,8 @@ pub async fn run_benchmark(
                 clock_ms = ?clock_ms,
                 exec_ms = ?exec_ms,
                 total_ms,
-                exit_code = exec_result.exit_code,
+                termination = ?exec_result.termination,
+                exit_code,
                 "benchmark complete"
             );
         }
@@ -252,17 +254,23 @@ pub async fn run_benchmark(
     }
 
     // 7. Propagate exit code
-    let code = match u8::try_from(exec_result.exit_code) {
-        Ok(c) => c,
-        Err(_) => {
-            warn!(
-                exit_code = exec_result.exit_code,
-                "exit code out of u8 range, using 1"
-            );
-            1
-        }
-    };
-    Ok(ExitCode::from(code))
+    Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
+}
+
+fn benchmark_exit_code(exec_result: &SandboxExecResult) -> u8 {
+    match exec_result.termination {
+        SandboxExecTermination::Exited { exit_code } => match u8::try_from(exit_code) {
+            Ok(code) => code,
+            Err(_) => {
+                warn!(exit_code, "exit code out of u8 range, using 1");
+                1
+            }
+        },
+        SandboxExecTermination::TimedOut => 124,
+        SandboxExecTermination::Cancelled
+        | SandboxExecTermination::StartFailed
+        | SandboxExecTermination::WaitFailed => 1,
+    }
 }
 
 async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
@@ -302,7 +310,7 @@ async fn run_sandbox(
     factory: &dyn SandboxFactory,
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
-) -> (RunnerResult<ExecResult>, Timing) {
+) -> (RunnerResult<SandboxExecResult>, Timing) {
     let mut sandbox = match factory.create(sandbox_config).await {
         Ok(s) => s,
         Err(e) => return (Err(e.into()), Timing::default()),
@@ -357,7 +365,7 @@ async fn run_in_sandbox(
     args: &BenchmarkArgs,
     env_pairs: &[(String, String)],
     sandbox: &mut dyn sandbox::Sandbox,
-) -> (RunnerResult<ExecResult>, Timing) {
+) -> (RunnerResult<SandboxExecResult>, Timing) {
     let mut timing = Timing::default();
 
     let t_boot = Instant::now();

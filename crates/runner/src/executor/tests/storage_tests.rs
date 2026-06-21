@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
-use sandbox::{ExecResult, ProcessTerminationKind};
+use sandbox::{SandboxExecResult, SandboxExecTermination};
 use sandbox_mock::MockSandbox;
 
 use super::super::guest_runtime_dir;
@@ -65,7 +65,7 @@ fn guest_download_env_includes_run_id_for_guest_common_logs() {
 async fn download_storages_nonzero_exit_code() {
     let sandbox = MockSandbox::new("test");
     // write_file succeeds, but exec returns non-zero.
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
             1,
             b"stdout clue".to_vec(),
             b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false download failed: Failed to read archive entries: invalid gzip header".to_vec(),
@@ -89,13 +89,13 @@ async fn download_storages_nonzero_exit_code() {
 }
 
 #[tokio::test]
-async fn download_storages_fails_on_non_exited_zero_exit_code() {
+async fn download_storages_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::TimedOut,
-        exit_code: 0,
+    sandbox.push_exec_result(Ok(SandboxExecResult {
+        termination: SandboxExecTermination::TimedOut,
         stdout: b"partial stdout".to_vec(),
         stderr: b"Timeout".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -111,19 +111,19 @@ async fn download_storages_fails_on_non_exited_zero_exit_code() {
         .unwrap_err();
     let msg = err.to_string();
 
-    assert!(msg.contains("storage download failed (timed out; compatibility exit code 0)"));
+    assert!(msg.contains("storage download failed (timed out)"));
     assert!(msg.contains("stderr (captured): Timeout"));
     assert!(msg.contains("stdout (captured): partial stdout"));
 }
 
 #[test]
 fn guest_download_failure_output_redacts_url_queries() {
-    let result = ExecResult {
-        termination: ProcessTerminationKind::Exited,
-        exit_code: 1,
+    let result = SandboxExecResult {
+        termination: SandboxExecTermination::Exited { exit_code: 1 },
         stdout: Vec::new(),
         stderr: b"HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?X-Amz-Signature=secret"
             .to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: true,
     };
@@ -147,11 +147,11 @@ fn guest_download_failure_redacts_url_query_before_excerpting() {
         - secret_value.len()
         - suffix.len();
     let query = format!("{query_key}{secret_value}{}", "a".repeat(padding_len));
-    let result = ExecResult {
-        termination: ProcessTerminationKind::Exited,
-        exit_code: 1,
+    let result = SandboxExecResult {
+        termination: SandboxExecTermination::Exited { exit_code: 1 },
         stdout: Vec::new(),
         stderr: format!("{prefix}{query}{suffix}").into_bytes(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     };

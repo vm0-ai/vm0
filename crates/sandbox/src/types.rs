@@ -3,12 +3,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Serialize};
+
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExecOutputLimits {
-    /// Maximum stdout bytes to retain in [`ExecResult::stdout`].
+    /// Maximum stdout bytes to retain in [`SandboxExecResult::stdout`].
     pub stdout_limit_bytes: u32,
-    /// Maximum stderr bytes to retain in [`ExecResult::stderr`].
+    /// Maximum stderr bytes to retain in [`SandboxExecResult::stderr`].
     pub stderr_limit_bytes: u32,
 }
 
@@ -102,34 +105,179 @@ fn duration_ms(timeout: Duration) -> u32 {
     }
 }
 
+/// Terminal state for a sandbox exec command.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SandboxExecTermination {
+    /// The process exited with an ordinary exit code.
+    Exited {
+        /// Signed process exit code reported by the sandbox provider.
+        exit_code: i32,
+    },
+    /// The provider timed the process out.
+    TimedOut,
+    /// The provider cancelled the process.
+    Cancelled,
+    /// The provider failed to start the process.
+    StartFailed,
+    /// The provider failed while waiting for the process.
+    WaitFailed,
+}
+
+impl<'de> Deserialize<'de> for SandboxExecTermination {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Internally tagged unit variants ignore unknown fields by default, so
+        // parse the map manually to keep terminal states mutually exclusive.
+        const FIELDS: &[&str] = &["kind", "exit_code"];
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum TerminationKind {
+            Exited,
+            TimedOut,
+            Cancelled,
+            StartFailed,
+            WaitFailed,
+        }
+
+        enum Field {
+            Kind,
+            ExitCode,
+        }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(
+                        &self,
+                        formatter: &mut std::fmt::Formatter<'_>,
+                    ) -> std::fmt::Result {
+                        formatter.write_str("a sandbox exec termination field")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+                    where
+                        E: de::Error,
+                    {
+                        match value {
+                            "kind" => Ok(Field::Kind),
+                            "exit_code" => Ok(Field::ExitCode),
+                            _ => Err(de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct TerminationVisitor;
+
+        impl<'de> Visitor<'de> for TerminationVisitor {
+            type Value = SandboxExecTermination;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a sandbox exec termination object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> std::result::Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut kind = None;
+                let mut exit_code = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::Kind => {
+                            if kind.is_some() {
+                                return Err(de::Error::duplicate_field("kind"));
+                            }
+                            kind = Some(map.next_value()?);
+                        }
+                        Field::ExitCode => {
+                            if exit_code.is_some() {
+                                return Err(de::Error::duplicate_field("exit_code"));
+                            }
+                            exit_code = Some(map.next_value::<Option<i32>>()?);
+                        }
+                    }
+                }
+
+                let kind = kind.ok_or_else(|| de::Error::missing_field("kind"))?;
+                match kind {
+                    TerminationKind::Exited => match exit_code {
+                        Some(Some(exit_code)) => Ok(SandboxExecTermination::Exited { exit_code }),
+                        Some(None) | None => Err(de::Error::missing_field("exit_code")),
+                    },
+                    TerminationKind::TimedOut => {
+                        non_exited_termination(exit_code, SandboxExecTermination::TimedOut)
+                    }
+                    TerminationKind::Cancelled => {
+                        non_exited_termination(exit_code, SandboxExecTermination::Cancelled)
+                    }
+                    TerminationKind::StartFailed => {
+                        non_exited_termination(exit_code, SandboxExecTermination::StartFailed)
+                    }
+                    TerminationKind::WaitFailed => {
+                        non_exited_termination(exit_code, SandboxExecTermination::WaitFailed)
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_map(TerminationVisitor)
+    }
+}
+
+fn non_exited_termination<E>(
+    exit_code: Option<Option<i32>>,
+    termination: SandboxExecTermination,
+) -> std::result::Result<SandboxExecTermination, E>
+where
+    E: de::Error,
+{
+    if exit_code.is_some() {
+        return Err(E::custom("exit_code is only valid for exited termination"));
+    }
+
+    Ok(termination)
+}
+
 /// Result of a bounded command execution.
-pub struct ExecResult {
+pub struct SandboxExecResult {
     /// Structured terminal state reported by the provider.
-    ///
-    /// This is the semantic terminal state. The `exit_code` field remains as a
-    /// temporary legacy projection while callers migrate to structured handling.
-    pub termination: ProcessTerminationKind,
-    /// Process exit code, or a synthetic compatibility code for timeout, cancel,
-    /// start, and wait failures.
-    pub exit_code: i32,
+    pub termination: SandboxExecTermination,
     /// Captured stdout bytes, capped by the requested output limit.
     pub stdout: Vec<u8>,
     /// Captured stderr bytes, capped by the requested output limit.
     pub stderr: Vec<u8>,
+    /// Provider diagnostic text associated with the terminal state.
+    pub diagnostic: String,
     /// True when stdout exceeded the requested output limit.
     pub stdout_truncated: bool,
     /// True when stderr exceeded the requested output limit.
     pub stderr_truncated: bool,
 }
 
-impl ExecResult {
+impl SandboxExecResult {
     /// Construct an ordinary exited-process result.
     pub fn new(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
-            termination: ProcessTerminationKind::Exited,
-            exit_code,
+            termination: SandboxExecTermination::Exited { exit_code },
             stdout,
             stderr,
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }
@@ -483,37 +631,15 @@ impl ProcessOutputMode {
     }
 }
 
-/// Terminal state reported by the process provider.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProcessTerminationKind {
-    /// The process exited with an ordinary exit code.
-    Exited,
-    /// The provider timed the process out.
-    TimedOut,
-    /// The provider cancelled the process.
-    Cancelled,
-    /// The provider failed to start the process.
-    StartFailed,
-    /// The provider failed while waiting for the process.
-    WaitFailed,
-}
-
 /// Terminal status and output metadata for a started guest process.
 pub struct ProcessExit {
     /// Guest process id reported by the provider.
     pub pid: u32,
     /// Structured terminal state reported by the provider.
-    ///
-    /// This is separate from `exit_code`: providers still synthesize an exit
-    /// code for timeout, cancel, start, and wait failures so older callers can
-    /// continue using the existing completion code.
-    pub termination: ProcessTerminationKind,
+    pub termination: SandboxExecTermination,
     /// Guest-reported wall-clock duration in milliseconds, when the provider has
     /// terminal duration metadata.
     pub guest_duration_ms: Option<u32>,
-    /// Process exit code, or a provider-synthesized code for timeout, cancel,
-    /// start, or wait failures.
-    pub exit_code: i32,
     /// Captured stdout bytes.
     ///
     /// In stream mode, callers should read streamed stdout from
@@ -521,9 +647,6 @@ pub struct ProcessExit {
     /// available instead of treating this field as a complete copy of stdout.
     pub stdout: Vec<u8>,
     /// Captured stderr bytes.
-    ///
-    /// Providers may include synthesized error text here for timeout, cancel,
-    /// start, or wait failures.
     pub stderr: Vec<u8>,
     /// True when captured stdout exceeded the requested capture limit.
     pub stdout_truncated: bool,
@@ -544,15 +667,14 @@ impl ProcessExit {
     /// Construct a process exit result with no truncation or stream metadata.
     ///
     /// The returned value sets `termination` to
-    /// [`ProcessTerminationKind::Exited`], `guest_duration_ms` to `None`,
+    /// [`SandboxExecTermination::Exited`], `guest_duration_ms` to `None`,
     /// `stdout_truncated` and `stderr_truncated` to `false`, `diagnostic` to an
     /// empty string, and `stream_overflowed` to `false`.
     pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             pid,
-            termination: ProcessTerminationKind::Exited,
+            termination: SandboxExecTermination::Exited { exit_code },
             guest_duration_ms: None,
-            exit_code,
             stdout,
             stderr,
             stdout_truncated: false,
@@ -670,12 +792,15 @@ mod tests {
 
     #[test]
     fn exec_result_new_defaults_to_exited() {
-        let result = ExecResult::new(7, b"out".to_vec(), b"err".to_vec());
+        let result = SandboxExecResult::new(7, b"out".to_vec(), b"err".to_vec());
 
-        assert_eq!(result.termination, ProcessTerminationKind::Exited);
-        assert_eq!(result.exit_code, 7);
+        assert_eq!(
+            result.termination,
+            SandboxExecTermination::Exited { exit_code: 7 }
+        );
         assert_eq!(result.stdout, b"out");
         assert_eq!(result.stderr, b"err");
+        assert!(result.diagnostic.is_empty());
         assert!(!result.stdout_truncated);
         assert!(!result.stderr_truncated);
     }
@@ -685,8 +810,10 @@ mod tests {
         let exit = ProcessExit::new(42, 7, b"out".to_vec(), b"err".to_vec());
 
         assert_eq!(exit.pid, 42);
-        assert_eq!(exit.exit_code, 7);
-        assert_eq!(exit.termination, ProcessTerminationKind::Exited);
+        assert_eq!(
+            exit.termination,
+            SandboxExecTermination::Exited { exit_code: 7 }
+        );
         assert_eq!(exit.guest_duration_ms, None);
         assert_eq!(exit.stdout, b"out");
         assert_eq!(exit.stderr, b"err");

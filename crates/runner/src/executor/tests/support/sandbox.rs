@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
-    SandboxFactory, SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
-    StartProcessRequest,
+    CopyFileOptions, ExecRequest, ProcessExit, Sandbox, SandboxConfig, SandboxError,
+    SandboxExecResult, SandboxFactory, SandboxInitializationPhase, SandboxOperation,
+    SandboxOperationReason, StartProcessRequest,
 };
 use sandbox_mock::MockSandboxFactory;
 
@@ -172,7 +172,7 @@ impl Sandbox for CancelAfterWaitSandbox {
         self.inner.unpark().await
     }
 
-    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<SandboxExecResult> {
         self.inner.exec(request).await
     }
 
@@ -272,7 +272,7 @@ impl Sandbox for QueuedCopyFileSandbox {
         self.inner.unpark().await
     }
 
-    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<SandboxExecResult> {
         self.inner.exec(request).await
     }
 

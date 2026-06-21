@@ -8,9 +8,10 @@ use vsock_proto::{
 };
 
 use super::support::{
-    MockGuest, await_mock_guest, drop_idle_request_write_guard, drop_started_request_write_guard,
-    fence_normal_operations, host_from_stream, is_connected, make_pair, normal_operation_readiness,
-    poison_connection, setup_host_and_mock_guest,
+    MockGuest, await_mock_guest, captured_output_bytes, drop_idle_request_write_guard,
+    drop_started_request_write_guard, exec_capture_default, fence_normal_operations,
+    host_from_stream, is_connected, make_pair, normal_operation_readiness, poison_connection,
+    setup_host_and_mock_guest,
 };
 use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
@@ -147,7 +148,9 @@ async fn lifecycle_request_bypasses_normal_operation_fence() {
     let host = Arc::new(host);
     let _fence = fence_normal_operations(&host);
 
-    let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "blocked", 5000, &[], false)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
 
     let quiesce_task = {
@@ -174,11 +177,14 @@ async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
         NormalOperationFenceRejection::AlreadyFenced
     );
 
-    let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "blocked", 5000, &[], false)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
 
     drop(fence);
-    let exec_task = tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await });
+    let exec_task =
+        tokio::spawn(async move { exec_capture_default(&host, "echo ok", 5000, &[], false).await });
     let request = guest.expect_message(MSG_EXEC_START).await;
     guest
         .send_exec_result(
@@ -189,7 +195,8 @@ async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
         )
         .await;
 
-    assert_eq!(exec_task.await.unwrap().unwrap().stdout, b"ok");
+    let result = exec_task.await.unwrap().unwrap();
+    assert_eq!(captured_output_bytes(&result.stdout), b"ok");
 }
 
 #[tokio::test]
@@ -220,7 +227,7 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
     let exec_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("sleep", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "sleep", 5000, &[], false).await })
     };
     tokio::select! {
         result = tokio::time::timeout(Duration::from_secs(2), request_seen_rx) => {
@@ -410,7 +417,9 @@ async fn test_connection_closed_returns_error() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "echo hi", 5000, &[], false)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     await_mock_guest(guest_task).await;
 }
@@ -440,7 +449,7 @@ async fn test_request_after_close_returns_immediately() {
     // timeout.
     let err = tokio::time::timeout(
         Duration::from_secs(5),
-        host.exec("echo hi", 5000, &[], false),
+        exec_capture_default(&host, "echo hi", 5000, &[], false),
     )
     .await
     .expect("exec should return when the connection is already closed")
@@ -618,19 +627,19 @@ async fn test_concurrent_execs() {
 
     let h1 = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("cmd-a", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "cmd-a", 5000, &[], false).await })
     };
     let h2 = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("cmd-b", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "cmd-b", 5000, &[], false).await })
     };
 
     let r1 = h1.await.unwrap().unwrap();
     let r2 = h2.await.unwrap().unwrap();
 
     // Each response matches its own command, regardless of reply order.
-    let out1 = String::from_utf8_lossy(&r1.stdout);
-    let out2 = String::from_utf8_lossy(&r2.stdout);
+    let out1 = String::from_utf8_lossy(captured_output_bytes(&r1.stdout));
+    let out2 = String::from_utf8_lossy(captured_output_bytes(&r2.stdout));
     assert_eq!(out1, "reply:cmd-a");
     assert_eq!(out2, "reply:cmd-b");
     drop(host);
@@ -662,8 +671,10 @@ async fn test_seq_starts_at_2() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let result = host.exec("test", 5000, &[], false).await.unwrap();
-    assert_eq!(result.exit_code, 0);
+    let result = exec_capture_default(&host, "test", 5000, &[], false)
+        .await
+        .unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     await_mock_guest(guest_task).await;
 }
 
@@ -701,13 +712,13 @@ async fn test_response_then_close_returns_ok() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let result = host.exec("echo race", 5000, &[], false).await;
+    let result = exec_capture_default(&host, "echo race", 5000, &[], false).await;
 
     // The response was delivered before close; the refactor guarantees
     // it is returned via `rx` rather than being shadowed by a close
     // observation.
     let result = result.expect("response delivered before close must not be lost");
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"race-survived");
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(captured_output_bytes(&result.stdout), b"race-survived");
     await_mock_guest(guest_task).await;
 }

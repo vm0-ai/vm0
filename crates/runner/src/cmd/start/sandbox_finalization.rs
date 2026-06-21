@@ -580,7 +580,7 @@ mod tests {
     use std::time::Duration;
 
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-    use sandbox::{ExecResult, SandboxFactory, SandboxId};
+    use sandbox::{SandboxExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
     use super::super::idle_lifecycle::SharedIdlePool;
@@ -1025,7 +1025,11 @@ mod tests {
             prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-failed")
                 .await;
         let sandbox = MockSandbox::new("workspace-promotion-fail");
-        sandbox.push_exec_result(Ok(ExecResult::new(64, Vec::new(), b"not mounted".to_vec())));
+        sandbox.push_exec_result(Ok(SandboxExecResult::new(
+            64,
+            Vec::new(),
+            b"not mounted".to_vec(),
+        )));
         let promotion = test_promotion_context(
             lease,
             run_id,

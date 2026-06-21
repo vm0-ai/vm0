@@ -190,16 +190,6 @@ impl From<TrackerNormalOperationFenceRejection> for NormalOperationFenceRejectio
     }
 }
 
-/// Result of executing a command on the guest.
-#[derive(Debug, Clone)]
-pub struct ExecResult {
-    pub exit_code: i32,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
-}
-
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
 /// Pending requests, active exec operations, and connected process state
@@ -1158,40 +1148,6 @@ impl VsockHost {
         request: ExecStreamRequest<'_>,
     ) -> io::Result<ExecOperationHandle> {
         exec_operation::exec_operation_stream_on_shared(&self.shared, request).await
-    }
-
-    /// Execute a bounded capture-style command on the guest.
-    ///
-    /// `timeout_ms` must be positive. Callers needing long-running supervised
-    /// commands should use [`start_supervised_exec`](Self::start_supervised_exec).
-    pub async fn exec(
-        &self,
-        command: &str,
-        timeout_ms: u32,
-        env: &[(&str, &str)],
-        sudo: bool,
-    ) -> io::Result<ExecResult> {
-        exec_operation::exec_on_shared(&self.shared, command, timeout_ms, env, sudo).await
-    }
-
-    /// Execute a capture-style command with explicit output limits.
-    pub async fn exec_capture(&self, request: ExecCaptureRequest<'_>) -> io::Result<ExecResult> {
-        exec_operation::exec_capture_on_shared(&self.shared, request).await
-    }
-
-    /// Execute a capture-style command and report when its start frame is
-    /// about to be written to the guest.
-    pub async fn exec_capture_with_write_observer(
-        &self,
-        request: ExecCaptureRequest<'_>,
-        write_observer: FrameWriteObserver,
-    ) -> io::Result<ExecResult> {
-        exec_operation::exec_capture_on_shared_with_write_observer(
-            &self.shared,
-            request,
-            write_observer,
-        )
-        .await
     }
 
     /// Request graceful shutdown from guest.

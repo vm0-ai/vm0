@@ -31,9 +31,7 @@ pub use config::{
     RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef, WorkspaceDriveConfig,
     WorkspaceDriveSeedImage,
 };
-pub use control::{
-    RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxExecTermination,
-};
+pub use control::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
 pub use error::{
     Result, SandboxError, SandboxIdleTransition, SandboxInitializationPhase,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
@@ -46,8 +44,8 @@ pub use snapshot::{
 };
 pub use types::{
     CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, GuestProcessCancelHandle,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, ProcessOutputReceiver,
-    ProcessTerminationKind, StartProcessRequest,
+    SandboxExecResult, SandboxExecTermination, StartProcessRequest,
 };

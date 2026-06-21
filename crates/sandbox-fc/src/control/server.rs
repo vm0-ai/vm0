@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use sandbox::SandboxExecTermination;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -19,8 +18,9 @@ use super::protocol::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus, read_frame, write_frame,
 };
-use crate::exec_result_compat::{
-    captured_exec_output_bytes, reject_stream_overflow, validate_legacy_exec_capture_timeout,
+use crate::exec_operation_result::{
+    captured_exec_output_bytes, reject_stream_overflow, sandbox_exec_termination,
+    validate_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::park_coordinator::ParkCoordinator;
@@ -435,7 +435,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
-    if let Err(e) = validate_legacy_exec_capture_timeout(timeout_ms) {
+    if let Err(e) = validate_exec_capture_timeout(timeout_ms) {
         return ExecResponse::Error {
             error: format!("exec failed: {e}"),
         };
@@ -489,18 +489,6 @@ fn exec_response_from_operation_result(
         stderr_truncated,
         diagnostic,
     })
-}
-
-fn sandbox_exec_termination(termination: vsock_proto::ExecTermination) -> SandboxExecTermination {
-    match termination {
-        vsock_proto::ExecTermination::Exited { exit_code } => {
-            SandboxExecTermination::Exited { exit_code }
-        }
-        vsock_proto::ExecTermination::TimedOut => SandboxExecTermination::TimedOut,
-        vsock_proto::ExecTermination::Cancelled => SandboxExecTermination::Cancelled,
-        vsock_proto::ExecTermination::StartFailed => SandboxExecTermination::StartFailed,
-        vsock_proto::ExecTermination::WaitFailed => SandboxExecTermination::WaitFailed,
-    }
 }
 
 fn control_start_error(error: GuestOperationStartError) -> String {

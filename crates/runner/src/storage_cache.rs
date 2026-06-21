@@ -1100,7 +1100,7 @@ mod tests {
         async fn exec(
             &self,
             request: &sandbox::ExecRequest<'_>,
-        ) -> sandbox::Result<sandbox::ExecResult> {
+        ) -> sandbox::Result<sandbox::SandboxExecResult> {
             self.inner.exec(request).await
         }
 

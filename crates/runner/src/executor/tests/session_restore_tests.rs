@@ -1,4 +1,4 @@
-use sandbox::{ExecResult, SandboxError, SandboxInvalidStateContext, SandboxOperation};
+use sandbox::{SandboxError, SandboxExecResult, SandboxInvalidStateContext, SandboxOperation};
 use sandbox_mock::MockSandbox;
 use tracing_subscriber::prelude::*;
 
@@ -329,7 +329,7 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
         cli_agent_session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
         session_history: "{}\n".into(),
     };
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
         1,
         b"cleanup stdout".to_vec(),
         b"cleanup failed".to_vec(),
@@ -368,7 +368,7 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
             }),
         ),
     };
-    sandbox.push_exec_result(Ok(ExecResult::new(
+    sandbox.push_exec_result(Ok(SandboxExecResult::new(
         1,
         format!("stdout includes {session_id_no_dashes}").into_bytes(),
         format!("find: {session_path}: Permission denied").into_bytes(),
@@ -417,11 +417,11 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
             }),
         ),
     };
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: sandbox::ProcessTerminationKind::WaitFailed,
-        exit_code: 0,
+    sandbox.push_exec_result(Ok(SandboxExecResult {
+        termination: sandbox::SandboxExecTermination::WaitFailed,
         stdout: format!("stdout includes {session_id_no_dashes}").into_bytes(),
         stderr: format!("find: {session_path}: Permission denied").into_bytes(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -429,9 +429,7 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(
-        message.contains("codex session cleanup failed (wait failed; compatibility exit code 0)")
-    );
+    assert!(message.contains("codex session cleanup failed (wait failed)"));
     assert!(message.contains("[redacted-session-path]"));
     assert!(message.contains("[redacted-session-id]"));
     assert!(!message.contains(session_id));
