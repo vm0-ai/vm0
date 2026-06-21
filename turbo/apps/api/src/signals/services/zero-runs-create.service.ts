@@ -451,10 +451,13 @@ async function resolveZeroRunPermissionPolicies(
   );
   signal.throwIfAborted();
 
-  return await resolveFirewallServerMetadataPolicies(
+  const resolved = await resolveFirewallServerMetadataPolicies(
     permissionGrantsToFirewallPolicies(grants),
     [...args.allowedConnectorTypes],
   );
+  signal.throwIfAborted();
+
+  return resolved;
 }
 
 async function loadUserInfo(

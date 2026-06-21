@@ -211,9 +211,13 @@ export async function resolveFirewallServerMetadataPolicies(
   connectors: readonly string[],
 ): Promise<FirewallPolicies | null> {
   let resolved: FirewallPolicies | null = stored;
+  const indexes = await Promise.all(
+    connectors.map((connector) => {
+      return loadFirewallPermissionIndex(connector);
+    }),
+  );
 
-  for (const connector of connectors) {
-    const index = await loadFirewallPermissionIndex(connector);
+  for (const index of indexes) {
     if (!index) {
       continue;
     }

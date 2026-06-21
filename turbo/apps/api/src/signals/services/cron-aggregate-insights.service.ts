@@ -1181,12 +1181,15 @@ function queryWindowNetworkData(
       });
     }
 
+    const userNetworkMap = await aggregateNetworkDataPerUser(
+      normalizedNetworkRows.rows,
+      runIdToInfo,
+      createPermissionLabelResolver(),
+    );
+    signal.throwIfAborted();
+
     return {
-      userNetworkMap: await aggregateNetworkDataPerUser(
-        normalizedNetworkRows.rows,
-        runIdToInfo,
-        createPermissionLabelResolver(),
-      ),
+      userNetworkMap,
       networkRows: rawNetworkRows.length,
       axiomDegraded,
     };
