@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn block_drive_limiter_rejects_budget_that_cannot_be_split() {
+    fn block_drive_limiter_rejects_bandwidth_budget_that_cannot_be_split() {
         let limits = sandbox::DeviceRateLimits {
             block: sandbox::BlockRateLimits {
                 bandwidth_bytes_per_sec: 1,
@@ -267,6 +267,26 @@ mod tests {
         let err = fc.block_drive_limiter(nonzero(2)).unwrap_err();
 
         assert!(err.contains("per-drive block bandwidth_bytes_per_sec"));
+        assert!(err.contains("positive"));
+    }
+
+    #[test]
+    fn block_drive_limiter_rejects_ops_budget_that_cannot_be_split() {
+        let limits = sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 2,
+                ops_per_sec: 1,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 1,
+                tx_bytes_per_sec: 1,
+            },
+        };
+        let fc = FirecrackerDeviceRateLimits::try_from(&limits).unwrap();
+
+        let err = fc.block_drive_limiter(nonzero(2)).unwrap_err();
+
+        assert!(err.contains("per-drive block ops_per_sec"));
         assert!(err.contains("positive"));
     }
 
