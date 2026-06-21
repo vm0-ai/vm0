@@ -1,5 +1,6 @@
 use std::fs::DirBuilder;
 use std::io;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Component, Path};
 
@@ -8,6 +9,28 @@ use nix::unistd::{AccessFlags, eaccess, geteuid};
 use crate::paths::{RuntimePaths, SockPaths};
 
 pub(crate) const PRIVATE_RUNTIME_DIR_MODE: u32 = 0o700;
+const MAX_UNIX_SOCKET_PATH_BYTES: usize = 107;
+
+pub(crate) fn checked_runtime_sock_dir(
+    runtime_paths: &RuntimePaths,
+    sock_id: &str,
+) -> io::Result<std::path::PathBuf> {
+    validate_runtime_sock_id(sock_id)?;
+    let sock_dir = runtime_paths.sock_dir(sock_id);
+    let sock_paths = SockPaths::new(sock_dir.clone());
+    let vsock_path = sock_paths.vsock();
+    let vsock_path_len = vsock_path.as_os_str().as_bytes().len();
+    if vsock_path_len > MAX_UNIX_SOCKET_PATH_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "runtime socket id {sock_id:?} makes vsock path too long: {} bytes (max {})",
+                vsock_path_len, MAX_UNIX_SOCKET_PATH_BYTES
+            ),
+        ));
+    }
+    Ok(sock_dir)
+}
 
 pub(crate) fn ensure_private_runtime_dir(path: &Path) -> io::Result<()> {
     create_private_dir_if_missing(path)?;
@@ -147,6 +170,36 @@ fn runtime_dir_owner_is_trusted(owner_uid: u32, effective_uid: u32) -> bool {
     owner_uid == 0 || owner_uid == effective_uid
 }
 
+fn validate_runtime_sock_id(sock_id: &str) -> io::Result<()> {
+    if sock_id.is_empty() {
+        return Err(invalid_runtime_sock_id(sock_id));
+    }
+    if !sock_id
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+    {
+        return Err(invalid_runtime_sock_id(sock_id));
+    }
+
+    let mut components = Path::new(sock_id).components();
+    let Some(Component::Normal(_)) = components.next() else {
+        return Err(invalid_runtime_sock_id(sock_id));
+    };
+    if components.next().is_some() {
+        return Err(invalid_runtime_sock_id(sock_id));
+    }
+    Ok(())
+}
+
+fn invalid_runtime_sock_id(sock_id: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "runtime socket id must be a single non-empty ASCII path segment using only letters, digits, '.', '-', and '_': {sock_id:?}"
+        ),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
@@ -219,6 +272,57 @@ mod tests {
 
         assert_eq!(mode(sock_paths.dir()), PRIVATE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);
+    }
+
+    #[test]
+    fn checked_runtime_sock_dir_accepts_safe_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_paths = RuntimePaths::with_dir_for_test(tmp.path().to_path_buf());
+
+        let sock_dir = checked_runtime_sock_dir(&runtime_paths, "snapshot-test_1.2").unwrap();
+
+        assert_eq!(sock_dir, tmp.path().join("sock").join("snapshot-test_1.2"));
+    }
+
+    #[test]
+    fn checked_runtime_sock_dir_rejects_parent_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_paths = RuntimePaths::with_dir_for_test(tmp.path().to_path_buf());
+
+        let err = checked_runtime_sock_dir(&runtime_paths, "../snapshot").unwrap_err();
+
+        assert!(err.to_string().contains("runtime socket id must be"));
+    }
+
+    #[test]
+    fn checked_runtime_sock_dir_rejects_nested_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_paths = RuntimePaths::with_dir_for_test(tmp.path().to_path_buf());
+
+        let err = checked_runtime_sock_dir(&runtime_paths, "root/snapshot").unwrap_err();
+
+        assert!(err.to_string().contains("runtime socket id must be"));
+    }
+
+    #[test]
+    fn checked_runtime_sock_dir_rejects_unsafe_character() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_paths = RuntimePaths::with_dir_for_test(tmp.path().to_path_buf());
+
+        let err = checked_runtime_sock_dir(&runtime_paths, "snapshot test").unwrap_err();
+
+        assert!(err.to_string().contains("runtime socket id must be"));
+    }
+
+    #[test]
+    fn checked_runtime_sock_dir_rejects_overlong_vsock_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_paths = RuntimePaths::with_dir_for_test(tmp.path().to_path_buf());
+        let sock_id = "a".repeat(200);
+
+        let err = checked_runtime_sock_dir(&runtime_paths, &sock_id).unwrap_err();
+
+        assert!(err.to_string().contains("vsock path too long"));
     }
 
     #[test]

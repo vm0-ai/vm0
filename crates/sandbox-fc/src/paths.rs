@@ -35,6 +35,11 @@ impl RuntimePaths {
         }
     }
 
+    #[cfg(test)]
+    pub fn with_dir_for_test(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+
     /// Socket base directory: `/run/vm0/sock/`.
     pub fn sock_base(&self) -> PathBuf {
         self.base_dir.join("sock")

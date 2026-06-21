@@ -17,6 +17,7 @@ use crate::config::SnapshotConfig;
 use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
+use crate::runtime_dirs::checked_runtime_sock_dir;
 
 use self::attempt::{
     SnapshotAttempt, cleanup_after_netns_pool_failure, cleanup_existing_snapshot_sock_dir,
@@ -85,7 +86,8 @@ async fn create_uncommitted_snapshot(
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
     let runtime_paths = RuntimePaths::new();
-    let sock_dir = runtime_paths.sock_dir(&config.id);
+    let sock_dir = checked_runtime_sock_dir(&runtime_paths, &config.id)
+        .map_err(|e| SnapshotError::Setup(format!("snapshot socket id: {e}")))?;
     cleanup_existing_snapshot_sock_dir(&sock_dir).await;
 
     let paths = SandboxPaths::new(work);
