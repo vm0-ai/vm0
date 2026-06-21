@@ -24,6 +24,7 @@ use crate::exec_result_compat::{
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::park_coordinator::ParkCoordinator;
+use crate::runtime_dirs::set_private_runtime_socket_mode;
 
 const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
@@ -257,6 +258,10 @@ pub(crate) fn bind_server(
 
 fn bind_unix_listener(sock_path: &Path) -> io::Result<UnixListener> {
     let listener = std::os::unix::net::UnixListener::bind(sock_path)?;
+    if let Err(e) = set_private_runtime_socket_mode(sock_path) {
+        remove_socket_path(sock_path);
+        return Err(e);
+    }
     if let Err(e) = listener.set_nonblocking(true) {
         remove_socket_path(sock_path);
         return Err(e);

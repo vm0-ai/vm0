@@ -17,7 +17,7 @@ use crate::exec_result_compat::{captured_exec_output_bytes, reject_stream_overfl
 use crate::factory::InvariantConfig;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
-use crate::runtime_dirs::prepare_private_socket_dir;
+use crate::runtime_dirs::{prepare_private_socket_dir, set_private_runtime_socket_mode};
 use sandbox::SnapshotCreateConfig;
 
 use super::SnapshotError;
@@ -289,6 +289,7 @@ async fn run_with_firecracker(
     let api_sock = sock_paths.api_sock();
     let client = ApiClient::new(&api_sock);
     client.wait_for_ready(API_READY_TIMEOUT).await?;
+    set_private_runtime_socket_mode(&api_sock)?;
 
     info!("firecracker API ready");
 

@@ -49,7 +49,7 @@ use crate::park_coordinator::{
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{ChildExitNotifier, kill_process_group};
-use crate::runtime_dirs::prepare_private_runtime_vsock_dir;
+use crate::runtime_dirs::{prepare_private_runtime_vsock_dir, set_private_runtime_socket_mode};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1158,6 +1158,9 @@ impl FirecrackerSandbox {
                         ),
                     }
                 })?;
+                set_private_runtime_socket_mode(&api_sock).map_err(|e| SandboxError::Start {
+                    message: format!("restrict API socket permissions: {e}"),
+                })?;
             }
             state = wait_for_process_exit(self.state_tx.subscribe()) => {
                 return Err(SandboxError::Start {
@@ -1286,6 +1289,9 @@ impl FirecrackerSandbox {
                             api_sock.display()
                         ),
                     }
+                })?;
+                set_private_runtime_socket_mode(&api_sock).map_err(|e| SandboxError::Start {
+                    message: format!("restrict API socket permissions: {e}"),
                 })?;
             }
             state = wait_for_process_exit(self.state_tx.subscribe()) => {

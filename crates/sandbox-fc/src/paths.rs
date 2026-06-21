@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::SnapshotConfig;
 
 /// Base directory for runtime sockets under `/run`.
-/// Created and validated as a private runtime namespace by `prerequisites.rs`.
+/// Created and validated as an owner-writable runtime namespace by `prerequisites.rs`.
 pub const RUNTIME_DIR: &str = "/run/vm0";
 
 /// Runtime paths under `/run/vm0/`.

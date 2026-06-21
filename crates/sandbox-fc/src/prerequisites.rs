@@ -8,7 +8,7 @@ use sandbox::SandboxError;
 
 use crate::config::SnapshotConfig;
 use crate::paths::{RUNTIME_DIR, RuntimePaths};
-use crate::runtime_dirs::ensure_private_runtime_dir;
+use crate::runtime_dirs::ensure_traversable_runtime_dir;
 
 /// Common inputs needed for prerequisite checks.
 ///
@@ -288,21 +288,21 @@ fn required_commands_for_groups<'a>(command_groups: &[&'a [&'a str]]) -> Vec<&'a
     commands
 }
 
-/// Create and validate the private runtime socket namespace.
+/// Create and validate the owner-writable runtime socket namespace.
 fn ensure_runtime_namespace(errors: &mut Vec<String>) {
     let runtime = RuntimePaths::new();
     ensure_runtime_namespace_at(Path::new(RUNTIME_DIR), &runtime.sock_base(), errors);
 }
 
 fn ensure_runtime_namespace_at(runtime_dir: &Path, sock_base: &Path, errors: &mut Vec<String>) {
-    if let Err(e) = ensure_private_runtime_dir(runtime_dir) {
+    if let Err(e) = ensure_traversable_runtime_dir(runtime_dir) {
         errors.push(format!(
             "failed to prepare runtime dir {}: {e}",
             runtime_dir.display()
         ));
         return;
     }
-    if let Err(e) = ensure_private_runtime_dir(sock_base) {
+    if let Err(e) = ensure_traversable_runtime_dir(sock_base) {
         errors.push(format!(
             "failed to prepare runtime sock dir {}: {e}",
             sock_base.display()
@@ -558,8 +558,8 @@ mod tests {
         ensure_runtime_namespace_at(&runtime_dir, &sock_base, &mut errors);
 
         assert_no_errors(&errors);
-        assert_eq!(mode(&runtime_dir), 0o700);
-        assert_eq!(mode(&sock_base), 0o700);
+        assert_eq!(mode(&runtime_dir), 0o711);
+        assert_eq!(mode(&sock_base), 0o711);
     }
 
     #[test]

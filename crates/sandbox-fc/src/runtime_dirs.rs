@@ -8,7 +8,12 @@ use nix::unistd::{AccessFlags, eaccess, geteuid};
 
 use crate::paths::{RuntimePaths, SockPaths};
 
+/// Owner-only runtime directory, used for guest vsock bind targets.
 pub(crate) const PRIVATE_RUNTIME_DIR_MODE: u32 = 0o700;
+/// Owner-writable directory that lets host tools stat known socket paths.
+pub(crate) const TRAVERSABLE_RUNTIME_DIR_MODE: u32 = 0o711;
+/// Owner-only runtime socket mode, used under traversable runtime dirs.
+pub(crate) const PRIVATE_RUNTIME_SOCKET_MODE: u32 = 0o600;
 const MAX_UNIX_SOCKET_PATH_BYTES: usize = 107;
 
 pub(crate) fn checked_runtime_sock_dir(
@@ -23,17 +28,37 @@ pub(crate) fn checked_runtime_sock_dir(
 }
 
 pub(crate) fn ensure_private_runtime_dir(path: &Path) -> io::Result<()> {
-    create_private_dir_if_missing(path)?;
-    validate_private_runtime_dir(path)
+    ensure_runtime_dir_with_mode(path, PRIVATE_RUNTIME_DIR_MODE)
+}
+
+pub(crate) fn ensure_traversable_runtime_dir(path: &Path) -> io::Result<()> {
+    ensure_runtime_dir_with_mode(path, TRAVERSABLE_RUNTIME_DIR_MODE)
 }
 
 pub(crate) fn prepare_private_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
-    ensure_private_runtime_dir(sock_paths.dir())?;
+    ensure_traversable_runtime_dir(sock_paths.dir())?;
     ensure_private_runtime_dir(&sock_paths.vsock_dir())
 }
 
 pub(crate) fn prepare_private_runtime_vsock_dir(vsock_bind_dir: &Path) -> io::Result<()> {
     prepare_private_vsock_dir_under(&RuntimePaths::new().sock_base(), vsock_bind_dir)
+}
+
+pub(crate) fn set_private_runtime_socket_mode(path: &Path) -> io::Result<()> {
+    std::fs::set_permissions(
+        path,
+        std::fs::Permissions::from_mode(PRIVATE_RUNTIME_SOCKET_MODE),
+    )
+    .map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!(
+                "chmod runtime socket {} to {:04o}: {e}",
+                path.display(),
+                PRIVATE_RUNTIME_SOCKET_MODE
+            ),
+        )
+    })
 }
 
 fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> io::Result<()> {
@@ -64,7 +89,7 @@ fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> i
     validate_runtime_sock_id(sock_id)?;
     validate_runtime_vsock_path_len(sock_id, &vsock_bind_dir.join("vsock.sock"))?;
 
-    ensure_private_runtime_dir(sock_base)?;
+    ensure_traversable_runtime_dir(sock_base)?;
     let sock_dir = vsock_bind_dir.parent().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -74,7 +99,7 @@ fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> i
             ),
         )
     })?;
-    ensure_private_runtime_dir(sock_dir)?;
+    ensure_traversable_runtime_dir(sock_dir)?;
     ensure_private_runtime_dir(vsock_bind_dir)
 }
 
@@ -89,36 +114,41 @@ fn invalid_vsock_dir_shape(sock_base: &Path, vsock_bind_dir: &Path) -> io::Error
     )
 }
 
-fn create_private_dir_if_missing(path: &Path) -> io::Result<()> {
+fn ensure_runtime_dir_with_mode(path: &Path, mode: u32) -> io::Result<()> {
+    create_runtime_dir_if_missing(path, mode)?;
+    validate_runtime_dir(path, mode)
+}
+
+fn create_runtime_dir_if_missing(path: &Path, mode: u32) -> io::Result<()> {
     let mut builder = DirBuilder::new();
-    builder.mode(PRIVATE_RUNTIME_DIR_MODE);
+    builder.mode(mode);
     match builder.create(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(io::Error::new(
             e.kind(),
-            format!("create private runtime dir {}: {e}", path.display()),
+            format!("create runtime dir {}: {e}", path.display()),
         )),
     }
 }
 
-fn validate_private_runtime_dir(path: &Path) -> io::Result<()> {
+fn validate_runtime_dir(path: &Path, expected_mode: u32) -> io::Result<()> {
     let metadata = std::fs::symlink_metadata(path).map_err(|e| {
         io::Error::new(
             e.kind(),
-            format!("stat private runtime dir {}: {e}", path.display()),
+            format!("stat runtime dir {}: {e}", path.display()),
         )
     })?;
     let file_type = metadata.file_type();
     if file_type.is_symlink() {
         return Err(io::Error::other(format!(
-            "private runtime dir is a symlink: {}",
+            "runtime dir is a symlink: {}",
             path.display()
         )));
     }
     if !file_type.is_dir() {
         return Err(io::Error::other(format!(
-            "private runtime dir is not a directory: {}",
+            "runtime dir is not a directory: {}",
             path.display()
         )));
     }
@@ -126,35 +156,33 @@ fn validate_private_runtime_dir(path: &Path) -> io::Result<()> {
     let euid = geteuid().as_raw();
     if !runtime_dir_owner_is_trusted(metadata.uid(), euid) {
         return Err(io::Error::other(format!(
-            "private runtime dir has untrusted owner uid {}: {}",
+            "runtime dir has untrusted owner uid {}: {}",
             metadata.uid(),
             path.display()
         )));
     }
 
     let mode = metadata.permissions().mode() & 0o7777;
-    if mode != PRIVATE_RUNTIME_DIR_MODE {
-        std::fs::set_permissions(
-            path,
-            std::fs::Permissions::from_mode(PRIVATE_RUNTIME_DIR_MODE),
-        )
-        .map_err(|e| {
-            io::Error::new(
-                e.kind(),
-                format!(
-                    "chmod private runtime dir {} to {:04o}: {e}",
-                    path.display(),
-                    PRIVATE_RUNTIME_DIR_MODE
-                ),
-            )
-        })?;
+    if mode != expected_mode {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(expected_mode)).map_err(
+            |e| {
+                io::Error::new(
+                    e.kind(),
+                    format!(
+                        "chmod runtime dir {} to {:04o}: {e}",
+                        path.display(),
+                        expected_mode
+                    ),
+                )
+            },
+        )?;
     }
 
     eaccess(path, AccessFlags::W_OK | AccessFlags::X_OK).map_err(|e| {
         io::Error::new(
             io::ErrorKind::PermissionDenied,
             format!(
-                "private runtime dir is not writable/traversable: {}: {e}",
+                "runtime dir is not writable/traversable: {}: {e}",
                 path.display()
             ),
         )
@@ -236,6 +264,17 @@ mod tests {
     }
 
     #[test]
+    fn ensure_traversable_runtime_dir_creates_missing_dir_with_traversable_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("runtime");
+
+        ensure_traversable_runtime_dir(&path).unwrap();
+
+        assert!(path.is_dir());
+        assert_eq!(mode(&path), TRAVERSABLE_RUNTIME_DIR_MODE);
+    }
+
+    #[test]
     fn ensure_private_runtime_dir_normalizes_existing_trusted_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("runtime");
@@ -273,13 +312,25 @@ mod tests {
     }
 
     #[test]
+    fn set_private_runtime_socket_mode_sets_owner_only_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let socket_path = tmp.path().join("runtime.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+        set_private_runtime_socket_mode(&socket_path).unwrap();
+
+        assert_eq!(mode(&socket_path), PRIVATE_RUNTIME_SOCKET_MODE);
+    }
+
+    #[test]
     fn prepare_private_socket_dir_creates_sock_and_vsock_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let sock_paths = SockPaths::new(tmp.path().join("sandbox"));
 
         prepare_private_socket_dir(&sock_paths).unwrap();
 
-        assert_eq!(mode(sock_paths.dir()), PRIVATE_RUNTIME_DIR_MODE);
+        assert_eq!(mode(sock_paths.dir()), TRAVERSABLE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);
     }
 
@@ -349,7 +400,7 @@ mod tests {
 
         prepare_private_socket_dir(&sock_paths).unwrap();
 
-        assert_eq!(mode(sock_paths.dir()), PRIVATE_RUNTIME_DIR_MODE);
+        assert_eq!(mode(sock_paths.dir()), TRAVERSABLE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);
     }
 
@@ -361,8 +412,11 @@ mod tests {
 
         prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap();
 
-        assert_eq!(mode(&sock_base), PRIVATE_RUNTIME_DIR_MODE);
-        assert_eq!(mode(&sock_base.join("snapshot")), PRIVATE_RUNTIME_DIR_MODE);
+        assert_eq!(mode(&sock_base), TRAVERSABLE_RUNTIME_DIR_MODE);
+        assert_eq!(
+            mode(&sock_base.join("snapshot")),
+            TRAVERSABLE_RUNTIME_DIR_MODE
+        );
         assert_eq!(mode(&vsock_dir), PRIVATE_RUNTIME_DIR_MODE);
     }
 
