@@ -154,6 +154,39 @@ describe("auth tokens", () => {
     );
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:read");
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:write");
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "goal-objective:write",
+    );
+  });
+
+  it("excludes goal-objective:write for workflow-event runs but keeps goal read/write", () => {
+    const userDrivenToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { triggerSource: "web" },
+    );
+    const continuationToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { triggerSource: "workflow-event" },
+    );
+
+    expect(verifyZeroToken(userDrivenToken)?.capabilities).toContain(
+      "goal-objective:write",
+    );
+    expect(verifyZeroToken(continuationToken)?.capabilities).not.toContain(
+      "goal-objective:write",
+    );
+    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
+      "goal:read",
+    );
+    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
+      "goal:write",
+    );
   });
 
   it("gates computer-use capability on an explicit host grant", () => {

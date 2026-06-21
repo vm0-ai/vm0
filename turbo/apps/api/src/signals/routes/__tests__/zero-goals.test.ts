@@ -542,6 +542,142 @@ describe("zero goals", () => {
     ]);
   });
 
+  it("edits a goal's objective and token budget", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const edited = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal-objective:write"]),
+        body: { objective: "ship goal workflows v2", tokenBudget: 5000 },
+      }),
+      [200],
+    );
+    expect(edited.body).toStrictEqual({
+      active: true,
+      objective: "ship goal workflows v2",
+      status: "active",
+      tokenBudget: 5000,
+    });
+
+    const read = await accept(
+      goalsClient().get({ headers: headers(fixture, ["goal:read"]) }),
+      [200],
+    );
+    expect(read.body).toStrictEqual({
+      active: true,
+      objective: "ship goal workflows v2",
+      status: "active",
+      tokenBudget: 5000,
+    });
+  });
+
+  it("auto-resumes a blocked goal when edited and clears stopReason", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const blocked = await accept(
+      goalsClient().block({ headers: headers(fixture) }),
+      [200],
+    );
+    expect(blocked.body).toMatchObject({
+      status: "blocked",
+      stopReason: "blocked",
+    });
+
+    const edited = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal-objective:write"]),
+        body: { objective: "resume and keep going" },
+      }),
+      [200],
+    );
+    expect(edited.body).toMatchObject({
+      active: true,
+      objective: "resume and keep going",
+      status: "active",
+    });
+    expect(edited.body.stopReason).toBeUndefined();
+
+    const rows = await loadGoalRows(fixture);
+    expect(rows).toMatchObject({
+      enabled: true,
+      preference: { version: 1, objective: "resume and keep going" },
+    });
+  });
+
+  it("rejects goal edits when the token lacks goal-objective:write", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const response = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:read", "goal:write"]),
+        body: { objective: "should be forbidden" },
+      }),
+      [403],
+    );
+    expect(response.body.error.message).toContain("goal-objective:write");
+  });
+
+  it("returns 404 when editing with no active goal", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+
+    const response = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal-objective:write"]),
+        body: { objective: "no goal here" },
+      }),
+      [404],
+    );
+    expect(response.body.error.message).toContain("Goal not found");
+  });
+
+  it("sets stopReason 'blocked' on block and clears it on resume", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+
+    const blocked = await accept(
+      goalsClient().block({ headers: headers(fixture) }),
+      [200],
+    );
+    expect(blocked.body.stopReason).toBe("blocked");
+    const blockedRows = await loadGoalRows(fixture);
+    expect(blockedRows?.preference).toMatchObject({ stopReason: "blocked" });
+
+    const resumed = await accept(
+      goalsClient().resume({ headers: headers(fixture) }),
+      [200],
+    );
+    expect(resumed.body.stopReason).toBeUndefined();
+    const resumedRows = await loadGoalRows(fixture);
+    expect(resumedRows?.preference).not.toHaveProperty("stopReason");
+  });
+
   it("excludes goal-state markers from a thread's unread state", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
     await accept(

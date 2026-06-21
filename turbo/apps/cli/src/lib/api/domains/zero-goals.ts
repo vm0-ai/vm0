@@ -2,6 +2,7 @@ import { initClient } from "@ts-rest/core";
 import {
   zeroGoalsContract,
   type ZeroGoalCreateRequest,
+  type ZeroGoalEditRequest,
   type ZeroGoalResponse,
 } from "@vm0/api-contracts/contracts/zero-goals";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -14,6 +15,16 @@ export async function createGoal(
   const result = await client.create({ body });
   if (result.status === 201) return result.body;
   handleError(result, "Failed to create goal");
+}
+
+export async function editGoal(
+  body: ZeroGoalEditRequest,
+): Promise<ZeroGoalResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroGoalsContract, config);
+  const result = await client.edit({ body });
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to edit goal");
 }
 
 export async function getGoal(): Promise<ZeroGoalResponse> {

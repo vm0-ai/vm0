@@ -29,6 +29,7 @@ export interface ZeroGoalPreference {
   readonly version: 1;
   readonly objective: string;
   readonly tokenBudget?: number;
+  readonly stopReason?: "paused" | "blocked" | "failed";
 }
 
 export type ZeroWorkflowPreference = ZeroGoalPreference;

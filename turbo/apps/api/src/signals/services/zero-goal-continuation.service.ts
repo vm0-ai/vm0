@@ -1,6 +1,7 @@
 import {
   zeroGoalPreferenceSchema,
   type ZeroGoalPreference,
+  type ZeroGoalStopReason,
 } from "@vm0/api-contracts/contracts/zero-goals";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -312,12 +313,41 @@ async function notifyGoalAutoStopped(
   });
 }
 
-async function disableGoalTrigger(db: Db, triggerId: string): Promise<void> {
+// Disables a goal trigger after a user cancel, recording the "paused" stop
+// reason so the goal surfaces as paused rather than agent-blocked.
+async function disableGoalTrigger(
+  db: Db,
+  trigger: { readonly id: string; readonly workflowId: string },
+): Promise<void> {
   const currentTime = nowDate();
   await db
     .update(zeroWorkflowTriggers)
     .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-    .where(eq(zeroWorkflowTriggers.id, triggerId));
+    .where(eq(zeroWorkflowTriggers.id, trigger.id));
+  await setGoalStopReason(db, trigger.workflowId, "paused");
+}
+
+/**
+ * Record why a goal stopped in the workflow's preference jsonb. The status enum
+ * stays "blocked"; stopReason is an additional field that distinguishes a manual
+ * cancel ("paused") from a repeated-failure auto-stop ("failed").
+ */
+async function setGoalStopReason(
+  db: Db,
+  workflowId: string,
+  stopReason: ZeroGoalStopReason,
+): Promise<void> {
+  const preference = await loadGoalPreference(db, workflowId);
+  if (!preference) {
+    return;
+  }
+  await db
+    .update(zeroWorkflows)
+    .set({
+      preference: { ...preference, stopReason },
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflows.id, workflowId));
 }
 
 async function resetGoalTriggerFailures(
@@ -330,9 +360,11 @@ async function resetGoalTriggerFailures(
     .where(eq(zeroWorkflowTriggers.id, triggerId));
 }
 
+// Increments the failure counter and, once the threshold disables the trigger,
+// records the "failed" stop reason so the goal surfaces the auto-stop cause.
 async function incrementGoalTriggerFailures(
   db: Db,
-  triggerId: string,
+  trigger: { readonly id: string; readonly workflowId: string },
 ): Promise<FailureUpdateResult> {
   const currentTime = nowDate();
   const [updated] = await db
@@ -345,7 +377,7 @@ async function incrementGoalTriggerFailures(
     })
     .where(
       and(
-        eq(zeroWorkflowTriggers.id, triggerId),
+        eq(zeroWorkflowTriggers.id, trigger.id),
         eq(zeroWorkflowTriggers.enabled, true),
       ),
     )
@@ -354,14 +386,16 @@ async function incrementGoalTriggerFailures(
       enabled: zeroWorkflowTriggers.enabled,
     });
 
-  if (!updated) {
-    return { disabled: true, consecutiveFailures: MAX_CONSECUTIVE_FAILURES };
+  const result: FailureUpdateResult = updated
+    ? {
+        disabled: !updated.enabled,
+        consecutiveFailures: updated.consecutiveFailures,
+      }
+    : { disabled: true, consecutiveFailures: MAX_CONSECUTIVE_FAILURES };
+  if (result.disabled) {
+    await setGoalStopReason(db, trigger.workflowId, "failed");
   }
-
-  return {
-    disabled: !updated.enabled,
-    consecutiveFailures: updated.consecutiveFailures,
-  };
+  return result;
 }
 
 export const continueGoalIfIdle$ = command(
@@ -400,13 +434,13 @@ export const continueGoalIfIdle$ = command(
     const trigger = goal.trigger;
 
     if (run.status === "cancelled") {
-      await disableGoalTrigger(db, trigger.id);
+      await disableGoalTrigger(db, trigger);
       signal.throwIfAborted();
       return { kind: "paused", triggerId: trigger.id };
     }
 
     if (run.status === "failed" || run.status === "timeout") {
-      const failureUpdate = await incrementGoalTriggerFailures(db, trigger.id);
+      const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
       signal.throwIfAborted();
       if (failureUpdate.disabled) {
         log.warn("Goal continuation auto-stopped after run failures", {
@@ -464,7 +498,7 @@ export const continueGoalIfIdle$ = command(
       return { kind: "skipped", reason: "previous-run-active" };
     }
 
-    const failureUpdate = await incrementGoalTriggerFailures(db, trigger.id);
+    const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
     signal.throwIfAborted();
     const error = failureMessage(runResult);
     if (failureUpdate.disabled) {

@@ -129,6 +129,7 @@ export {
 // Domain modules - Zero Goals
 export {
   createGoal,
+  editGoal,
   getGoal,
   completeGoal,
   blockGoal,
