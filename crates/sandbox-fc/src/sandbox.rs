@@ -49,6 +49,7 @@ use crate::park_coordinator::{
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{ChildExitNotifier, kill_process_group};
+use crate::runtime_dirs::prepare_private_runtime_vsock_dir;
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1191,11 +1192,11 @@ impl FirecrackerSandbox {
         }
 
         // Ensure bind mount target directories exist.
-        tokio::fs::create_dir_all(&snapshot.vsock_bind_dir)
-            .await
-            .map_err(|e| SandboxError::Start {
-                message: format!("mkdir snapshot vsock: {e}"),
-            })?;
+        prepare_private_runtime_vsock_dir(&snapshot.vsock_bind_dir).map_err(|e| {
+            SandboxError::Start {
+                message: format!("prepare snapshot vsock dir: {e}"),
+            }
+        })?;
 
         ensure_snapshot_drive_bind_target(&snapshot.drive_bind_path).await?;
         ensure_snapshot_drive_bind_target(&snapshot.workspace_drive_bind_path).await?;

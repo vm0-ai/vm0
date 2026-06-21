@@ -1,11 +1,11 @@
 use std::fs::DirBuilder;
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use nix::unistd::{AccessFlags, eaccess, geteuid};
 
-use crate::paths::SockPaths;
+use crate::paths::{RuntimePaths, SockPaths};
 
 pub(crate) const PRIVATE_RUNTIME_DIR_MODE: u32 = 0o700;
 
@@ -17,6 +17,58 @@ pub(crate) fn ensure_private_runtime_dir(path: &Path) -> io::Result<()> {
 pub(crate) fn prepare_private_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
     ensure_private_runtime_dir(sock_paths.dir())?;
     ensure_private_runtime_dir(&sock_paths.vsock_dir())
+}
+
+pub(crate) fn prepare_private_runtime_vsock_dir(vsock_bind_dir: &Path) -> io::Result<()> {
+    prepare_private_vsock_dir_under(&RuntimePaths::new().sock_base(), vsock_bind_dir)
+}
+
+fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> io::Result<()> {
+    let relative = vsock_bind_dir.strip_prefix(sock_base).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "runtime vsock dir {} is outside socket base {}",
+                vsock_bind_dir.display(),
+                sock_base.display()
+            ),
+        )
+    })?;
+
+    let mut components = relative.components();
+    let Some(Component::Normal(_sock_id)) = components.next() else {
+        return Err(invalid_vsock_dir_shape(sock_base, vsock_bind_dir));
+    };
+    let Some(Component::Normal(vsock_dir)) = components.next() else {
+        return Err(invalid_vsock_dir_shape(sock_base, vsock_bind_dir));
+    };
+    if vsock_dir != "vsock" || components.next().is_some() {
+        return Err(invalid_vsock_dir_shape(sock_base, vsock_bind_dir));
+    }
+
+    ensure_private_runtime_dir(sock_base)?;
+    let sock_dir = vsock_bind_dir.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "runtime vsock dir has no parent: {}",
+                vsock_bind_dir.display()
+            ),
+        )
+    })?;
+    ensure_private_runtime_dir(sock_dir)?;
+    ensure_private_runtime_dir(vsock_bind_dir)
+}
+
+fn invalid_vsock_dir_shape(sock_base: &Path, vsock_bind_dir: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "runtime vsock dir must be {}/<id>/vsock: {}",
+            sock_base.display(),
+            vsock_bind_dir.display()
+        ),
+    )
 }
 
 fn create_private_dir_if_missing(path: &Path) -> io::Result<()> {
@@ -186,6 +238,69 @@ mod tests {
 
         assert_eq!(mode(sock_paths.dir()), PRIVATE_RUNTIME_DIR_MODE);
         assert_eq!(mode(&sock_paths.vsock_dir()), PRIVATE_RUNTIME_DIR_MODE);
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_creates_private_runtime_vsock_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = sock_base.join("snapshot").join("vsock");
+
+        prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap();
+
+        assert_eq!(mode(&sock_base), PRIVATE_RUNTIME_DIR_MODE);
+        assert_eq!(mode(&sock_base.join("snapshot")), PRIVATE_RUNTIME_DIR_MODE);
+        assert_eq!(mode(&vsock_dir), PRIVATE_RUNTIME_DIR_MODE);
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_symlinked_runtime_sock_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let target = tmp.path().join("target");
+        let snapshot_dir = sock_base.join("snapshot");
+        let vsock_dir = snapshot_dir.join("vsock");
+        std::fs::create_dir(&sock_base).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &snapshot_dir).unwrap();
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("is a symlink"));
+        assert!(target.is_dir());
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_path_outside_sock_base() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = tmp.path().join("other").join("snapshot").join("vsock");
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("is outside socket base"));
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_parent_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = sock_base.join("snapshot").join("..").join("vsock");
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("must be"));
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_wrong_leaf() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = sock_base.join("snapshot").join("api");
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("must be"));
     }
 
     #[test]
