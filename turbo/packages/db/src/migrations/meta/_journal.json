@@ -3354,6 +3354,13 @@
       "when": 1782052356993,
       "tag": "0478_remap_google_analytics_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 479,
+      "version": "7",
+      "when": 1782063696740,
+      "tag": "0479_agent_scoped_workflows",
+      "breakpoints": true
     }
   ]
 }
