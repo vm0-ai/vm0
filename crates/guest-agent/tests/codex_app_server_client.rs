@@ -194,6 +194,26 @@ async fn codex_app_server_malformed_stdout_fails_without_hanging() -> Result<(),
 }
 
 #[tokio::test]
+async fn codex_app_server_oversized_stdout_line_is_rejected() -> Result<(), String> {
+    let mut client = spawn_client(Some("oversized-stdout"))?;
+
+    let result = wait_result_allow_error(client.initialize(), "initialize").await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("app-server stdout line exceeded"));
+            assert!(!message.contains("xxx"));
+        }
+        other => {
+            return Err(format!(
+                "expected oversized stdout protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_disconnect_after_initialize_fails_next_request() -> Result<(), String> {
     let mut client = spawn_client(Some("disconnect-after-initialize"))?;
 

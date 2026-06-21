@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -24,6 +24,7 @@ use super::{child_env, diagnostics};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
+const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 const SHUTDOWN_SIGTERM_GRACE: Duration = Duration::from_secs(2);
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
@@ -129,7 +130,7 @@ impl From<CodexAppServerError> for AgentError {
 
 pub struct CodexAppServerClient {
     stdin: Option<ChildStdin>,
-    stdout_lines: Lines<BufReader<ChildStdout>>,
+    stdout_reader: BufReader<ChildStdout>,
     process_id: Option<u32>,
     process_group_id: Option<i32>,
     wait_rx: Option<oneshot::Receiver<std::io::Result<ExitStatus>>>,
@@ -179,7 +180,7 @@ impl CodexAppServerClient {
 
         Ok(Self {
             stdin: Some(stdin),
-            stdout_lines: BufReader::new(stdout).lines(),
+            stdout_reader: BufReader::new(stdout),
             process_id,
             process_group_id,
             wait_rx: Some(wait_rx),
@@ -242,7 +243,9 @@ impl CodexAppServerClient {
         params: Value,
     ) -> Result<Value, CodexAppServerError> {
         let id = JsonRpcId::Number(self.next_request_id);
-        self.next_request_id += 1;
+        self.next_request_id = self.next_request_id.checked_add(1).ok_or_else(|| {
+            CodexAppServerError::Protocol("app-server request id counter overflow".to_string())
+        })?;
         self.write_message(&outgoing_request(&id, method, params))
             .await?;
 
@@ -367,10 +370,10 @@ impl CodexAppServerClient {
         loop {
             tokio::select! {
                 biased;
-                line = self.stdout_lines.next_line() => {
-                    let line = match line? {
-                        Some(line) => line,
-                        None => {
+                line = read_stdout_line(&mut self.stdout_reader) => {
+                    let line = match line {
+                        Ok(Some(line)) => line,
+                        Ok(None) => {
                             if let Some(status) = self.try_finish_child_wait()? {
                                 return Err(CodexAppServerError::ChildExited {
                                     method: pending_method.to_string(),
@@ -380,6 +383,10 @@ impl CodexAppServerClient {
                             return Err(CodexAppServerError::Disconnected {
                                 method: pending_method.to_string(),
                             });
+                        }
+                        Err(error) => {
+                            self.signal_process_group(libc::SIGKILL);
+                            return Err(error);
                         }
                     };
                     if line.trim().is_empty() {
@@ -515,6 +522,65 @@ fn outgoing_notification(method: &str, params: Value) -> Value {
             "params": params,
         })
     }
+}
+
+async fn read_stdout_line(
+    stdout_reader: &mut BufReader<ChildStdout>,
+) -> Result<Option<String>, CodexAppServerError> {
+    let mut line = Vec::new();
+
+    loop {
+        let (consumed, reached_line_end) = {
+            let available = stdout_reader.fill_buf().await?;
+            if available.is_empty() {
+                if line.is_empty() {
+                    return Ok(None);
+                }
+                break;
+            }
+
+            if let Some(newline_index) = available.iter().position(|byte| *byte == b'\n') {
+                if line.len() + newline_index > STDOUT_MAX_LINE_BYTES {
+                    return Err(stdout_line_too_large_error());
+                }
+                let line_chunk = available.get(..newline_index).ok_or_else(|| {
+                    CodexAppServerError::Protocol(
+                        "app-server stdout reader returned an invalid newline offset".to_string(),
+                    )
+                })?;
+                line.extend_from_slice(line_chunk);
+                (newline_index + 1, true)
+            } else {
+                if line.len() + available.len() > STDOUT_MAX_LINE_BYTES {
+                    return Err(stdout_line_too_large_error());
+                }
+                line.extend_from_slice(available);
+                (available.len(), false)
+            }
+        };
+
+        stdout_reader.consume(consumed);
+        if reached_line_end {
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            break;
+        }
+    }
+
+    String::from_utf8(line).map(Some).map_err(|error| {
+        CodexAppServerError::Protocol(format!(
+            "app-server stdout line is not UTF-8: {}; line_bytes={}",
+            error.utf8_error(),
+            error.as_bytes().len()
+        ))
+    })
+}
+
+fn stdout_line_too_large_error() -> CodexAppServerError {
+    CodexAppServerError::Protocol(format!(
+        "app-server stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+    ))
 }
 
 fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerError> {

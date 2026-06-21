@@ -8,6 +8,7 @@ use uuid::Uuid;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
+const OVERSIZED_STDOUT_BYTES: usize = 17 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scenario {
@@ -17,6 +18,7 @@ enum Scenario {
     InterleavedNotification,
     MalformedStdout,
     NotificationOverflow,
+    OversizedStdout,
     ServerRequestBeforeResponse,
     StaleTurn,
     NoActiveTurn,
@@ -32,6 +34,7 @@ impl Scenario {
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
                 "notification-overflow" => Ok(Self::NotificationOverflow),
+                "oversized-stdout" => Ok(Self::OversizedStdout),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
@@ -157,6 +160,11 @@ impl AppServerState {
                 }
                 if self.scenario == Scenario::MalformedStdout {
                     writeln!(output, "{{not-valid-json")?;
+                    output.flush()?;
+                    return Ok(ServerAction::Stop);
+                }
+                if self.scenario == Scenario::OversizedStdout {
+                    writeln!(output, "{}", "x".repeat(OVERSIZED_STDOUT_BYTES))?;
                     output.flush()?;
                     return Ok(ServerAction::Stop);
                 }
