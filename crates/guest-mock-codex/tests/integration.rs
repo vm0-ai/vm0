@@ -661,10 +661,12 @@ fn app_server_initialized_notification_does_not_replace_initialize_request() -> 
             .unwrap()
             .contains("not initialized")
     );
+    assert_eq!(turn_start_error["error"]["code"], -32600);
     assert_eq!(
         turn_start_error["error"]["message"],
         "app server is not initialized"
     );
+    assert_eq!(turn_steer_error["error"]["code"], -32600);
     assert_eq!(
         turn_steer_error["error"]["message"],
         "app server is not initialized"
