@@ -3347,6 +3347,13 @@
       "when": 1782029188450,
       "tag": "0477_remap_gmail_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 478,
+      "version": "7",
+      "when": 1782056980029,
+      "tag": "0478_agent_scoped_workflows",
+      "breakpoints": true
     }
   ]
 }
