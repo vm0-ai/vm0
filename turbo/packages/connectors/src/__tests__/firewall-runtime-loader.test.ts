@@ -65,7 +65,10 @@ describe("firewall runtime loader", () => {
       "utf-8",
     );
 
-    expect(packageJson.exports).toHaveProperty("./firewalls/runtime");
+    expect(packageJson.exports["./firewalls/runtime"]).toStrictEqual({
+      import: "./src/firewall-runtime.ts",
+      types: "./src/firewall-runtime.ts",
+    });
     expect(rootEntrypoint).not.toContain("firewalls/runtime");
   });
 
@@ -93,9 +96,6 @@ describe("firewall runtime loader", () => {
       expect(source).not.toContain("./index");
       expect(source).not.toContain("@vm0/connectors/firewalls");
       for (const specifier of staticValueModuleSpecifiers(source)) {
-        if (specifier === "./runtime-loader.generated") {
-          continue;
-        }
         expect(specifier).not.toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);
       }
     }
