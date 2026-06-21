@@ -23,7 +23,7 @@ function escapeRegExp(value: string): string {
 function importPattern(specifier: string): RegExp {
   const escapedSpecifier = escapeRegExp(specifier);
   return new RegExp(
-    `(?:from\\s+["']${escapedSpecifier}["']|import\\s*\\(\\s*["']${escapedSpecifier}["']\\s*\\))`,
+    `(?:from\\s+["']${escapedSpecifier}(?:/[^"']*)?["']|import\\s*\\(\\s*["']${escapedSpecifier}(?:/[^"']*)?["']\\s*\\))`,
   );
 }
 
