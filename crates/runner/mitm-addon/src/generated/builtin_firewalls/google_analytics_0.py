@@ -14,31 +14,32 @@ JSON_PART = r"""{
       "base": "https://analyticsdata.googleapis.com",
       "permissions": [
         {
-          "description": "View and manage your Google Analytics data",
-          "name": "analytics",
+          "description": "Read and query GA4 audience export report jobs.",
+          "name": "audience-exports.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/audienceExports",
-            "POST /v1beta/properties/{propertiesId}/audienceExports",
             "GET /v1beta/properties/{propertiesId}/audienceExports/{audienceExportsId}",
-            "POST /v1beta/properties/{propertiesId}/audienceExports/{audienceExportsId}:query",
-            "GET /v1beta/properties/{propertiesId}/metadata",
-            "POST /v1beta/properties/{propertiesId}:batchRunPivotReports",
-            "POST /v1beta/properties/{propertiesId}:batchRunReports",
-            "POST /v1beta/properties/{propertiesId}:checkCompatibility",
-            "POST /v1beta/properties/{propertiesId}:runPivotReport",
-            "POST /v1beta/properties/{propertiesId}:runRealtimeReport",
-            "POST /v1beta/properties/{propertiesId}:runReport"
+            "POST /v1beta/properties/{propertiesId}/audienceExports/{audienceExportsId}:query"
           ]
         },
         {
-          "description": "See and download your Google Analytics data",
-          "name": "analytics.readonly",
+          "description": "Create GA4 audience export report jobs.",
+          "name": "audience-exports.run",
           "rules": [
-            "GET /v1beta/properties/{propertiesId}/audienceExports",
-            "POST /v1beta/properties/{propertiesId}/audienceExports",
-            "GET /v1beta/properties/{propertiesId}/audienceExports/{audienceExportsId}",
-            "POST /v1beta/properties/{propertiesId}/audienceExports/{audienceExportsId}:query",
-            "GET /v1beta/properties/{propertiesId}/metadata",
+            "POST /v1beta/properties/{propertiesId}/audienceExports"
+          ]
+        },
+        {
+          "description": "Read GA4 property report metadata.",
+          "name": "metadata.read",
+          "rules": [
+            "GET /v1beta/properties/{propertiesId}/metadata"
+          ]
+        },
+        {
+          "description": "Run GA4 property reports and compatibility checks.",
+          "name": "reports.run",
+          "rules": [
             "POST /v1beta/properties/{propertiesId}:batchRunPivotReports",
             "POST /v1beta/properties/{propertiesId}:batchRunReports",
             "POST /v1beta/properties/{propertiesId}:checkCompatibility",
@@ -58,93 +59,190 @@ JSON_PART = r"""{
       "base": "https://analyticsadmin.googleapis.com",
       "permissions": [
         {
-          "description": "Edit Google Analytics management entities",
-          "name": "analytics.edit",
+          "description": "Run account and property access reports.",
+          "name": "access-reports.run",
           "rules": [
-            "GET /v1beta/accountSummaries",
-            "GET /v1beta/accounts",
-            "GET /v1beta/accounts/{accountsId}",
-            "PATCH /v1beta/accounts/{accountsId}",
-            "DELETE /v1beta/accounts/{accountsId}",
-            "GET /v1beta/accounts/{accountsId}/dataSharingSettings",
             "POST /v1beta/accounts/{accountsId}:runAccessReport",
-            "POST /v1beta/accounts/{accountsId}:searchChangeHistoryEvents",
-            "POST /v1beta/accounts:provisionAccountTicket",
-            "GET /v1beta/properties",
-            "POST /v1beta/properties",
-            "GET /v1beta/properties/{propertiesId}",
-            "PATCH /v1beta/properties/{propertiesId}",
-            "DELETE /v1beta/properties/{propertiesId}",
-            "GET /v1beta/properties/{propertiesId}/conversionEvents",
-            "POST /v1beta/properties/{propertiesId}/conversionEvents",
-            "GET /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
-            "PATCH /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
-            "DELETE /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
-            "GET /v1beta/properties/{propertiesId}/customDimensions",
-            "POST /v1beta/properties/{propertiesId}/customDimensions",
-            "GET /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}",
-            "PATCH /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}",
-            "POST /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}:archive",
-            "GET /v1beta/properties/{propertiesId}/customMetrics",
-            "POST /v1beta/properties/{propertiesId}/customMetrics",
-            "GET /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}",
-            "PATCH /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}",
-            "POST /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}:archive",
-            "GET /v1beta/properties/{propertiesId}/dataRetentionSettings",
-            "PATCH /v1beta/properties/{propertiesId}/dataRetentionSettings",
-            "GET /v1beta/properties/{propertiesId}/dataStreams",
-            "POST /v1beta/properties/{propertiesId}/dataStreams",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}",
-            "PATCH /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}",
-            "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
-            "POST /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}",
-            "PATCH /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}",
-            "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}",
-            "GET /v1beta/properties/{propertiesId}/firebaseLinks",
-            "POST /v1beta/properties/{propertiesId}/firebaseLinks",
-            "DELETE /v1beta/properties/{propertiesId}/firebaseLinks/{firebaseLinksId}",
-            "GET /v1beta/properties/{propertiesId}/googleAdsLinks",
-            "POST /v1beta/properties/{propertiesId}/googleAdsLinks",
-            "PATCH /v1beta/properties/{propertiesId}/googleAdsLinks/{googleAdsLinksId}",
-            "DELETE /v1beta/properties/{propertiesId}/googleAdsLinks/{googleAdsLinksId}",
-            "GET /v1beta/properties/{propertiesId}/keyEvents",
-            "POST /v1beta/properties/{propertiesId}/keyEvents",
-            "GET /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}",
-            "PATCH /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}",
-            "DELETE /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}",
-            "POST /v1beta/properties/{propertiesId}:acknowledgeUserDataCollection",
             "POST /v1beta/properties/{propertiesId}:runAccessReport"
           ]
         },
         {
-          "description": "See and download your Google Analytics data",
-          "name": "analytics.readonly",
+          "description": "Delete Google Analytics accounts.",
+          "name": "accounts.delete",
+          "rules": [
+            "DELETE /v1beta/accounts/{accountsId}"
+          ]
+        },
+        {
+          "description": "Read Google Analytics accounts and sharing settings.",
+          "name": "accounts.read",
           "rules": [
             "GET /v1beta/accountSummaries",
             "GET /v1beta/accounts",
             "GET /v1beta/accounts/{accountsId}",
-            "GET /v1beta/accounts/{accountsId}/dataSharingSettings",
-            "POST /v1beta/accounts/{accountsId}:runAccessReport",
-            "GET /v1beta/properties",
-            "GET /v1beta/properties/{propertiesId}",
-            "GET /v1beta/properties/{propertiesId}/conversionEvents",
-            "GET /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
+            "GET /v1beta/accounts/{accountsId}/dataSharingSettings"
+          ]
+        },
+        {
+          "description": "Create account tickets and update Analytics accounts.",
+          "name": "accounts.write",
+          "rules": [
+            "PATCH /v1beta/accounts/{accountsId}",
+            "POST /v1beta/accounts:provisionAccountTicket"
+          ]
+        },
+        {
+          "description": "Read account change history events.",
+          "name": "change-history.read",
+          "rules": [
+            "POST /v1beta/accounts/{accountsId}:searchChangeHistoryEvents"
+          ]
+        },
+        {
+          "description": "Read GA4 custom dimensions and metrics.",
+          "name": "custom-definitions.read",
+          "rules": [
             "GET /v1beta/properties/{propertiesId}/customDimensions",
             "GET /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}",
             "GET /v1beta/properties/{propertiesId}/customMetrics",
-            "GET /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}",
-            "GET /v1beta/properties/{propertiesId}/dataRetentionSettings",
+            "GET /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}"
+          ]
+        },
+        {
+          "description": "Create, update, and archive GA4 custom definitions.",
+          "name": "custom-definitions.write",
+          "rules": [
+            "POST /v1beta/properties/{propertiesId}/customDimensions",
+            "PATCH /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}",
+            "POST /v1beta/properties/{propertiesId}/customDimensions/{customDimensionsId}:archive",
+            "POST /v1beta/properties/{propertiesId}/customMetrics",
+            "PATCH /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}",
+            "POST /v1beta/properties/{propertiesId}/customMetrics/{customMetricsId}:archive"
+          ]
+        },
+        {
+          "description": "Delete GA4 data streams.",
+          "name": "data-streams.delete",
+          "rules": [
+            "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}"
+          ]
+        },
+        {
+          "description": "Read GA4 data streams.",
+          "name": "data-streams.read",
+          "rules": [
             "GET /v1beta/properties/{propertiesId}/dataStreams",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
-            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}",
-            "GET /v1beta/properties/{propertiesId}/firebaseLinks",
-            "GET /v1beta/properties/{propertiesId}/googleAdsLinks",
+            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}"
+          ]
+        },
+        {
+          "description": "Create and update GA4 data streams.",
+          "name": "data-streams.write",
+          "rules": [
+            "POST /v1beta/properties/{propertiesId}/dataStreams",
+            "PATCH /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}"
+          ]
+        },
+        {
+          "description": "Delete GA4 key event definitions.",
+          "name": "key-events.delete",
+          "rules": [
+            "DELETE /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
+            "DELETE /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}"
+          ]
+        },
+        {
+          "description": "Read GA4 key event and conversion event definitions.",
+          "name": "key-events.read",
+          "rules": [
+            "GET /v1beta/properties/{propertiesId}/conversionEvents",
+            "GET /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
             "GET /v1beta/properties/{propertiesId}/keyEvents",
-            "GET /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}",
-            "POST /v1beta/properties/{propertiesId}:runAccessReport"
+            "GET /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}"
+          ]
+        },
+        {
+          "description": "Create and update GA4 key event definitions.",
+          "name": "key-events.write",
+          "rules": [
+            "POST /v1beta/properties/{propertiesId}/conversionEvents",
+            "PATCH /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
+            "POST /v1beta/properties/{propertiesId}/keyEvents",
+            "PATCH /v1beta/properties/{propertiesId}/keyEvents/{keyEventsId}"
+          ]
+        },
+        {
+          "description": "Delete Firebase and Google Ads links.",
+          "name": "links.delete",
+          "rules": [
+            "DELETE /v1beta/properties/{propertiesId}/firebaseLinks/{firebaseLinksId}",
+            "DELETE /v1beta/properties/{propertiesId}/googleAdsLinks/{googleAdsLinksId}"
+          ]
+        },
+        {
+          "description": "Read Firebase and Google Ads links.",
+          "name": "links.read",
+          "rules": [
+            "GET /v1beta/properties/{propertiesId}/firebaseLinks",
+            "GET /v1beta/properties/{propertiesId}/googleAdsLinks"
+          ]
+        },
+        {
+          "description": "Create and update Firebase and Google Ads links.",
+          "name": "links.write",
+          "rules": [
+            "POST /v1beta/properties/{propertiesId}/firebaseLinks",
+            "POST /v1beta/properties/{propertiesId}/googleAdsLinks",
+            "PATCH /v1beta/properties/{propertiesId}/googleAdsLinks/{googleAdsLinksId}"
+          ]
+        },
+        {
+          "description": "Delete GA4 Measurement Protocol secrets.",
+          "name": "measurement-secrets.delete",
+          "rules": [
+            "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}"
+          ]
+        },
+        {
+          "description": "Read GA4 Measurement Protocol secrets.",
+          "name": "measurement-secrets.read",
+          "rules": [
+            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
+            "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}"
+          ]
+        },
+        {
+          "description": "Create and update GA4 Measurement Protocol secrets.",
+          "name": "measurement-secrets.write",
+          "rules": [
+            "POST /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
+            "PATCH /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}"
+          ]
+        },
+        {
+          "description": "Delete GA4 properties.",
+          "name": "properties.delete",
+          "rules": [
+            "DELETE /v1beta/properties/{propertiesId}"
+          ]
+        },
+        {
+          "description": "Read GA4 properties and property-level settings.",
+          "name": "properties.read",
+          "rules": [
+            "GET /v1beta/properties",
+            "GET /v1beta/properties/{propertiesId}",
+            "GET /v1beta/properties/{propertiesId}/dataRetentionSettings"
+          ]
+        },
+        {
+          "description": "Create and update GA4 properties and property settings.",
+          "name": "properties.write",
+          "rules": [
+            "POST /v1beta/properties",
+            "PATCH /v1beta/properties/{propertiesId}",
+            "PATCH /v1beta/properties/{propertiesId}/dataRetentionSettings",
+            "POST /v1beta/properties/{propertiesId}:acknowledgeUserDataCollection"
           ]
         }
       ]

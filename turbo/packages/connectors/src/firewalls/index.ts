@@ -136,7 +136,13 @@ import { geminiFirewall } from "./gemini.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
-import { googleAnalyticsFirewall } from "./google-analytics.generated";
+import {
+  googleAnalyticsCategories,
+  googleAnalyticsCategoryOrder,
+  googleAnalyticsDefaultAllowed,
+  googleAnalyticsDefaultUnknownPolicy,
+  googleAnalyticsFirewall,
+} from "./google-analytics.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import {
   googleCloudCategories,
@@ -675,6 +681,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleCloudCategories,
     displayOrder: googleCloudCategoryOrder,
   },
+  "google-analytics": {
+    categories: googleAnalyticsCategories,
+    displayOrder: googleAnalyticsCategoryOrder,
+  },
   "google-drive": {
     categories: googleDriveCategories,
     displayOrder: googleDriveCategoryOrder,
@@ -831,6 +841,7 @@ const DEFAULT_ALLOWED: Partial<
 > = {
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
+  "google-analytics": googleAnalyticsDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   gmail: gmailDefaultAllowed,
@@ -843,6 +854,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   Record<FirewallConnectorType, FirewallPolicyValue>
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
+  "google-analytics": googleAnalyticsDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,

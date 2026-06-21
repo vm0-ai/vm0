@@ -101,6 +101,21 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Analytics report and read permissions to allow and sensitive mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-analytics");
+
+    expect(policy.policies["reports.run"]).toBe("allow");
+    expect(policy.policies["audience-exports.run"]).toBe("allow");
+    expect(policy.policies["accounts.read"]).toBe("allow");
+    expect(policy.policies["properties.read"]).toBe("allow");
+    expect(policy.policies["links.read"]).toBe("allow");
+    expect(policy.policies["properties.write"]).toBe("deny");
+    expect(policy.policies["properties.delete"]).toBe("deny");
+    expect(policy.policies["measurement-secrets.read"]).toBe("deny");
+    expect(policy.policies["measurement-secrets.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -170,10 +185,12 @@ describe("resolveFirewallPolicies", () => {
   it("should use connector-specific unknownPolicy defaults when not stored", () => {
     const resolved = resolveFirewallPolicies(null, [
       "cloudflare",
+      "google-analytics",
       "google-cloud",
       "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-analytics"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
