@@ -14,324 +14,190 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/gmail",
       "permissions": [
         {
-          "description": "Read, compose, send, and permanently delete all your email from Gmail",
-          "name": "gmail",
+          "description": "Read Gmail drafts.",
+          "name": "drafts.read",
           "rules": [
             "GET /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "GET /v1/users/{userId}/drafts/{id}",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "DELETE /v1/users/{userId}/drafts/{id}",
-            "GET /v1/users/{userId}/history",
-            "GET /v1/users/{userId}/labels",
-            "POST /v1/users/{userId}/labels",
-            "GET /v1/users/{userId}/labels/{id}",
-            "PUT /v1/users/{userId}/labels/{id}",
-            "PATCH /v1/users/{userId}/labels/{id}",
-            "DELETE /v1/users/{userId}/labels/{id}",
-            "GET /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/batchDelete",
-            "POST /v1/users/{userId}/messages/batchModify",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send",
-            "GET /v1/users/{userId}/messages/{id}",
-            "DELETE /v1/users/{userId}/messages/{id}",
-            "POST /v1/users/{userId}/messages/{id}/modify",
-            "POST /v1/users/{userId}/messages/{id}/trash",
-            "POST /v1/users/{userId}/messages/{id}/untrash",
-            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
-            "GET /v1/users/{userId}/profile",
-            "GET /v1/users/{userId}/settings/autoForwarding",
-            "GET /v1/users/{userId}/settings/cse/identities",
-            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "GET /v1/users/{userId}/settings/cse/keypairs",
-            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
-            "GET /v1/users/{userId}/settings/delegates",
-            "GET /v1/users/{userId}/settings/delegates/{delegateEmail}",
-            "GET /v1/users/{userId}/settings/filters",
-            "GET /v1/users/{userId}/settings/filters/{id}",
-            "GET /v1/users/{userId}/settings/forwardingAddresses",
-            "GET /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
-            "GET /v1/users/{userId}/settings/imap",
-            "GET /v1/users/{userId}/settings/language",
-            "GET /v1/users/{userId}/settings/pop",
-            "GET /v1/users/{userId}/settings/sendAs",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
-            "GET /v1/users/{userId}/settings/vacation",
-            "POST /v1/users/{userId}/stop",
-            "GET /v1/users/{userId}/threads",
-            "GET /v1/users/{userId}/threads/{id}",
-            "DELETE /v1/users/{userId}/threads/{id}",
-            "POST /v1/users/{userId}/threads/{id}/modify",
-            "POST /v1/users/{userId}/threads/{id}/trash",
-            "POST /v1/users/{userId}/threads/{id}/untrash",
-            "POST /v1/users/{userId}/watch"
+            "GET /v1/users/{userId}/drafts/{id}"
           ]
         },
         {
-          "description": "Manage drafts and send emails when you interact with the add-on",
-          "name": "gmail.addons.current.action.compose",
+          "description": "Send Gmail drafts.",
+          "name": "drafts.send",
+          "rules": [
+            "POST /v1/users/{userId}/drafts/send"
+          ]
+        },
+        {
+          "description": "Create, update, and delete Gmail drafts.",
+          "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
             "PUT /v1/users/{userId}/drafts/{id}",
-            "DELETE /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages/send"
+            "DELETE /v1/users/{userId}/drafts/{id}"
           ]
         },
         {
-          "description": "View your email messages when you interact with the add-on",
-          "name": "gmail.addons.current.message.action",
+          "description": "Read Gmail mailbox history changes.",
+          "name": "history.read",
           "rules": [
-            "GET /v1/users/{userId}/messages/{id}",
-            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
-            "GET /v1/users/{userId}/threads/{id}"
+            "GET /v1/users/{userId}/history"
           ]
         },
         {
-          "description": "View your email message metadata when the add-on is running",
-          "name": "gmail.addons.current.message.metadata",
-          "rules": [
-            "GET /v1/users/{userId}/messages/{id}",
-            "GET /v1/users/{userId}/threads/{id}"
-          ]
-        },
-        {
-          "description": "View your email messages when the add-on is running",
-          "name": "gmail.addons.current.message.readonly",
-          "rules": [
-            "GET /v1/users/{userId}/messages/{id}",
-            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
-            "GET /v1/users/{userId}/threads/{id}"
-          ]
-        },
-        {
-          "description": "Manage drafts",
-          "name": "gmail.compose",
-          "rules": [
-            "GET /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts",
-            "GET /v1/users/{userId}/drafts/{id}",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "DELETE /v1/users/{userId}/drafts/{id}",
-            "GET /v1/users/{userId}/profile"
-          ]
-        },
-        {
-          "description": "Add emails into your Gmail mailbox",
-          "name": "gmail.insert",
-          "rules": [
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import"
-          ]
-        },
-        {
-          "description": "See and edit your email labels",
-          "name": "gmail.labels",
+          "description": "Read Gmail labels.",
+          "name": "labels.read",
           "rules": [
             "GET /v1/users/{userId}/labels",
+            "GET /v1/users/{userId}/labels/{id}"
+          ]
+        },
+        {
+          "description": "Create, update, and delete Gmail labels.",
+          "name": "labels.write",
+          "rules": [
             "POST /v1/users/{userId}/labels",
-            "GET /v1/users/{userId}/labels/{id}",
             "PUT /v1/users/{userId}/labels/{id}",
             "PATCH /v1/users/{userId}/labels/{id}",
             "DELETE /v1/users/{userId}/labels/{id}"
           ]
         },
         {
-          "description": "View your email message metadata such as labels and headers, but not the email body",
-          "name": "gmail.metadata",
+          "description": "Permanently delete Gmail messages.",
+          "name": "messages.delete",
           "rules": [
-            "GET /v1/users/{userId}/history",
-            "GET /v1/users/{userId}/labels",
-            "GET /v1/users/{userId}/labels/{id}",
-            "GET /v1/users/{userId}/messages",
-            "GET /v1/users/{userId}/messages/{id}",
-            "GET /v1/users/{userId}/profile",
-            "POST /v1/users/{userId}/stop",
-            "GET /v1/users/{userId}/threads",
-            "GET /v1/users/{userId}/threads/{id}",
-            "POST /v1/users/{userId}/watch"
+            "POST /v1/users/{userId}/messages/batchDelete",
+            "DELETE /v1/users/{userId}/messages/{id}"
           ]
         },
         {
-          "description": "Read, compose, and send emails from your Gmail account",
-          "name": "gmail.modify",
+          "description": "Read Gmail messages, message metadata, and attachments.",
+          "name": "messages.read",
           "rules": [
-            "GET /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "GET /v1/users/{userId}/drafts/{id}",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "DELETE /v1/users/{userId}/drafts/{id}",
-            "GET /v1/users/{userId}/history",
-            "GET /v1/users/{userId}/labels",
-            "POST /v1/users/{userId}/labels",
-            "GET /v1/users/{userId}/labels/{id}",
-            "PUT /v1/users/{userId}/labels/{id}",
-            "PATCH /v1/users/{userId}/labels/{id}",
-            "DELETE /v1/users/{userId}/labels/{id}",
             "GET /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/batchModify",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send",
             "GET /v1/users/{userId}/messages/{id}",
-            "POST /v1/users/{userId}/messages/{id}/modify",
-            "POST /v1/users/{userId}/messages/{id}/trash",
-            "POST /v1/users/{userId}/messages/{id}/untrash",
-            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
-            "GET /v1/users/{userId}/profile",
-            "GET /v1/users/{userId}/settings/autoForwarding",
-            "GET /v1/users/{userId}/settings/cse/identities",
-            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "GET /v1/users/{userId}/settings/cse/keypairs",
-            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
-            "GET /v1/users/{userId}/settings/delegates",
-            "GET /v1/users/{userId}/settings/delegates/{delegateEmail}",
-            "GET /v1/users/{userId}/settings/filters",
-            "GET /v1/users/{userId}/settings/filters/{id}",
-            "GET /v1/users/{userId}/settings/forwardingAddresses",
-            "GET /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
-            "GET /v1/users/{userId}/settings/imap",
-            "GET /v1/users/{userId}/settings/language",
-            "GET /v1/users/{userId}/settings/pop",
-            "GET /v1/users/{userId}/settings/sendAs",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
-            "GET /v1/users/{userId}/settings/vacation",
-            "POST /v1/users/{userId}/stop",
-            "GET /v1/users/{userId}/threads",
-            "GET /v1/users/{userId}/threads/{id}",
-            "POST /v1/users/{userId}/threads/{id}/modify",
-            "POST /v1/users/{userId}/threads/{id}/trash",
-            "POST /v1/users/{userId}/threads/{id}/untrash",
-            "POST /v1/users/{userId}/watch"
+            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}"
           ]
         },
         {
-          "description": "View your email messages and settings",
-          "name": "gmail.readonly",
+          "description": "Send Gmail messages directly.",
+          "name": "messages.send",
           "rules": [
-            "GET /v1/users/{userId}/drafts",
-            "GET /v1/users/{userId}/drafts/{id}",
-            "GET /v1/users/{userId}/history",
-            "GET /v1/users/{userId}/labels",
-            "GET /v1/users/{userId}/labels/{id}",
-            "GET /v1/users/{userId}/messages",
-            "GET /v1/users/{userId}/messages/{id}",
-            "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
-            "GET /v1/users/{userId}/profile",
-            "GET /v1/users/{userId}/settings/autoForwarding",
-            "GET /v1/users/{userId}/settings/cse/identities",
-            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "GET /v1/users/{userId}/settings/cse/keypairs",
-            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
-            "GET /v1/users/{userId}/settings/delegates",
-            "GET /v1/users/{userId}/settings/delegates/{delegateEmail}",
-            "GET /v1/users/{userId}/settings/filters",
-            "GET /v1/users/{userId}/settings/filters/{id}",
-            "GET /v1/users/{userId}/settings/forwardingAddresses",
-            "GET /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
-            "GET /v1/users/{userId}/settings/imap",
-            "GET /v1/users/{userId}/settings/language",
-            "GET /v1/users/{userId}/settings/pop",
-            "GET /v1/users/{userId}/settings/sendAs",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
-            "GET /v1/users/{userId}/settings/vacation",
-            "POST /v1/users/{userId}/stop",
-            "GET /v1/users/{userId}/threads",
-            "GET /v1/users/{userId}/threads/{id}",
-            "POST /v1/users/{userId}/watch"
-          ]
-        },
-        {
-          "description": "Send email on your behalf",
-          "name": "gmail.send",
-          "rules": [
-            "POST /v1/users/{userId}/drafts/send",
             "POST /v1/users/{userId}/messages/send"
           ]
         },
         {
-          "description": "See, edit, create, or change your email settings and filters in Gmail",
-          "name": "gmail.settings.basic",
+          "description": "Import, insert, label, trash, and untrash Gmail messages.",
+          "name": "messages.write",
           "rules": [
-            "GET /v1/users/{userId}/settings/autoForwarding",
-            "GET /v1/users/{userId}/settings/cse/identities",
-            "POST /v1/users/{userId}/settings/cse/identities",
-            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "DELETE /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "PATCH /v1/users/{userId}/settings/cse/identities/{emailAddress}",
-            "GET /v1/users/{userId}/settings/cse/keypairs",
-            "POST /v1/users/{userId}/settings/cse/keypairs",
-            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:disable",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:enable",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:obliterate",
-            "GET /v1/users/{userId}/settings/delegates",
-            "GET /v1/users/{userId}/settings/delegates/{delegateEmail}",
-            "GET /v1/users/{userId}/settings/filters",
-            "POST /v1/users/{userId}/settings/filters",
-            "GET /v1/users/{userId}/settings/filters/{id}",
-            "DELETE /v1/users/{userId}/settings/filters/{id}",
-            "GET /v1/users/{userId}/settings/forwardingAddresses",
-            "GET /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
-            "GET /v1/users/{userId}/settings/imap",
-            "PUT /v1/users/{userId}/settings/imap",
-            "GET /v1/users/{userId}/settings/language",
-            "PUT /v1/users/{userId}/settings/language",
-            "GET /v1/users/{userId}/settings/pop",
-            "PUT /v1/users/{userId}/settings/pop",
-            "GET /v1/users/{userId}/settings/sendAs",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "PUT /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "PATCH /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
-            "DELETE /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
-            "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}/setDefault",
-            "GET /v1/users/{userId}/settings/vacation",
-            "PUT /v1/users/{userId}/settings/vacation"
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/batchModify",
+            "POST /v1/users/{userId}/messages/import",
+            "POST /v1/users/{userId}/messages/{id}/modify",
+            "POST /v1/users/{userId}/messages/{id}/trash",
+            "POST /v1/users/{userId}/messages/{id}/untrash"
           ]
         },
         {
-          "description": "Manage your sensitive mail settings, including who can manage your mail",
-          "name": "gmail.settings.sharing",
+          "description": "Create and stop Gmail mailbox notification watches.",
+          "name": "notifications.write",
+          "rules": [
+            "POST /v1/users/{userId}/stop",
+            "POST /v1/users/{userId}/watch"
+          ]
+        },
+        {
+          "description": "Read the Gmail profile and mailbox email address.",
+          "name": "profile.read",
+          "rules": [
+            "GET /v1/users/{userId}/profile"
+          ]
+        },
+        {
+          "description": "Read Gmail mailbox settings.",
+          "name": "settings.read",
+          "rules": [
+            "GET /v1/users/{userId}/settings/autoForwarding",
+            "GET /v1/users/{userId}/settings/cse/identities",
+            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
+            "GET /v1/users/{userId}/settings/cse/keypairs",
+            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
+            "GET /v1/users/{userId}/settings/delegates",
+            "GET /v1/users/{userId}/settings/delegates/{delegateEmail}",
+            "GET /v1/users/{userId}/settings/filters",
+            "GET /v1/users/{userId}/settings/filters/{id}",
+            "GET /v1/users/{userId}/settings/forwardingAddresses",
+            "GET /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
+            "GET /v1/users/{userId}/settings/imap",
+            "GET /v1/users/{userId}/settings/language",
+            "GET /v1/users/{userId}/settings/pop",
+            "GET /v1/users/{userId}/settings/sendAs",
+            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
+            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
+            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
+            "GET /v1/users/{userId}/settings/vacation"
+          ]
+        },
+        {
+          "description": "Manage Gmail forwarding, delegates, sending identities, and sharing-sensitive settings.",
+          "name": "settings.sharing",
           "rules": [
             "PUT /v1/users/{userId}/settings/autoForwarding",
-            "GET /v1/users/{userId}/settings/cse/identities",
-            "POST /v1/users/{userId}/settings/cse/identities",
-            "GET /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "DELETE /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
-            "PATCH /v1/users/{userId}/settings/cse/identities/{emailAddress}",
-            "GET /v1/users/{userId}/settings/cse/keypairs",
-            "POST /v1/users/{userId}/settings/cse/keypairs",
-            "GET /v1/users/{userId}/settings/cse/keypairs/{keyPairId}",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:disable",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:enable",
-            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:obliterate",
             "POST /v1/users/{userId}/settings/delegates",
             "DELETE /v1/users/{userId}/settings/delegates/{delegateEmail}",
             "POST /v1/users/{userId}/settings/forwardingAddresses",
             "DELETE /v1/users/{userId}/settings/forwardingAddresses/{forwardingEmail}",
             "POST /v1/users/{userId}/settings/sendAs",
+            "DELETE /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
+            "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/verify"
+          ]
+        },
+        {
+          "description": "Create, update, and delete ordinary Gmail settings.",
+          "name": "settings.write",
+          "rules": [
+            "POST /v1/users/{userId}/settings/cse/identities",
+            "DELETE /v1/users/{userId}/settings/cse/identities/{cseEmailAddress}",
+            "PATCH /v1/users/{userId}/settings/cse/identities/{emailAddress}",
+            "POST /v1/users/{userId}/settings/cse/keypairs",
+            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:disable",
+            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:enable",
+            "POST /v1/users/{userId}/settings/cse/keypairs/{keyPairId}:obliterate",
+            "POST /v1/users/{userId}/settings/filters",
+            "DELETE /v1/users/{userId}/settings/filters/{id}",
+            "PUT /v1/users/{userId}/settings/imap",
+            "PUT /v1/users/{userId}/settings/language",
+            "PUT /v1/users/{userId}/settings/pop",
             "PUT /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
             "PATCH /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "DELETE /v1/users/{userId}/settings/sendAs/{sendAsEmail}",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
             "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo",
-            "GET /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
             "DELETE /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}",
             "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/smimeInfo/{id}/setDefault",
-            "POST /v1/users/{userId}/settings/sendAs/{sendAsEmail}/verify"
+            "PUT /v1/users/{userId}/settings/vacation"
+          ]
+        },
+        {
+          "description": "Permanently delete Gmail threads.",
+          "name": "threads.delete",
+          "rules": [
+            "DELETE /v1/users/{userId}/threads/{id}"
+          ]
+        },
+        {
+          "description": "Read Gmail threads.",
+          "name": "threads.read",
+          "rules": [
+            "GET /v1/users/{userId}/threads",
+            "GET /v1/users/{userId}/threads/{id}"
+          ]
+        },
+        {
+          "description": "Modify, trash, and untrash Gmail threads.",
+          "name": "threads.write",
+          "rules": [
+            "POST /v1/users/{userId}/threads/{id}/modify",
+            "POST /v1/users/{userId}/threads/{id}/trash",
+            "POST /v1/users/{userId}/threads/{id}/untrash"
           ]
         }
       ]
@@ -345,61 +211,33 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/upload/gmail",
       "permissions": [
         {
-          "description": "Read, compose, send, and permanently delete all your email from Gmail",
-          "name": "gmail",
+          "description": "Send Gmail drafts.",
+          "name": "drafts.send",
           "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send"
+            "POST /v1/users/{userId}/drafts/send"
           ]
         },
         {
-          "description": "Manage drafts and send emails when you interact with the add-on",
-          "name": "gmail.addons.current.action.compose",
-          "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages/send"
-          ]
-        },
-        {
-          "description": "Manage drafts",
-          "name": "gmail.compose",
+          "description": "Create, update, and delete Gmail drafts.",
+          "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
             "PUT /v1/users/{userId}/drafts/{id}"
           ]
         },
         {
-          "description": "Add emails into your Gmail mailbox",
-          "name": "gmail.insert",
+          "description": "Send Gmail messages directly.",
+          "name": "messages.send",
+          "rules": [
+            "POST /v1/users/{userId}/messages/send"
+          ]
+        },
+        {
+          "description": "Import, insert, label, trash, and untrash Gmail messages.",
+          "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
             "POST /v1/users/{userId}/messages/import"
-          ]
-        },
-        {
-          "description": "Read, compose, and send emails from your Gmail account",
-          "name": "gmail.modify",
-          "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send"
-          ]
-        },
-        {
-          "description": "Send email on your behalf",
-          "name": "gmail.send",
-          "rules": [
-            "POST /v1/users/{userId}/drafts/send",
-            "POST /v1/users/{userId}/messages/send"
           ]
         }
       ]
@@ -413,61 +251,33 @@ JSON_PART = r"""{
       "base": "https://gmail.googleapis.com/resumable/upload/gmail",
       "permissions": [
         {
-          "description": "Read, compose, send, and permanently delete all your email from Gmail",
-          "name": "gmail",
+          "description": "Send Gmail drafts.",
+          "name": "drafts.send",
           "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send"
+            "POST /v1/users/{userId}/drafts/send"
           ]
         },
         {
-          "description": "Manage drafts and send emails when you interact with the add-on",
-          "name": "gmail.addons.current.action.compose",
-          "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages/send"
-          ]
-        },
-        {
-          "description": "Manage drafts",
-          "name": "gmail.compose",
+          "description": "Create, update, and delete Gmail drafts.",
+          "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
             "PUT /v1/users/{userId}/drafts/{id}"
           ]
         },
         {
-          "description": "Add emails into your Gmail mailbox",
-          "name": "gmail.insert",
+          "description": "Send Gmail messages directly.",
+          "name": "messages.send",
+          "rules": [
+            "POST /v1/users/{userId}/messages/send"
+          ]
+        },
+        {
+          "description": "Import, insert, label, trash, and untrash Gmail messages.",
+          "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
             "POST /v1/users/{userId}/messages/import"
-          ]
-        },
-        {
-          "description": "Read, compose, and send emails from your Gmail account",
-          "name": "gmail.modify",
-          "rules": [
-            "POST /v1/users/{userId}/drafts",
-            "POST /v1/users/{userId}/drafts/send",
-            "PUT /v1/users/{userId}/drafts/{id}",
-            "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import",
-            "POST /v1/users/{userId}/messages/send"
-          ]
-        },
-        {
-          "description": "Send email on your behalf",
-          "name": "gmail.send",
-          "rules": [
-            "POST /v1/users/{userId}/drafts/send",
-            "POST /v1/users/{userId}/messages/send"
           ]
         }
       ]

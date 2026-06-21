@@ -1,8 +1,10 @@
 /**
  * Generate Google API firewall configs from Google Discovery API documents.
  *
- * All Google APIs (Gmail, Sheets, Docs, Drive, Calendar) use the same Discovery
- * API format: resources → methods → {path, httpMethod, scopes}.
+ * Most Google APIs (Sheets, Docs, Drive, Calendar) use the same Discovery API
+ * format: resources -> methods -> {path, httpMethod, scopes}. Gmail uses this
+ * Discovery data for route coverage, but has a dedicated resource-oriented
+ * permission generator.
  */
 
 import {
@@ -22,7 +24,6 @@ const SCOPE_PREFIX = "https://www.googleapis.com/auth/";
 
 // Some Google APIs use non-standard full-access scope URLs.
 const SPECIAL_SCOPES: Record<string, string> = {
-  "https://mail.google.com/": "gmail",
   "https://www.googleapis.com/auth/drive": "drive",
   "https://www.googleapis.com/auth/calendar": "calendar",
 };
@@ -320,7 +321,7 @@ interface GoogleFirewallConfig {
   /**
    * Permission overrides applied after generation.
    * Use to remove rules or change descriptions for security reasons
-   * (e.g. removing send endpoints from gmail.compose).
+   * when a provider scope is broader than the intended vm0 permission.
    */
   permissionOverrides?: Record<
     string,
@@ -433,7 +434,7 @@ async function generateGoogleFirewall(
     });
   }
 
-  // Apply permission overrides (e.g. remove send rules from gmail.compose)
+  // Apply permission overrides.
   if (config.permissionOverrides) {
     // Validate all override targets exist in at least one API entry
     const allPermNames = new Set(
@@ -520,71 +521,6 @@ function bearerAuth(placeholderKey: string): GoogleFirewallAuth {
 }
 
 const CONFIGS: Record<string, GoogleFirewallConfig> = {
-  gmail: {
-    discoveryUrls: ["https://gmail.googleapis.com/$discovery/rest?version=v1"],
-    baseUrl: "https://gmail.googleapis.com/gmail",
-    uploadBaseUrls: [
-      "https://gmail.googleapis.com/upload/gmail",
-      "https://gmail.googleapis.com/resumable/upload/gmail",
-    ],
-    stripPrefix: "gmail",
-    serviceName: "gmail",
-    serviceDescription: "Gmail API",
-    placeholderKey: "GMAIL_TOKEN",
-    placeholderValue: OAUTH_PLACEHOLDER,
-    auth: bearerAuth("GMAIL_TOKEN"),
-    // Security: gmail.compose should only manage drafts, not send.
-    // Send endpoints are isolated in gmail.send. See #8448.
-    permissionOverrides: {
-      "gmail.compose": {
-        description: "Manage drafts",
-        removeRules: [
-          "POST /v1/users/{userId}/drafts/send",
-          "POST /v1/users/{userId}/messages/send",
-        ],
-      },
-      "gmail.send": {
-        addRules: ["POST /v1/users/{userId}/drafts/send"],
-      },
-    },
-    defaultAllowed: {
-      varName: "gmailDefaultAllowed",
-      permissions: [
-        "gmail.readonly",
-        "gmail.metadata",
-        "gmail.addons.current.message.readonly",
-        "gmail.addons.current.message.metadata",
-        "gmail.addons.current.message.action",
-        "gmail.compose",
-        "gmail.labels",
-      ],
-    },
-    categories: {
-      varName: "gmailCategories",
-      config: {
-        categories: {
-          // Read (5)
-          "gmail.readonly": "Read",
-          "gmail.metadata": "Read",
-          "gmail.addons.current.message.readonly": "Read",
-          "gmail.addons.current.message.metadata": "Read",
-          "gmail.addons.current.message.action": "Read",
-          // Compose (6)
-          gmail: "Compose",
-          "gmail.modify": "Compose",
-          "gmail.compose": "Compose",
-          "gmail.send": "Compose",
-          "gmail.insert": "Compose",
-          "gmail.addons.current.action.compose": "Compose",
-          // Admin (3)
-          "gmail.settings.basic": "Admin",
-          "gmail.settings.sharing": "Admin",
-          "gmail.labels": "Admin",
-        },
-        displayOrder: ["Read", "Compose", "Admin"],
-      },
-    },
-  },
   "google-calendar": {
     discoveryUrls: [
       "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",

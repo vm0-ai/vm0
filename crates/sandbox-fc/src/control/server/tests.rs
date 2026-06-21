@@ -1,6 +1,7 @@
 use super::*;
 
 use std::future::Future;
+use std::os::unix::fs::PermissionsExt;
 
 use base64::Engine;
 use sandbox::SandboxExecTermination;
@@ -19,6 +20,7 @@ use crate::control::{
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
 };
+use crate::runtime_dirs::PRIVATE_RUNTIME_SOCKET_MODE;
 
 type GuestState = Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>;
 
@@ -195,6 +197,20 @@ fn bind_test_server(
     guest_operations: GuestOperationStartGate,
 ) -> io::Result<BoundControlServer> {
     bind_server(sock_path, guest_operations, test_termination_handle())
+}
+
+#[tokio::test]
+async fn bind_server_sets_private_socket_mode() {
+    let fixture = ControlServerFixture::new();
+    let _server = fixture.bind_default().unwrap();
+
+    let mode = std::fs::symlink_metadata(&fixture.sock_path)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(mode, PRIVATE_RUNTIME_SOCKET_MODE);
 }
 
 #[test]

@@ -64,14 +64,17 @@ function printSensitivePermissionGuidance(
     console.log("");
   }
 
-  // Gmail gmail.send: strongly recommend draft-based workflow over direct send
-  if (connectorRef === "gmail" && permission === "gmail.send") {
+  // Gmail send permissions: strongly recommend draft-based workflow over direct send.
+  if (
+    connectorRef === "gmail" &&
+    (permission === "messages.send" || permission === "drafts.send")
+  ) {
     console.log("");
     console.log(
-      "IMPORTANT: Granting gmail.send allows the agent to send emails directly as the user.",
+      "IMPORTANT: Granting Gmail send permissions allows the agent to send emails directly as the user.",
     );
     console.log(
-      "Consider keeping gmail.send disabled and using gmail.compose instead — the agent can create drafts for the user to review and send manually.",
+      "Consider keeping messages.send and drafts.send disabled and using drafts.write instead — the agent can create drafts for the user to review and send manually.",
     );
     console.log(
       "Only allow this permission below if direct sending is specifically required.",

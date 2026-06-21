@@ -59,3 +59,17 @@ def test_google_drive_builtin_uses_vm0_permissions():
     assert "drive.apps.readonly" not in names
     assert "drive.file" not in names
     assert all(not name.startswith("drive.") for name in names)
+
+
+def test_gmail_firewall_uses_resource_permissions():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["gmail"]
+    permissions = {
+        permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
+    }
+
+    assert "messages.send" in permissions
+    assert "drafts.write" in permissions
+    assert "settings.sharing" in permissions
+    assert "gmail.send" not in permissions
+    assert "gmail.modify" not in permissions
+    assert not [name for name in permissions if name.startswith("gmail.")]

@@ -12,6 +12,7 @@ import {
 } from "../firewall-types";
 import type { ConnectorType } from "../connectors";
 import { CONNECTOR_TYPES } from "../connectors";
+import { expandFirewallPlaceholders } from "../firewall-placeholder-expansion";
 import {
   clerkDefaultAllowed,
   clerkCategories,
@@ -22,6 +23,7 @@ import {
   gmailDefaultAllowed,
   gmailCategories,
   gmailCategoryOrder,
+  gmailDefaultUnknownPolicy,
   gmailFirewall,
 } from "./gmail.generated";
 import {
@@ -35,7 +37,6 @@ import {
   vercelCategoryOrder,
   vercelFirewall,
 } from "./vercel.generated";
-import { getConnectorEnvBindingEntries } from "../connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { amadeusFirewall } from "./amadeus.generated";
@@ -619,64 +620,10 @@ const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   reducto: reductoFirewall,
 } satisfies Partial<Record<ConnectorType, FirewallConfig>>);
 
-/**
- * Expand firewall placeholders to cover all secret names related to the
- * connector. For each existing placeholder key, find related names via
- * configured env binding entries (raw storage names and sibling aliases)
- * and assign the same placeholder value.
- */
-function expandPlaceholders(
-  firewall: FirewallConfig,
-  connectorType: ConnectorType,
-): FirewallConfig {
-  if (!firewall.placeholders) return firewall;
-
-  const envBindingEntries = getConnectorEnvBindingEntries(connectorType);
-  if (envBindingEntries.length === 0) return firewall;
-
-  const expanded: Record<string, string> = { ...firewall.placeholders };
-
-  for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
-    // key is a mapped environment name (e.g. GITHUB_TOKEN)
-    // → add the raw secret name and any sibling aliases
-    const valueRefs = envBindingEntries
-      .filter(({ envName }) => {
-        return envName === key;
-      })
-      .map(({ valueRef }) => {
-        return valueRef;
-      });
-    for (const valueRef of valueRefs) {
-      if (!valueRef.startsWith("$secrets.")) {
-        continue;
-      }
-      const rawName = valueRef.slice("$secrets.".length);
-      if (!expanded[rawName]) {
-        expanded[rawName] = placeholderValue;
-      }
-      for (const entry of envBindingEntries) {
-        if (entry.valueRef === valueRef && !expanded[entry.envName]) {
-          expanded[entry.envName] = placeholderValue;
-        }
-      }
-    }
-
-    // key is a raw secret name -> add all environment names that reference it
-    const rawRef = `$secrets.${key}`;
-    for (const entry of envBindingEntries) {
-      if (entry.valueRef === rawRef && !expanded[entry.envName]) {
-        expanded[entry.envName] = placeholderValue;
-      }
-    }
-  }
-
-  return { ...firewall, placeholders: expanded };
-}
-
 // Pre-compute expanded placeholders at module load time.
 const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
   Object.entries(CONNECTOR_FIREWALLS).map(([type, firewall]) => {
-    return [type, expandPlaceholders(firewall, type as ConnectorType)];
+    return [type, expandFirewallPlaceholders(firewall, type as ConnectorType)];
   }),
 ) as typeof CONNECTOR_FIREWALLS;
 
@@ -898,6 +845,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
+  gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
 };
 
