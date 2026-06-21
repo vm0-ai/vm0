@@ -220,6 +220,7 @@ export const fireWorkflowTriggerTestRun$ = command(
     { set },
     args: {
       readonly trigger: TriggerRow;
+      readonly agentId: string;
       readonly workflowName: string;
       readonly apiStartTime: number;
     },
@@ -228,10 +229,17 @@ export const fireWorkflowTriggerTestRun$ = command(
     return await set(
       runWorkflowTriggerNow$,
       {
-        due: { trigger: args.trigger, workflowName: args.workflowName },
+        due: {
+          trigger: args.trigger,
+          agentId: args.agentId,
+          workflowName: args.workflowName,
+        },
         apiStartTime: args.apiStartTime,
         // Chat callback only: a test run must not advance the schedule.
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(args.trigger),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+          args.trigger,
+          args.agentId,
+        ),
         recordLastRunId: false,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
@@ -256,6 +264,7 @@ export const executeDueWorkflowTriggers$ = command(
     const rows = await db
       .select({
         trigger: zeroWorkflowTriggers,
+        agentId: zeroWorkflows.agentId,
         workflowName: zeroWorkflows.name,
       })
       .from(zeroWorkflowTriggers)
@@ -268,7 +277,6 @@ export const executeDueWorkflowTriggers$ = command(
           eq(zeroWorkflowTriggers.enabled, true),
           eq(zeroWorkflowTriggers.kind, "schedule"),
           eq(zeroWorkflows.type, "workflow"),
-          isNotNull(zeroWorkflowTriggers.agentId),
           isNotNull(zeroWorkflowTriggers.chatThreadId),
           lte(zeroWorkflowTriggers.nextRunAt, currentTime),
         ),
@@ -282,6 +290,7 @@ export const executeDueWorkflowTriggers$ = command(
     for (const row of rows) {
       const due: DueWorkflowTrigger = {
         trigger: row.trigger,
+        agentId: row.agentId,
         workflowName: row.workflowName,
       };
 

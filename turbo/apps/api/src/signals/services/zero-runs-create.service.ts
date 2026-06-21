@@ -33,7 +33,7 @@ import {
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
-import { loadWorkflowNamesForRun } from "./zero-workflow-data.service";
+import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
@@ -649,7 +649,7 @@ export const createZeroIntegrationRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    const workflowNames = await loadWorkflowNamesForRun(db, {
+    const workflows = await loadWorkflowsForRun(db, {
       userId: args.userId,
       orgId: args.orgId,
       agentId: agent.id,
@@ -690,7 +690,7 @@ export const createZeroIntegrationRun$ = command(
         includeZeroTokenSecret: true,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        injectSkillVolumes: { workflowNames },
+        injectSkillVolumes: { workflows },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,
@@ -751,7 +751,7 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    const workflowNames = await loadWorkflowNamesForRun(db, {
+    const workflows = await loadWorkflowsForRun(db, {
       userId: args.auth.userId,
       orgId: args.auth.orgId,
       agentId: agent.id,
@@ -808,7 +808,7 @@ export const createZeroRun$ = command(
         zeroTokenComputerUseHostId: args.computerUseHostId,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
-        injectSkillVolumes: { workflowNames },
+        injectSkillVolumes: { workflows },
         allowedConnectorTypes,
         allowedCustomConnectorIds,
         validateEnvironmentReferences: false,

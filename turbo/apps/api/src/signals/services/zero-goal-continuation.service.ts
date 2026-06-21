@@ -172,6 +172,9 @@ async function loadTerminatingRun(
 
 interface EnabledGoal {
   readonly trigger: TriggerRow;
+  // Derived from the workflow row under hard 1:N; the trigger no longer carries
+  // an agentId column.
+  readonly agentId: string;
   readonly preference: ZeroGoalPreference;
 }
 
@@ -186,6 +189,7 @@ async function loadEnabledGoalTrigger(
   const [row] = await db
     .select({
       trigger: zeroWorkflowTriggers,
+      agentId: zeroWorkflows.agentId,
       preference: zeroWorkflows.preference,
     })
     .from(zeroWorkflowTriggers)
@@ -201,7 +205,6 @@ async function loadEnabledGoalTrigger(
         eq(zeroWorkflowTriggers.kind, "event"),
         eq(zeroWorkflowTriggers.eventType, "thread-idle"),
         eq(zeroWorkflowTriggers.enabled, true),
-        isNotNull(zeroWorkflowTriggers.agentId),
         isNotNull(zeroWorkflowTriggers.chatThreadId),
         eq(zeroWorkflows.type, "goal"),
         eq(zeroWorkflows.active, true),
@@ -214,6 +217,7 @@ async function loadEnabledGoalTrigger(
   }
   return {
     trigger: row.trigger,
+    agentId: row.agentId,
     preference: zeroGoalPreferenceSchema.parse(row.preference),
   };
 }
@@ -221,9 +225,15 @@ async function loadEnabledGoalTrigger(
 async function loadGoalPreference(
   db: Db,
   workflowId: string,
-): Promise<ZeroGoalPreference | null> {
+): Promise<{
+  readonly agentId: string;
+  readonly preference: ZeroGoalPreference;
+} | null> {
   const [row] = await db
-    .select({ preference: zeroWorkflows.preference })
+    .select({
+      agentId: zeroWorkflows.agentId,
+      preference: zeroWorkflows.preference,
+    })
     .from(zeroWorkflows)
     .where(
       and(eq(zeroWorkflows.id, workflowId), eq(zeroWorkflows.type, "goal")),
@@ -233,7 +243,10 @@ async function loadGoalPreference(
   if (!row) {
     return null;
   }
-  return zeroGoalPreferenceSchema.parse(row.preference);
+  return {
+    agentId: row.agentId,
+    preference: zeroGoalPreferenceSchema.parse(row.preference),
+  };
 }
 
 async function featureEnabledForRun(
@@ -337,14 +350,14 @@ async function setGoalStopReason(
   workflowId: string,
   stopReason: ZeroGoalStopReason,
 ): Promise<void> {
-  const preference = await loadGoalPreference(db, workflowId);
-  if (!preference) {
+  const goal = await loadGoalPreference(db, workflowId);
+  if (!goal) {
     return;
   }
   await db
     .update(zeroWorkflows)
     .set({
-      preference: { ...preference, stopReason },
+      preference: { ...goal.preference, stopReason },
       updatedAt: nowDate(),
     })
     .where(eq(zeroWorkflows.id, workflowId));
@@ -475,13 +488,13 @@ export const continueGoalIfIdle$ = command(
     const runResult = await set(
       runWorkflowTriggerNow$,
       {
-        due: { trigger, workflowName: "goal" },
+        due: { trigger, agentId: goal.agentId, workflowName: "goal" },
         apiStartTime: now(),
         ...(sessionId ? { sessionId } : {}),
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
         appendSystemPrompt: buildGoalContinuationSystemPrompt(),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(trigger, {
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(trigger, goal.agentId, {
           isGoalRun: true,
         }),
         recordLastRunAt: true,
@@ -553,9 +566,9 @@ export const bootstrapGoalRun$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
-    const preference = await loadGoalPreference(db, args.trigger.workflowId);
+    const goal = await loadGoalPreference(db, args.trigger.workflowId);
     signal.throwIfAborted();
-    if (!preference) {
+    if (!goal) {
       return {
         kind: "run_error",
         response: {
@@ -572,14 +585,16 @@ export const bootstrapGoalRun$ = command(
     return set(
       runWorkflowTriggerNow$,
       {
-        due: { trigger: args.trigger, workflowName: "goal" },
+        due: { trigger: args.trigger, agentId: goal.agentId, workflowName: "goal" },
         apiStartTime: now(),
-        prompt: buildGoalContinuationPrompt(preference),
+        prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
         appendSystemPrompt: buildGoalContinuationSystemPrompt(),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(args.trigger, {
-          isGoalRun: true,
-        }),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+          args.trigger,
+          goal.agentId,
+          { isGoalRun: true },
+        ),
         recordLastRunAt: true,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },

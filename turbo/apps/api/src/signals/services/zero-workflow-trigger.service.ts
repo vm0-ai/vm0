@@ -799,7 +799,7 @@ export const testRunWorkflowTrigger$ = command(
     }
 
     const [workflow] = await writeDb
-      .select({ name: zeroWorkflows.name })
+      .select({ name: zeroWorkflows.name, agentId: zeroWorkflows.agentId })
       .from(zeroWorkflows)
       .where(eq(zeroWorkflows.id, trigger.workflowId))
       .limit(1);
@@ -812,6 +812,7 @@ export const testRunWorkflowTrigger$ = command(
       fireWorkflowTriggerTestRun$,
       {
         trigger,
+        agentId: workflow.agentId,
         workflowName: workflow.name,
         apiStartTime: nowDate().getTime(),
       },

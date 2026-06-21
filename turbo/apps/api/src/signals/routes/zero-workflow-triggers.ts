@@ -7,7 +7,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import {
-  loadVisibleWorkflow,
+  loadVisibleWorkflowById,
   type WorkflowMember,
 } from "../services/zero-workflow-data.service";
 import {
@@ -79,17 +79,18 @@ const listTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowTriggersContract.list));
   const db = get(db$);
-  const workflow = await loadVisibleWorkflow(db, {
+  const visible = await loadVisibleWorkflowById(db, {
     orgId: auth.orgId,
-    userId: auth.userId,
-    name: params.name,
+    member: memberFromAuth(auth),
+    workflowId: params.workflowId,
   });
-  if (!workflow) {
-    return notFound(`Workflow not found: ${params.name}`);
+  if (!visible) {
+    return notFound(`Workflow not found: ${params.workflowId}`);
   }
   const triggers = await loadWorkflowTriggers(db, {
     orgId: auth.orgId,
-    workflowId: workflow.id,
+    workflowId: visible.workflow.id,
+    userId: auth.userId,
   });
   return { status: 200 as const, body: [...triggers] };
 });
@@ -109,8 +110,7 @@ const createTriggerInner$ = command(
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
-        workflowName: params.name,
-        agentId: bodyResult.data.agentId,
+        workflowId: params.workflowId,
         schedule: bodyResult.data.schedule,
         enabled: bodyResult.data.enabled ?? true,
       },
@@ -120,7 +120,10 @@ const createTriggerInner$ = command(
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };
     }
-    return triggerErrorResponse(result, `Workflow not found: ${params.name}`);
+    return triggerErrorResponse(
+      result,
+      `Workflow not found: ${params.workflowId}`,
+    );
   },
 );
 
@@ -130,7 +133,7 @@ const getTriggerInner$ = computed(async (get) => {
   const db = get(db$);
   const trigger = await getWorkflowTrigger(db, {
     orgId: auth.orgId,
-    userId: auth.userId,
+    member: memberFromAuth(auth),
     triggerId: params.id,
   });
   if (!trigger) {
@@ -155,7 +158,6 @@ const updateTriggerInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         triggerId: params.id,
-        agentId: bodyResult.data.agentId,
         schedule: bodyResult.data.schedule,
       },
       signal,

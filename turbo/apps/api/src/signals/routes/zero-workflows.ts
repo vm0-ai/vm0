@@ -1,36 +1,42 @@
+import { randomBytes } from "node:crypto";
+
 import { command, computed } from "ccstate";
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import {
-  zeroWorkflowAgents,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import { and, eq, inArray } from "drizzle-orm";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import { conflict, notFound } from "../../lib/error";
+import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
+import { postAutomationUserMessage } from "../services/zero-chat-automation-message.service";
+import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
-import { disableTriggersForDetachedAgent } from "../services/zero-workflow-trigger.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
+import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
 import {
-  loadVisibleWorkflow,
-  loadWorkflowByName,
+  loadVisibleWorkflowById,
   requireWorkflowPermission,
   workflowSummary,
   zeroWorkflowList,
+  type WorkflowAgentInfo,
   type WorkflowMember,
+  type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route";
 
@@ -60,14 +66,16 @@ function forbidden(message: string) {
   };
 }
 
-function workflowNotFound(name: string) {
-  return notFound(`Workflow not found: ${name}`);
+function workflowNotFound(workflowId: string) {
+  return notFound(`Workflow not found: ${workflowId}`);
 }
 
-function publicWorkflowAdminRequired(action: string, member: WorkflowMember) {
-  return member.role === "admin"
-    ? null
-    : forbidden(`Only org admins can ${action}`);
+interface ConfigurableAgent {
+  readonly id: string;
+  readonly owner: string;
+  readonly visibility: "public" | "private";
+  readonly name: string;
+  readonly displayName: string | null;
 }
 
 async function loadAgentForConfiguration(
@@ -76,12 +84,14 @@ async function loadAgentForConfiguration(
     readonly orgId: string;
     readonly agentId: string;
   },
-) {
+): Promise<ConfigurableAgent | null> {
   const [agent] = await db
     .select({
       id: zeroAgents.id,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
     })
     .from(zeroAgents)
     .where(
@@ -92,33 +102,7 @@ async function loadAgentForConfiguration(
   return agent ?? null;
 }
 
-async function loadAgentsForConfiguration(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly agentIds: readonly string[];
-  },
-) {
-  if (args.agentIds.length === 0) {
-    return [];
-  }
-
-  return await db
-    .select({
-      id: zeroAgents.id,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-    })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, args.orgId),
-        inArray(zeroAgents.id, [...args.agentIds]),
-      ),
-    );
-}
-
-function requireAgentConfigurationPermission(
+function requireAgentWritePermission(
   agent: { readonly owner: string; readonly visibility: "public" | "private" },
   member: WorkflowMember,
   action: string,
@@ -128,56 +112,20 @@ function requireAgentConfigurationPermission(
   });
 }
 
-function requireWorkflowAttachmentPermission(
-  workflow: { readonly visibility: "public" | "private" },
-  agent: { readonly owner: string; readonly visibility: "public" | "private" },
-  member: WorkflowMember,
-  action: string,
-) {
-  if (workflow.visibility === "private" && agent.visibility === "public") {
-    return null;
-  }
-
-  return requireAgentConfigurationPermission(agent, member, action);
-}
-
-async function currentAttachmentAgentIds(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly workflowId: string;
-  },
-): Promise<readonly string[]> {
-  const rows = await db
-    .select({ agentId: zeroWorkflowAgents.agentId })
-    .from(zeroWorkflowAgents)
-    .where(
-      and(
-        eq(zeroWorkflowAgents.orgId, args.orgId),
-        eq(zeroWorkflowAgents.workflowId, args.workflowId),
-      ),
-    );
-
-  return rows.map((row) => {
-    return row.agentId;
-  });
-}
-
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
 const updateWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.update);
-const attachWorkflowAgentBody$ = bodyResultOf(
-  zeroWorkflowAgentsContract.attach,
-);
-const setWorkflowAgentsBody$ = bodyResultOf(zeroWorkflowAgentsContract.set);
+const copyWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.copy);
 
 const listWorkflowsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const query = get(queryOf(zeroWorkflowsCollectionContract.list));
   const workflows = await get(
     zeroWorkflowList({
       orgId: auth.orgId,
       member: memberFromAuth(auth),
+      ...(query.agentId ? { agentId: query.agentId } : {}),
     }),
   );
   return { status: 200 as const, body: [...workflows] };
@@ -195,15 +143,6 @@ const createWorkflowInner$ = command(
 
     const body = bodyResult.data;
     const visibility = body.visibility ?? "private";
-    if (visibility === "public") {
-      const adminRequired = publicWorkflowAdminRequired(
-        "create public workflows",
-        member,
-      );
-      if (adminRequired) {
-        return adminRequired;
-      }
-    }
 
     if (SEED_SKILLS.includes(body.name)) {
       return conflict(
@@ -212,52 +151,80 @@ const createWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const existingWorkflow = await loadWorkflowByName(writeDb, {
+    const agent = await loadAgentForConfiguration(writeDb, {
       orgId: auth.orgId,
-      name: body.name,
+      agentId: body.agentId,
     });
     signal.throwIfAborted();
-
-    if (existingWorkflow) {
-      return conflict(
-        `Workflow "${body.name}" already exists in this organization`,
-      );
+    if (!agent) {
+      return notFound(`Agent not found: ${body.agentId}`);
     }
 
-    await writeDb.insert(zeroWorkflows).values({
-      orgId: auth.orgId,
-      name: body.name,
-      visibility,
-      ownerUserId: auth.userId,
-      displayName: body.displayName ?? null,
-      description: body.description ?? null,
-      createdBy: auth.userId,
-    });
-    signal.throwIfAborted();
+    const permissionError = requireAgentWritePermission(
+      agent,
+      member,
+      "create workflows on this agent",
+    );
+    if (permissionError) {
+      return permissionError;
+    }
 
+    const [inserted] = await writeDb
+      .insert(zeroWorkflows)
+      .values({
+        orgId: auth.orgId,
+        agentId: agent.id,
+        name: body.name,
+        visibility,
+        type: "workflow",
+        instruction: body.instruction ?? null,
+        ownerUserId: auth.userId,
+        displayName: body.displayName ?? null,
+        description: body.description ?? null,
+        createdBy: auth.userId,
+      })
+      .returning({ id: zeroWorkflows.id });
+    signal.throwIfAborted();
+    if (!inserted) {
+      throw new Error("Failed to create workflow");
+    }
+
+    const skillMd = synthesizeWorkflowSkillMd({
+      name: body.name,
+      description: body.description ?? null,
+      instruction: body.instruction ?? null,
+    });
     await set(
       uploadVolumeServerSide$,
       {
         orgId: auth.orgId,
-        storageName: getCustomSkillStorageName(body.name),
-        files: body.files,
+        storageName: getCustomSkillStorageName(inserted.id),
+        files: [
+          { path: "SKILL.md", content: skillMd },
+          ...(body.files ?? []).map((file) => {
+            return { path: file.path, content: file.content };
+          }),
+        ],
       },
       signal,
     );
     signal.throwIfAborted();
 
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: body.name,
+      member,
+      workflowId: inserted.id,
     });
     signal.throwIfAborted();
-    if (!workflow) {
-      throw new Error(`Created workflow not found: ${body.name}`);
+    if (!visible) {
+      throw new Error(`Created workflow not found: ${inserted.id}`);
     }
 
-    const summary = await workflowSummary(writeDb, { workflow, member });
-    signal.throwIfAborted();
+    const summary = workflowSummary({
+      workflow: visible.workflow,
+      agent: visible.agent,
+      member,
+    });
     return { status: 201 as const, body: summary };
   },
 );
@@ -269,11 +236,11 @@ const getWorkflowDetailInner$ = computed(async (get) => {
     zeroWorkflowDetail({
       orgId: auth.orgId,
       member: memberFromAuth(auth),
-      workflowName: params.name,
+      workflowId: params.workflowId,
     }),
   );
   if (!result) {
-    return workflowNotFound(params.name);
+    return workflowNotFound(params.workflowId);
   }
   return { status: 200 as const, body: result };
 });
@@ -290,18 +257,19 @@ const updateWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: params.name,
+      member,
+      workflowId: params.workflowId,
     });
     signal.throwIfAborted();
-    if (!workflow) {
-      return workflowNotFound(params.name);
+    if (!visible) {
+      return workflowNotFound(params.workflowId);
     }
 
     const permissionError = requireWorkflowPermission(
-      workflow,
+      visible.workflow,
+      visible.agent,
       member,
       "update workflow",
     );
@@ -309,41 +277,25 @@ const updateWorkflowInner$ = command(
       return permissionError;
     }
 
-    if (bodyResult.data.visibility === "public") {
-      const adminRequired = publicWorkflowAdminRequired(
-        "make workflows public",
-        member,
-      );
-      if (adminRequired) {
-        return adminRequired;
-      }
-    }
-
-    const content = await set(
+    await set(
       updateZeroWorkflow$,
-      { workflow, body: bodyResult.data },
+      { workflow: visible.workflow, body: bodyResult.data },
       signal,
     );
     signal.throwIfAborted();
 
-    const updatedWorkflow = await loadWorkflowByName(writeDb, {
-      orgId: auth.orgId,
-      name: params.name,
-    });
+    const detail = await get(
+      zeroWorkflowDetail({
+        orgId: auth.orgId,
+        member,
+        workflowId: params.workflowId,
+      }),
+    );
     signal.throwIfAborted();
-    if (!updatedWorkflow) {
-      return workflowNotFound(params.name);
+    if (!detail) {
+      return workflowNotFound(params.workflowId);
     }
-
-    const summary = await workflowSummary(writeDb, {
-      workflow: updatedWorkflow,
-      member,
-    });
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: { ...summary, ...content },
-    };
+    return { status: 200 as const, body: detail };
   },
 );
 
@@ -354,18 +306,19 @@ const deleteWorkflowInner$ = command(
     const params = get(pathParamsOf(zeroWorkflowsDetailContract.delete));
 
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: params.name,
+      member,
+      workflowId: params.workflowId,
     });
     signal.throwIfAborted();
-    if (!workflow) {
-      return workflowNotFound(params.name);
+    if (!visible) {
+      return workflowNotFound(params.workflowId);
     }
 
     const permissionError = requireWorkflowPermission(
-      workflow,
+      visible.workflow,
+      visible.agent,
       member,
       "delete workflow",
     );
@@ -375,286 +328,490 @@ const deleteWorkflowInner$ = command(
 
     const deleted = await set(
       deleteZeroWorkflow$,
-      { orgId: auth.orgId, workflowName: params.name },
+      { orgId: auth.orgId, workflowId: params.workflowId },
       signal,
     );
     signal.throwIfAborted();
 
     if (!deleted) {
-      return workflowNotFound(params.name);
+      return workflowNotFound(params.workflowId);
     }
 
     return { status: 204 as const, body: undefined };
   },
 );
 
-const listWorkflowAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const member = memberFromAuth(auth);
-  const params = get(pathParamsOf(zeroWorkflowAgentsContract.list));
-  const db = get(db$);
-  const workflow = await loadVisibleWorkflow(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    name: params.name,
-  });
-  if (!workflow) {
-    return workflowNotFound(params.name);
-  }
-
-  const summary = await workflowSummary(db, { workflow, member });
-  return { status: 200 as const, body: summary.attachedAgents };
-});
-
-const attachWorkflowAgentInner$ = command(
+const copyWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowAgentsContract.attach));
-    const bodyResult = await get(attachWorkflowAgentBody$);
+    const params = get(pathParamsOf(zeroWorkflowsDetailContract.copy));
+    const bodyResult = await get(copyWorkflowBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
 
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: params.name,
+      member,
+      workflowId: params.workflowId,
     });
     signal.throwIfAborted();
-    if (!workflow) {
-      return workflowNotFound(params.name);
+    if (!source) {
+      return workflowNotFound(params.workflowId);
     }
 
-    const workflowPermissionError = requireWorkflowPermission(
-      workflow,
-      member,
-      "attach workflow to agents",
-    );
-    if (workflowPermissionError) {
-      return workflowPermissionError;
-    }
-
-    const agent = await loadAgentForConfiguration(writeDb, {
+    const targetAgent = await loadAgentForConfiguration(writeDb, {
       orgId: auth.orgId,
-      agentId: bodyResult.data.agentId,
+      agentId: bodyResult.data.toAgentId,
     });
     signal.throwIfAborted();
-    if (!agent) {
-      return notFound(`Agent not found: ${bodyResult.data.agentId}`);
+    if (!targetAgent) {
+      return notFound(`Agent not found: ${bodyResult.data.toAgentId}`);
     }
 
-    const agentPermissionError = requireWorkflowAttachmentPermission(
-      workflow,
-      agent,
+    const permissionError = requireAgentWritePermission(
+      targetAgent,
       member,
-      "attach workflow to this agent",
+      "copy workflows onto this agent",
     );
-    if (agentPermissionError) {
-      return agentPermissionError;
+    if (permissionError) {
+      return permissionError;
     }
 
-    await writeDb
-      .insert(zeroWorkflowAgents)
+    // A copy is a fork owned by the caller: a new private workflow under the
+    // target agent, carrying the source instruction/metadata and volume files.
+    const [inserted] = await writeDb
+      .insert(zeroWorkflows)
       .values({
         orgId: auth.orgId,
-        workflowId: workflow.id,
-        agentId: agent.id,
+        agentId: targetAgent.id,
+        name: source.workflow.name,
+        visibility: "private",
+        type: "workflow",
+        instruction: source.workflow.instruction,
+        ownerUserId: auth.userId,
+        displayName: source.workflow.displayName,
+        description: source.workflow.description,
         createdBy: auth.userId,
       })
-      .onConflictDoNothing();
+      .returning({ id: zeroWorkflows.id });
+    signal.throwIfAborted();
+    if (!inserted) {
+      throw new Error("Failed to copy workflow");
+    }
+
+    // Clone the source volume: re-synthesize SKILL.md from the (cloned) DB
+    // fields and carry over the supplementary files verbatim.
+    const sourceFiles = await loadWorkflowVolumeFiles(get, {
+      orgId: auth.orgId,
+      workflowId: source.workflow.id,
+    });
+    signal.throwIfAborted();
+    const attachedFiles = sourceFiles
+      .filter((file) => file.path !== "SKILL.md")
+      .map((file) => {
+        return { path: file.path, content: file.content };
+      });
+    const skillMd = synthesizeWorkflowSkillMd({
+      name: source.workflow.name,
+      description: source.workflow.description,
+      instruction: source.workflow.instruction,
+    });
+    await set(
+      uploadVolumeServerSide$,
+      {
+        orgId: auth.orgId,
+        storageName: getCustomSkillStorageName(inserted.id),
+        files: [{ path: "SKILL.md", content: skillMd }, ...attachedFiles],
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
-    const summary = await workflowSummary(writeDb, { workflow, member });
+    const visible = await loadVisibleWorkflowById(writeDb, {
+      orgId: auth.orgId,
+      member,
+      workflowId: inserted.id,
+    });
     signal.throwIfAborted();
-    return { status: 200 as const, body: summary };
+    if (!visible) {
+      throw new Error(`Copied workflow not found: ${inserted.id}`);
+    }
+
+    const summary = workflowSummary({
+      workflow: visible.workflow,
+      agent: visible.agent,
+      member,
+    });
+    return { status: 201 as const, body: summary };
   },
 );
 
-const setWorkflowAgentsInner$ = command(
+function generateCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
+const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const member = memberFromAuth(auth);
+  const params = get(pathParamsOf(zeroWorkflowsDetailContract.run));
+
+  const writeDb = set(writeDb$);
+  const visible = await loadVisibleWorkflowById(writeDb, {
+    orgId: auth.orgId,
+    member,
+    workflowId: params.workflowId,
+  });
+  signal.throwIfAborted();
+  if (!visible) {
+    return workflowNotFound(params.workflowId);
+  }
+  const { workflow, agent } = visible;
+
+  // The workflow is run on its owning agent; the caller must be able to run
+  // that agent (public agents are runnable by any member, private ones only by
+  // their owner).
+  if (agent.visibility === "private" && agent.owner !== auth.userId) {
+    return forbidden("Only the private agent owner can run this agent");
+  }
+
+  const now = nowDate();
+  const [thread] = await writeDb
+    .insert(chatThreads)
+    .values({
+      userId: auth.userId,
+      agentComposeId: agent.id,
+      title: workflow.displayName ?? workflow.name,
+      lastMessageAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Failed to create workflow run chat thread");
+  }
+
+  // Invoking a workflow is exactly typing its slash command in chat.
+  const prompt = `/${workflow.name}`;
+  const result = await set(
+    createZeroRun$,
+    {
+      auth: {
+        orgId: auth.orgId,
+        orgRole: auth.orgRole ?? "member",
+        userId: auth.userId,
+        tokenType: "session",
+      },
+      body: { prompt, agentId: agent.id },
+      apiStartTime: now.getTime(),
+      triggerSource: "web",
+      chatThreadId: thread.id,
+      callbacks: [
+        {
+          internalKind: "chat",
+          secret: generateCallbackSecret(),
+          payload: { threadId: thread.id, agentId: agent.id },
+        },
+      ],
+      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.status !== 201) {
+    return result;
+  }
+
+  await postAutomationUserMessage({
+    db: writeDb,
+    threadId: thread.id,
+    userId: auth.userId,
+    runId: result.body.runId,
+    prompt,
+    appendQueueMarker: result.body.status === "queued",
+  });
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: { chatThreadId: thread.id, runId: result.body.runId },
+  };
+});
+
+interface VisibilityTransition {
+  readonly workflow: WorkflowRow;
+  readonly agent: WorkflowAgentInfo;
+  readonly member: WorkflowMember;
+}
+
+async function applyVisibilityUpdate(
+  db: Db,
+  workflowId: string,
+  patch: {
+    readonly visibility?: "public" | "private";
+    readonly requestToPublish?: boolean;
+  },
+): Promise<void> {
+  await db
+    .update(zeroWorkflows)
+    .set({ ...patch, updatedAt: nowDate() })
+    .where(eq(zeroWorkflows.id, workflowId));
+}
+
+function summaryFrom(
+  args: VisibilityTransition,
+  patch: {
+    readonly visibility?: "public" | "private";
+    readonly requestToPublish?: boolean;
+  },
+) {
+  const updatedWorkflow: WorkflowRow = {
+    ...args.workflow,
+    ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
+    ...(patch.requestToPublish !== undefined
+      ? { requestToPublish: patch.requestToPublish }
+      : {}),
+  };
+  return workflowSummary({
+    workflow: updatedWorkflow,
+    agent: args.agent,
+    member: args.member,
+  });
+}
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+
+async function loadVisibilityTransition(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+    readonly workflowId: string;
+  },
+): Promise<VisibilityTransition | NotFoundResponse> {
+  const visible = await loadVisibleWorkflowById(db, {
+    orgId: args.orgId,
+    member: args.member,
+    workflowId: args.workflowId,
+  });
+  if (!visible) {
+    return workflowNotFound(args.workflowId);
+  }
+  return { ...visible, member: args.member };
+}
+
+const requestPublishInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowAgentsContract.set));
-    const bodyResult = await get(setWorkflowAgentsBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
+    const params = get(
+      pathParamsOf(zeroWorkflowVisibilityContract.requestPublish),
+    );
 
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const loaded = await loadVisibilityTransition(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: params.name,
-    });
-    signal.throwIfAborted();
-    if (!workflow) {
-      return workflowNotFound(params.name);
-    }
-
-    const workflowPermissionError = requireWorkflowPermission(
-      workflow,
       member,
-      "update workflow agent attachments",
-    );
-    if (workflowPermissionError) {
-      return workflowPermissionError;
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if ("status" in loaded) {
+      return loaded;
+    }
+    const { workflow, agent } = loaded;
+
+    if (workflow.ownerUserId !== member.userId) {
+      return forbidden("Only the workflow owner can request to publish");
+    }
+    if (workflow.visibility === "public") {
+      return { status: 200 as const, body: summaryFrom(loaded, {}) };
     }
 
-    const requestedAgentIds = [...new Set(bodyResult.data.agentIds)];
-    const existingAgentIds = await currentAttachmentAgentIds(writeDb, {
-      orgId: auth.orgId,
-      workflowId: workflow.id,
-    });
-    signal.throwIfAborted();
-    const permissionAgentIds = [
-      ...new Set([...existingAgentIds, ...requestedAgentIds]),
-    ];
-    const agents = await loadAgentsForConfiguration(writeDb, {
-      orgId: auth.orgId,
-      agentIds: permissionAgentIds,
-    });
-    signal.throwIfAborted();
-
-    const agentById = new Map(
-      agents.map((agent) => {
-        return [agent.id, agent];
-      }),
-    );
-    for (const agentId of permissionAgentIds) {
-      const agent = agentById.get(agentId);
-      if (!agent) {
-        return notFound(`Agent not found: ${agentId}`);
-      }
-
-      const agentPermissionError = requireWorkflowAttachmentPermission(
-        workflow,
-        agent,
-        member,
-        "update workflow attachments on this agent",
-      );
-      if (agentPermissionError) {
-        return agentPermissionError;
-      }
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(zeroWorkflowAgents)
-        .where(
-          and(
-            eq(zeroWorkflowAgents.orgId, auth.orgId),
-            eq(zeroWorkflowAgents.workflowId, workflow.id),
-          ),
-        );
-
-      if (requestedAgentIds.length > 0) {
-        await tx.insert(zeroWorkflowAgents).values(
-          requestedAgentIds.map((agentId) => {
-            return {
-              orgId: auth.orgId,
-              workflowId: workflow.id,
-              agentId,
-              createdBy: auth.userId,
-            };
-          }),
-        );
-      }
-    });
-    signal.throwIfAborted();
-
-    // Pause triggers whose agent was removed from the workflow's attachments.
-    const removedAgentIds = existingAgentIds.filter((agentId) => {
-      return !requestedAgentIds.includes(agentId);
-    });
-    for (const agentId of removedAgentIds) {
-      await disableTriggersForDetachedAgent(writeDb, {
-        orgId: auth.orgId,
-        workflowId: workflow.id,
-        agentId,
+    // An owner who can write the host agent publishes directly; otherwise the
+    // request is queued for a reviewer.
+    const canPublishDirectly =
+      requireAgentWritePermission(agent, member, "publish") === null;
+    if (canPublishDirectly) {
+      await applyVisibilityUpdate(writeDb, workflow.id, {
+        visibility: "public",
+        requestToPublish: false,
       });
       signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: summaryFrom(loaded, {
+          visibility: "public",
+          requestToPublish: false,
+        }),
+      };
     }
 
-    const summary = await workflowSummary(writeDb, { workflow, member });
+    await applyVisibilityUpdate(writeDb, workflow.id, {
+      requestToPublish: true,
+    });
     signal.throwIfAborted();
-    return { status: 200 as const, body: summary };
+    return {
+      status: 200 as const,
+      body: summaryFrom(loaded, { requestToPublish: true }),
+    };
   },
 );
 
-const detachWorkflowAgentInner$ = command(
+const cancelPublishRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowAgentsContract.detach));
+    const params = get(
+      pathParamsOf(zeroWorkflowVisibilityContract.cancelPublishRequest),
+    );
 
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const loaded = await loadVisibilityTransition(writeDb, {
       orgId: auth.orgId,
-      userId: auth.userId,
-      name: params.name,
-    });
-    signal.throwIfAborted();
-    if (!workflow) {
-      return workflowNotFound(params.name);
-    }
-
-    const workflowPermissionError = requireWorkflowPermission(
-      workflow,
       member,
-      "detach workflow from agents",
-    );
-    if (workflowPermissionError) {
-      return workflowPermissionError;
-    }
-
-    const agent = await loadAgentForConfiguration(writeDb, {
-      orgId: auth.orgId,
-      agentId: params.agentId,
+      workflowId: params.workflowId,
     });
     signal.throwIfAborted();
-    if (!agent) {
-      return notFound(`Agent not found: ${params.agentId}`);
+    if ("status" in loaded) {
+      return loaded;
+    }
+    if (loaded.workflow.ownerUserId !== member.userId) {
+      return forbidden("Only the workflow owner can cancel a publish request");
     }
 
-    const agentPermissionError = requireWorkflowAttachmentPermission(
-      workflow,
-      agent,
-      member,
-      "detach workflow from this agent",
-    );
-    if (agentPermissionError) {
-      return agentPermissionError;
-    }
-
-    await writeDb
-      .delete(zeroWorkflowAgents)
-      .where(
-        and(
-          eq(zeroWorkflowAgents.orgId, auth.orgId),
-          eq(zeroWorkflowAgents.workflowId, workflow.id),
-          eq(zeroWorkflowAgents.agentId, params.agentId),
-        ),
-      );
-    signal.throwIfAborted();
-
-    // Triggers bound to the now-detached agent can no longer inject the
-    // workflow skill — pause them until the workflow is re-attached.
-    await disableTriggersForDetachedAgent(writeDb, {
-      orgId: auth.orgId,
-      workflowId: workflow.id,
-      agentId: params.agentId,
+    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
+      requestToPublish: false,
     });
     signal.throwIfAborted();
-
-    const summary = await workflowSummary(writeDb, { workflow, member });
-    signal.throwIfAborted();
-    return { status: 200 as const, body: summary };
+    return {
+      status: 200 as const,
+      body: summaryFrom(loaded, { requestToPublish: false }),
+    };
   },
 );
+
+const approvePublishInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = memberFromAuth(auth);
+    const params = get(
+      pathParamsOf(zeroWorkflowVisibilityContract.approvePublish),
+    );
+
+    const writeDb = set(writeDb$);
+    const loaded = await loadVisibilityTransition(writeDb, {
+      orgId: auth.orgId,
+      member,
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if ("status" in loaded) {
+      return loaded;
+    }
+    const reviewError = requireAgentWritePermission(
+      loaded.agent,
+      member,
+      "approve publish requests",
+    );
+    if (reviewError) {
+      return reviewError;
+    }
+
+    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
+      visibility: "public",
+      requestToPublish: false,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: summaryFrom(loaded, {
+        visibility: "public",
+        requestToPublish: false,
+      }),
+    };
+  },
+);
+
+const rejectPublishInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = memberFromAuth(auth);
+    const params = get(
+      pathParamsOf(zeroWorkflowVisibilityContract.rejectPublish),
+    );
+
+    const writeDb = set(writeDb$);
+    const loaded = await loadVisibilityTransition(writeDb, {
+      orgId: auth.orgId,
+      member,
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if ("status" in loaded) {
+      return loaded;
+    }
+    const reviewError = requireAgentWritePermission(
+      loaded.agent,
+      member,
+      "reject publish requests",
+    );
+    if (reviewError) {
+      return reviewError;
+    }
+
+    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
+      requestToPublish: false,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: summaryFrom(loaded, { requestToPublish: false }),
+    };
+  },
+);
+
+const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const member = memberFromAuth(auth);
+  const params = get(pathParamsOf(zeroWorkflowVisibilityContract.demote));
+
+  const writeDb = set(writeDb$);
+  const loaded = await loadVisibilityTransition(writeDb, {
+    orgId: auth.orgId,
+    member,
+    workflowId: params.workflowId,
+  });
+  signal.throwIfAborted();
+  if ("status" in loaded) {
+    return loaded;
+  }
+  const reviewError = requireAgentWritePermission(
+    loaded.agent,
+    member,
+    "demote public workflows",
+  );
+  if (reviewError) {
+    return reviewError;
+  }
+
+  await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
+    visibility: "private",
+    requestToPublish: false,
+  });
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: summaryFrom(loaded, {
+      visibility: "private",
+      requestToPublish: false,
+    }),
+  };
+});
 
 export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
   {
@@ -678,19 +835,31 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
     handler: authRoute(workflowWriteAuth, deleteWorkflowInner$),
   },
   {
-    route: zeroWorkflowAgentsContract.list,
-    handler: authRoute(workflowReadAuth, listWorkflowAgentsInner$),
+    route: zeroWorkflowsDetailContract.copy,
+    handler: authRoute(workflowWriteAuth, copyWorkflowInner$),
   },
   {
-    route: zeroWorkflowAgentsContract.attach,
-    handler: authRoute(workflowWriteAuth, attachWorkflowAgentInner$),
+    route: zeroWorkflowsDetailContract.run,
+    handler: authRoute(workflowWriteAuth, runWorkflowInner$),
   },
   {
-    route: zeroWorkflowAgentsContract.set,
-    handler: authRoute(workflowWriteAuth, setWorkflowAgentsInner$),
+    route: zeroWorkflowVisibilityContract.requestPublish,
+    handler: authRoute(workflowWriteAuth, requestPublishInner$),
   },
   {
-    route: zeroWorkflowAgentsContract.detach,
-    handler: authRoute(workflowWriteAuth, detachWorkflowAgentInner$),
+    route: zeroWorkflowVisibilityContract.cancelPublishRequest,
+    handler: authRoute(workflowWriteAuth, cancelPublishRequestInner$),
+  },
+  {
+    route: zeroWorkflowVisibilityContract.approvePublish,
+    handler: authRoute(workflowWriteAuth, approvePublishInner$),
+  },
+  {
+    route: zeroWorkflowVisibilityContract.rejectPublish,
+    handler: authRoute(workflowWriteAuth, rejectPublishInner$),
+  },
+  {
+    route: zeroWorkflowVisibilityContract.demote,
+    handler: authRoute(workflowWriteAuth, demoteInner$),
   },
 ];
