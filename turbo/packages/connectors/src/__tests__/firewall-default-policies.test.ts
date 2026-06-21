@@ -116,6 +116,22 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Calendar read permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-calendar");
+
+    expect(policy.policies["calendars.read"]).toBe("allow");
+    expect(policy.policies["events.read"]).toBe("allow");
+    expect(policy.policies["calendar-list.read"]).toBe("allow");
+    expect(policy.policies["settings.read"]).toBe("allow");
+    expect(policy.policies["freebusy.query"]).toBe("allow");
+    expect(policy.policies["colors.read"]).toBe("allow");
+    expect(policy.policies["acl.read"]).toBe("deny");
+    expect(policy.policies["events.write"]).toBe("deny");
+    expect(policy.policies["calendar-list.write"]).toBe("deny");
+    expect(policy.policies["notifications.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -186,11 +202,13 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(null, [
       "cloudflare",
       "google-analytics",
+      "google-calendar",
       "google-cloud",
       "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-analytics"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-calendar"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });

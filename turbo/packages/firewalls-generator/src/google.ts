@@ -1,10 +1,10 @@
 /**
  * Generate Google API firewall configs from Google Discovery API documents.
  *
- * Most Google APIs (Sheets, Docs, Drive, Calendar) use the same Discovery API
- * format: resources -> methods -> {path, httpMethod, scopes}. Gmail uses this
- * Discovery data for route coverage, but has a dedicated resource-oriented
- * permission generator.
+ * Most Google APIs (Sheets, Docs, Meet, Search Console, YouTube) use the same
+ * Discovery API format: resources -> methods -> {path, httpMethod, scopes}.
+ * Drive, Gmail, and Calendar use Discovery data for route coverage, but have
+ * dedicated resource-oriented permission generators.
  */
 
 import {
@@ -521,18 +521,6 @@ function bearerAuth(placeholderKey: string): GoogleFirewallAuth {
 }
 
 const CONFIGS: Record<string, GoogleFirewallConfig> = {
-  "google-calendar": {
-    discoveryUrls: [
-      "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
-    ],
-    baseUrl: "https://www.googleapis.com/calendar",
-    stripPrefix: "",
-    serviceName: "google-calendar",
-    serviceDescription: "Google Calendar API",
-    placeholderKey: "GOOGLE_CALENDAR_TOKEN",
-    placeholderValue: OAUTH_PLACEHOLDER,
-    auth: bearerAuth("GOOGLE_CALENDAR_TOKEN"),
-  },
   "google-docs": {
     discoveryUrls: ["https://docs.googleapis.com/$discovery/rest?version=v1"],
     baseUrl: "https://docs.googleapis.com",

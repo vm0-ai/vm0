@@ -253,6 +253,7 @@ import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
 import { generate as generateGoogleAnalytics } from "./google-analytics";
+import { generate as generateGoogleCalendar } from "./google-calendar";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
@@ -529,6 +530,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
+  "google-calendar": generateGoogleCalendar,
   "google-drive": generateGoogleDrive,
   gmail: generateGmail,
 };
