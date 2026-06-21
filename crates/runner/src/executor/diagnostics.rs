@@ -1,3 +1,25 @@
+//! Runner executor diagnostics and post-job log preservation.
+//!
+//! This module owns best-effort diagnostics gathered around an agent process:
+//! environment key summaries, guest-authored error and failure diagnostic files,
+//! in-VM abnormal-exit resource probes, host and guest OOM checks, stdout stream
+//! truncation and overflow markers, and post-job guest log copies.
+//!
+//! Environment diagnostics are deliberately key-only. They may record counts,
+//! sanitized key names, omitted-key counts, and suspicious key names, but they
+//! must not log environment values. This keeps operator debugging signals
+//! separate from secret-bearing user, model, or connector environment data.
+//!
+//! Diagnostic collection should not mask the original run result. Failed reads,
+//! failed probes, and failed log copies are reported to operator logs when useful
+//! and otherwise remain best-effort. User-visible failure enrichment must flow
+//! through the existing structured failure fields such as `ExecutionFailure`
+//! and `ResourceFailureDiagnostics`.
+//!
+//! Real-time stdout stream logs and post-job guest log copies preserve different
+//! sources. The stream log is host-captured supervised process output; copied
+//! guest logs are guest-authored files preserved after the job.
+
 use std::collections::HashMap;
 use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
