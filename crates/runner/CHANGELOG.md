@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.125.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.1...runner-rs-v0.125.2) (2026-06-21)
+
+
+### Refactoring
+
+* expose structured remote exec termination ([#18382](https://github.com/vm0-ai/vm0/issues/18382)) ([7f1dfa6](https://github.com/vm0-ai/vm0/commit/7f1dfa6f58379465d770d0fcf0c43fc7e91d9473))
+
 ## [0.125.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.0...runner-rs-v0.125.1) (2026-06-20)
 
 

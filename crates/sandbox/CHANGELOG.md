@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.9](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.8...sandbox-v0.19.9) (2026-06-21)
+
+
+### Refactoring
+
+* expose structured remote exec termination ([#18382](https://github.com/vm0-ai/vm0/issues/18382)) ([7f1dfa6](https://github.com/vm0-ai/vm0/commit/7f1dfa6f58379465d770d0fcf0c43fc7e91d9473))
+
 ## [0.19.8](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.7...sandbox-v0.19.8) (2026-06-19)
 
 
