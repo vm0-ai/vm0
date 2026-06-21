@@ -427,7 +427,13 @@ export async function completeCurrentGoal(
 
   return {
     kind: "ok",
-    goal: { ...goalResponse(goal.row), active: false, status: "complete" },
+    goal: goalResponse({
+      ...goal.row,
+      workflowActive: false,
+      preference: mergeGoalPreference(goal.row.preference, {
+        stopReason: null,
+      }),
+    }),
   };
 }
 
@@ -468,12 +474,13 @@ export async function blockCurrentGoal(
 
   return {
     kind: "ok",
-    goal: {
-      ...goalResponse(goal.row),
-      active: true,
-      status: "blocked",
-      stopReason: "blocked",
-    },
+    goal: goalResponse({
+      ...goal.row,
+      triggerEnabled: false,
+      preference: mergeGoalPreference(goal.row.preference, {
+        stopReason: "blocked",
+      }),
+    }),
   };
 }
 
@@ -514,7 +521,13 @@ export async function resumeCurrentGoal(
 
   return {
     kind: "ok",
-    goal: { ...goalResponse(goal.row), active: true, status: "active" },
+    goal: goalResponse({
+      ...goal.row,
+      triggerEnabled: true,
+      preference: mergeGoalPreference(goal.row.preference, {
+        stopReason: null,
+      }),
+    }),
   };
 }
 
