@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.167.1](https://github.com/vm0-ai/vm0/compare/api-v1.167.0...api-v1.167.1) (2026-06-21)
+
+
+### Performance Improvements
+
+* remove metadata-only runtime firewall imports ([#18406](https://github.com/vm0-ai/vm0/issues/18406)) ([521a295](https://github.com/vm0-ai/vm0/commit/521a295b45906b164a0eb7cc01d4c2bc6be4dfc8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.107.1
+    * @vm0/connectors bumped to 1.98.1
+    * @vm0/core bumped to 8.362.1
+    * @vm0/db bumped to 1.60.1
+
 ## [1.167.0](https://github.com/vm0-ai/vm0/compare/api-v1.166.0...api-v1.167.0) (2026-06-21)
 
 

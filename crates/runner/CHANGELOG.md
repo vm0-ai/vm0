@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.125.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.2...runner-rs-v0.125.3) (2026-06-21)
+
+
+### Bug Fixes
+
+* replace google drive firewall scope permissions ([#18417](https://github.com/vm0-ai/vm0/issues/18417)) ([4b55d13](https://github.com/vm0-ai/vm0/commit/4b55d1381db08ec31b307c0d4010c6e0c3ab3462))
+
+
+### Documentation
+
+* **runner:** document executor diagnostics contract ([#18419](https://github.com/vm0-ai/vm0/issues/18419)) ([971ce06](https://github.com/vm0-ai/vm0/commit/971ce06f376fb9fbd8e27fd80882c5fce160be46))
+
 ## [0.125.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.1...runner-rs-v0.125.2) (2026-06-21)
 
 
