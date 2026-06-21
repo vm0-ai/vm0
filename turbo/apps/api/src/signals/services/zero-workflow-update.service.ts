@@ -62,10 +62,10 @@ export const updateZeroWorkflow$ = command(
               return { path: file.path, content: file.content };
             })
           : (
-              await loadWorkflowVolumeFiles(get, {
+              (await loadWorkflowVolumeFiles(get, {
                 orgId: workflow.orgId,
                 workflowId: workflow.id,
-              })
+              })) ?? []
             )
               .filter((file) => {
                 return file.path !== SKILL_FILENAME;

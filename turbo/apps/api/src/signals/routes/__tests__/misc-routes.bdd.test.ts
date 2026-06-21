@@ -180,9 +180,15 @@ describe("MISC-03: workflows lifecycle through public API", () => {
     const memberWorkflowName = `bdd-member-workflow-${randomUUID().slice(0, 8)}`;
     const workflowName = `bdd-workflow-${randomUUID().slice(0, 8)}`;
 
-    // Workflows are agent-scoped (1:N), so each is created under an agent.
+    // Workflows are agent-scoped (1:N) and creating one requires
+    // write-permission on the target agent (owner, or org admin on a public
+    // agent). Admin owns the agent it creates on; the member creates its
+    // private workflow on its own agent.
     const agent = await base.createAgent(admin, {
       displayName: "BDD workflows agent",
+    });
+    const memberAgent = await base.createAgent(member, {
+      displayName: "BDD member workflows agent",
     });
 
     const initialWorkflows = await api.listWorkflows(admin);
@@ -194,7 +200,7 @@ describe("MISC-03: workflows lifecycle through public API", () => {
 
     const memberCreated = await api.createWorkflow(
       member,
-      agent.agentId,
+      memberAgent.agentId,
       memberWorkflowName,
       "# Member private workflow",
       [201],

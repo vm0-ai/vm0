@@ -296,6 +296,9 @@ describe("zero goals", () => {
     );
     expect(read.body).toStrictEqual(created.body);
 
+    // Goals are managed via `zero goal`, not the workflow registry: the
+    // workflow list endpoint excludes `type = 'goal'` rows. The goal lifecycle
+    // is exercised through the goal endpoints below, never the list.
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const workflows = await accept(
       workflowsClient().list({
@@ -306,7 +309,7 @@ describe("zero goals", () => {
     const workflowNames = workflows.body.map((workflow) => {
       return workflow.name;
     });
-    expect(workflowNames).toContain(goalRows?.workflowName);
+    expect(workflowNames).not.toContain(goalRows?.workflowName);
 
     const blocked = await accept(
       goalsClient().block({ headers: headers(fixture) }),

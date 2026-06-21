@@ -24,9 +24,12 @@ function normalizePath(p: string): string {
   return p.replace(/^\.\//, "");
 }
 
+const EMPTY_S3_BODY_MESSAGE = "S3 object body is empty";
+
 function isMissingS3ObjectError(error: unknown): boolean {
   const candidate = error as {
     readonly name?: string;
+    readonly message?: string;
     readonly Code?: string;
     readonly code?: string;
     readonly $metadata?: { readonly httpStatusCode?: number };
@@ -35,6 +38,7 @@ function isMissingS3ObjectError(error: unknown): boolean {
   return (
     code === "NoSuchKey" ||
     code === "NotFound" ||
+    candidate.message === EMPTY_S3_BODY_MESSAGE ||
     (candidate.name === "NotFound" &&
       candidate.$metadata?.httpStatusCode === 404)
   );
@@ -42,13 +46,18 @@ function isMissingS3ObjectError(error: unknown): boolean {
 
 /**
  * Load every file (path + content + size) from a workflow's volume, keyed by
- * the workflow id. Returns an empty list when the volume does not exist yet.
- * The synthesized SKILL.md is included; callers filter it out as needed.
+ * the workflow id. The synthesized SKILL.md is included; callers filter it out
+ * as needed.
+ *
+ * Returns `null` when the volume's backing storage is absent or unloadable:
+ * the workflow has no volume yet (no storage row / head version), or the
+ * head version's S3 objects are missing/empty. This is distinct from a volume
+ * that loads successfully but contains no files (returns `[]`).
  */
 export async function loadWorkflowVolumeFiles(
   get: <T>(computedValue: Computed<T>) => T,
   args: { readonly orgId: string; readonly workflowId: string },
-): Promise<readonly WorkflowVolumeFile[]> {
+): Promise<readonly WorkflowVolumeFile[] | null> {
   const storageName = getCustomSkillStorageName(args.workflowId);
   const [storage] = await get(db$)
     .select({ headVersionId: storages.headVersionId })
@@ -64,7 +73,7 @@ export async function loadWorkflowVolumeFiles(
     .limit(1);
 
   if (!storage?.headVersionId) {
-    return [];
+    return null;
   }
 
   const [version] = await get(db$)
@@ -74,12 +83,12 @@ export async function loadWorkflowVolumeFiles(
     .limit(1);
 
   if (!version) {
-    return [];
+    return null;
   }
 
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   if (!bucket) {
-    return [];
+    return null;
   }
 
   const manifestResult = await settle(
@@ -87,7 +96,7 @@ export async function loadWorkflowVolumeFiles(
   );
   if (!manifestResult.ok) {
     if (isMissingS3ObjectError(manifestResult.error)) {
-      return [];
+      return null;
     }
     throw manifestResult.error;
   }
@@ -100,7 +109,7 @@ export async function loadWorkflowVolumeFiles(
   const archiveResult = await settle(get(downloadS3Buffer(bucket, archiveKey)));
   if (!archiveResult.ok) {
     if (isMissingS3ObjectError(archiveResult.error)) {
-      return [];
+      return null;
     }
     throw archiveResult.error;
   }

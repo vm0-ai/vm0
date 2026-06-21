@@ -410,7 +410,7 @@ const copyWorkflowInner$ = command(
       workflowId: source.workflow.id,
     });
     signal.throwIfAborted();
-    const attachedFiles = sourceFiles
+    const attachedFiles = (sourceFiles ?? [])
       .filter((file) => {
         return file.path !== "SKILL.md";
       })

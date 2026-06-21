@@ -84,10 +84,26 @@ export function requireWorkflowPermission(
 
 /**
  * SQL visibility predicate over a (workflow JOIN agent) row for the given
- * member: public workflows, the caller's own workflows, and — for agent
- * write-permission holders — private workflows with a pending publish request.
+ * member: public workflows on a visible agent, the caller's own workflows, and
+ * — for agent write-permission holders — private workflows with a pending
+ * publish request.
+ *
+ * A public workflow only counts as "public" to the caller when its owning agent
+ * is itself visible (public agent, or one the caller owns). A public workflow
+ * parked under another user's private agent must stay hidden, so that resolving
+ * it returns 404 rather than leaking the agent's existence via a 403.
  */
 function visibleWorkflowCondition(member: WorkflowMember): SQL {
+  const agentVisibleToMember = or(
+    eq(zeroAgents.visibility, "public"),
+    eq(zeroAgents.owner, member.userId),
+  );
+
+  const publicWorkflowOnVisibleAgent = and(
+    eq(zeroWorkflows.visibility, "public"),
+    agentVisibleToMember,
+  );
+
   const reviewerSeesPending =
     member.role === "admin"
       ? // org admin: pending requests under public agents they can write
@@ -102,7 +118,7 @@ function visibleWorkflowCondition(member: WorkflowMember): SQL {
         );
 
   return or(
-    eq(zeroWorkflows.visibility, "public"),
+    publicWorkflowOnVisibleAgent,
     eq(zeroWorkflows.ownerUserId, member.userId),
     reviewerSeesPending,
   ) as SQL;

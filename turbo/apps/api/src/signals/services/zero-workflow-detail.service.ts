@@ -39,21 +39,24 @@ export function zeroWorkflowDetail(args: {
 
     // The synthesized SKILL.md is derived from the DB instruction; users never
     // see it in the file list, so exclude it from both files and fileContents.
-    const volumeFiles = (
-      await loadWorkflowVolumeFiles(get, {
-        orgId: args.orgId,
-        workflowId: workflow.id,
-      })
-    ).filter((file) => {
+    // A `null` volume (no backing storage, or its objects are missing) surfaces
+    // as `null` files/fileContents, distinct from an empty-but-loaded volume.
+    const loadedVolume = await loadWorkflowVolumeFiles(get, {
+      orgId: args.orgId,
+      workflowId: workflow.id,
+    });
+    const volumeFiles = loadedVolume?.filter((file) => {
       return file.path !== SKILL_FILENAME;
     });
 
-    const files: WorkflowFileMetadata[] = volumeFiles.map((file) => {
-      return { path: file.path, size: file.size };
-    });
-    const fileContents: WorkflowFileEntry[] = volumeFiles.map((file) => {
-      return { path: file.path, content: file.content };
-    });
+    const files: WorkflowFileMetadata[] | null =
+      volumeFiles?.map((file) => {
+        return { path: file.path, size: file.size };
+      }) ?? null;
+    const fileContents: WorkflowFileEntry[] | null =
+      volumeFiles?.map((file) => {
+        return { path: file.path, content: file.content };
+      }) ?? null;
 
     const triggers = await loadWorkflowTriggers(db, {
       orgId: args.orgId,
