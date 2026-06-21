@@ -238,28 +238,7 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
-  it("keeps reconnect reasons hidden when the feature switch is disabled", async () => {
-    mockConnectors([
-      {
-        type: "github",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "authorization_expired_or_revoked",
-      },
-    ]);
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(
-        within(connectorCardByLabel("GitHub")).getByText("Connection expired"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      reconnectReasonHelpButton(connectorCardByLabel("GitHub")),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows reconnect reason tooltip help when the feature switch is enabled", async () => {
+  it("shows reconnect reason tooltip help for known reconnect causes", async () => {
     mockConnectors([
       {
         type: "github",
@@ -271,9 +250,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorReconnectReasons]: true,
-      },
     });
 
     let helpButton: HTMLElement | null = null;
@@ -311,9 +287,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorReconnectReasons]: true,
-      },
     });
 
     await waitFor(() => {

@@ -20,7 +20,6 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -83,7 +82,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -311,7 +309,6 @@ function GlobalConnectorCard({
   onDisconnect,
   onReviewScopes,
   isDisconnecting,
-  showReconnectReasonTooltip,
 }: {
   connector: ConnectorTypeWithStatus;
   isPolling: boolean;
@@ -319,13 +316,11 @@ function GlobalConnectorCard({
   onDisconnect: () => void;
   onReviewScopes?: () => void;
   isDisconnecting: boolean;
-  showReconnectReasonTooltip: boolean;
 }) {
   const status = (() => {
     const connectionStatus = connectorCurrentConnectionStatus(connector);
-    const reconnectReasonTooltip = showReconnectReasonTooltip
-      ? connectorReconnectReasonTooltipText(connector)
-      : null;
+    const reconnectReasonTooltip =
+      connectorReconnectReasonTooltipText(connector);
     if (isPolling) {
       const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
@@ -638,9 +633,6 @@ export function ZeroConnectorsPage() {
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
-  const features = useLastResolved(featureSwitch$);
-  const showReconnectReasonTooltip =
-    features?.[FeatureSwitchKey.ConnectorReconnectReasons] ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
   const activeCategoryId = useGet(activeConnectorCategoryId$);
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
@@ -727,7 +719,6 @@ export function ZeroConnectorsPage() {
         connector={optimisticConnector}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
-        showReconnectReasonTooltip={showReconnectReasonTooltip}
         onConnect={() => {
           return connectHandler(c.type);
         }}
