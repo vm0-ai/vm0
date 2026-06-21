@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -244,14 +245,9 @@ pub async fn run_benchmark(
     let exec_result = result?;
 
     // 6. Print stdout/stderr directly to terminal
-    let stdout = String::from_utf8_lossy(&exec_result.stdout);
-    let stderr = String::from_utf8_lossy(&exec_result.stderr);
-    if !stdout.is_empty() {
-        print!("{stdout}");
-    }
-    if !stderr.is_empty() {
-        eprint!("{stderr}");
-    }
+    let stdout = std::io::stdout();
+    let stderr = std::io::stderr();
+    write_benchmark_exec_output(&mut stdout.lock(), &mut stderr.lock(), &exec_result);
 
     // 7. Propagate exit code
     Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
@@ -270,6 +266,45 @@ fn benchmark_exit_code(exec_result: &SandboxExecResult) -> u8 {
         SandboxExecTermination::Cancelled
         | SandboxExecTermination::StartFailed
         | SandboxExecTermination::WaitFailed => 1,
+    }
+}
+
+fn write_benchmark_exec_output(
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+    result: &SandboxExecResult,
+) {
+    let _ = stdout.write_all(&result.stdout);
+    let _ = stderr.write_all(&result.stderr);
+    let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
+    write_benchmark_terminal_diagnostic(stderr, result, &mut line_open);
+}
+
+fn write_benchmark_terminal_diagnostic(
+    stderr: &mut impl Write,
+    result: &SandboxExecResult,
+    line_open: &mut bool,
+) {
+    let (fallback, include_diagnostic) = match result.termination {
+        SandboxExecTermination::Exited { .. } => (None, false),
+        SandboxExecTermination::TimedOut => (Some("Timeout"), false),
+        SandboxExecTermination::Cancelled => (Some("Cancelled"), true),
+        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => (None, true),
+    };
+
+    if result.stderr.is_empty() {
+        if let Some(message) = fallback {
+            let _ = writeln!(stderr, "{message}");
+            *line_open = false;
+        }
+    } else if include_diagnostic && !result.diagnostic.is_empty() && *line_open {
+        let _ = writeln!(stderr);
+        *line_open = false;
+    }
+
+    if include_diagnostic && !result.diagnostic.is_empty() {
+        let _ = writeln!(stderr, "{}", result.diagnostic);
+        *line_open = false;
     }
 }
 
@@ -494,6 +529,56 @@ mod tests {
             assert!(!err.to_string().contains("secret-value"), "got: {err}");
             assert!(!err.to_string().contains(value), "got: {err}");
         }
+    }
+
+    fn exec_result(
+        termination: SandboxExecTermination,
+        stdout: &[u8],
+        stderr: &[u8],
+        diagnostic: &str,
+    ) -> SandboxExecResult {
+        SandboxExecResult {
+            termination,
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+            diagnostic: diagnostic.to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }
+    }
+
+    #[test]
+    fn benchmark_output_preserves_timeout_stderr_fallback() {
+        let result = exec_result(
+            SandboxExecTermination::TimedOut,
+            b"partial stdout\n",
+            b"",
+            "",
+        );
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert_eq!(stdout, b"partial stdout\n");
+        assert_eq!(stderr, b"Timeout\n");
+    }
+
+    #[test]
+    fn benchmark_output_starts_terminal_diagnostic_on_new_line() {
+        let result = exec_result(
+            SandboxExecTermination::WaitFailed,
+            b"",
+            b"stderr clue",
+            "wait failed",
+        );
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
 
     #[tokio::test]
