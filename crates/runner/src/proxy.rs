@@ -156,11 +156,16 @@ pub struct UsageFlushTarget {
 }
 
 #[derive(Debug, Clone)]
-pub struct UsageFlushRequest {
+struct FlushRequestCore {
     expected_usage_state_id: String,
     usage_state_started_at_ms: u64,
     flush_request_id: String,
     requested_at_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct UsageFlushRequest {
+    core: FlushRequestCore,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,10 +216,7 @@ impl From<&UsagePendingState> for UsagePendingSnapshot {
 
 #[derive(Debug, Clone)]
 struct JsonlFlushRequest {
-    expected_usage_state_id: String,
-    usage_state_started_at_ms: u64,
-    flush_request_id: String,
-    requested_at_ms: u64,
+    core: FlushRequestCore,
     path: String,
 }
 
@@ -673,7 +675,7 @@ fn usage_flush_state_guard(
     }
 }
 
-impl UsageFlushRequest {
+impl FlushRequestCore {
     fn new(target: &UsageFlushTarget) -> Self {
         Self {
             expected_usage_state_id: target.expected_usage_state_id.clone(),
@@ -684,13 +686,18 @@ impl UsageFlushRequest {
     }
 }
 
+impl UsageFlushRequest {
+    fn new(target: &UsageFlushTarget) -> Self {
+        Self {
+            core: FlushRequestCore::new(target),
+        }
+    }
+}
+
 impl JsonlFlushRequest {
     fn new(target: &UsageFlushTarget, path: &Path) -> Self {
         Self {
-            expected_usage_state_id: target.expected_usage_state_id.clone(),
-            usage_state_started_at_ms: target.usage_state_started_at_ms,
-            flush_request_id: Uuid::new_v4().to_string(),
-            requested_at_ms: now_millis(),
+            core: FlushRequestCore::new(target),
             path: path.to_string_lossy().into_owned(),
         }
     }
@@ -731,29 +738,17 @@ pub async fn write_usage_flush_request(
 ) -> RunnerResult<UsageFlushRequest> {
     let request = UsageFlushRequest::new(target);
     let marker = UsageFlushRequestMarker {
-        usage_state_id: &request.expected_usage_state_id,
-        flush_request_id: &request.flush_request_id,
-        requested_at_ms: request.requested_at_ms,
+        usage_state_id: &request.core.expected_usage_state_id,
+        flush_request_id: &request.core.flush_request_id,
+        requested_at_ms: request.core.requested_at_ms,
     };
-    let path = addon_dir.join("usage-flush-request");
-    let tmp = addon_dir.join(format!(
-        "usage-flush-request.{}.tmp",
-        request.flush_request_id
-    ));
-    let content = serde_json::to_vec(&marker)
-        .map_err(|e| RunnerError::Internal(format!("serialize usage flush request: {e}")))?;
-    if let Err(e) = tokio::fs::write(&tmp, content).await {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(RunnerError::Internal(format!(
-            "write usage flush request tmp: {e}"
-        )));
-    }
-    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(RunnerError::Internal(format!(
-            "rename usage flush request: {e}"
-        )));
-    }
+    write_flush_request_marker(
+        addon_dir,
+        "usage-flush-request",
+        &marker,
+        "usage flush request",
+    )
+    .await?;
     Ok(request)
 }
 
@@ -764,31 +759,31 @@ async fn write_jsonl_flush_request(
 ) -> RunnerResult<JsonlFlushRequest> {
     let request = JsonlFlushRequest::new(target, log_path);
     let marker = JsonlFlushRequestMarker {
-        usage_state_id: &request.expected_usage_state_id,
-        flush_request_id: &request.flush_request_id,
-        requested_at_ms: request.requested_at_ms,
+        usage_state_id: &request.core.expected_usage_state_id,
+        flush_request_id: &request.core.flush_request_id,
+        requested_at_ms: request.core.requested_at_ms,
         path: &request.path,
     };
-    let path = addon_dir.join("jsonl-flush-request");
-    let tmp = addon_dir.join(format!(
-        "jsonl-flush-request.{}.tmp",
-        request.flush_request_id
-    ));
-    let content = serde_json::to_vec(&marker)
-        .map_err(|e| RunnerError::Internal(format!("serialize JSONL flush request: {e}")))?;
-    if let Err(e) = tokio::fs::write(&tmp, content).await {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(RunnerError::Internal(format!(
-            "write JSONL flush request tmp: {e}"
-        )));
-    }
-    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(RunnerError::Internal(format!(
-            "rename JSONL flush request: {e}"
-        )));
-    }
+    write_flush_request_marker(
+        addon_dir,
+        "jsonl-flush-request",
+        &marker,
+        "JSONL flush request",
+    )
+    .await?;
     Ok(request)
+}
+
+async fn write_flush_request_marker<T: Serialize>(
+    addon_dir: &Path,
+    file_name: &str,
+    marker: &T,
+    description: &str,
+) -> RunnerResult<()> {
+    let path = addon_dir.join(file_name);
+    let content = serde_json::to_vec(marker)
+        .map_err(|e| RunnerError::Internal(format!("serialize {description}: {e}")))?;
+    crate::state_file::write_private_atomic(&path, &content).await
 }
 
 fn parse_usage_pending_state(content: &str) -> Result<UsagePendingState, String> {
@@ -805,33 +800,15 @@ fn validate_usage_pending_state(
     request: &UsageFlushRequest,
     now_ms: u64,
 ) -> Result<(), String> {
-    if state.usage_state_id != request.expected_usage_state_id {
-        return Err("usage state id does not match current mitmdump process".to_string());
-    }
-
-    let skew_ms = USAGE_PENDING_CLOCK_SKEW.as_millis() as u64;
-    let min_updated_at = request.usage_state_started_at_ms.saturating_sub(skew_ms);
-    if state.updated_at_ms < min_updated_at {
-        return Err(format!(
-            "updatedAtMs {} predates current usage state id start {}",
-            state.updated_at_ms, request.usage_state_started_at_ms
-        ));
-    }
-    if state.updated_at_ms > now_ms.saturating_add(skew_ms) {
-        return Err(format!(
-            "updatedAtMs {} is too far in the future",
-            state.updated_at_ms
-        ));
-    }
-    match state.flush_request_id.as_deref() {
-        Some(id) if id == request.flush_request_id => {}
-        Some(_) => {
-            return Err("usage flush request id does not match current request".to_string());
-        }
-        None => return Err("usage flush request id is missing".to_string()),
-    }
-
-    Ok(())
+    validate_flush_state_core(
+        &state.usage_state_id,
+        state.updated_at_ms,
+        state.flush_request_id.as_deref(),
+        &request.core,
+        "usage flush request id does not match current request",
+        "usage flush request id is missing",
+        now_ms,
+    )
 }
 
 fn parse_jsonl_flush_state(content: &str) -> Result<JsonlFlushState, String> {
@@ -848,32 +825,54 @@ fn validate_jsonl_flush_state(
     request: &JsonlFlushRequest,
     now_ms: u64,
 ) -> Result<(), String> {
-    if state.usage_state_id != request.expected_usage_state_id {
-        return Err("usage state id does not match current mitmdump process".to_string());
-    }
-
-    let skew_ms = USAGE_PENDING_CLOCK_SKEW.as_millis() as u64;
-    let min_updated_at = request.usage_state_started_at_ms.saturating_sub(skew_ms);
-    if state.updated_at_ms < min_updated_at {
-        return Err(format!(
-            "updatedAtMs {} predates current usage state id start {}",
-            state.updated_at_ms, request.usage_state_started_at_ms
-        ));
-    }
-    if state.updated_at_ms > now_ms.saturating_add(skew_ms) {
-        return Err(format!(
-            "updatedAtMs {} is too far in the future",
-            state.updated_at_ms
-        ));
-    }
-    if state.flush_request_id != request.flush_request_id {
-        return Err("JSONL flush request id does not match current request".to_string());
-    }
+    validate_flush_state_core(
+        &state.usage_state_id,
+        state.updated_at_ms,
+        Some(&state.flush_request_id),
+        &request.core,
+        "JSONL flush request id does not match current request",
+        "JSONL flush request id is missing",
+        now_ms,
+    )?;
     if state.path != request.path {
         return Err("JSONL flush path does not match current request".to_string());
     }
 
     Ok(())
+}
+
+fn validate_flush_state_core(
+    usage_state_id: &str,
+    updated_at_ms: u64,
+    flush_request_id: Option<&str>,
+    request: &FlushRequestCore,
+    request_id_mismatch_message: &str,
+    missing_request_id_message: &str,
+    now_ms: u64,
+) -> Result<(), String> {
+    if usage_state_id != request.expected_usage_state_id {
+        return Err("usage state id does not match current mitmdump process".to_string());
+    }
+
+    let skew_ms = USAGE_PENDING_CLOCK_SKEW.as_millis() as u64;
+    let min_updated_at = request.usage_state_started_at_ms.saturating_sub(skew_ms);
+    if updated_at_ms < min_updated_at {
+        return Err(format!(
+            "updatedAtMs {} predates current usage state id start {}",
+            updated_at_ms, request.usage_state_started_at_ms
+        ));
+    }
+    if updated_at_ms > now_ms.saturating_add(skew_ms) {
+        return Err(format!(
+            "updatedAtMs {} is too far in the future",
+            updated_at_ms
+        ));
+    }
+    match flush_request_id {
+        Some(id) if id == request.flush_request_id => Ok(()),
+        Some(_) => Err(request_id_mismatch_message.to_string()),
+        None => Err(missing_request_id_message.to_string()),
+    }
 }
 
 /// Wait for all pending proxy usage reports to be delivered.
@@ -942,8 +941,8 @@ pub async fn wait_usage_flush_requesting(
                     underbilling_class = "risk",
                     component = "runner",
                     not_ready = %not_ready,
-                    request_usage_state_id = %request.expected_usage_state_id,
-                    request_id = %request.flush_request_id,
+                    request_usage_state_id = %request.core.expected_usage_state_id,
+                    request_id = %request.core.flush_request_id,
                     "usage flush request failed, proceeding with proxy stop"
                 );
                 return false;
@@ -975,8 +974,8 @@ pub async fn wait_usage_flush_requesting(
                     component = "runner",
                     timeout_secs = timeout.as_secs(),
                     not_ready = %not_ready,
-                    request_usage_state_id = %request.expected_usage_state_id,
-                    request_id = %request.flush_request_id,
+                    request_usage_state_id = %request.core.expected_usage_state_id,
+                    request_id = %request.core.flush_request_id,
                     "usage flush timed out, proceeding with proxy stop"
                 ),
             }
@@ -2967,19 +2966,23 @@ while True:
 
     fn usage_request() -> UsageFlushRequest {
         UsageFlushRequest {
-            expected_usage_state_id: "state-test".to_string(),
-            usage_state_started_at_ms: 1_770_000_000_000,
-            flush_request_id: "request-test".to_string(),
-            requested_at_ms: 1_770_000_000_000,
+            core: FlushRequestCore {
+                expected_usage_state_id: "state-test".to_string(),
+                usage_state_started_at_ms: 1_770_000_000_000,
+                flush_request_id: "request-test".to_string(),
+                requested_at_ms: 1_770_000_000_000,
+            },
         }
     }
 
     fn jsonl_request(path: &Path) -> JsonlFlushRequest {
         JsonlFlushRequest {
-            expected_usage_state_id: "state-test".to_string(),
-            usage_state_started_at_ms: 1_770_000_000_000,
-            flush_request_id: "jsonl-request-test".to_string(),
-            requested_at_ms: 1_770_000_000_000,
+            core: FlushRequestCore {
+                expected_usage_state_id: "state-test".to_string(),
+                usage_state_started_at_ms: 1_770_000_000_000,
+                flush_request_id: "jsonl-request-test".to_string(),
+                requested_at_ms: 1_770_000_000_000,
+            },
             path: path.to_string_lossy().into_owned(),
         }
     }
@@ -3034,8 +3037,8 @@ while True:
         )
         .unwrap();
         assert_eq!(marker["usageStateId"], "state-test");
-        assert_eq!(marker["flushRequestId"], request.flush_request_id);
-        assert_eq!(marker["requestedAtMs"], request.requested_at_ms);
+        assert_eq!(marker["flushRequestId"], request.core.flush_request_id);
+        assert_eq!(marker["requestedAtMs"], request.core.requested_at_ms);
     }
 
     #[tokio::test]
@@ -3070,8 +3073,8 @@ while True:
         )
         .unwrap();
         assert_eq!(marker["usageStateId"], "state-test");
-        assert_eq!(marker["flushRequestId"], request.flush_request_id);
-        assert_eq!(marker["requestedAtMs"], request.requested_at_ms);
+        assert_eq!(marker["flushRequestId"], request.core.flush_request_id);
+        assert_eq!(marker["requestedAtMs"], request.core.requested_at_ms);
         assert_eq!(marker["path"], log_path.to_string_lossy().to_string());
     }
 
