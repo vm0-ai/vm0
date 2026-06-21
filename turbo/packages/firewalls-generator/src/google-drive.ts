@@ -446,7 +446,6 @@ function assertUniquePermissionNames(
 export function validateGoogleDrivePermissionManifest(
   officialRouteKeys: ReadonlySet<string>,
   manifest: readonly GoogleDriveManifestPermission[],
-  duplicateRouteAllowlist: ReadonlySet<string> = new Set<string>(),
 ): void {
   assertUniquePermissionNames(manifest);
 
@@ -473,7 +472,7 @@ export function validateGoogleDrivePermissionManifest(
   const duplicates = sortedValues(
     [...assignments.entries()]
       .filter(([routeKey, permissions]) => {
-        return permissions.length > 1 && !duplicateRouteAllowlist.has(routeKey);
+        return permissions.length > 1;
       })
       .map(([routeKey, permissions]) => {
         return `${routeKey} -> ${permissions.join(", ")}`;

@@ -84,7 +84,7 @@ describe("Google Drive permission manifest", () => {
     }).toThrow("Missing Google Drive manifest route keys");
   });
 
-  it("fails duplicate route assignments unless they are allowlisted", () => {
+  it("fails duplicate route assignments", () => {
     const duplicateRoute = "base:GET /v2/about";
     const manifest = cloneManifest();
     manifest[1] = {
@@ -95,14 +95,6 @@ describe("Google Drive permission manifest", () => {
     expect(() => {
       validateGoogleDrivePermissionManifest(officialRouteKeys, manifest);
     }).toThrow("Duplicate Google Drive manifest route assignments");
-
-    expect(() => {
-      validateGoogleDrivePermissionManifest(
-        officialRouteKeys,
-        manifest,
-        new Set([duplicateRoute]),
-      );
-    }).not.toThrow();
   });
 
   it("keeps apps.read limited to Drive app routes", () => {

@@ -28,6 +28,8 @@ old_google_drive_grants AS (
   WHERE grants.connector_ref = 'google-drive'
 ),
 old_deny_google_drive_permission_mapping(old_permission, permission) AS (
+  -- Derived from the route overlap between the previous Google Drive
+  -- OAuth-scope firewall and the new vm0 permission manifest.
   VALUES
     ('drive', 'about.read'),
     ('drive', 'apps.read'),
