@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.362.0](https://github.com/vm0-ai/vm0/compare/core-v8.361.0...core-v8.362.0) (2026-06-21)
+
+
+### Features
+
+* show connector reconnect reasons by default ([#18404](https://github.com/vm0-ai/vm0/issues/18404)) ([8ee3c05](https://github.com/vm0-ai/vm0/commit/8ee3c053253e4c5d1ab4565fbae43a39ffb78f26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.107.0
+    * @vm0/connectors bumped to 1.98.0
+
 ## [8.361.0](https://github.com/vm0-ai/vm0/compare/core-v8.360.1...core-v8.361.0) (2026-06-20)
 
 
