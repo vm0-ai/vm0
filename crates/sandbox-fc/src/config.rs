@@ -255,7 +255,7 @@ mod tests {
         let limits = sandbox::DeviceRateLimits {
             block: sandbox::BlockRateLimits {
                 bandwidth_bytes_per_sec: 1,
-                ops_per_sec: 1,
+                ops_per_sec: 2,
             },
             network: sandbox::NetworkRateLimits {
                 rx_bytes_per_sec: 1,
