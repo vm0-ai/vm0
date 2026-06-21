@@ -490,10 +490,7 @@ fn capture_shell_stream(mut reader: impl Read) -> CapturedShellStream {
         }
 
         let retained = remaining.min(read);
-        let Some(retained_bytes) = buffer.get(..retained) else {
-            break;
-        };
-        stream.bytes.extend_from_slice(retained_bytes);
+        stream.bytes.extend(buffer.iter().take(retained).copied());
         if retained < read {
             stream.truncated = true;
         }
@@ -528,8 +525,14 @@ fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
     let stderr_thread = thread::spawn(move || capture_shell_stream(stderr));
 
     let exit_code = child.wait().map_or(1, |status| status.code().unwrap_or(1));
-    let stdout = stdout_thread.join().unwrap_or_default();
-    let stderr = stderr_thread.join().unwrap_or_default();
+    let stdout = match stdout_thread.join() {
+        Ok(stdout) => stdout,
+        Err(payload) => std::panic::resume_unwind(payload),
+    };
+    let stderr = match stderr_thread.join() {
+        Ok(stderr) => stderr,
+        Err(payload) => std::panic::resume_unwind(payload),
+    };
 
     CapturedShellOutput {
         stdout,
