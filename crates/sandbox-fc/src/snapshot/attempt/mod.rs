@@ -213,10 +213,6 @@ impl SnapshotAttempt {
         // (mkdir, write) doesn't leak an acquired netns. A checked-out netns
         // lease requires explicit release, and `netns_pool.cleanup()` only
         // drains queued (not acquired) entries.
-        //
-        // The empty bind target file is consumed by `mount --bind` inside
-        // `unshare --mount` at spawn time; file content is irrelevant
-        // because the bind overlay is what FC reads.
         if let Err(e) = prepare_runtime_socket_dir(self.sock_paths()?) {
             self.cleanup_resources
                 .destroy_cow_after_setup_error("prepare sock dir")
@@ -224,6 +220,9 @@ impl SnapshotAttempt {
             return Err(SnapshotError::Setup(format!("prepare sock dir: {e}")));
         }
 
+        // The empty bind target file is consumed by `mount --bind` inside
+        // `unshare --mount` at spawn time; file content is irrelevant
+        // because the bind overlay is what FC reads.
         let drive_bind = self.paths.cow_device_bind();
         if let Err(e) = tokio::fs::write(&drive_bind, b"").await {
             self.cleanup_resources
