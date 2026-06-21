@@ -260,6 +260,56 @@ async fn codex_app_server_oversized_stdout_line_is_rejected() -> Result<(), Stri
 }
 
 #[tokio::test]
+async fn codex_app_server_malformed_rpc_error_fails_without_raw_payload() -> Result<(), String> {
+    let mut client = spawn_client(Some("malformed-error-response"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let result = wait_result_allow_error(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("error response must be an object"));
+            assert!(!message.contains("do-not-log-malformed-error-payload"));
+        }
+        other => {
+            return Err(format!(
+                "expected malformed error response protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_unexpected_typed_response_fails_without_raw_payload() -> Result<(), String>
+{
+    let mut client = spawn_client(Some("malformed-initialize-result"))?;
+
+    let result: Result<InitializeResponse, CodexAppServerError> = wait_result_allow_error(
+        client.request("initialize", initialize_params()),
+        "initialize",
+    )
+    .await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("unexpected shape"));
+            assert!(!message.contains("do-not-log-malformed-initialize-result"));
+        }
+        other => {
+            return Err(format!(
+                "expected unexpected typed response protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_disconnect_after_initialize_fails_next_request() -> Result<(), String> {
     let mut client = spawn_client(Some("disconnect-after-initialize"))?;
 

@@ -240,7 +240,12 @@ impl CodexAppServerClient {
         T: DeserializeOwned,
     {
         let value = self.request_value(method, params).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).map_err(|_error| {
+            self.signal_process_group(libc::SIGKILL);
+            CodexAppServerError::Protocol(format!(
+                "app-server response for {method} had an unexpected shape"
+            ))
+        })
     }
 
     pub async fn request_value(
@@ -521,13 +526,6 @@ impl Drop for CodexAppServerClient {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct IncomingErrorObject {
-    code: i64,
-    message: String,
-    data: Option<Value>,
-}
-
 struct QueuedNotification {
     notification: ServerNotification,
     bytes: usize,
@@ -671,17 +669,10 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
             id,
             result: result.clone(),
         }),
-        (None, Some(error)) => {
-            let error: IncomingErrorObject = serde_json::from_value(error.clone())?;
-            Ok(IncomingMessage::Error {
-                id,
-                error: JsonRpcError {
-                    code: error.code,
-                    message: error.message,
-                    data: error.data,
-                },
-            })
-        }
+        (None, Some(error)) => Ok(IncomingMessage::Error {
+            id,
+            error: parse_error_object(error)?,
+        }),
         (Some(_), Some(_)) => Err(CodexAppServerError::Protocol(
             "response contains both result and error".to_string(),
         )),
@@ -696,6 +687,31 @@ fn parse_id(value: &Value) -> Result<JsonRpcId, CodexAppServerError> {
         CodexAppServerError::Protocol(format!(
             "app-server message id must be an integer or string: {error}"
         ))
+    })
+}
+
+fn parse_error_object(value: &Value) -> Result<JsonRpcError, CodexAppServerError> {
+    let Value::Object(fields) = value else {
+        return Err(CodexAppServerError::Protocol(
+            "error response must be an object".to_string(),
+        ));
+    };
+    let code = fields.get("code").and_then(Value::as_i64).ok_or_else(|| {
+        CodexAppServerError::Protocol("error response must contain an integer code".to_string())
+    })?;
+    let message = fields
+        .get("message")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            CodexAppServerError::Protocol(
+                "error response must contain a string message".to_string(),
+            )
+        })?
+        .to_string();
+    Ok(JsonRpcError {
+        code,
+        message,
+        data: fields.get("data").cloned(),
     })
 }
 

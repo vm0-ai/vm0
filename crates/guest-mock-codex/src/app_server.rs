@@ -17,6 +17,8 @@ enum Scenario {
     DisconnectAfterInitialize,
     ExitOnTurnStart,
     InterleavedNotification,
+    MalformedErrorResponse,
+    MalformedInitializeResult,
     LargeNotificationBeforeResponse,
     MalformedStdout,
     NullIdServerRequestBeforeResponse,
@@ -35,6 +37,8 @@ impl Scenario {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
+                "malformed-error-response" => Ok(Self::MalformedErrorResponse),
+                "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
                 "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
                 "null-id-server-request-before-response" => {
@@ -175,6 +179,16 @@ impl AppServerState {
                     output.flush()?;
                     return Ok(ServerAction::Stop);
                 }
+                if self.scenario == Scenario::MalformedInitializeResult {
+                    write_json_line(
+                        output,
+                        &json!({
+                            "id": id,
+                            "result": "do-not-log-malformed-initialize-result"
+                        }),
+                    )?;
+                    return Ok(ServerAction::Continue);
+                }
                 self.initialized = true;
                 write_success(output, id, initialize_response())?;
                 if self.scenario == Scenario::DisconnectAfterInitialize {
@@ -191,6 +205,15 @@ impl AppServerState {
                 self.set_current_thread(thread_id.clone());
                 let result = thread_response(&thread_id, false);
                 match self.scenario {
+                    Scenario::MalformedErrorResponse => {
+                        write_json_line(
+                            output,
+                            &json!({
+                                "id": id,
+                                "error": "do-not-log-malformed-error-payload"
+                            }),
+                        )?;
+                    }
                     Scenario::InterleavedNotification => {
                         write_json_line(output, &server_notification())?;
                         write_success(output, id, result)?;
