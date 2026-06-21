@@ -2,6 +2,7 @@
 
 import pytest
 
+import generated.builtin_firewalls as builtin_firewalls
 import matching
 from tests.firewall_helpers import match_request_with_raw_firewalls, wrap_firewalls
 
@@ -24,6 +25,25 @@ class TestFirewallNetworkPolicyDecisions:
             name="github",
         )
 
+    def _google_drive_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]]
+
+    def _google_drive_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "google-drive": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
     def test_allowed_permission_passes(self):
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
@@ -36,6 +56,66 @@ class TestFirewallNetworkPolicyDecisions:
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "repo-read"
+
+    def test_google_drive_apps_read_does_not_allow_file_mutations(self):
+        policies = self._google_drive_policy_allowing("apps.read")
+
+        apps_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v3/apps",
+            "GET",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        create_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v2/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        upload_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/upload/drive/v2/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(apps_result, matching.FirewallAllow)
+        assert apps_result.permission == "apps.read"
+        assert isinstance(create_result, matching.FirewallBlock)
+        assert create_result.permissions == ("files.write",)
+        assert create_result.reason == "permission_denied"
+        assert isinstance(upload_result, matching.FirewallBlock)
+        assert upload_result.permissions == ("files.write",)
+        assert upload_result.reason == "permission_denied"
+
+    def test_google_drive_files_write_allows_base_and_upload_mutations(self):
+        policies = self._google_drive_policy_allowing("files.write")
+
+        create_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/drive/v3/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        upload_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/upload/drive/v3/files",
+            "POST",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+        resumable_result = match_request_with_raw_firewalls(
+            "https://www.googleapis.com/resumable/upload/drive/v3/files/file-1",
+            "PATCH",
+            self._google_drive_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(create_result, matching.FirewallAllow)
+        assert create_result.permission == "files.write"
+        assert isinstance(upload_result, matching.FirewallAllow)
+        assert upload_result.permission == "files.write"
+        assert isinstance(resumable_result, matching.FirewallAllow)
+        assert resumable_result.permission == "files.write"
 
     def test_denied_permission_blocked(self):
         policies = {

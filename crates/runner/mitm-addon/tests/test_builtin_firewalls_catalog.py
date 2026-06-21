@@ -46,3 +46,16 @@ def test_builtin_firewalls_cache_loaded_values():
 
 def test_builtin_firewalls_mapping_is_read_only():
     assert not hasattr(builtin_firewalls.BUILTIN_FIREWALLS, "__setitem__")
+
+
+def test_google_drive_builtin_uses_vm0_permissions():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]
+    names = {
+        permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
+    }
+
+    assert "apps.read" in names
+    assert "files.write" in names
+    assert "drive.apps.readonly" not in names
+    assert "drive.file" not in names
+    assert all(not name.startswith("drive.") for name in names)

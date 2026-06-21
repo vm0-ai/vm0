@@ -73,6 +73,18 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Drive read permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-drive");
+
+    expect(policy.policies["apps.read"]).toBe("allow");
+    expect(policy.policies["files.read"]).toBe("allow");
+    expect(policy.policies["files.write"]).toBe("deny");
+    expect(policy.policies["files.delete"]).toBe("deny");
+    expect(policy.policies["files.share"]).toBe("deny");
+    expect(policy.policies["channels.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 

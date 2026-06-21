@@ -208,6 +208,52 @@ describe("billable connector firewall contracts", () => {
   });
 });
 
+describe("Google Drive firewall permissions", () => {
+  it("uses vm0 permission names instead of Google OAuth scope names", () => {
+    const firewall = getConnectorFirewall("google-drive");
+    const names = firewall.apis.flatMap((api) => {
+      return (
+        api.permissions?.map((permission) => {
+          return permission.name;
+        }) ?? []
+      );
+    });
+
+    expect(names).toContain("apps.read");
+    expect(names).toContain("files.write");
+    expect(names).not.toContain("drive.apps.readonly");
+    expect(names).not.toContain("drive.file");
+    expect(
+      names.every((name) => {
+        return !name.startsWith("drive.");
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps apps.read limited to Drive app routes", () => {
+    const firewall = getConnectorFirewall("google-drive");
+    const appsReadRules = firewall.apis.flatMap((api) => {
+      return (
+        api.permissions
+          ?.filter((permission) => {
+            return permission.name === "apps.read";
+          })
+          .flatMap((permission) => {
+            return permission.rules;
+          }) ?? []
+      );
+    });
+
+    expect(appsReadRules).toStrictEqual([
+      "GET /v2/apps",
+      "GET /v2/apps/{appId}",
+      "GET /v3/apps",
+      "GET /v3/apps/{appId}",
+    ]);
+    expect(appsReadRules).not.toContain("POST /v2/files");
+  });
+});
+
 describe("reserved firewall permission names", () => {
   it.each(["all", UNKNOWN_PERMISSION_GRANT])(
     'rejects "%s" as a real permission name',

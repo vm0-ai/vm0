@@ -264,6 +264,7 @@ import { generate as generateGong } from "./gong";
 import { generate as generateIronclad } from "./ironclad";
 import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
+import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -527,10 +528,17 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
+  "google-drive": generateGoogleDrive,
 };
 
 async function main(): Promise<void> {
   const target = process.argv[2];
+
+  if (target === "metadata") {
+    await generateFirewallMetadata();
+    console.error("\nDone.");
+    return;
+  }
 
   if (target) {
     const gen = GENERATORS[target];
