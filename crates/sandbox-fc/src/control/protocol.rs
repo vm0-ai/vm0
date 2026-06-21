@@ -439,6 +439,32 @@ mod tests {
     }
 
     #[test]
+    fn exec_response_rejects_invalid_termination_kind_shapes() {
+        for termination in [
+            r#"{"exit_code":0}"#,
+            r#"{"kind":"unknown","exit_code":0}"#,
+            r#"{"kind":"exited","kind":"timed_out","exit_code":0}"#,
+            r#"{"kind":"exited","exit_code":0,"exit_code":1}"#,
+        ] {
+            let malformed = format!(
+                r#"{{
+                    "termination": {termination},
+                    "stdout": "{}",
+                    "stderr": "{}",
+                    "stdout_truncated": false,
+                    "stderr_truncated": false,
+                    "diagnostic": ""
+                }}"#,
+                BASE64.encode(b""),
+                BASE64.encode(b"")
+            );
+
+            let result = serde_json::from_str::<ExecResponse>(&malformed);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
     fn exec_response_error_serialization() {
         let resp = ExecResponse::Error {
             error: "sandbox not running".into(),
