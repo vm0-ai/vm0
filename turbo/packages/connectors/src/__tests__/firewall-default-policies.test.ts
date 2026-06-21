@@ -30,6 +30,22 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.policies["admin"]).toBe("deny");
   });
 
+  it("should default Gmail read and draft permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("gmail");
+
+    expect(policy.policies["messages.read"]).toBe("allow");
+    expect(policy.policies["threads.read"]).toBe("allow");
+    expect(policy.policies["settings.read"]).toBe("allow");
+    expect(policy.policies["drafts.write"]).toBe("allow");
+    expect(policy.policies["messages.send"]).toBe("deny");
+    expect(policy.policies["drafts.send"]).toBe("deny");
+    expect(policy.policies["messages.write"]).toBe("deny");
+    expect(policy.policies["messages.delete"]).toBe("deny");
+    expect(policy.policies["settings.sharing"]).toBe("deny");
+    expect(policy.policies["notifications.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should cover every permission from the firewall config", () => {
     const policy = getDefaultFirewallPolicies("slack");
     const config = getConnectorFirewall("slack");
@@ -155,9 +171,11 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(null, [
       "cloudflare",
       "google-cloud",
+      "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
 
   it("should preserve stored unknownPolicy override over connector-specific defaults", () => {

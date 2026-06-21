@@ -720,3 +720,60 @@ class TestFirewallNetworkPolicyDecisions:
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission is None
+
+    def test_gmail_draft_write_does_not_allow_send(self):
+        policies = {
+            "gmail": {
+                "allow": ["drafts.write"],
+                "deny": ["drafts.send", "messages.send"],
+                "unknownPolicy": "deny",
+            }
+        }
+        firewalls = [builtin_firewalls.BUILTIN_FIREWALLS["gmail"]]
+
+        draft_create = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(draft_create, matching.FirewallAllow)
+        assert draft_create.permission == "drafts.write"
+
+        message_send = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(message_send, matching.FirewallBlock)
+        assert message_send.permissions == ("messages.send",)
+        assert message_send.reason == "permission_denied"
+
+        draft_send = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        assert isinstance(draft_send, matching.FirewallBlock)
+        assert draft_send.permissions == ("drafts.send",)
+        assert draft_send.reason == "permission_denied"
+
+    def test_gmail_direct_send_covers_upload_base(self):
+        policies = {
+            "gmail": {
+                "allow": ["messages.send"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            }
+        }
+        result = match_request_with_raw_firewalls(
+            "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send",
+            "POST",
+            [builtin_firewalls.BUILTIN_FIREWALLS["gmail"]],
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "messages.send"

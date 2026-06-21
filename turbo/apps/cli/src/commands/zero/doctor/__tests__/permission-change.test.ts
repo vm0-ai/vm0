@@ -197,7 +197,7 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("Only allow this permission below");
   });
 
-  it("prints sensitive Gmail sending guidance for gmail.send enable", async () => {
+  it("prints sensitive Gmail sending guidance for messages.send enable", async () => {
     vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
@@ -206,12 +206,13 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "gmail",
       "--permission",
-      "gmail.send",
+      "messages.send",
       "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("send emails directly as the user");
+    expect(logCalls).toContain("drafts.write");
     expect(logCalls).toContain("Only allow this permission below");
   });
 

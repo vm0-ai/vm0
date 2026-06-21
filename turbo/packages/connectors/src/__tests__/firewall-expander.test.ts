@@ -116,7 +116,7 @@ describe("resolveFirewallSelections", () => {
 
   it("should keep all api_entries when shared permission is selected", async () => {
     const expanded = await resolveFirewallSelections({
-      gmail: { permissions: ["gmail"] },
+      gmail: { permissions: ["messages.send"] },
     });
 
     expect(expanded).toHaveLength(1);
@@ -126,7 +126,7 @@ describe("resolveFirewallSelections", () => {
         api.permissions?.map((p) => {
           return p.name;
         }),
-      ).toEqual(["gmail"]);
+      ).toEqual(["messages.send"]);
     }
   });
 

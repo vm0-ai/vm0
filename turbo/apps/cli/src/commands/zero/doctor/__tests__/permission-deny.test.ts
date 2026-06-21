@@ -179,9 +179,9 @@ describe("zero doctor permission-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain('covered by the "gmail.send"');
+      expect(logCalls).toContain('covered by the "messages.send"');
       expect(logCalls).toContain(
-        "--permission gmail.send --enable --duration 1h",
+        "--permission messages.send --enable --duration 1h",
       );
     });
   });
