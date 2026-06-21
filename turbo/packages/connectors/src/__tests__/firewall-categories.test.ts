@@ -8,7 +8,9 @@ import {
 const CATEGORIZED_CONNECTORS = [
   "clerk",
   "cloudflare",
+  "google-analytics",
   "google-cloud",
+  "google-drive",
   "slack",
   "gmail",
   "stripe",
