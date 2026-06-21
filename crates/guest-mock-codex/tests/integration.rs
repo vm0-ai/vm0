@@ -369,6 +369,8 @@ fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Re
         .unwrap()
         .to_string();
     assert_eq!(turn_started["result"]["turn"]["status"], "inProgress");
+    assert_eq!(turn_started["result"]["turn"]["itemsView"], "notLoaded");
+    assert!(turn_started["result"]["turn"]["startedAt"].is_null());
 
     let steered = server.request(
         4,

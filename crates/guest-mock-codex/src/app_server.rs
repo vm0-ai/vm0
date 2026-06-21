@@ -396,10 +396,10 @@ fn turn(turn_id: &str) -> Value {
     json!({
         "id": turn_id,
         "items": [],
-        "itemsView": "full",
+        "itemsView": "notLoaded",
         "status": "inProgress",
         "error": null,
-        "startedAt": 1,
+        "startedAt": null,
         "completedAt": null,
         "durationMs": null
     })
