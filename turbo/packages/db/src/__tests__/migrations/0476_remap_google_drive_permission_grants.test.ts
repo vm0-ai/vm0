@@ -64,6 +64,116 @@ const DRIVE_READONLY_DENIED_PERMISSIONS = [
   "revisions.read",
 ];
 
+const OLD_DENY_PERMISSION_EXPECTATIONS = [
+  {
+    oldPermission: "drive",
+    permissions: NEW_GOOGLE_DRIVE_PERMISSIONS,
+  },
+  {
+    oldPermission: "drive.appdata",
+    permissions: [
+      "about.read",
+      "apps.read",
+      "changes.read",
+      "channels.write",
+      "files.delete",
+      "files.read",
+      "files.share",
+      "files.write",
+      "revisions.delete",
+      "revisions.read",
+      "revisions.write",
+    ],
+  },
+  {
+    oldPermission: "drive.apps.readonly",
+    permissions: ["apps.read"],
+  },
+  {
+    oldPermission: "drive.file",
+    permissions: [
+      "about.read",
+      "apps.read",
+      "changes.read",
+      "channels.write",
+      "comments.read",
+      "comments.write",
+      "files.delete",
+      "files.read",
+      "files.share",
+      "files.write",
+      "operations.read",
+      "replies.read",
+      "replies.write",
+      "revisions.delete",
+      "revisions.read",
+      "revisions.write",
+    ],
+  },
+  {
+    oldPermission: "drive.install",
+    permissions: [],
+  },
+  {
+    oldPermission: "drive.meet.readonly",
+    permissions: [
+      "changes.read",
+      "channels.write",
+      "comments.read",
+      "files.read",
+      "files.share",
+      "operations.read",
+      "replies.read",
+      "revisions.read",
+    ],
+  },
+  {
+    oldPermission: "drive.metadata",
+    permissions: [
+      "about.read",
+      "apps.read",
+      "changes.read",
+      "channels.write",
+      "files.read",
+      "files.share",
+      "files.write",
+      "revisions.read",
+    ],
+  },
+  {
+    oldPermission: "drive.metadata.readonly",
+    permissions: [
+      "about.read",
+      "apps.read",
+      "changes.read",
+      "channels.write",
+      "files.read",
+      "files.share",
+      "revisions.read",
+    ],
+  },
+  {
+    oldPermission: "drive.photos.readonly",
+    permissions: [
+      "about.read",
+      "changes.read",
+      "channels.write",
+      "files.read",
+      "files.share",
+      "files.write",
+      "revisions.read",
+    ],
+  },
+  {
+    oldPermission: "drive.readonly",
+    permissions: DRIVE_READONLY_DENIED_PERMISSIONS,
+  },
+  {
+    oldPermission: "drive.scripts",
+    permissions: ["files.write"],
+  },
+] as const;
+
 class RollbackMigrationTestTransaction extends Error {}
 
 async function runInRollbackTransaction(
@@ -413,6 +523,83 @@ describe("migration 0476 remap Google Drive permission grants", () => {
           action: "allow",
         },
       ]);
+    });
+  });
+
+  it("maps every old Google Drive deny permission through the route-overlap table", async () => {
+    await runInRollbackTransaction(async (tx) => {
+      const orgId = uniqueId("org");
+      const ownerId = uniqueId("owner");
+      const usersByOldPermission = new Map<string, string>();
+
+      const [compose] = await tx
+        .insert(agentComposes)
+        .values({
+          orgId,
+          userId: ownerId,
+          name: uniqueId("compose"),
+        })
+        .returning({ id: agentComposes.id });
+      const agentId = compose!.id;
+
+      await tx.insert(zeroAgents).values({
+        id: agentId,
+        orgId,
+        owner: ownerId,
+        name: uniqueId("agent"),
+      });
+
+      await tx.insert(userPermissionGrants).values(
+        OLD_DENY_PERMISSION_EXPECTATIONS.map(({ oldPermission }) => {
+          const userId = uniqueId("deny-user");
+          usersByOldPermission.set(oldPermission, userId);
+          return {
+            orgId,
+            userId,
+            agentId,
+            connectorRef: "google-drive",
+            permission: oldPermission,
+            action: "deny" as const,
+          };
+        }),
+      );
+
+      await tx.execute(sql.raw(migrationSql));
+
+      for (const expectation of OLD_DENY_PERMISSION_EXPECTATIONS) {
+        const userId = usersByOldPermission.get(expectation.oldPermission);
+        if (!userId) {
+          throw new Error(
+            `Missing test user for old permission: ${expectation.oldPermission}`,
+          );
+        }
+
+        const grants = await tx
+          .select({
+            permission: userPermissionGrants.permission,
+            action: userPermissionGrants.action,
+            expiresAt: userPermissionGrants.expiresAt,
+          })
+          .from(userPermissionGrants)
+          .where(
+            and(
+              eq(userPermissionGrants.orgId, orgId),
+              eq(userPermissionGrants.userId, userId),
+              eq(userPermissionGrants.connectorRef, "google-drive"),
+            ),
+          )
+          .orderBy(asc(userPermissionGrants.permission));
+
+        expect(grants, expectation.oldPermission).toStrictEqual(
+          expectation.permissions.map((permission) => {
+            return {
+              permission,
+              action: "deny",
+              expiresAt: null,
+            };
+          }),
+        );
+      }
     });
   });
 });
