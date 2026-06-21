@@ -17,6 +17,7 @@ use crate::exec_result_compat::{captured_exec_output_bytes, reject_stream_overfl
 use crate::factory::InvariantConfig;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
+use crate::runtime_dirs::prepare_private_socket_dir;
 use sandbox::SnapshotCreateConfig;
 
 use super::SnapshotError;
@@ -443,7 +444,7 @@ async fn configure_snapshot_vm(
     // 6. Configure VM via API. Keep drive requests ordered so snapshot creation
     // matches the fresh-boot config path: rootfs first, workspace second.
     let kernel_path = config.kernel_path.display().to_string();
-    tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
+    prepare_private_socket_dir(sock_paths)?;
     let vsock_uds_str = sock_paths.vsock().display().to_string();
 
     client

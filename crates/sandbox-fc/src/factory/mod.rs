@@ -28,6 +28,7 @@ use crate::factory::leak_cleaner::LeakCleaner;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
+use crate::runtime_dirs::prepare_private_socket_dir;
 use crate::sandbox::{FirecrackerSandbox, FirecrackerSandboxInit};
 use crate::workspace_drive_image::prepare_workspace_drive_image;
 
@@ -310,12 +311,12 @@ impl SandboxFactory for FirecrackerFactory {
                 let sock_result = match clean_stale_sock_dir(&id, sock_paths.dir()) {
                     Ok(()) => {
                         tx.track_sock_dir(sock_paths.dir().to_owned());
-                        tokio::fs::create_dir_all(sock_paths.vsock_dir())
-                            .await
-                            .map_err(|e| SandboxError::Initialization {
+                        prepare_private_socket_dir(&sock_paths).map_err(|e| {
+                            SandboxError::Initialization {
                                 phase: SandboxInitializationPhase::SandboxAllocation,
-                                message: format!("mkdir vsock dir: {e}"),
-                            })
+                                message: format!("prepare sock dir: {e}"),
+                            }
+                        })
                     }
                     Err(e) => Err(e),
                 };
