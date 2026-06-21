@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.125.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.3...runner-rs-v0.125.4) (2026-06-21)
+
+
+### Refactoring
+
+* **mitm-addon:** consolidate failed flush retention handling ([#18423](https://github.com/vm0-ai/vm0/issues/18423)) ([8b6fb2f](https://github.com/vm0-ai/vm0/commit/8b6fb2f42b9b896cc7c569268437904393442e3c))
+* **runner:** share proxy flush protocol invariants ([#18421](https://github.com/vm0-ai/vm0/issues/18421)) ([33cc904](https://github.com/vm0-ai/vm0/commit/33cc9043825119e58de4282c0a08d533be9d6688))
+
 ## [0.125.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.2...runner-rs-v0.125.3) (2026-06-21)
 
 
