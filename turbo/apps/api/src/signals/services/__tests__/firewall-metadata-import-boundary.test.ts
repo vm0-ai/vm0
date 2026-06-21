@@ -22,8 +22,9 @@ function escapeRegExp(value: string): string {
 
 function importPattern(specifier: string): RegExp {
   const escapedSpecifier = escapeRegExp(specifier);
+  const importSpecifier = `${escapedSpecifier}(?:/[^"']*)?`;
   return new RegExp(
-    `(?:from\\s+["']${escapedSpecifier}(?:/[^"']*)?["']|import\\s*\\(\\s*["']${escapedSpecifier}(?:/[^"']*)?["']\\s*\\))`,
+    `(?:from\\s+["']${importSpecifier}["']|import\\s*\\(\\s*["']${importSpecifier}["']\\s*\\)|import\\s+["']${importSpecifier}["'])`,
   );
 }
 
