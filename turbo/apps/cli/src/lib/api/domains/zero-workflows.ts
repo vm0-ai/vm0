@@ -1,26 +1,29 @@
 import { initClient } from "@ts-rest/core";
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
-  type ZeroWorkflowContentResponse,
   type ZeroWorkflowDetailResponse,
+  type ZeroWorkflowRunResponse,
   type ZeroWorkflowSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function listWorkflows(): Promise<ZeroWorkflowSummary[]> {
+export async function listWorkflows(query: {
+  agentId?: string;
+}): Promise<ZeroWorkflowSummary[]> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowsCollectionContract, config);
-  const result = await client.list({ headers: {} });
+  const result = await client.list({ query });
   if (result.status === 200) return result.body;
   handleError(result, "Failed to list workflows");
 }
 
 export async function createWorkflow(body: {
+  agentId: string;
   name: string;
-  files: WorkflowFileEntry[];
+  instruction?: string;
+  files?: WorkflowFileEntry[];
   displayName?: string;
   description?: string;
   visibility?: "public" | "private";
@@ -33,76 +36,59 @@ export async function createWorkflow(body: {
 }
 
 export async function getWorkflow(
-  name: string,
+  workflowId: string,
 ): Promise<ZeroWorkflowDetailResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowsDetailContract, config);
-  const result = await client.get({ params: { name } });
+  const result = await client.get({ params: { workflowId } });
   if (result.status === 200) return result.body;
-  handleError(result, `Workflow "${name}" not found`);
+  handleError(result, `Workflow "${workflowId}" not found`);
 }
 
 export async function updateWorkflow(
-  name: string,
+  workflowId: string,
   body: {
+    instruction?: string | null;
     files?: WorkflowFileEntry[];
     displayName?: string | null;
     description?: string | null;
-    visibility?: "public" | "private";
   },
-): Promise<ZeroWorkflowContentResponse> {
+): Promise<ZeroWorkflowDetailResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowsDetailContract, config);
-  const result = await client.update({ params: { name }, body });
+  const result = await client.update({ params: { workflowId }, body });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to update workflow "${name}"`);
+  handleError(result, `Failed to update workflow "${workflowId}"`);
 }
 
-export async function deleteWorkflow(name: string): Promise<void> {
+export async function deleteWorkflow(workflowId: string): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowsDetailContract, config);
-  const result = await client.delete({ params: { name } });
+  const result = await client.delete({ params: { workflowId } });
   if (result.status === 204) return;
-  handleError(result, `Workflow "${name}" not found`);
+  handleError(result, `Workflow "${workflowId}" not found`);
 }
 
-export async function attachWorkflowToAgent(
-  name: string,
-  agentId: string,
+export async function copyWorkflow(
+  workflowId: string,
+  toAgentId: string,
 ): Promise<ZeroWorkflowSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowAgentsContract, config);
-  const result = await client.attach({
-    params: { name },
-    body: { agentId },
+  const client = initClient(zeroWorkflowsDetailContract, config);
+  const result = await client.copy({
+    params: { workflowId },
+    body: { toAgentId },
   });
-  if (result.status === 200) return result.body;
-  handleError(result, `Failed to attach workflow "${name}"`);
+  if (result.status === 201) return result.body;
+  handleError(result, `Failed to copy workflow "${workflowId}"`);
 }
 
-export async function detachWorkflowFromAgent(
-  name: string,
-  agentId: string,
-): Promise<ZeroWorkflowSummary> {
+export async function runWorkflow(
+  workflowId: string,
+): Promise<ZeroWorkflowRunResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowAgentsContract, config);
-  const result = await client.detach({
-    params: { name, agentId },
-  });
+  const client = initClient(zeroWorkflowsDetailContract, config);
+  const result = await client.run({ params: { workflowId } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to detach workflow "${name}"`);
-}
-
-export async function setWorkflowAgents(
-  name: string,
-  agentIds: string[],
-): Promise<ZeroWorkflowSummary> {
-  const config = await getClientConfig();
-  const client = initClient(zeroWorkflowAgentsContract, config);
-  const result = await client.set({
-    params: { name },
-    body: { agentIds },
-  });
-  if (result.status === 200) return result.body;
-  handleError(result, `Failed to set workflow agents for "${name}"`);
+  handleError(result, `Failed to run workflow "${workflowId}"`);
 }

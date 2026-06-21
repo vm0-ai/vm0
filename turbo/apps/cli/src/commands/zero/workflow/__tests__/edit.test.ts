@@ -16,6 +16,30 @@ import { server } from "../../../../mocks/server";
 import { editCommand } from "../edit";
 import chalk from "chalk";
 
+const AGENT_ID = "11111111-1111-1111-1111-111111111111";
+const WORKFLOW_ID = "22222222-2222-2222-2222-222222222222";
+
+function detailResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    id: WORKFLOW_ID,
+    agentId: AGENT_ID,
+    agentName: "my-agent",
+    agentDisplayName: "My Agent",
+    name: "my-workflow",
+    displayName: "My Workflow",
+    description: null,
+    visibility: "private",
+    requestToPublish: false,
+    ownerUserId: "user-123",
+    canManage: true,
+    instruction: "Updated instruction",
+    files: [],
+    fileContents: [],
+    triggers: [],
+    ...overrides,
+  };
+}
+
 describe("zero workflow edit command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -34,10 +58,6 @@ describe("zero workflow edit command", () => {
 
     workflowDir = join(tmpdir(), `test-workflow-edit-${Date.now()}`);
     mkdirSync(workflowDir, { recursive: true });
-    writeFileSync(
-      join(workflowDir, "SKILL.md"),
-      "# Updated Workflow\nNew content.",
-    );
   });
 
   afterEach(() => {
@@ -48,25 +68,14 @@ describe("zero workflow edit command", () => {
   });
 
   describe("successful edit", () => {
-    it("should send all files from directory", async () => {
+    it("should send new instruction via PATCH", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.put(
-          "http://localhost:3000/api/zero/workflows/my-workflow",
+        http.patch(
+          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              name: "my-workflow",
-              displayName: "My Workflow",
-              description: null,
-              visibility: "private",
-              ownerUserId: "user-123",
-              attachedAgentCount: 0,
-              attachedAgents: [],
-              canManage: true,
-              content: "# Updated Workflow\nNew content.",
-              files: [{ path: "SKILL.md", size: 28 }],
-            });
+            return HttpResponse.json(detailResponse());
           },
         ),
       );
@@ -74,7 +83,35 @@ describe("zero workflow edit command", () => {
       await editCommand.parseAsync([
         "node",
         "cli",
-        "my-workflow",
+        WORKFLOW_ID,
+        "--instruction",
+        "New steps",
+      ]);
+
+      expect(capturedBody?.instruction).toBe("New steps");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("my-workflow");
+      expect(logCalls).toContain("updated");
+    });
+
+    it("should send supplementary files from --dir", async () => {
+      writeFileSync(join(workflowDir, "notes.md"), "Some notes.");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.patch(
+          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(detailResponse());
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        WORKFLOW_ID,
         "--dir",
         workflowDir,
       ]);
@@ -84,35 +121,39 @@ describe("zero workflow edit command", () => {
         | undefined;
       expect(files).toBeDefined();
       expect(files).toHaveLength(1);
-      expect(files?.[0]?.path).toBe("SKILL.md");
-      expect(files?.[0]?.content).toBe("# Updated Workflow\nNew content.");
+      expect(files?.[0]?.path).toBe("notes.md");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-workflow");
-      expect(logCalls).toContain("updated");
       expect(logCalls).toContain("1 file(s)");
     });
   });
 
   describe("error handling", () => {
-    it("should fail when SKILL.md not found", async () => {
-      const emptyDir = join(tmpdir(), `empty-workflow-edit-${Date.now()}`);
-      mkdirSync(emptyDir, { recursive: true });
+    it("should fail when no update option is provided", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync(["node", "cli", WORKFLOW_ID]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Nothing to update"),
+      );
+    });
+
+    it("should reject SKILL.md in supplementary directory", async () => {
+      writeFileSync(join(workflowDir, "SKILL.md"), "# nope");
 
       await expect(async () => {
         await editCommand.parseAsync([
           "node",
           "cli",
-          "my-workflow",
+          WORKFLOW_ID,
           "--dir",
-          emptyDir,
+          workflowDir,
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("SKILL.md not found"),
+        expect.stringContaining("SKILL.md is reserved"),
       );
-
-      rmSync(emptyDir, { recursive: true, force: true });
     });
   });
 });

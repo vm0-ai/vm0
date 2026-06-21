@@ -6,55 +6,63 @@ import { withErrorHandler } from "../../../lib/command";
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List visible workflows in the organization")
+  .description("List visible workflows, optionally scoped to one agent")
+  .option("--agent <id>", "Only list workflows hosted by this agent")
   .addHelpText(
     "after",
     `
 Examples:
-  zero workflow list`,
+  zero workflow list
+  zero workflow list --agent <agent-id>`,
   )
   .action(
-    withErrorHandler(async () => {
-      const workflows = await listWorkflows();
+    withErrorHandler(async (options: { agent?: string }) => {
+      const workflows = await listWorkflows({ agentId: options.agent });
 
       if (workflows.length === 0) {
         console.log(chalk.dim("No workflows found"));
         console.log(
           chalk.dim(
-            "  Create one with: zero workflow create <name> --dir <path>",
+            "  Create one with: zero workflow create <name> --agent <agent-id> --instruction <text>",
           ),
         );
         return;
       }
 
+      const idWidth = Math.max(
+        2,
+        ...workflows.map((s) => {
+          return s.id.length;
+        }),
+      );
       const nameWidth = Math.max(
         4,
         ...workflows.map((s) => {
           return s.name.length;
         }),
       );
-      const displayWidth = Math.max(
-        12,
+      const agentWidth = Math.max(
+        5,
         ...workflows.map((s) => {
-          return (s.displayName ?? "").length;
+          return (s.agentName ?? s.agentId).length;
         }),
       );
 
       const header = [
+        "ID".padEnd(idWidth),
         "NAME".padEnd(nameWidth),
         "VISIBILITY".padEnd(10),
-        "AGENTS".padEnd(6),
-        "DISPLAY NAME".padEnd(displayWidth),
+        "AGENT".padEnd(agentWidth),
         "DESCRIPTION",
       ].join("  ");
       console.log(chalk.dim(header));
 
       for (const workflow of workflows) {
         const row = [
+          workflow.id.padEnd(idWidth),
           workflow.name.padEnd(nameWidth),
           workflow.visibility.padEnd(10),
-          String(workflow.attachedAgentCount).padEnd(6),
-          (workflow.displayName ?? "-").padEnd(displayWidth),
+          (workflow.agentName ?? workflow.agentId).padEnd(agentWidth),
           workflow.description ?? "-",
         ].join("  ");
         console.log(row);
