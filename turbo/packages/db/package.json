@@ -29,8 +29,10 @@
     "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0",
     "@clerk/backend": "^3.4.13",
     "@vm0/api-contracts": "workspace:*",
+    "@vm0/core": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },
