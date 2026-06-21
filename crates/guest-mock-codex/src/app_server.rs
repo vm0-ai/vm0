@@ -7,8 +7,9 @@ use uuid::Uuid;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
+const LARGE_NOTIFICATION_MESSAGE_BYTES: usize = 17 * 1024 * 1024;
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
-const OVERSIZED_STDOUT_BYTES: usize = 17 * 1024 * 1024;
+const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scenario {
@@ -16,7 +17,9 @@ enum Scenario {
     DisconnectAfterInitialize,
     ExitOnTurnStart,
     InterleavedNotification,
+    LargeNotificationBeforeResponse,
     MalformedStdout,
+    NullIdServerRequestBeforeResponse,
     NotificationOverflow,
     OversizedStdout,
     ServerRequestBeforeResponse,
@@ -32,7 +35,11 @@ impl Scenario {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
+                "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
+                "null-id-server-request-before-response" => {
+                    Ok(Self::NullIdServerRequestBeforeResponse)
+                }
                 "notification-overflow" => Ok(Self::NotificationOverflow),
                 "oversized-stdout" => Ok(Self::OversizedStdout),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
@@ -188,8 +195,19 @@ impl AppServerState {
                         write_json_line(output, &server_notification())?;
                         write_success(output, id, result)?;
                     }
-                    Scenario::ServerRequestBeforeResponse => {
-                        write_json_line(output, &server_request())?;
+                    Scenario::LargeNotificationBeforeResponse => {
+                        write_json_line(output, &large_server_notification())?;
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::ServerRequestBeforeResponse
+                    | Scenario::NullIdServerRequestBeforeResponse => {
+                        let request_id =
+                            if self.scenario == Scenario::NullIdServerRequestBeforeResponse {
+                                Value::Null
+                            } else {
+                                json!("guest-mock-codex-server-request-1")
+                            };
+                        write_json_line(output, &server_request(request_id))?;
                         self.pending_response = Some(PendingResponse { id, result });
                     }
                     Scenario::NotificationOverflow => {
@@ -363,7 +381,10 @@ impl AppServerState {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "missing method"));
         }
 
-        if self.scenario != Scenario::ServerRequestBeforeResponse {
+        if !matches!(
+            self.scenario,
+            Scenario::ServerRequestBeforeResponse | Scenario::NullIdServerRequestBeforeResponse
+        ) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "unexpected client response",
@@ -490,9 +511,18 @@ fn server_notification_with_index(index: usize) -> Value {
     })
 }
 
-fn server_request() -> Value {
+fn large_server_notification() -> Value {
     json!({
-        "id": "guest-mock-codex-server-request-1",
+        "method": "experimental/server-notification",
+        "params": {
+            "message": "x".repeat(LARGE_NOTIFICATION_MESSAGE_BYTES),
+        }
+    })
+}
+
+fn server_request(id: Value) -> Value {
+    json!({
+        "id": id,
         "method": "experimental/server-request",
         "params": {
             "message": "guest-mock-codex server request"

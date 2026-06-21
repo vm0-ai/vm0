@@ -24,7 +24,8 @@ use super::{child_env, diagnostics};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
-const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
+const NOTIFICATION_QUEUE_MAX_BYTES: usize = 16 * 1024 * 1024;
+const STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const SHUTDOWN_SIGTERM_GRACE: Duration = Duration::from_secs(2);
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
@@ -56,6 +57,7 @@ impl CodexAppServerConfig {
 pub enum JsonRpcId {
     Number(i64),
     String(String),
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,7 +139,8 @@ pub struct CodexAppServerClient {
     stderr_handle: Option<JoinHandle<Vec<String>>>,
     stderr_tail: Vec<String>,
     next_request_id: i64,
-    notifications: VecDeque<ServerNotification>,
+    notifications: VecDeque<QueuedNotification>,
+    notification_queue_bytes: usize,
     closed: bool,
 }
 
@@ -188,6 +191,7 @@ impl CodexAppServerClient {
             stderr_tail: Vec::new(),
             next_request_id: 1,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
+            notification_queue_bytes: 0,
             closed: false,
         })
     }
@@ -197,7 +201,9 @@ impl CodexAppServerClient {
     }
 
     pub fn pop_notification(&mut self) -> Option<ServerNotification> {
-        self.notifications.pop_front()
+        let queued = self.notifications.pop_front()?;
+        self.notification_queue_bytes = self.notification_queue_bytes.saturating_sub(queued.bytes);
+        Some(queued.notification)
     }
 
     pub fn stderr_tail(&self) -> &[String] {
@@ -272,8 +278,11 @@ impl CodexAppServerClient {
                         "received response for unknown id {id:?} while waiting for {method}"
                     )));
                 }
-                IncomingMessage::Notification(notification) => {
-                    self.push_notification(notification)?;
+                IncomingMessage::Notification {
+                    notification,
+                    line_bytes,
+                } => {
+                    self.push_notification(notification, line_bytes)?;
                 }
                 IncomingMessage::Request(request) => {
                     self.reject_server_request(&request).await?;
@@ -435,13 +444,31 @@ impl CodexAppServerClient {
     fn push_notification(
         &mut self,
         notification: ServerNotification,
+        line_bytes: usize,
     ) -> Result<(), CodexAppServerError> {
         if self.notifications.len() == NOTIFICATION_QUEUE_CAPACITY {
             return Err(CodexAppServerError::Protocol(format!(
                 "server notification queue exceeded {NOTIFICATION_QUEUE_CAPACITY} entries"
             )));
         }
-        self.notifications.push_back(notification);
+        let next_bytes = self
+            .notification_queue_bytes
+            .checked_add(line_bytes)
+            .ok_or_else(|| {
+                CodexAppServerError::Protocol(
+                    "server notification queue byte count overflowed".to_string(),
+                )
+            })?;
+        if next_bytes > NOTIFICATION_QUEUE_MAX_BYTES {
+            return Err(CodexAppServerError::Protocol(format!(
+                "server notification queue exceeded {NOTIFICATION_QUEUE_MAX_BYTES} bytes"
+            )));
+        }
+        self.notification_queue_bytes = next_bytes;
+        self.notifications.push_back(QueuedNotification {
+            notification,
+            bytes: line_bytes,
+        });
         Ok(())
     }
 
@@ -498,10 +525,24 @@ struct IncomingErrorObject {
     data: Option<Value>,
 }
 
+struct QueuedNotification {
+    notification: ServerNotification,
+    bytes: usize,
+}
+
 enum IncomingMessage {
-    Success { id: JsonRpcId, result: Value },
-    Error { id: JsonRpcId, error: JsonRpcError },
-    Notification(ServerNotification),
+    Success {
+        id: JsonRpcId,
+        result: Value,
+    },
+    Error {
+        id: JsonRpcId,
+        error: JsonRpcError,
+    },
+    Notification {
+        notification: ServerNotification,
+        line_bytes: usize,
+    },
     Request(ServerRequest),
 }
 
@@ -609,10 +650,10 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
                 params,
             }));
         }
-        return Ok(IncomingMessage::Notification(ServerNotification {
-            method,
-            params,
-        }));
+        return Ok(IncomingMessage::Notification {
+            notification: ServerNotification { method, params },
+            line_bytes: line.len(),
+        });
     }
 
     let Some(id_value) = value.get("id") else {

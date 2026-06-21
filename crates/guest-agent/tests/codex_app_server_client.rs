@@ -146,6 +146,32 @@ async fn codex_app_server_rejects_notification_queue_overflow() -> Result<(), St
 }
 
 #[tokio::test]
+async fn codex_app_server_rejects_large_buffered_notifications() -> Result<(), String> {
+    let mut client = spawn_client(Some("large-notification-before-response"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let result = wait_result_allow_error(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await;
+
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("server notification queue exceeded"));
+            assert!(!message.contains("xxx"));
+        }
+        other => {
+            return Err(format!(
+                "expected large notification queue error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_rejects_server_requests_and_continues() -> Result<(), String> {
     let mut client = spawn_client(Some("server-request-before-response"))?;
     wait_result(client.initialize(), "initialize").await?;
@@ -169,6 +195,26 @@ async fn codex_app_server_rejects_server_requests_and_continues() -> Result<(), 
             .as_str()
             .is_some_and(|message| message.contains("unsupported server request method"))
     );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_rejects_null_id_server_requests_and_continues() -> Result<(), String> {
+    let mut client = spawn_client(Some("null-id-server-request-before-response"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    assert!(started["thread"]["id"].as_str().is_some());
+
+    let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
+    assert_eq!(state["hasPendingResponse"], false);
+    assert!(state["serverRequestResponses"][0]["id"].is_null());
+    assert_eq!(state["serverRequestResponses"][0]["error"]["code"], -32601);
 
     wait_result(client.shutdown(), "shutdown").await
 }
