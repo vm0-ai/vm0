@@ -89,6 +89,7 @@ describe("migration 0476 remap Google Drive permission grants", () => {
       const ownerId = uniqueId("owner");
       const appsUserId = uniqueId("apps-user");
       const existingDenyUserId = uniqueId("existing-deny-user");
+      const existingAllowUserId = uniqueId("existing-allow-user");
       const broadAllowUserId = uniqueId("allow-user");
       const readonlyDenyUserId = uniqueId("readonly-deny-user");
       const fullDenyUserId = uniqueId("full-deny-user");
@@ -139,6 +140,23 @@ describe("migration 0476 remap Google Drive permission grants", () => {
           connectorRef: "google-drive",
           permission: "apps.read",
           action: "deny",
+        },
+        {
+          orgId,
+          userId: existingAllowUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "drive.apps.readonly",
+          action: "allow",
+          expiresAt,
+        },
+        {
+          orgId,
+          userId: existingAllowUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "apps.read",
+          action: "allow",
         },
         {
           orgId,
@@ -256,6 +274,28 @@ describe("migration 0476 remap Google Drive permission grants", () => {
         {
           permission: "apps.read",
           action: "deny",
+          expiresAt: null,
+        },
+      ]);
+
+      const existingAllowGrants = await tx
+        .select({
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        })
+        .from(userPermissionGrants)
+        .where(
+          and(
+            eq(userPermissionGrants.orgId, orgId),
+            eq(userPermissionGrants.userId, existingAllowUserId),
+            eq(userPermissionGrants.connectorRef, "google-drive"),
+          ),
+        );
+      expect(existingAllowGrants).toStrictEqual([
+        {
+          permission: "apps.read",
+          action: "allow",
           expiresAt: null,
         },
       ]);

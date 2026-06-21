@@ -207,7 +207,9 @@ upserted_google_drive_grants AS (
     expires_at = CASE
       WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
         THEN NULL
-      ELSE EXCLUDED.expires_at
+      WHEN user_permission_grants.expires_at IS NULL OR EXCLUDED.expires_at IS NULL
+        THEN NULL
+      ELSE GREATEST(user_permission_grants.expires_at, EXCLUDED.expires_at)
     END,
     updated_at = NOW()
   WHERE user_permission_grants.action IS DISTINCT FROM CASE
@@ -218,7 +220,9 @@ upserted_google_drive_grants AS (
      OR user_permission_grants.expires_at IS DISTINCT FROM CASE
         WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
           THEN NULL
-        ELSE EXCLUDED.expires_at
+        WHEN user_permission_grants.expires_at IS NULL OR EXCLUDED.expires_at IS NULL
+          THEN NULL
+        ELSE GREATEST(user_permission_grants.expires_at, EXCLUDED.expires_at)
       END
   RETURNING 1
 )
