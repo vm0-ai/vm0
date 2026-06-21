@@ -10,7 +10,6 @@ import type {
   UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
@@ -294,6 +293,7 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async createWorkflow(
       actor: ApiTestUser,
+      agentId: string,
       name: string,
       content: string,
       statuses: readonly (201 | 400 | 401 | 403 | 409)[],
@@ -302,10 +302,11 @@ export function createMiscRoutesApi(context: TestContext) {
         setupApp({ context })(zeroWorkflowsCollectionContract).create({
           headers: authenticate(context, actor),
           body: {
+            agentId,
             name,
             displayName: "BDD Workflow",
             description: "Created through public workflow API",
-            files: workflowFiles(content),
+            instruction: content,
           },
         }),
         statuses,
@@ -314,14 +315,18 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async requestCreateInvalidWorkflow(
       actor: ApiTestUser,
+      agentId: string,
       statuses: readonly (400 | 401 | 403 | 409)[],
     ) {
       return await accept(
         setupApp({ context })(zeroWorkflowsCollectionContract).create({
           headers: authenticate(context, actor),
           body: {
+            agentId,
             name: "bdd-invalid-workflow",
-            files: [{ path: "README.md", content: "missing skill file" }],
+            // SKILL.md is reserved and synthesized server-side; supplying it as
+            // a supplementary file is rejected with 400.
+            files: workflowFiles("reserved skill file"),
           },
         }),
         statuses,
@@ -330,13 +335,13 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async readWorkflow(
       actor: ApiTestUser,
-      name: string,
+      workflowId: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
         setupApp({ context })(zeroWorkflowsDetailContract).get({
           headers: authenticate(context, actor),
-          params: { name },
+          params: { workflowId },
         }),
         statuses,
       );
@@ -344,15 +349,15 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async updateWorkflow(
       actor: ApiTestUser,
-      name: string,
+      workflowId: string,
       content: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
         setupApp({ context })(zeroWorkflowsDetailContract).update({
           headers: authenticate(context, actor),
-          params: { name },
-          body: { files: workflowFiles(content) },
+          params: { workflowId },
+          body: { instruction: content },
         }),
         statuses,
       );
@@ -360,29 +365,13 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async deleteWorkflow(
       actor: ApiTestUser,
-      name: string,
+      workflowId: string,
       statuses: readonly (204 | 401 | 403 | 404)[],
     ) {
       return await accept(
         setupApp({ context })(zeroWorkflowsDetailContract).delete({
           headers: authenticate(context, actor),
-          params: { name },
-        }),
-        statuses,
-      );
-    },
-
-    async attachWorkflowToAgent(
-      actor: ApiTestUser,
-      name: string,
-      agentId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      return await accept(
-        setupApp({ context })(zeroWorkflowAgentsContract).attach({
-          headers: authenticate(context, actor),
-          params: { name },
-          body: { agentId },
+          params: { workflowId },
         }),
         statuses,
       );

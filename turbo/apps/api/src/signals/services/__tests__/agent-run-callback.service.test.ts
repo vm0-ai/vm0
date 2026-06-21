@@ -1682,6 +1682,7 @@ async function seedGoalForThread(args: {
     .insert(zeroWorkflows)
     .values({
       orgId: args.orgId,
+      agentId: args.agentId,
       name: `goal-${randomUUID().slice(0, 8)}`,
       type: "goal",
       active: args.workflowActive,
@@ -1693,7 +1694,6 @@ async function seedGoalForThread(args: {
   await db.insert(zeroWorkflowTriggers).values({
     orgId: args.orgId,
     workflowId: workflow!.id,
-    agentId: args.agentId,
     ownerUserId: args.userId,
     kind: "event",
     eventType: "thread-idle",

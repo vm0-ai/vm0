@@ -584,10 +584,7 @@ function buildInjectedSkillVolumes(
       framework,
       goalSeedEnabled,
     ),
-    ...buildWorkflowSkillVolumes(
-      args.injectSkillVolumes.workflows,
-      framework,
-    ),
+    ...buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
   ];
 }
 

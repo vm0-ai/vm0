@@ -159,7 +159,8 @@ async function loadGoalRows(fixture: GoalApiFixture) {
       enabled: zeroWorkflowTriggers.enabled,
       consecutiveFailures: zeroWorkflowTriggers.consecutiveFailures,
       chatThreadId: zeroWorkflowTriggers.chatThreadId,
-      agentId: zeroWorkflowTriggers.agentId,
+      // The owning agent is derived from the workflow row under the 1:N model.
+      agentId: zeroWorkflows.agentId,
     })
     .from(zeroWorkflowTriggers)
     .innerJoin(
@@ -388,6 +389,7 @@ describe("zero goals", () => {
       .insert(zeroWorkflows)
       .values({
         orgId: fixture.orgId,
+        agentId: fixture.agentId,
         name: "goal-db-unique",
         visibility: "private",
         type: "goal",
@@ -404,7 +406,6 @@ describe("zero goals", () => {
       db.insert(zeroWorkflowTriggers).values({
         orgId: fixture.orgId,
         workflowId: workflow!.id,
-        agentId: fixture.agentId,
         ownerUserId: fixture.userId,
         kind: "event",
         eventType: "thread-idle",
@@ -457,7 +458,7 @@ describe("zero goals", () => {
     const triggers = await db
       .select({
         chatThreadId: zeroWorkflowTriggers.chatThreadId,
-        agentId: zeroWorkflowTriggers.agentId,
+        agentId: zeroWorkflows.agentId,
         eventType: zeroWorkflowTriggers.eventType,
       })
       .from(zeroWorkflowTriggers)

@@ -16,11 +16,8 @@ import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import {
-  zeroWorkflowAgents,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import { and, eq, inArray } from "drizzle-orm";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { and, eq } from "drizzle-orm";
 
 import type { TestContext } from "../../../../__tests__/test-helpers";
 import { writeDb$ } from "../../../external/db";
@@ -92,30 +89,43 @@ export const seedWorkflow$ = command(
     args: {
       orgId: string;
       userId: string;
+      agentId: string;
       name: string;
+      visibility?: "public" | "private";
+      instruction?: string | null;
       displayName?: string | null;
       description?: string | null;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<string> => {
     const db = set(writeDb$);
-    await db.insert(zeroWorkflows).values({
-      orgId: args.orgId,
-      name: args.name,
-      visibility: "public",
-      ownerUserId: args.userId,
-      displayName: args.displayName ?? null,
-      description: args.description ?? null,
-      createdBy: args.userId,
-    });
+    const [inserted] = await db
+      .insert(zeroWorkflows)
+      .values({
+        orgId: args.orgId,
+        agentId: args.agentId,
+        name: args.name,
+        visibility: args.visibility ?? "public",
+        instruction: args.instruction ?? null,
+        ownerUserId: args.userId,
+        displayName: args.displayName ?? null,
+        description: args.description ?? null,
+        createdBy: args.userId,
+      })
+      .returning({ id: zeroWorkflows.id });
     signal.throwIfAborted();
+    if (!inserted) {
+      throw new Error("Failed to seed workflow");
+    }
+    return inserted.id;
   },
 );
 
 interface WorkflowStorageSeed {
   readonly orgId: string;
   readonly userId: string;
-  readonly workflowName: string;
+  // The workflow volume is keyed by the workflow id under the agent-scoped model.
+  readonly workflowId: string;
   readonly s3Key: string;
   readonly headVersionId: string;
   readonly type?: string;
@@ -129,7 +139,7 @@ export const seedWorkflowStorage$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     const storageId = randomUUID();
-    const storageName = getCustomSkillStorageName(args.workflowName);
+    const storageName = getCustomSkillStorageName(args.workflowId);
 
     await db.insert(storages).values({
       id: storageId,
@@ -473,43 +483,19 @@ export const seedAgentForInstructions$ = command(
 
       if (args.workflowNames && args.workflowNames.length > 0) {
         const workflowNames = [...new Set(args.workflowNames)];
+        // Workflows are agent-scoped: each is created directly under this agent.
         await db
           .insert(zeroWorkflows)
           .values(
             workflowNames.map((workflowName) => {
               return {
                 orgId: args.orgId,
+                agentId,
                 name: workflowName,
                 visibility: "public" as const,
                 ownerUserId: args.userId,
                 displayName: null,
                 description: null,
-                createdBy: args.userId,
-              };
-            }),
-          )
-          .onConflictDoNothing();
-        signal.throwIfAborted();
-
-        const workflows = await db
-          .select({ id: zeroWorkflows.id, name: zeroWorkflows.name })
-          .from(zeroWorkflows)
-          .where(
-            and(
-              eq(zeroWorkflows.orgId, args.orgId),
-              inArray(zeroWorkflows.name, workflowNames),
-            ),
-          );
-        signal.throwIfAborted();
-
-        await db
-          .insert(zeroWorkflowAgents)
-          .values(
-            workflows.map((workflow) => {
-              return {
-                orgId: args.orgId,
-                workflowId: workflow.id,
-                agentId,
                 createdBy: args.userId,
               };
             }),

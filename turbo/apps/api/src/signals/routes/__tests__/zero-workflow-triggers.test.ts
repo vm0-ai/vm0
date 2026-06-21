@@ -5,7 +5,7 @@ import {
   zeroWorkflowTriggersContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroWorkflowAgents } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -45,7 +45,30 @@ function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
 }
 
-async function seedAttachedAgent(fixture: WorkflowsFixture): Promise<string> {
+async function loadWorkflowId(
+  fixture: WorkflowsFixture,
+  agentId: string,
+): Promise<string> {
+  const [row] = await store
+    .set(writeDb$)
+    .select({ id: zeroWorkflows.id })
+    .from(zeroWorkflows)
+    .where(
+      and(
+        eq(zeroWorkflows.orgId, fixture.orgId),
+        eq(zeroWorkflows.agentId, agentId),
+        eq(zeroWorkflows.name, WORKFLOW_NAME),
+      ),
+    );
+  if (!row) {
+    throw new Error("Expected the agent to own the seeded workflow");
+  }
+  return row.id;
+}
+
+async function seedAgentWithWorkflow(
+  fixture: WorkflowsFixture,
+): Promise<{ agentId: string; workflowId: string }> {
   const { agentId } = await store.set(
     seedAgentForInstructions$,
     {
@@ -56,7 +79,8 @@ async function seedAttachedAgent(fixture: WorkflowsFixture): Promise<string> {
     },
     context.signal,
   );
-  return agentId;
+  const workflowId = await loadWorkflowId(fixture, agentId);
+  return { agentId, workflowId };
 }
 
 describe("zero workflow triggers", () => {
@@ -67,25 +91,25 @@ describe("zero workflow triggers", () => {
   async function setupFixture(): Promise<{
     fixture: WorkflowsFixture;
     agentId: string;
+    workflowId: string;
   }> {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
-    const agentId = await seedAttachedAgent(fixture);
+    const { agentId, workflowId } = await seedAgentWithWorkflow(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
-    return { fixture, agentId };
+    return { fixture, agentId, workflowId };
   }
 
   it("creates a cron trigger and eagerly binds a chat thread", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: {
             type: "cron",
             cronExpression: "0 9 * * 1-5",
@@ -98,7 +122,6 @@ describe("zero workflow triggers", () => {
 
     expect(created.body).toMatchObject({
       kind: "schedule",
-      agentId,
       enabled: true,
       schedule: {
         type: "cron",
@@ -111,36 +134,57 @@ describe("zero workflow triggers", () => {
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
   });
 
-  it("rejects creation when the agent is not attached to the workflow", async () => {
+  it("rejects creation on a workflow the caller cannot see", async () => {
     const { fixture } = await setupFixture();
-    const { agentId: unattachedAgentId } = await store.set(
+    // A private workflow under another user's private agent is invisible to
+    // this member, so trigger creation is rejected as not-found.
+    const otherUserId = `user_${randomUUID()}`;
+    const { agentId: privateAgentId } = await store.set(
       seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId, name: "other-agent" },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        name: "private-agent",
+        visibility: "private",
+        workflowNames: ["hidden-workflow"],
+      },
       context.signal,
     );
+    const [hidden] = await store
+      .set(writeDb$)
+      .select({ id: zeroWorkflows.id })
+      .from(zeroWorkflows)
+      .where(
+        and(
+          eq(zeroWorkflows.orgId, fixture.orgId),
+          eq(zeroWorkflows.agentId, privateAgentId),
+          eq(zeroWorkflows.name, "hidden-workflow"),
+        ),
+      );
+    if (!hidden) {
+      throw new Error("Expected the private agent to own the hidden workflow");
+    }
 
     await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId: hidden.id },
         body: {
-          agentId: unattachedAgentId,
           schedule: { type: "loop", intervalSeconds: 3600 },
         },
       }),
-      [409],
+      [404],
     );
   });
 
   it("rejects an invalid cron expression and a past one-time schedule", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
 
     await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: {
             type: "cron",
             cronExpression: "not a cron",
@@ -154,9 +198,8 @@ describe("zero workflow triggers", () => {
     await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: {
             type: "once",
             atTime: new Date(now() - 60_000).toISOString(),
@@ -169,13 +212,13 @@ describe("zero workflow triggers", () => {
   });
 
   it("makes a loop trigger due immediately when enabled", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
-        body: { agentId, schedule: { type: "loop", intervalSeconds: 1800 } },
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 1800 } },
       }),
       [201],
     );
@@ -188,14 +231,13 @@ describe("zero workflow triggers", () => {
   });
 
   it("returns created triggers from list and workflow detail", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
 
     await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: {
             type: "once",
             atTime: futureIso(86_400_000),
@@ -209,7 +251,7 @@ describe("zero workflow triggers", () => {
     const listed = await accept(
       triggersClient().list({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
       }),
       [200],
     );
@@ -219,7 +261,7 @@ describe("zero workflow triggers", () => {
     const detail = await accept(
       detailClient().get({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
       }),
       [200],
     );
@@ -227,13 +269,12 @@ describe("zero workflow triggers", () => {
   });
 
   it("updates the schedule of an existing trigger", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: { type: "loop", intervalSeconds: 600 },
         },
       }),
@@ -262,13 +303,12 @@ describe("zero workflow triggers", () => {
   });
 
   it("clears next run on disable and recomputes it on enable", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: {
             type: "cron",
             cronExpression: "0 * * * *",
@@ -300,14 +340,13 @@ describe("zero workflow triggers", () => {
     expect(enabled.body.nextRunAt).toBeTruthy();
   });
 
-  it("blocks enable when the agent is no longer attached", async () => {
-    const { fixture, agentId } = await setupFixture();
+  it("treats a deleted workflow's trigger as not found on enable", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: { type: "loop", intervalSeconds: 3600 },
         },
       }),
@@ -322,14 +361,16 @@ describe("zero workflow triggers", () => {
       [200],
     );
 
-    // Simulate the workflow being detached from the agent.
+    // Removing the workflow (cascade-deletes its triggers) leaves nothing to
+    // enable; the trigger is reported as not found.
     await store
       .set(writeDb$)
-      .delete(zeroWorkflowAgents)
+      .delete(zeroWorkflows)
       .where(
         and(
-          eq(zeroWorkflowAgents.orgId, fixture.orgId),
-          eq(zeroWorkflowAgents.agentId, agentId),
+          eq(zeroWorkflows.orgId, fixture.orgId),
+          eq(zeroWorkflows.agentId, agentId),
+          eq(zeroWorkflows.id, workflowId),
         ),
       );
 
@@ -338,18 +379,17 @@ describe("zero workflow triggers", () => {
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
-      [409],
+      [404],
     );
   });
 
   it("allows another org member to manage only their own triggers", async () => {
-    const { fixture, agentId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
     const ownerTrigger = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: { type: "loop", intervalSeconds: 3600 },
         },
       }),
@@ -364,9 +404,8 @@ describe("zero workflow triggers", () => {
     await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: { type: "loop", intervalSeconds: 7200 },
         },
       }),
@@ -383,13 +422,12 @@ describe("zero workflow triggers", () => {
   });
 
   it("keeps the bound chat thread when a trigger is deleted", async () => {
-    const { agentId } = await setupFixture();
+    const { workflowId } = await setupFixture();
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { name: WORKFLOW_NAME },
+        params: { workflowId },
         body: {
-          agentId,
           schedule: { type: "loop", intervalSeconds: 3600 },
         },
       }),

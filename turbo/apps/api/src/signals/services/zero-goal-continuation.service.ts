@@ -494,9 +494,13 @@ export const continueGoalIfIdle$ = command(
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
         appendSystemPrompt: buildGoalContinuationSystemPrompt(),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(trigger, goal.agentId, {
-          isGoalRun: true,
-        }),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+          trigger,
+          goal.agentId,
+          {
+            isGoalRun: true,
+          },
+        ),
         recordLastRunAt: true,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
@@ -585,7 +589,11 @@ export const bootstrapGoalRun$ = command(
     return set(
       runWorkflowTriggerNow$,
       {
-        due: { trigger: args.trigger, agentId: goal.agentId, workflowName: "goal" },
+        due: {
+          trigger: args.trigger,
+          agentId: goal.agentId,
+          workflowName: "goal",
+        },
         apiStartTime: now(),
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",

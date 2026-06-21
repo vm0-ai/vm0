@@ -31,10 +31,7 @@ import { writeDb$, type Db } from "../../external/db";
 import { dispatchRunCallbacks$ } from "../../services/agent-run-callback.service";
 import { executeDueWorkflowTriggers$ } from "../../services/zero-workflow-trigger-poller.service";
 import { handleWorkflowTriggerInternalCallback } from "../../services/zero-workflow-trigger-run-callback.service";
-import {
-  disableTriggersForDetachedAgent,
-  testRunWorkflowTrigger$,
-} from "../../services/zero-workflow-trigger.service";
+import { testRunWorkflowTrigger$ } from "../../services/zero-workflow-trigger.service";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -148,7 +145,6 @@ async function seedTrigger(
     .values({
       orgId: scenario.fixture.orgId,
       workflowId: scenario.workflowId,
-      agentId: scenario.agentId,
       ownerUserId: scenario.fixture.userId,
       scheduleType: opts.scheduleType,
       cronExpression: opts.cronExpression ?? null,
@@ -263,6 +259,7 @@ async function seedGoalTrigger(
     .insert(zeroWorkflows)
     .values({
       orgId: scenario.fixture.orgId,
+      agentId: scenario.agentId,
       name: `goal-${randomUUID().slice(0, 8)}`,
       visibility: "private",
       type: "goal",
@@ -281,7 +278,6 @@ async function seedGoalTrigger(
     .values({
       orgId: scenario.fixture.orgId,
       workflowId: workflow.id,
-      agentId: scenario.agentId,
       ownerUserId: scenario.fixture.userId,
       kind: "event",
       eventType: "thread-idle",
@@ -686,7 +682,7 @@ describe("zero workflow trigger scheduler", () => {
     expect(trigger?.consecutiveFailures).toBe(0);
   });
 
-  it("disables triggers when the workflow is detached from the agent", async () => {
+  it("cascade-deletes a workflow's triggers when the workflow is removed", async () => {
     const scenario = await setup();
     const { triggerId } = await seedTrigger(scenario, {
       scheduleType: "loop",
@@ -695,14 +691,18 @@ describe("zero workflow trigger scheduler", () => {
     });
 
     const db = store.set(writeDb$);
-    await disableTriggersForDetachedAgent(db, {
-      orgId: scenario.fixture.orgId,
-      workflowId: scenario.workflowId,
-      agentId: scenario.agentId,
-    });
+    // Under the hard 1:N model a workflow belongs to exactly one agent; removing
+    // the workflow cascade-deletes its triggers (FK onDelete: cascade).
+    await db
+      .delete(zeroWorkflows)
+      .where(
+        and(
+          eq(zeroWorkflows.orgId, scenario.fixture.orgId),
+          eq(zeroWorkflows.id, scenario.workflowId),
+        ),
+      );
 
     const trigger = await loadTrigger(db, triggerId);
-    expect(trigger?.enabled).toBeFalsy();
-    expect(trigger?.nextRunAt).toBeNull();
+    expect(trigger).toBeUndefined();
   });
 });
