@@ -3,6 +3,7 @@ use super::*;
 use std::future::Future;
 
 use base64::Engine;
+use sandbox::SandboxExecTermination;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
@@ -15,7 +16,6 @@ use crate::control::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus, send_exec, send_terminate,
 };
-use crate::exec_result_compat::EXEC_TIMEOUT_EXIT_CODE;
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
 };
@@ -139,20 +139,24 @@ fn control_exec_result(
     }
 }
 
-fn expect_exec_success(response: ExecResponse) -> (i32, Vec<u8>, Vec<u8>, bool, bool) {
+fn expect_exec_success(
+    response: ExecResponse,
+) -> (SandboxExecTermination, Vec<u8>, Vec<u8>, bool, bool, String) {
     match response {
         ExecResponse::Success {
-            exit_code,
+            termination,
             stdout,
             stderr,
             stdout_truncated,
             stderr_truncated,
+            diagnostic,
         } => (
-            exit_code,
+            termination,
             BASE64.decode(stdout).expect("stdout should decode"),
             BASE64.decode(stderr).expect("stderr should decode"),
             stdout_truncated,
             stderr_truncated,
+            diagnostic,
         ),
         ExecResponse::Error { error } => panic!("expected success response, got error: {error}"),
     }
@@ -194,7 +198,7 @@ fn bind_test_server(
 }
 
 #[test]
-fn control_exec_result_preserves_ordinary_exit_compatibility() {
+fn control_exec_result_preserves_ordinary_exit_state() {
     let response = exec_response_from_operation_result(control_exec_result(
         ExecTermination::Exited { exit_code: 7 },
         b"out".to_vec(),
@@ -203,59 +207,56 @@ fn control_exec_result_preserves_ordinary_exit_compatibility() {
     ))
     .expect("ordinary exit should convert");
 
-    let (exit_code, stdout, stderr, stdout_truncated, stderr_truncated) =
+    let (termination, stdout, stderr, stdout_truncated, stderr_truncated, diagnostic) =
         expect_exec_success(response);
-    assert_eq!(exit_code, 7);
+    assert_eq!(termination, SandboxExecTermination::Exited { exit_code: 7 });
     assert_eq!(stdout, b"out");
     assert_eq!(stderr, b"err");
     assert!(stdout_truncated);
     assert!(!stderr_truncated);
+    assert_eq!(diagnostic, "ignored");
 }
 
 #[test]
-fn control_exec_result_preserves_terminal_state_compatibility_mapping() {
-    for (termination, diagnostic, expected_code, expected_stderr) in [
+fn control_exec_result_preserves_structured_terminal_state() {
+    for (termination, diagnostic, expected_termination, expected_stderr) in [
         (
             ExecTermination::TimedOut,
             "",
-            EXEC_TIMEOUT_EXIT_CODE,
-            "Timeout",
+            SandboxExecTermination::TimedOut,
+            Vec::new(),
         ),
         (
             ExecTermination::Cancelled,
             "cancel diagnostic",
-            1,
-            "Cancelled\ncancel diagnostic",
+            SandboxExecTermination::Cancelled,
+            Vec::new(),
         ),
         (
             ExecTermination::StartFailed,
             "spawn failed",
-            1,
-            "spawn failed",
+            SandboxExecTermination::StartFailed,
+            Vec::new(),
         ),
         (
             ExecTermination::WaitFailed,
             "wait failed",
-            1,
-            "stderr clue\nwait failed",
+            SandboxExecTermination::WaitFailed,
+            b"stderr clue".to_vec(),
         ),
     ] {
-        let stderr = if matches!(termination, ExecTermination::WaitFailed) {
-            b"stderr clue".to_vec()
-        } else {
-            Vec::new()
-        };
         let response = exec_response_from_operation_result(control_exec_result(
             termination,
             Vec::new(),
-            stderr,
+            expected_stderr.clone(),
             diagnostic,
         ))
-        .expect("terminal state should convert to compatibility response");
+        .expect("terminal state should convert to structured response");
 
-        let (exit_code, _, stderr, _, _) = expect_exec_success(response);
-        assert_eq!(exit_code, expected_code);
-        assert_eq!(String::from_utf8(stderr).unwrap(), expected_stderr);
+        let (termination, _, stderr, _, _, actual_diagnostic) = expect_exec_success(response);
+        assert_eq!(termination, expected_termination);
+        assert_eq!(stderr, expected_stderr);
+        assert_eq!(actual_diagnostic, diagnostic);
     }
 }
 
