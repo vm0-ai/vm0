@@ -282,7 +282,10 @@ impl CodexAppServerClient {
                     notification,
                     line_bytes,
                 } => {
-                    self.push_notification(notification, line_bytes)?;
+                    if let Err(error) = self.push_notification(notification, line_bytes) {
+                        self.signal_process_group(libc::SIGKILL);
+                        return Err(error);
+                    }
                 }
                 IncomingMessage::Request(request) => {
                     self.reject_server_request(&request).await?;
