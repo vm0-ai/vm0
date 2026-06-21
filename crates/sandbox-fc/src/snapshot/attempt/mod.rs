@@ -18,6 +18,7 @@ use crate::config::SnapshotConfig;
 use crate::network::NetnsPool;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process::kill_process_group;
+use crate::runtime_dirs::prepare_private_socket_dir;
 use crate::workspace_drive_image::prepare_workspace_drive_image;
 
 use super::SnapshotError;
@@ -216,11 +217,11 @@ impl SnapshotAttempt {
         // The empty bind target file is consumed by `mount --bind` inside
         // `unshare --mount` at spawn time; file content is irrelevant
         // because the bind overlay is what FC reads.
-        if let Err(e) = tokio::fs::create_dir_all(self.sock_paths()?.dir()).await {
+        if let Err(e) = prepare_private_socket_dir(self.sock_paths()?) {
             self.cleanup_resources
-                .destroy_cow_after_setup_error("mkdir sock dir")
+                .destroy_cow_after_setup_error("prepare sock dir")
                 .await;
-            return Err(SnapshotError::Setup(format!("mkdir sock dir: {e}")));
+            return Err(SnapshotError::Setup(format!("prepare sock dir: {e}")));
         }
 
         let drive_bind = self.paths.cow_device_bind();
