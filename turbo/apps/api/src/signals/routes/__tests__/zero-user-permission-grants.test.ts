@@ -5,8 +5,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";

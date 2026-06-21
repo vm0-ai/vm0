@@ -27,6 +27,7 @@ import {
   getFirewallServerMetadataSummary,
   isFirewallServerMetadataConnectorType,
   loadFirewallPermissionIndex,
+  resolveFirewallServerMetadataPolicies,
 } from "../firewall-metadata/server";
 import {
   getAllBuiltinConnectorHosts,
@@ -416,6 +417,39 @@ describe("firewall metadata", () => {
       expect(index!.type).toBe(type);
       expect(index!.label).toBe(summary.label);
     }
+  });
+
+  it("resolves server metadata policies like runtime helpers", async () => {
+    for (const [type] of runtimeEntries()) {
+      const stored = {
+        [type]: {
+          policies: { __metadata_test__: "deny" as const },
+          unknownPolicy: "deny" as const,
+        },
+      };
+      await expect(
+        resolveFirewallServerMetadataPolicies(null, [type]),
+      ).resolves.toStrictEqual(resolveFirewallPolicies(null, [type]));
+      await expect(
+        resolveFirewallServerMetadataPolicies(stored, [type]),
+      ).resolves.toStrictEqual(resolveFirewallPolicies(stored, [type]));
+    }
+
+    await expect(
+      resolveFirewallServerMetadataPolicies(null, ["cloudinary"]),
+    ).resolves.toBeNull();
+
+    const storedUnknownConnector = {
+      cloudinary: {
+        policies: { read: "deny" as const },
+        unknownPolicy: "allow" as const,
+      },
+    };
+    await expect(
+      resolveFirewallServerMetadataPolicies(storedUnknownConnector, [
+        "cloudinary",
+      ]),
+    ).resolves.toStrictEqual(storedUnknownConnector);
   });
 
   it("keeps summary metadata synchronized with the runtime registry", () => {

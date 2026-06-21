@@ -1,8 +1,8 @@
 import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-  type FirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+  isFirewallServerMetadataConnectorType,
+  loadFirewallPermissionIndex,
+  type FirewallServerMetadataConnectorType,
+} from "@vm0/connectors/firewall-metadata/server";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -41,7 +41,7 @@ type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
 
 interface NetworkInsightRow {
   readonly runId: string;
-  readonly firewallName: FirewallConnectorType;
+  readonly firewallName: FirewallServerMetadataConnectorType;
   readonly firewallPermission: string;
   readonly action: NetworkInsightAction;
 }
@@ -246,27 +246,30 @@ function normalizeDbDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-function getPermissionLabel(
-  firewallName: string,
+type PermissionLabelResolver = (
+  firewallName: FirewallServerMetadataConnectorType,
   permissionName: string,
-): string {
-  const key = `${firewallName}:${permissionName}`;
+) => Promise<string>;
 
-  if (isFirewallConnectorType(firewallName)) {
-    const config = getConnectorFirewall(firewallName);
-    for (const api of config.apis) {
-      if (!api.permissions) {
-        continue;
-      }
-      for (const perm of api.permissions) {
-        if (perm.name === permissionName) {
-          return perm.description ?? key;
-        }
-      }
-    }
-  }
+function createPermissionLabelResolver(): PermissionLabelResolver {
+  const indexes = new Map<
+    FirewallServerMetadataConnectorType,
+    ReturnType<typeof loadFirewallPermissionIndex>
+  >();
 
-  return key;
+  return async (firewallName, permissionName) => {
+    const key = `${firewallName}:${permissionName}`;
+    const cached = indexes.get(firewallName);
+    const load =
+      cached ??
+      (() => {
+        const index = loadFirewallPermissionIndex(firewallName);
+        indexes.set(firewallName, index);
+        return index;
+      })();
+    const index = await load;
+    return index?.permissionDescription(permissionName) ?? key;
+  };
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -311,7 +314,7 @@ function normalizeNetworkInsightRows(
     const firewallNameValue = value.firewall_name;
     if (
       typeof firewallNameValue !== "string" ||
-      !isFirewallConnectorType(firewallNameValue)
+      !isFirewallServerMetadataConnectorType(firewallNameValue)
     ) {
       invalidFirewallNames++;
       continue;
@@ -427,7 +430,7 @@ async function resolveUserNames(
   return nameMap;
 }
 
-function aggregateNetworkDataPerUser(
+async function aggregateNetworkDataPerUser(
   networkRows: NetworkInsightRow[],
   runIdToInfo: Map<
     string,
@@ -437,7 +440,8 @@ function aggregateNetworkDataPerUser(
       readonly agentName: string;
     }
   >,
-): Map<string, UserNetworkData> {
+  resolvePermissionLabel: PermissionLabelResolver,
+): Promise<Map<string, UserNetworkData>> {
   const userNetworkMap = new Map<string, UserNetworkData>();
 
   for (const row of networkRows) {
@@ -482,23 +486,26 @@ function aggregateNetworkDataPerUser(
     const permKey = hasPermission
       ? `${row.firewallName}:${row.firewallPermission}`
       : row.firewallName;
-    const label = hasPermission
-      ? getPermissionLabel(row.firewallName, row.firewallPermission)
-      : row.firewallName;
-    const permission = userData.permMap.get(permKey) ?? {
-      label,
-      connectorType: row.firewallName,
-      allowed: 0,
-      denied: 0,
-      agentNames: new Set<string>(),
-    };
+    let permission = userData.permMap.get(permKey);
+    if (!permission) {
+      const label = hasPermission
+        ? await resolvePermissionLabel(row.firewallName, row.firewallPermission)
+        : row.firewallName;
+      permission = {
+        label,
+        connectorType: row.firewallName,
+        allowed: 0,
+        denied: 0,
+        agentNames: new Set<string>(),
+      };
+      userData.permMap.set(permKey, permission);
+    }
     if (row.action === "ALLOW") {
       permission.allowed++;
     } else {
       permission.denied++;
     }
     permission.agentNames.add(info.agentName);
-    userData.permMap.set(permKey, permission);
   }
 
   return userNetworkMap;
@@ -1174,11 +1181,15 @@ function queryWindowNetworkData(
       });
     }
 
+    const userNetworkMap = await aggregateNetworkDataPerUser(
+      normalizedNetworkRows.rows,
+      runIdToInfo,
+      createPermissionLabelResolver(),
+    );
+    signal.throwIfAborted();
+
     return {
-      userNetworkMap: aggregateNetworkDataPerUser(
-        normalizedNetworkRows.rows,
-        runIdToInfo,
-      ),
+      userNetworkMap,
       networkRows: rawNetworkRows.length,
       axiomDegraded,
     };

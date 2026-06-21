@@ -1,4 +1,8 @@
-import { UNKNOWN_PERMISSION_GRANT } from "../firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicies,
+  type FirewallPolicyValue,
+} from "../firewall-types";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyResolver,
@@ -186,4 +190,50 @@ export async function loadFirewallPermissionIndex(
     });
   permissionIndexCache.set(type, load);
   return await load;
+}
+
+function expandDefaultPolicy(index: FirewallPermissionIndex): {
+  readonly policies: Record<string, FirewallPolicyValue>;
+  readonly unknownPolicy: FirewallPolicyValue;
+} {
+  const policies: Record<string, FirewallPolicyValue> = {};
+  for (const name of index.permissionNames) {
+    policies[name] = index.policyResolver.permission(name);
+  }
+  return {
+    policies,
+    unknownPolicy: index.policyResolver.unknown(),
+  };
+}
+
+export async function resolveFirewallServerMetadataPolicies(
+  stored: FirewallPolicies | null,
+  connectors: readonly string[],
+): Promise<FirewallPolicies | null> {
+  let resolved: FirewallPolicies | null = stored;
+  const indexes = await Promise.all(
+    connectors.map((connector) => {
+      return loadFirewallPermissionIndex(connector);
+    }),
+  );
+
+  for (const index of indexes) {
+    if (!index) {
+      continue;
+    }
+
+    const defaults = expandDefaultPolicy(index);
+    const existing = resolved?.[index.type];
+    resolved = {
+      ...(resolved ?? {}),
+      [index.type]: {
+        policies: { ...defaults.policies, ...existing?.policies },
+        ...(existing?.unknownPolicy !== undefined
+          ? { unknownPolicy: existing.unknownPolicy }
+          : { unknownPolicy: defaults.unknownPolicy }),
+      },
+    };
+  }
+
+  return resolved;
 }

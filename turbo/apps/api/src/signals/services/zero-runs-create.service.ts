@@ -7,10 +7,9 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -440,7 +439,7 @@ async function resolveZeroRunPermissionPolicies(
     readonly checkedAt: Date;
   },
   signal: AbortSignal,
-): Promise<ReturnType<typeof resolveFirewallPolicies>> {
+): Promise<FirewallPolicies | null> {
   const grants = await loadActiveUserPermissionGrants(
     db,
     {
@@ -452,9 +451,13 @@ async function resolveZeroRunPermissionPolicies(
   );
   signal.throwIfAborted();
 
-  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
-    ...args.allowedConnectorTypes,
-  ]);
+  const resolved = await resolveFirewallServerMetadataPolicies(
+    permissionGrantsToFirewallPolicies(grants),
+    [...args.allowedConnectorTypes],
+  );
+  signal.throwIfAborted();
+
+  return resolved;
 }
 
 async function loadUserInfo(
@@ -513,9 +516,7 @@ function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly permissionPolicies:
-    | ReturnType<typeof resolveFirewallPolicies>
-    | undefined;
+  readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
@@ -558,9 +559,7 @@ function createIntegrationRunBody(args: {
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly permissionPolicies:
-    | ReturnType<typeof resolveFirewallPolicies>
-    | undefined;
+  readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
 }) {
