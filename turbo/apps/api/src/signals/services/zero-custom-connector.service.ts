@@ -1,10 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import {
-  getAllBuiltinConnectorHosts,
-  getBuiltinConnectorDisplayName,
-} from "@vm0/connectors/firewalls";
+import { getBuiltinConnectorHostOwner } from "@vm0/connectors/firewall-metadata/server";
 import {
   expandHostWildcardsInBaseUrl,
   validateBaseUrl,
@@ -146,13 +143,12 @@ function validateAndNormalisePrefixes(
   // Reject prefixes whose host collides with a built-in connector. Mitm-level
   // matching is still the final line of defense; this early rejection gives
   // admins a clear message at create time instead of a silent shadow.
-  const builtinHosts = getAllBuiltinConnectorHosts();
   for (const p of normalised) {
     const host = safeUrlParse(p)?.host ?? "";
-    const builtinType = builtinHosts.get(host);
-    if (builtinType) {
+    const builtinOwner = getBuiltinConnectorHostOwner(host);
+    if (builtinOwner) {
       return badRequestMessage(
-        `Host "${host}" is already managed by the ${getBuiltinConnectorDisplayName(builtinType)} connector`,
+        `Host "${host}" is already managed by the ${builtinOwner.label} connector`,
       );
     }
   }

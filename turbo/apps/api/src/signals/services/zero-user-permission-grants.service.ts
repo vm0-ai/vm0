@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -111,27 +108,12 @@ async function findVisibleAgent(
   return agent ?? null;
 }
 
-function validPermissionNames(connectorRef: string): Set<string> | null {
-  if (!isFirewallConnectorType(connectorRef)) {
-    return null;
-  }
-
-  const config = getConnectorFirewall(connectorRef);
-  const names = new Set<string>();
-  for (const api of config.apis) {
-    for (const permission of api.permissions ?? []) {
-      names.add(permission.name);
-    }
-  }
-  return names;
-}
-
-function validateGrantTarget(
+async function validateGrantTarget(
   connectorRef: string,
   permission: string,
-): ValidationErrorResponse | null {
-  const names = validPermissionNames(connectorRef);
-  if (!names) {
+): Promise<ValidationErrorResponse | null> {
+  const index = await loadFirewallPermissionIndex(connectorRef);
+  if (!index) {
     return validationError(`Unknown connector ref: ${connectorRef}`);
   }
 
@@ -139,7 +121,7 @@ function validateGrantTarget(
     return null;
   }
 
-  if (!names.has(permission)) {
+  if (!index.hasPermission(permission)) {
     return validationError(
       `Unknown permission "${permission}" for connector "${connectorRef}"`,
     );
@@ -374,11 +356,11 @@ async function upsertVisibleGrantRow(
   });
 }
 
-function validateApplyUserPermissionGrants(
+async function validateApplyUserPermissionGrants(
   apply: ApplyUserPermissionGrantsRequest,
-): ValidationErrorResponse | null {
-  const names = validPermissionNames(apply.connectorRef);
-  if (!names) {
+): Promise<ValidationErrorResponse | null> {
+  const index = await loadFirewallPermissionIndex(apply.connectorRef);
+  if (!index) {
     return validationError(`Unknown connector ref: ${apply.connectorRef}`);
   }
 
@@ -391,7 +373,7 @@ function validateApplyUserPermissionGrants(
 
     if (
       grant.permission !== UNKNOWN_PERMISSION_GRANT &&
-      !names.has(grant.permission)
+      !index.hasPermission(grant.permission)
     ) {
       return validationError(
         `Unknown permission "${grant.permission}" for connector "${apply.connectorRef}"`,
@@ -527,10 +509,11 @@ export const upsertUserPermissionGrant$ = command(
     args: UpsertUserPermissionGrantArgs,
     signal: AbortSignal,
   ): Promise<UpsertUserPermissionGrantResult> => {
-    const validation = validateGrantTarget(
+    const validation = await validateGrantTarget(
       args.grant.connectorRef,
       args.grant.permission,
     );
+    signal.throwIfAborted();
     if (validation) {
       return validation;
     }
@@ -560,7 +543,8 @@ export const applyUserPermissionGrants$ = command(
     args: ApplyUserPermissionGrantsArgs,
     signal: AbortSignal,
   ): Promise<ApplyUserPermissionGrantsResult> => {
-    const validation = validateApplyUserPermissionGrants(args.apply);
+    const validation = await validateApplyUserPermissionGrants(args.apply);
+    signal.throwIfAborted();
     if (validation) {
       return validation;
     }
