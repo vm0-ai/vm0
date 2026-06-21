@@ -1550,6 +1550,23 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(builtinCollision.body.error.message).toContain("api.github.com");
     expect(builtinCollision.body.error.message).toContain("GitHub");
 
+    const builtinTrailingDotCollision =
+      await connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          displayName: "Fake GitHub Trailing Dot",
+          prefixes: ["https://api.github.com./v3/"],
+          headerName: "Authorization",
+          headerTemplate: "Bearer {{secret}}",
+        },
+        [400],
+      );
+    expectApiError(builtinTrailingDotCollision.body);
+    expect(builtinTrailingDotCollision.body.error.message).toContain(
+      "api.github.com.",
+    );
+    expect(builtinTrailingDotCollision.body.error.message).toContain("GitHub");
+
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
       listed
