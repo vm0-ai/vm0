@@ -1,8 +1,12 @@
 //! Reusable mock Codex contract used by the `guest-mock-codex` binary and tests.
 //!
-//! The mock emits Codex `exec --json` protocol events on stdout and persists a
-//! JSONL session file under Codex's date-partitioned session tree:
-//! `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`.
+//! The mock supports two test-only Codex surfaces:
+//!
+//! - `exec --json`: emits Codex JSONL protocol events on stdout and persists a
+//!   JSONL session file under Codex's date-partitioned session tree:
+//!   `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`.
+//! - `app-server`: speaks the Codex app-server newline-delimited JSON
+//!   request/response protocol over stdio for focused app-server client tests.
 //!
 //! Resume can also append to runner-restored rollout filenames, matching the
 //! real Codex CLI's filesystem resume candidates.
@@ -11,11 +15,13 @@ use chrono::Utc;
 use std::io;
 use uuid::Uuid;
 
+mod app_server;
 mod events;
 mod fixtures;
 mod prompt;
 mod session;
 
+pub use app_server::run_app_server;
 pub use events::build_events;
 pub use fixtures::{lookup_fixture, run_fixture};
 pub use prompt::{join_prompt, join_prompt_cow};

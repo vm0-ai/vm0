@@ -1,22 +1,29 @@
 //! Integration tests that spawn the real binary via Cargo's
 //! `CARGO_BIN_EXE_guest-mock-codex` env var.
 //!
-//! Cover the contract guest-agent will rely on: stdout JSONL shape, the
-//! on-disk session file path / format, and resume semantics.
+//! Cover the contract guest-agent will rely on: exec stdout JSONL shape,
+//! app-server stdio JSON-RPC shape, on-disk session file path / format, and
+//! resume semantics.
 
 use std::collections::BTreeSet;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use chrono::{Datelike, Utc};
 use guest_mock_codex::{
     build_events, build_session_path, find_session_file, read_session_file, session_artifacts,
     session_files, write_session_file,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-mock-codex");
+const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 struct RunOutput {
@@ -71,6 +78,241 @@ fn spawn(codex_home: &Path, args: &[&str]) -> std::io::Result<Child> {
     cmd.spawn()
 }
 
+struct AppServerProcess {
+    child: Option<Child>,
+    stdin: Option<ChildStdin>,
+    stdout_rx: Receiver<Result<Option<Value>, String>>,
+    stdout_thread: Option<JoinHandle<()>>,
+}
+
+impl AppServerProcess {
+    fn request(&mut self, id: i64, method: &str, params: Value) -> std::io::Result<Value> {
+        self.send(&json!({
+            "id": id,
+            "method": method,
+            "params": params,
+        }))?;
+        self.read_required()
+    }
+
+    fn notify(&mut self, method: &str, params: Value) -> std::io::Result<()> {
+        self.send(&json!({
+            "method": method,
+            "params": params,
+        }))
+    }
+
+    fn send(&mut self, message: &Value) -> std::io::Result<()> {
+        let stdin = self.stdin.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "app-server stdin is closed")
+        })?;
+        serde_json::to_writer(&mut *stdin, message).map_err(std::io::Error::other)?;
+        writeln!(stdin)?;
+        stdin.flush()
+    }
+
+    fn send_raw_line(&mut self, line: &str) -> std::io::Result<()> {
+        let stdin = self.stdin.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "app-server stdin is closed")
+        })?;
+        writeln!(stdin, "{line}")?;
+        stdin.flush()
+    }
+
+    fn read_required(&mut self) -> std::io::Result<Value> {
+        self.read_message()?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "app-server closed stdout before responding",
+            )
+        })
+    }
+
+    fn read_message(&mut self) -> std::io::Result<Option<Value>> {
+        match self.stdout_rx.recv_timeout(APP_SERVER_READ_TIMEOUT) {
+            Ok(result) => result
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message)),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out waiting for app-server stdout message",
+            )),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "app-server stdout reader exited without EOF",
+            )),
+        }
+    }
+
+    fn close_and_wait(&mut self) -> std::io::Result<i32> {
+        self.stdin.take();
+        let child = self
+            .child
+            .take()
+            .ok_or_else(|| std::io::Error::other("app-server child already waited"))?;
+        let status = wait_child(child)?;
+        self.join_stdout_thread()?;
+        Ok(status.code().unwrap_or(-1))
+    }
+
+    fn join_stdout_thread(&mut self) -> std::io::Result<()> {
+        if let Some(stdout_thread) = self.stdout_thread.take() {
+            stdout_thread
+                .join()
+                .map_err(|_| std::io::Error::other("app-server stdout reader panicked"))?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for AppServerProcess {
+    fn drop(&mut self) {
+        self.stdin.take();
+        if let Some(mut child) = self.child.take() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    let _ = child.wait();
+                }
+                Ok(None) | Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        let _ = self.join_stdout_thread();
+    }
+}
+
+fn wait_child(mut child: Child) -> std::io::Result<ExitStatus> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = child.wait();
+        let _ = tx.send(result);
+    });
+
+    let status = match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // SAFETY: this is test cleanup for the child process spawned by this helper.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+            match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "app-server child did not exit after SIGKILL",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+                    "app-server child wait thread exited without status",
+                )),
+            }
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "app-server child wait thread exited without status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("app-server child wait thread panicked"))?;
+    status
+}
+
+fn spawn_app_server(
+    codex_home: &Path,
+    args: &[&str],
+    scenario: Option<&str>,
+) -> std::io::Result<AppServerProcess> {
+    spawn_app_server_with_env(codex_home, args, scenario, &[])
+}
+
+fn spawn_app_server_with_env(
+    codex_home: &Path,
+    args: &[&str],
+    scenario: Option<&str>,
+    env: &[(&str, &str)],
+) -> std::io::Result<AppServerProcess> {
+    let mut cmd = Command::new(BIN);
+    cmd.env("CODEX_HOME", codex_home).args(args);
+    cmd.env_remove("MOCK_CODEX_FIXTURE");
+    cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
+    if let Some(value) = scenario {
+        cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
+    }
+    for (key, value) in env {
+        cmd.env(key, value);
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = cmd.spawn()?;
+    let stdin = child.stdin.take().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "failed to open app-server stdin",
+        )
+    })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "failed to open app-server stdout",
+        )
+    })?;
+    let (stdout_tx, stdout_rx) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(line) => line,
+                Err(error) => {
+                    let _ = stdout_tx.send(Err(format!("read app-server stdout line: {error}")));
+                    return;
+                }
+            };
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value = serde_json::from_str::<Value>(&line)
+                .map(Some)
+                .map_err(|error| format!("parse app-server stdout JSON: {error}; line={line:?}"));
+            if stdout_tx.send(value).is_err() {
+                return;
+            }
+        }
+        let _ = stdout_tx.send(Ok(None));
+    });
+    Ok(AppServerProcess {
+        child: Some(child),
+        stdin: Some(stdin),
+        stdout_rx,
+        stdout_thread: Some(stdout_thread),
+    })
+}
+
+fn text_input(text: &str) -> Value {
+    json!({
+        "type": "text",
+        "text": text,
+        "textElements": []
+    })
+}
+
+fn initialize_params() -> Value {
+    json!({
+        "clientInfo": {
+            "name": "guest-mock-codex-tests",
+            "title": null,
+            "version": "0.1.0"
+        },
+        "capabilities": {
+            "experimentalApi": true
+        }
+    })
+}
+
 fn assert_invalid_resume_rejected(codex_home: &Path, out: &RunOutput) -> std::io::Result<()> {
     assert_ne!(out.status, 0, "invalid resume id should fail");
     assert!(
@@ -111,6 +353,735 @@ fn require_session_file(codex_home: &Path) -> std::io::Result<PathBuf> {
 fn session_year_candidates() -> [String; 2] {
     let year = Utc::now().date_naive().year();
     [format!("{year:04}"), format!("{:04}", year + 1)]
+}
+
+#[test]
+fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    let initialized = server.request(1, "initialize", initialize_params())?;
+    assert_eq!(initialized["id"], 1);
+    assert!(initialized.get("jsonrpc").is_none());
+    assert!(initialized.get("type").is_none());
+    assert!(initialized["result"]["codexHome"].as_str().is_some());
+    server.notify("initialized", json!({}))?;
+
+    let started = server.request(2, "thread/start", json!({ "cwd": "/tmp" }))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(started["result"]["thread"]["source"], "appServer");
+    assert_eq!(started["result"]["thread"]["status"]["type"], "idle");
+    assert_eq!(started["result"]["sandbox"]["type"], "dangerFullAccess");
+
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(turn_started["result"]["turn"]["status"], "inProgress");
+    assert_eq!(turn_started["result"]["turn"]["itemsView"], "notLoaded");
+    assert!(turn_started["result"]["turn"]["startedAt"].is_null());
+
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let recorded = server.request(5, "mock/inputs", json!({}))?;
+    assert_eq!(recorded["result"]["initial"], json!(["initial prompt"]));
+    assert_eq!(recorded["result"]["steered"], json!(["follow-up prompt"]));
+
+    let session_path = require_session_file(dir.path())?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["type"], "mock.app_server.input");
+    assert_eq!(events[0]["kind"], "initial");
+    assert_eq!(events[0]["text"], "initial prompt");
+    assert_eq!(events[1]["kind"], "steered");
+    assert_eq!(events[1]["text"], "follow-up prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_invalid_or_duplicate_initialize() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    let invalid = server.request(1, "initialize", json!({}))?;
+    assert_eq!(invalid["id"], 1);
+    assert_eq!(invalid["error"]["code"], -32600);
+    assert!(
+        invalid["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("clientInfo")
+    );
+
+    let initialized = server.request(2, "initialize", initialize_params())?;
+    assert_eq!(
+        initialized["result"]["platformFamily"],
+        std::env::consts::FAMILY
+    );
+
+    let duplicate = server.request(3, "initialize", initialize_params())?;
+    assert_eq!(duplicate["error"]["code"], -32600);
+    assert_eq!(duplicate["error"]["message"], "Already initialized");
+
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_accepts_stdio_and_resumes_supplied_thread() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let mut server = spawn_app_server(
+        dir.path(),
+        &[
+            "app-server",
+            "--stdio",
+            "-c",
+            "model=gpt-5",
+            "--config",
+            "sandbox=danger-full-access",
+        ],
+        None,
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.notify("initialized", json!({}))?;
+    let resumed = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+
+    assert_eq!(resumed["result"]["thread"]["id"], supplied_thread_id);
+    assert_eq!(resumed["result"]["thread"]["sessionId"], supplied_thread_id);
+    assert!(resumed["result"]["initialTurnsPage"].is_null());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_non_stdio_listen_url() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let out = run(
+        dir.path(),
+        &["app-server", "--stdio", "--listen", "tcp://127.0.0.1:0"],
+    )?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "unsupported app-server listen URL should not emit stdout JSON: {:?}",
+        out.events
+    );
+    assert!(
+        out.stderr.contains("only supports stdio transport"),
+        "unsupported app-server listen URL should fail clearly: {:?}",
+        out.stderr
+    );
+    Ok(())
+}
+
+#[test]
+fn app_server_ignores_exec_fixture_mode() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server_with_env(
+        dir.path(),
+        &["app-server", "--stdio"],
+        None,
+        &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
+    )?;
+
+    let initialized = server.request(1, "initialize", initialize_params())?;
+
+    assert_eq!(initialized["id"], 1);
+    assert!(initialized.get("type").is_none());
+    assert!(
+        initialized["result"]["userAgent"]
+            .as_str()
+            .is_some_and(|user_agent| user_agent.starts_with("guest-mock-codex-app-server/"))
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_invalid_json_exits_without_hanging() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.send_raw_line("{not-json")?;
+
+    assert!(server.read_message()?.is_none());
+    assert_ne!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_resumed_non_uuid_thread_records_inputs() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "thread-1";
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let resumed = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    assert_eq!(resumed["result"]["thread"]["id"], supplied_thread_id);
+
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": supplied_thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let session_path = require_session_file(dir.path())?;
+    let file_name = session_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    assert!(
+        !file_name.starts_with(supplied_thread_id),
+        "non-UUID app-server thread ids should not be used directly as session filenames: {file_name}"
+    );
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events[0]["thread_id"], supplied_thread_id);
+    assert_eq!(events[0]["text"], "initial prompt");
+    assert_eq!(events[1]["thread_id"], supplied_thread_id);
+    assert_eq!(events[1]["text"], "follow-up prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_reuses_artifact_for_repeated_non_uuid_resume() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let supplied_thread_id = "thread-1";
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("first prompt")]
+        }),
+    )?;
+
+    server.request(
+        4,
+        "thread/resume",
+        json!({
+            "threadId": supplied_thread_id
+        }),
+    )?;
+    server.request(
+        5,
+        "turn/start",
+        json!({
+            "threadId": supplied_thread_id,
+            "input": [text_input("second prompt")]
+        }),
+    )?;
+
+    let artifacts = session_artifacts(dir.path())?
+        .into_iter()
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        artifacts.len(),
+        1,
+        "repeated resume for the same non-UUID app-server thread should append to one artifact: {artifacts:?}"
+    );
+    let session_path = artifacts.into_iter().next().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "app-server session artifact not found",
+        )
+    })?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["thread_id"], supplied_thread_id);
+    assert_eq!(events[0]["text"], "first prompt");
+    assert_eq!(events[1]["thread_id"], supplied_thread_id);
+    assert_eq!(events[1]["text"], "second prompt");
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_empty_resume_thread_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let error = server.request(
+        2,
+        "thread/resume",
+        json!({
+            "threadId": ""
+        }),
+    )?;
+
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("threadId")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_missing_or_empty_turn_thread_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let missing_start = server.request(
+        3,
+        "turn/start",
+        json!({
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let empty_start = server.request(
+        4,
+        "turn/start",
+        json!({
+            "threadId": "",
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+
+    let turn_started = server.request(
+        5,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let missing_steer = server.request(
+        6,
+        "turn/steer",
+        json!({
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    let empty_steer = server.request(
+        7,
+        "turn/steer",
+        json!({
+            "threadId": "",
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    for error in [missing_start, empty_start, missing_steer, empty_steer] {
+        assert_eq!(error["error"]["code"], -32600);
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("threadId")
+        );
+    }
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_rejects_missing_or_empty_expected_turn_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+
+    let missing_expected_turn = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    let empty_expected_turn = server.request(
+        5,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": "",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    assert_eq!(missing_expected_turn["error"]["code"], -32600);
+    assert_eq!(
+        missing_expected_turn["error"]["message"],
+        "missing expectedTurnId"
+    );
+    assert_eq!(empty_expected_turn["error"]["code"], -32600);
+    assert_eq!(
+        empty_expected_turn["error"]["message"],
+        "expectedTurnId must not be empty"
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_initialized_notification_does_not_replace_initialize_request() -> std::io::Result<()>
+{
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.notify("initialized", json!({}))?;
+    let thread_start_error = server.request(1, "thread/start", json!({}))?;
+    let turn_start_error = server.request(
+        2,
+        "turn/start",
+        json!({
+            "threadId": "thread-1",
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_steer_error = server.request(
+        3,
+        "turn/steer",
+        json!({
+            "threadId": "thread-1",
+            "expectedTurnId": "turn-1",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    assert_eq!(thread_start_error["error"]["code"], -32600);
+    assert!(
+        thread_start_error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not initialized")
+    );
+    assert_eq!(turn_start_error["error"]["code"], -32600);
+    assert_eq!(
+        turn_start_error["error"]["message"],
+        "app server is not initialized"
+    );
+    assert_eq!(turn_steer_error["error"]["code"], -32600);
+    assert_eq!(
+        turn_steer_error["error"]["message"],
+        "app server is not initialized"
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_new_thread_clears_previous_active_turn() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let first_thread = server.request(2, "thread/start", json!({}))?;
+    let first_thread_id = first_thread["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let first_turn = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": first_thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let first_turn_id = first_turn["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let second_thread = server.request(4, "thread/start", json!({}))?;
+    let second_thread_id = second_thread["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let error = server.request(
+        5,
+        "turn/steer",
+        json!({
+            "threadId": second_thread_id,
+            "expectedTurnId": first_turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no active turn")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_stale_turn_scenario_returns_protocol_error() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("stale-turn"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let error = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(error["id"], 4);
+    assert!(error.get("jsonrpc").is_none());
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("stale")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_no_active_turn_scenario_returns_protocol_error() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("no-active-turn"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let error = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(error["error"]["code"], -32600);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no active turn")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_disconnect_after_initialize_closes_stdout() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("disconnect-after-initialize"),
+    )?;
+
+    let initialized = server.request(1, "initialize", initialize_params())?;
+    assert_eq!(
+        initialized["result"]["platformFamily"],
+        std::env::consts::FAMILY
+    );
+    assert!(server.read_message()?.is_none());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_exit_on_turn_start_closes_stdout_without_response() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("exit-on-turn-start"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.send(&json!({
+        "id": 3,
+        "method": "turn/start",
+        "params": {
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }
+    }))?;
+
+    assert!(server.read_message()?.is_none());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_returns_errors_for_unsupported_method_and_input() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let unsupported = server.request(2, "unknown/method", json!({}))?;
+    assert_eq!(unsupported["error"]["code"], -32601);
+
+    let started = server.request(3, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let invalid_input = server.request(
+        4,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": []
+        }),
+    )?;
+    assert_eq!(invalid_input["error"]["code"], -32600);
+    assert!(
+        invalid_input["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input")
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
 }
 
 #[test]
