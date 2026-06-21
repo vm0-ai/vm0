@@ -72,7 +72,9 @@ export const workflowFileMetadataSchema = z.object({
   size: z.number(),
 });
 
-export const workflowInstructionSchema = z.string().max(WORKFLOW_FILES_MAX_BYTES);
+export const workflowInstructionSchema = z
+  .string()
+  .max(WORKFLOW_FILES_MAX_BYTES);
 
 export const zeroWorkflowScheduleTypeSchema = z.enum(["cron", "loop", "once"]);
 export type ZeroWorkflowScheduleType = z.infer<
@@ -164,14 +166,13 @@ export const zeroWorkflowSummarySchema = z.object({
   canManage: z.boolean(),
 });
 
-export const zeroWorkflowDetailResponseSchema = zeroWorkflowSummarySchema.extend(
-  {
+export const zeroWorkflowDetailResponseSchema =
+  zeroWorkflowSummarySchema.extend({
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
     fileContents: z.array(workflowFileEntrySchema).nullable(),
     triggers: z.array(zeroWorkflowTriggerSummarySchema),
-  },
-);
+  });
 
 export const zeroWorkflowListResponseSchema = z.array(
   zeroWorkflowSummarySchema,
@@ -398,7 +399,8 @@ export const zeroWorkflowVisibilityContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Agent write-permission holder demotes a public workflow to private",
+    summary:
+      "Agent write-permission holder demotes a public workflow to private",
   },
 });
 
