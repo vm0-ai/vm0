@@ -45,6 +45,10 @@ function compareStrings(a: string, b: string): number {
 }
 
 function firewallRegistryConnectorTypes(source: string): string[] {
+  return [...firewallRegistryExportNames(source).keys()].sort(compareStrings);
+}
+
+function firewallRegistryExportNames(source: string): Map<string, string> {
   const registryMatch = source.match(
     /const CONNECTOR_FIREWALLS = defineConnectorFirewalls\(\{\n([\s\S]*?)\n\} satisfies/s,
   );
@@ -52,13 +56,15 @@ function firewallRegistryConnectorTypes(source: string): string[] {
     throw new Error("Unable to find CONNECTOR_FIREWALLS registry");
   }
 
-  return [
-    ...registryMatch[1]!.matchAll(/^\s*(?:"([^"]+)"|([a-zA-Z_$][\w$]*)):/gm),
-  ]
-    .map((match) => {
-      return match[1] ?? match[2]!;
-    })
-    .sort(compareStrings);
+  return new Map(
+    [
+      ...registryMatch[1]!.matchAll(
+        /^\s*(?:"([^"]+)"|([a-zA-Z_$][\w$]*)):\s*([a-zA-Z_$][\w$]*),$/gm,
+      ),
+    ].map((match) => {
+      return [match[1] ?? match[2]!, match[3]!] as const;
+    }),
+  );
 }
 
 function runtimeLoaderConnectorTypes(source: string): string[] {
@@ -74,6 +80,18 @@ function runtimeLoaderConnectorTypes(source: string): string[] {
       return match[1]!;
     })
     .sort(compareStrings);
+}
+
+function runtimeLoaderExportNames(source: string): Map<string, string> {
+  return new Map(
+    [
+      ...source.matchAll(
+        /^\s*"([^"]+)": async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\.([a-zA-Z_$][\w$]*);\n\s+\},$/gm,
+      ),
+    ].map((match) => {
+      return [match[1]!, match[2]!] as const;
+    }),
+  );
 }
 
 describe("firewall metadata generator", () => {
@@ -134,6 +152,9 @@ describe("firewall metadata generator", () => {
     expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
     expect(runtimeLoaderConnectorTypes(loaderSource)).toStrictEqual(
       firewallRegistryConnectorTypes(registrySource),
+    );
+    expect(runtimeLoaderExportNames(loaderSource)).toStrictEqual(
+      firewallRegistryExportNames(registrySource),
     );
     expect(dynamicSpecifiers).toContain("./slack.generated");
     expect(dynamicSpecifiers).toContain("./github.generated");
