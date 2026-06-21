@@ -25,6 +25,7 @@ const OLD_GOOGLE_DRIVE_PERMISSIONS = [
   "drive.metadata.readonly",
   "drive.photos.readonly",
   "drive.readonly",
+  "drive.scripts",
 ];
 
 const NEW_GOOGLE_DRIVE_PERMISSIONS = [
@@ -49,6 +50,20 @@ const NEW_GOOGLE_DRIVE_PERMISSIONS = [
   "revisions.write",
 ];
 
+const DRIVE_READONLY_DENIED_PERMISSIONS = [
+  "about.read",
+  "apps.read",
+  "changes.read",
+  "channels.write",
+  "comments.read",
+  "drives.read",
+  "files.read",
+  "files.share",
+  "operations.read",
+  "replies.read",
+  "revisions.read",
+];
+
 class RollbackMigrationTestTransaction extends Error {}
 
 async function runInRollbackTransaction(
@@ -68,13 +83,16 @@ async function runInRollbackTransaction(
 }
 
 describe("migration 0476 remap Google Drive permission grants", () => {
-  it("remaps narrow apps grants and fails closed for broad denied scopes", async () => {
+  it("remaps old Google Drive grants without over-granting broad scopes", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");
       const ownerId = uniqueId("owner");
       const appsUserId = uniqueId("apps-user");
       const broadAllowUserId = uniqueId("allow-user");
-      const broadDenyUserId = uniqueId("deny-user");
+      const readonlyDenyUserId = uniqueId("readonly-deny-user");
+      const fullDenyUserId = uniqueId("full-deny-user");
+      const scriptsDenyUserId = uniqueId("scripts-deny-user");
+      const installDenyUserId = uniqueId("install-deny-user");
       const expiresAt = new Date("2030-01-01T00:00:00Z");
 
       const [compose] = await tx
@@ -114,7 +132,7 @@ describe("migration 0476 remap Google Drive permission grants", () => {
         },
         {
           orgId,
-          userId: broadDenyUserId,
+          userId: readonlyDenyUserId,
           agentId,
           connectorRef: "google-drive",
           permission: "drive.readonly",
@@ -122,11 +140,35 @@ describe("migration 0476 remap Google Drive permission grants", () => {
         },
         {
           orgId,
-          userId: broadDenyUserId,
+          userId: readonlyDenyUserId,
           agentId,
           connectorRef: "google-drive",
           permission: "files.read",
           action: "allow",
+        },
+        {
+          orgId,
+          userId: fullDenyUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "drive",
+          action: "deny",
+        },
+        {
+          orgId,
+          userId: scriptsDenyUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "drive.scripts",
+          action: "deny",
+        },
+        {
+          orgId,
+          userId: installDenyUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "drive.install",
+          action: "deny",
         },
         {
           orgId,
@@ -190,7 +232,7 @@ describe("migration 0476 remap Google Drive permission grants", () => {
         );
       expect(broadAllowGoogleDriveGrants).toStrictEqual([]);
 
-      const broadDenyGrants = await tx
+      const readonlyDenyGrants = await tx
         .select({
           permission: userPermissionGrants.permission,
           action: userPermissionGrants.action,
@@ -200,12 +242,37 @@ describe("migration 0476 remap Google Drive permission grants", () => {
         .where(
           and(
             eq(userPermissionGrants.orgId, orgId),
-            eq(userPermissionGrants.userId, broadDenyUserId),
+            eq(userPermissionGrants.userId, readonlyDenyUserId),
             eq(userPermissionGrants.connectorRef, "google-drive"),
           ),
         )
         .orderBy(asc(userPermissionGrants.permission));
-      expect(broadDenyGrants).toStrictEqual(
+      expect(readonlyDenyGrants).toStrictEqual(
+        DRIVE_READONLY_DENIED_PERMISSIONS.map((permission) => {
+          return {
+            permission,
+            action: "deny",
+            expiresAt: null,
+          };
+        }),
+      );
+
+      const fullDenyGrants = await tx
+        .select({
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        })
+        .from(userPermissionGrants)
+        .where(
+          and(
+            eq(userPermissionGrants.orgId, orgId),
+            eq(userPermissionGrants.userId, fullDenyUserId),
+            eq(userPermissionGrants.connectorRef, "google-drive"),
+          ),
+        )
+        .orderBy(asc(userPermissionGrants.permission));
+      expect(fullDenyGrants).toStrictEqual(
         NEW_GOOGLE_DRIVE_PERMISSIONS.map((permission) => {
           return {
             permission,
@@ -214,6 +281,38 @@ describe("migration 0476 remap Google Drive permission grants", () => {
           };
         }),
       );
+
+      const scriptsDenyGrants = await tx
+        .select({
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+        })
+        .from(userPermissionGrants)
+        .where(
+          and(
+            eq(userPermissionGrants.orgId, orgId),
+            eq(userPermissionGrants.userId, scriptsDenyUserId),
+            eq(userPermissionGrants.connectorRef, "google-drive"),
+          ),
+        );
+      expect(scriptsDenyGrants).toStrictEqual([
+        {
+          permission: "files.write",
+          action: "deny",
+        },
+      ]);
+
+      const installDenyGrants = await tx
+        .select({ id: userPermissionGrants.id })
+        .from(userPermissionGrants)
+        .where(
+          and(
+            eq(userPermissionGrants.orgId, orgId),
+            eq(userPermissionGrants.userId, installDenyUserId),
+            eq(userPermissionGrants.connectorRef, "google-drive"),
+          ),
+        );
+      expect(installDenyGrants).toStrictEqual([]);
 
       const googleDocsGrants = await tx
         .select({
