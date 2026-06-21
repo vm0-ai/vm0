@@ -629,6 +629,77 @@ fn app_server_rejects_empty_resume_thread_id() -> std::io::Result<()> {
 }
 
 #[test]
+fn app_server_rejects_missing_or_empty_turn_thread_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let missing_start = server.request(
+        3,
+        "turn/start",
+        json!({
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let empty_start = server.request(
+        4,
+        "turn/start",
+        json!({
+            "threadId": "",
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+
+    let turn_started = server.request(
+        5,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let missing_steer = server.request(
+        6,
+        "turn/steer",
+        json!({
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    let empty_steer = server.request(
+        7,
+        "turn/steer",
+        json!({
+            "threadId": "",
+            "expectedTurnId": turn_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    for error in [missing_start, empty_start, missing_steer, empty_steer] {
+        assert_eq!(error["error"]["code"], -32600);
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("threadId")
+        );
+    }
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_initialized_notification_does_not_replace_initialize_request() -> std::io::Result<()>
 {
     let dir = TempDir::new().unwrap();

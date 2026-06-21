@@ -174,7 +174,11 @@ impl AppServerState {
                     return Ok(ServerAction::Stop);
                 }
 
-                let current_thread = match self.current_thread(string_param(params, "threadId")) {
+                let Some(thread_id) = non_empty_string_param(params, "threadId") else {
+                    write_error(output, id, INVALID_REQUEST, "missing threadId")?;
+                    return Ok(ServerAction::Continue);
+                };
+                let current_thread = match self.current_thread(thread_id) {
                     Ok(current_thread) => current_thread,
                     Err(message) => {
                         write_error(output, id, INVALID_REQUEST, message)?;
@@ -217,7 +221,11 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
                     return Ok(ServerAction::Continue);
                 };
-                let current_thread = match self.current_thread(string_param(params, "threadId")) {
+                let Some(thread_id) = non_empty_string_param(params, "threadId") else {
+                    write_error(output, id, INVALID_REQUEST, "missing threadId")?;
+                    return Ok(ServerAction::Continue);
+                };
+                let current_thread = match self.current_thread(thread_id) {
                     Ok(current_thread) => current_thread,
                     Err(message) => {
                         write_error(output, id, INVALID_REQUEST, message)?;
@@ -290,13 +298,11 @@ impl AppServerState {
         });
     }
 
-    fn current_thread(&self, requested_thread_id: Option<&str>) -> Result<&AppServerThread, &str> {
+    fn current_thread(&self, requested_thread_id: &str) -> Result<&AppServerThread, &str> {
         let Some(current_thread) = &self.current_thread else {
             return Err("no active thread");
         };
-        if let Some(requested_thread_id) = requested_thread_id
-            && requested_thread_id != current_thread.protocol_thread_id
-        {
+        if requested_thread_id != current_thread.protocol_thread_id {
             return Err("unknown threadId");
         }
         Ok(current_thread)
