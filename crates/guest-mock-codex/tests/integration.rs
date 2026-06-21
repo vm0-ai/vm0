@@ -702,6 +702,58 @@ fn app_server_rejects_missing_or_empty_turn_thread_id() -> std::io::Result<()> {
 }
 
 #[test]
+fn app_server_rejects_missing_or_empty_expected_turn_id() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({}))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+
+    let missing_expected_turn = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    let empty_expected_turn = server.request(
+        5,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": "",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+
+    assert_eq!(missing_expected_turn["error"]["code"], -32600);
+    assert_eq!(
+        missing_expected_turn["error"]["message"],
+        "missing expectedTurnId"
+    );
+    assert_eq!(empty_expected_turn["error"]["code"], -32600);
+    assert_eq!(
+        empty_expected_turn["error"]["message"],
+        "expectedTurnId must not be empty"
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_initialized_notification_does_not_replace_initialize_request() -> std::io::Result<()>
 {
     let dir = TempDir::new().unwrap();

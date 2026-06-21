@@ -221,6 +221,15 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
                     return Ok(ServerAction::Continue);
                 };
+                if expected_turn_id.is_empty() {
+                    write_error(
+                        output,
+                        id,
+                        INVALID_REQUEST,
+                        "expectedTurnId must not be empty",
+                    )?;
+                    return Ok(ServerAction::Continue);
+                }
                 let Some(thread_id) = non_empty_string_param(params, "threadId") else {
                     write_error(output, id, INVALID_REQUEST, "missing threadId")?;
                     return Ok(ServerAction::Continue);
