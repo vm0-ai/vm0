@@ -148,11 +148,36 @@ fn process_failure_exit_code(exit: &sandbox::ProcessExit) -> i32 {
 }
 
 fn process_failure_stderr(exit: &sandbox::ProcessExit) -> String {
-    if matches!(exit.termination, SandboxExecTermination::TimedOut) && exit.stderr.is_empty() {
-        return "Timeout".to_string();
+    let mut stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+    match exit.termination {
+        SandboxExecTermination::TimedOut => {
+            if stderr.is_empty() {
+                return "Timeout".to_string();
+            }
+        }
+        SandboxExecTermination::Cancelled => {
+            if stderr.is_empty() {
+                stderr.push_str("Cancelled");
+            }
+            append_process_diagnostic(&mut stderr, &exit.diagnostic);
+        }
+        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => {
+            append_process_diagnostic(&mut stderr, &exit.diagnostic);
+        }
+        SandboxExecTermination::Exited { .. } => {}
     }
 
-    String::from_utf8_lossy(&exit.stderr).to_string()
+    stderr
+}
+
+fn append_process_diagnostic(stderr: &mut String, diagnostic: &str) {
+    if diagnostic.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() && !stderr.ends_with('\n') {
+        stderr.push('\n');
+    }
+    stderr.push_str(diagnostic);
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:

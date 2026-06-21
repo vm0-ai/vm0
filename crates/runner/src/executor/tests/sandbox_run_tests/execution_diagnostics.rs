@@ -487,6 +487,46 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
 }
 
 #[tokio::test]
+async fn execute_inner_non_exited_diagnostic_is_user_visible() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+    exit.termination = SandboxExecTermination::WaitFailed;
+    exit.diagnostic = "wait failed inside provider".to_string();
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(outcome.exit_code(), 1);
+    assert_eq!(failure.exit_code, 1);
+    assert_eq!(failure.error, "wait failed inside provider");
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
