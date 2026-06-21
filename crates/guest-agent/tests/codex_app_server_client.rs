@@ -121,6 +121,31 @@ async fn codex_app_server_buffers_interleaved_notifications() -> Result<(), Stri
 }
 
 #[tokio::test]
+async fn codex_app_server_rejects_notification_queue_overflow() -> Result<(), String> {
+    let mut client = spawn_client(Some("notification-overflow"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let result = wait_result_allow_error(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await;
+
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("server notification queue exceeded"));
+        }
+        other => {
+            return Err(format!(
+                "expected notification overflow error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_rejects_server_requests_and_continues() -> Result<(), String> {
     let mut client = spawn_client(Some("server-request-before-response"))?;
     wait_result(client.initialize(), "initialize").await?;
@@ -156,6 +181,7 @@ async fn codex_app_server_malformed_stdout_fails_without_hanging() -> Result<(),
     match result {
         Err(CodexAppServerError::Protocol(message)) => {
             assert!(message.contains("malformed app-server stdout JSON"));
+            assert!(!message.contains("not-valid-json"));
         }
         other => {
             return Err(format!(

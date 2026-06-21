@@ -586,6 +586,35 @@ fn app_server_interleaved_notification_scenario_emits_before_response() -> std::
 }
 
 #[test]
+fn app_server_notification_overflow_scenario_emits_many_notifications() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--stdio"],
+        Some("notification-overflow"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": {}
+    }))?;
+
+    for index in 0..129 {
+        let notification = server.read_required()?;
+        assert_eq!(notification["method"], "experimental/server-notification");
+        assert_eq!(notification["params"]["index"], index);
+    }
+
+    let response = server.read_required()?;
+    assert_eq!(response["id"], 2);
+    assert!(response["result"]["thread"]["id"].as_str().is_some());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_server_request_scenario_waits_for_client_response() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(

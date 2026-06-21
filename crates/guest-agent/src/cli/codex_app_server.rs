@@ -94,7 +94,7 @@ pub enum CodexAppServerError {
     Io(#[from] std::io::Error),
     #[error("codex app-server JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("codex app-server RPC error for {method}: {error:?}")]
+    #[error("codex app-server RPC error for {method}: {error}")]
     Rpc {
         method: String,
         id: JsonRpcId,
@@ -108,6 +108,17 @@ pub enum CodexAppServerError {
     ChildExited { method: String, status: String },
     #[error("codex app-server did not exit after shutdown")]
     ShutdownTimeout,
+}
+
+impl std::fmt::Display for JsonRpcError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "code={} message={}",
+            self.code,
+            bounded_error_message(&self.message)
+        )
+    }
 }
 
 impl From<CodexAppServerError> for AgentError {
@@ -509,7 +520,8 @@ fn outgoing_notification(method: &str, params: Value) -> Value {
 fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerError> {
     let value: Value = serde_json::from_str(line).map_err(|error| {
         CodexAppServerError::Protocol(format!(
-            "malformed app-server stdout JSON: {error}; line={line:?}"
+            "malformed app-server stdout JSON: {error}; line_bytes={}",
+            line.len()
         ))
     })?;
 
@@ -580,6 +592,17 @@ fn parse_id(value: &Value) -> Result<JsonRpcId, CodexAppServerError> {
 fn bounded_method_name(method: &str) -> String {
     const MAX_CHARS: usize = 120;
     let mut chars = method.chars();
+    let bounded = chars.by_ref().take(MAX_CHARS).collect::<String>();
+    if chars.next().is_some() {
+        format!("{bounded}...")
+    } else {
+        bounded
+    }
+}
+
+fn bounded_error_message(message: &str) -> String {
+    const MAX_CHARS: usize = 240;
+    let mut chars = message.chars();
     let bounded = chars.by_ref().take(MAX_CHARS).collect::<String>();
     if chars.next().is_some() {
         format!("{bounded}...")

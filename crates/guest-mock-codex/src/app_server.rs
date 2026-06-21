@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
+const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scenario {
@@ -15,6 +16,7 @@ enum Scenario {
     ExitOnTurnStart,
     InterleavedNotification,
     MalformedStdout,
+    NotificationOverflow,
     ServerRequestBeforeResponse,
     StaleTurn,
     NoActiveTurn,
@@ -29,6 +31,7 @@ impl Scenario {
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
+                "notification-overflow" => Ok(Self::NotificationOverflow),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
@@ -180,6 +183,12 @@ impl AppServerState {
                     Scenario::ServerRequestBeforeResponse => {
                         write_json_line(output, &server_request())?;
                         self.pending_response = Some(PendingResponse { id, result });
+                    }
+                    Scenario::NotificationOverflow => {
+                        for index in 0..NOTIFICATION_OVERFLOW_COUNT {
+                            write_json_line(output, &server_notification_with_index(index))?;
+                        }
+                        write_success(output, id, result)?;
                     }
                     _ => {
                         write_success(output, id, result)?;
@@ -460,10 +469,15 @@ fn thread_response(thread_id: &str, resume: bool) -> Value {
 }
 
 fn server_notification() -> Value {
+    server_notification_with_index(0)
+}
+
+fn server_notification_with_index(index: usize) -> Value {
     json!({
         "method": "experimental/server-notification",
         "params": {
-            "message": "guest-mock-codex notification"
+            "message": "guest-mock-codex notification",
+            "index": index
         }
     })
 }
