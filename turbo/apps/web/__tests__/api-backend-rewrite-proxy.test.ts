@@ -2611,28 +2611,23 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
-  it("matches the zero workflow agents rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/workflows/my-workflow/agents"),
-    ).toBe(true);
+  it("matches the zero workflow copy rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
-        "/api/zero/workflows/my-workflow/agents/extra",
+        "/api/zero/workflows/00000000-0000-0000-0000-000000000001/copy",
       ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/workflows/not-a-uuid/copy"),
     ).toBe(false);
   });
 
-  it("matches the zero workflow agent by-id rewrite path exactly", () => {
+  it("matches the zero workflow run rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
-        "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001",
+        "/api/zero/workflows/00000000-0000-0000-0000-000000000001/run",
       ),
     ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/zero/workflows/my-workflow/agents/not-a-uuid",
-      ),
-    ).toBe(false);
   });
 
   it("matches the zero runs collection rewrite path exactly", () => {
