@@ -8,7 +8,7 @@ use crate::transcript::{
 use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::thread;
@@ -460,7 +460,7 @@ struct CapturedShellOutput {
 }
 
 impl CapturedShellOutput {
-    fn spawn_failed() -> Self {
+    fn failed() -> Self {
         Self {
             stdout: CapturedShellStream::default(),
             stderr: CapturedShellStream::default(),
@@ -469,7 +469,7 @@ impl CapturedShellOutput {
     }
 }
 
-fn capture_shell_stream(mut reader: impl Read) -> CapturedShellStream {
+fn capture_shell_stream(mut reader: impl Read) -> std::io::Result<CapturedShellStream> {
     let mut stream = CapturedShellStream {
         bytes: Vec::with_capacity(STREAM_JSON_SHELL_READ_BUFFER_BYTES),
         truncated: false,
@@ -480,7 +480,8 @@ fn capture_shell_stream(mut reader: impl Read) -> CapturedShellStream {
         let read = match reader.read(&mut buffer) {
             Ok(0) => break,
             Ok(read) => read,
-            Err(_) => break,
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
         };
 
         let remaining = STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES.saturating_sub(stream.bytes.len());
@@ -496,7 +497,16 @@ fn capture_shell_stream(mut reader: impl Read) -> CapturedShellStream {
         }
     }
 
-    stream
+    Ok(stream)
+}
+
+fn join_captured_shell_stream(
+    handle: thread::JoinHandle<std::io::Result<CapturedShellStream>>,
+) -> std::io::Result<CapturedShellStream> {
+    match handle.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
 }
 
 fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
@@ -508,30 +518,27 @@ fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
         .spawn()
     {
         Ok(child) => child,
-        Err(_) => return CapturedShellOutput::spawn_failed(),
+        Err(_) => return CapturedShellOutput::failed(),
     };
 
     let Some(stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        return CapturedShellOutput::spawn_failed();
+        return CapturedShellOutput::failed();
     };
     let Some(stderr) = child.stderr.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        return CapturedShellOutput::spawn_failed();
+        return CapturedShellOutput::failed();
     };
     let stdout_thread = thread::spawn(move || capture_shell_stream(stdout));
     let stderr_thread = thread::spawn(move || capture_shell_stream(stderr));
 
     let exit_code = child.wait().map_or(1, |status| status.code().unwrap_or(1));
-    let stdout = match stdout_thread.join() {
-        Ok(stdout) => stdout,
-        Err(payload) => std::panic::resume_unwind(payload),
-    };
-    let stderr = match stderr_thread.join() {
-        Ok(stderr) => stderr,
-        Err(payload) => std::panic::resume_unwind(payload),
+    let stdout = join_captured_shell_stream(stdout_thread);
+    let stderr = join_captured_shell_stream(stderr_thread);
+    let (Ok(stdout), Ok(stderr)) = (stdout, stderr) else {
+        return CapturedShellOutput::failed();
     };
 
     CapturedShellOutput {
