@@ -554,7 +554,7 @@ describe("zero goals", () => {
 
     const edited = await accept(
       goalsClient().edit({
-        headers: headers(fixture, ["goal:update"]),
+        headers: headers(fixture, ["goal-objective:write"]),
         body: { objective: "ship goal workflows v2", tokenBudget: 5_000 },
       }),
       [200],
@@ -599,7 +599,7 @@ describe("zero goals", () => {
 
     const edited = await accept(
       goalsClient().edit({
-        headers: headers(fixture, ["goal:update"]),
+        headers: headers(fixture, ["goal-objective:write"]),
         body: { objective: "resume and keep going" },
       }),
       [200],
@@ -618,7 +618,7 @@ describe("zero goals", () => {
     });
   });
 
-  it("rejects goal edits when the token lacks goal:update", async () => {
+  it("rejects goal edits when the token lacks goal-objective:write", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
     await accept(
       goalsClient().create({
@@ -635,7 +635,7 @@ describe("zero goals", () => {
       }),
       [403],
     );
-    expect(response.body.error.message).toContain("goal:update");
+    expect(response.body.error.message).toContain("goal-objective:write");
   });
 
   it("returns 404 when editing with no active goal", async () => {
@@ -643,7 +643,7 @@ describe("zero goals", () => {
 
     const response = await accept(
       goalsClient().edit({
-        headers: headers(fixture, ["goal:update"]),
+        headers: headers(fixture, ["goal-objective:write"]),
         body: { objective: "no goal here" },
       }),
       [404],

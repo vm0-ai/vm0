@@ -28,7 +28,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["goal:read", FeatureSwitchKey.GoalWorkflows],
   ["goal:write", FeatureSwitchKey.GoalWorkflows],
-  ["goal:update", FeatureSwitchKey.GoalWorkflows],
+  ["goal-objective:write", FeatureSwitchKey.GoalWorkflows],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -267,9 +267,9 @@ export function generateZeroToken(
       continue;
     }
     // Goal continuation runs are autonomous and must not edit their own
-    // objective; goal:update is user-driven only.
+    // objective; goal-objective:write is user-driven only.
     if (
-      capability === "goal:update" &&
+      capability === "goal-objective:write" &&
       options?.triggerSource === "workflow-event"
     ) {
       continue;

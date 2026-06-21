@@ -155,11 +155,11 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:read");
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:write");
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
-      "goal:update",
+      "goal-objective:write",
     );
   });
 
-  it("excludes goal:update for workflow-event runs but keeps goal read/write", () => {
+  it("excludes goal-objective:write for workflow-event runs but keeps goal read/write", () => {
     const userDrivenToken = generateZeroToken(
       "user_zero",
       "run_zero",
@@ -176,10 +176,10 @@ describe("auth tokens", () => {
     );
 
     expect(verifyZeroToken(userDrivenToken)?.capabilities).toContain(
-      "goal:update",
+      "goal-objective:write",
     );
     expect(verifyZeroToken(continuationToken)?.capabilities).not.toContain(
-      "goal:update",
+      "goal-objective:write",
     );
     expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
       "goal:read",

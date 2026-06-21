@@ -44,7 +44,7 @@ const goalWriteAuth = {
 const goalEditAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
-  requiredCapability: "goal:update",
+  requiredCapability: "goal-objective:write",
   accept: ["zero"],
 } as const;
 
