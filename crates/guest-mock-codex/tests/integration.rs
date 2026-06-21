@@ -188,12 +188,18 @@ fn wait_child(mut child: Child) -> std::io::Result<ExitStatus> {
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGKILL);
             }
-            rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT).map_err(|error| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("app-server child did not exit after SIGKILL: {error}"),
-                )
-            })?
+            match rx.recv_timeout(APP_SERVER_EXIT_TIMEOUT) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "app-server child did not exit after SIGKILL",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+                    "app-server child wait thread exited without status",
+                )),
+            }
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
             "app-server child wait thread exited without status",
